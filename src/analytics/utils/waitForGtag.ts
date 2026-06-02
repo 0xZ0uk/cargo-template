@@ -1,4 +1,5 @@
-import { canUseGtag, type WindowWithGtag } from "./canUseGtag";
+import { canUseGtag } from "./canUseGtag";
+import type { WindowWithGtag } from "./canUseGtag";
 
 type GtagFn = WindowWithGtag["gtag"];
 
@@ -12,7 +13,6 @@ export function waitForGtag(callback: (gtag: GtagFn) => void, options: WaitForGt
 
   if (canUseGtag(window)) {
     callback(window.gtag);
-
     return;
   }
 
@@ -20,7 +20,6 @@ export function waitForGtag(callback: (gtag: GtagFn) => void, options: WaitForGt
   const id = setInterval(() => {
     if (canUseGtag(window)) {
       clearInterval(id);
-
       callback(window.gtag);
     } else if (Date.now() - start >= timeout) {
       clearInterval(id);
