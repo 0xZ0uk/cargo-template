@@ -1,6 +1,6 @@
-import { cloudflare } from '@cloudflare/vite-plugin'
 import { withPayload } from '@payloadcms/tanstack-start'
 import { tanstackStart } from '@tanstack/react-start/plugin/vite'
+import { varlockCloudflareVitePlugin } from '@varlock/cloudflare-integration'
 import viteReact from '@vitejs/plugin-react'
 import rsc from '@vitejs/plugin-rsc'
 import { realpathSync } from 'node:fs'
@@ -13,8 +13,8 @@ const payloadServerEntry = realpathSync(
   path.resolve(__dirname, 'node_modules/payload/dist/index.js'),
 )
 
-// `vite dev` runs on Node (with Wrangler's binding proxy). Builds and `pnpm preview` run
-// in workerd, the same runtime as production.
+// `vite dev` runs on Node (with Wrangler's binding proxy), and `varlock run` loads its env.
+// Builds and `pnpm preview` run in workerd, the same runtime as production.
 const isCloudflareRuntime = (env: ConfigEnv) =>
   env.command === 'build' || process.env.CLOUDFLARE_RUNTIME === 'true'
 
@@ -54,8 +54,10 @@ const payloadConfig = withPayload(
             }
           },
         },
+        // Wraps `@cloudflare/vite-plugin`: validates `.env.schema` and passes the resolved env
+        // to workerd as vars and secrets.
         useCloudflareRuntime &&
-          cloudflare({
+          varlockCloudflareVitePlugin({
             // Keep `pnpm preview` on local D1/R2 even though D1 is marked `remote` for migrations.
             remoteBindings: false,
             viteEnvironment: {

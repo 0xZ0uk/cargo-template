@@ -1,10 +1,10 @@
 import { defineConfig, devices } from '@playwright/test'
 
 /**
- * Read environment variables from file.
- * https://github.com/motdotla/dotenv
+ * Load and validate environment variables from `.env.schema`.
+ * https://varlock.dev/integrations/javascript/
  */
-import 'dotenv/config'
+import 'varlock/auto-load'
 
 /**
  * See https://playwright.dev/docs/test-configuration.
