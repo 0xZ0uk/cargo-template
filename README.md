@@ -9,11 +9,15 @@ A Payload 4 + TanStack Start template that runs as a single Cloudflare Worker, w
 
 ### Development
 
-1. `cp .env.example .env` and set `PAYLOAD_SECRET` (`openssl rand -hex 32`).
+1. `echo "PAYLOAD_SECRET=$(openssl rand -hex 32)" > .env.development.local`
 2. `pnpm install && pnpm dev`
 3. Open `http://localhost:3000/admin` and create your first user.
 
 `pnpm dev` runs TanStack's Node dev server. Wrangler's `getPlatformProxy` provides a local D1 database (stored in `.wrangler/state`). Payload pushes schema changes to it automatically, so you don't need migrations while you develop. Media uploads go to the local `media/` directory.
+
+### Environment variables
+
+[Varlock](https://varlock.dev) loads and validates env vars against [`.env.schema`](./.env.schema), which lists every variable and whether it's sensitive. `APP_ENV` picks the environment (`development` by default, `production` for deploys). Keep values in gitignored `.env.[APP_ENV].local` files, or pass them in the process environment. `pnpm exec varlock load` shows what resolves. The Node scripts run under `varlock run`, the Worker build uses `varlockCloudflareVitePlugin`, and deploys use `varlock-wrangler`. After changing the schema, run `pnpm cf-typegen` to update `env.d.ts` and `cloudflare-env.d.ts`.
 
 ### Preview in the Workers runtime
 
@@ -27,8 +31,9 @@ Create the Cloudflare resources once:
 pnpm wrangler login
 pnpm wrangler d1 create cargo-template
 pnpm wrangler r2 bucket create cargo-template-media
-pnpm wrangler secret put PAYLOAD_SECRET
 ```
+
+Put the production secret in `.env.production.local` (`PAYLOAD_SECRET=...`), or set `PAYLOAD_SECRET` in your CI environment. If you're migrating an existing Worker, reuse its current value; a new value logs every user out.
 
 Copy the `database_id` printed by `d1 create` into [`wrangler.jsonc`](./wrangler.jsonc). If you rename the Worker, database or bucket, update the names there too, then run `pnpm cf-typegen`.
 
@@ -44,7 +49,7 @@ Then deploy:
 pnpm deploy
 ```
 
-`pnpm deploy` applies migrations to the remote D1 database, runs `PRAGMA optimize`, builds the Worker and deploys it with Wrangler. If you add a named Wrangler environment, set `CLOUDFLARE_ENV` so the migration commands use the same bindings.
+`pnpm deploy` applies migrations to the remote D1 database, runs `PRAGMA optimize`, builds the Worker with `APP_ENV=production` and deploys it with `varlock-wrangler`. Non-sensitive values become Worker vars and sensitive ones become secrets. `varlock-wrangler deploy` replaces the Worker's vars and secrets with the schema's, so define any new ones in `.env.schema` rather than the dashboard. The build fails if `PAYLOAD_SECRET` doesn't resolve for production. If you add a named Wrangler environment, set `CLOUDFLARE_ENV` so the migration commands use the same bindings.
 
 ## Staying under D1's 10 GB limit
 
@@ -87,7 +92,7 @@ When you add features that produce append-only data, keep it out of the main D1 
 - `src/runtime/cloudflare.ts` for builds and `pnpm preview`. It reads the bindings from `cloudflare:workers`.
 - `src/runtime/node.ts` for `pnpm dev`, tests and the Payload CLI. It gets the bindings from Wrangler's `getPlatformProxy`. `migrate:remote` sets `PAYLOAD_MIGRATE_REMOTE=true`, which points D1 at the remote database. That's why D1 is marked `"remote": true` in `wrangler.jsonc`; dev and preview opt out of remote bindings, so they stay local.
 
-`vite.config.ts` only adds `@cloudflare/vite-plugin` for builds and `pnpm preview`. A small build-only plugin bundles the packages Payload normally leaves external, because workerd has no Node module loader.
+`vite.config.ts` only adds `@cloudflare/vite-plugin` (through `varlockCloudflareVitePlugin`) for builds and `pnpm preview`. A small build-only plugin bundles the packages Payload normally leaves external, because workerd has no Node module loader.
 
 ### Collections
 

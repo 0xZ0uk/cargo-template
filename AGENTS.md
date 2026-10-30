@@ -10,4 +10,5 @@ The app runs on Cloudflare Workers with D1 (10 GB max per database) and R2. Keep
 - Versions are capped by `limitVersions` in `src/payload.config.ts`. Only override `maxPerDoc`/`max` with a reason.
 - Analytics and events go to Workers Analytics Engine. Form submissions and logs go to R2 or a separate D1 database, not the main one.
 - Bindings come from `#cloudflare-runtime` (`src/runtime/`). Run `pnpm cf-typegen` after editing `wrangler.jsonc`.
+- Env vars are declared in `.env.schema` and loaded by [varlock](https://varlock.dev). Add new variables there (mark secrets `@sensitive`), not in `.dev.vars` or the Cloudflare dashboard, then run `pnpm cf-typegen`. Deploy with `varlock-wrangler`, not `wrangler deploy`.
 - After schema changes, run `pnpm migrate:create` and commit the migration in `src/db/migrations`.
