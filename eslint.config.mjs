@@ -5,8 +5,11 @@ export default [
   {
     ignores: [
       '.tanstack/',
+      '.wrangler/',
+      'cloudflare-env.d.ts',
       'dist/',
       'src/app/_payload/importMap.js',
+      'src/db/migrations/',
       'src/payload-types.ts',
       'src/routeTree.gen.ts',
     ],
