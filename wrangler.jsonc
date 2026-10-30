@@ -1,0 +1,27 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "cargo-template",
+  "main": "@tanstack/react-start/server-entry",
+  "compatibility_date": "2026-10-23",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true,
+  },
+  "d1_databases": [
+    {
+      "binding": "D1",
+      "database_name": "cargo-template",
+      // Replace with the id printed by `wrangler d1 create cargo-template`
+      "database_id": "DATABASE_ID",
+      // Lets `pnpm migrate:remote` reach the real database. Local dev and `pnpm preview`
+      // opt out of remote bindings, so they keep using the local D1 in `.wrangler/state`.
+      "remote": true,
+    },
+  ],
+  "r2_buckets": [
+    {
+      "binding": "R2",
+      "bucket_name": "cargo-template-media",
+    },
+  ],
+}

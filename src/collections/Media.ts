@@ -16,5 +16,9 @@ export const Media: CollectionConfig = {
     createFolderField({ relationTo: 'folders' }),
     createTagField({ relationTo: 'tags' }),
   ],
-  upload: true,
+  upload: {
+    // Cropping and focal points need sharp, which Workers can't run.
+    crop: false,
+    focalPoint: false,
+  },
 }

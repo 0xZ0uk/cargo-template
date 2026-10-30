@@ -17,6 +17,9 @@
     "jsx": "react-jsx",
     "incremental": true,
     "paths": {
+      "#cloudflare-runtime": [
+        "./src/runtime/node.ts"
+      ],
       "@/*": [
         "./src/*"
       ],
