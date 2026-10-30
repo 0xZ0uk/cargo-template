@@ -84,5 +84,31 @@ export default buildConfig({
       enabled: isWorkersRuntime,
     }),
   ],
-  plugins: [mcpPlugin({}), limitVersions({ max: 20 })],
+  plugins: [
+    // Serves MCP at POST /api/mcp. Callers authenticate with a user API key; without one
+    // they get no tools, since every tool requires a logged-in user by default.
+    mcpPlugin({
+      collections: {
+        folders: {
+          description: 'Folders that organise media in the admin panel.',
+        },
+        media: {
+          description:
+            'Uploaded files (images, documents) with alt text, stored in R2. Call getUploadInstructions before uploading.',
+        },
+        tags: {
+          description: 'Tags used to label and filter media.',
+        },
+        users: {
+          description: 'Admin panel users.',
+          // Account creation and removal stay in the admin panel.
+          tools: { create: false, delete: false },
+        },
+      },
+      mcp: {
+        serverOptions: { serverInfo: { name: 'Cargo Template' } },
+      },
+    }),
+    limitVersions({ max: 20 }),
+  ],
 })
