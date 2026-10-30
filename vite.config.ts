@@ -1,4 +1,5 @@
 import { withPayload } from '@payloadcms/tanstack-start'
+import tailwindcss from '@tailwindcss/vite'
 import { tanstackStart } from '@tanstack/react-start/plugin/vite'
 import { varlockCloudflareVitePlugin } from '@varlock/cloudflare-integration'
 import viteReact from '@vitejs/plugin-react'
@@ -65,6 +66,9 @@ const payloadConfig = withPayload(
               name: 'ssr',
             },
           }),
+        // Only processes CSS that imports Tailwind (the frontend stylesheet), so the admin
+        // panel's styles are untouched.
+        tailwindcss(),
         rsc(pluginOptions.rsc),
         tanstackStart(pluginOptions.tanstackStart),
         viteReact(pluginOptions.react),
