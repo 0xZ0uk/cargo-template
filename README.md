@@ -102,6 +102,23 @@ See the [Collections](https://payloadcms.com/docs/configuration/collections) doc
 - **Media:** upload-enabled collection, stored in R2 in production. Cropping and focal points are disabled because they need `sharp`, which Workers can't run.
 - **Folders / Tags:** used to organise media.
 
+### MCP
+
+[`@payloadcms/plugin-mcp`](https://payloadcms.com/docs/beta/plugins/mcp) serves an MCP server at `POST /api/mcp` (Streamable HTTP), so AI clients can read and edit content. Every collection gets the built-in tools (`findDocuments`, `createDocuments`, `updateDocument`, `deleteDocuments`, and so on), except that `users` can't be created or deleted over MCP. Tools run with the caller's Payload access control, and anonymous callers get none.
+
+To connect a client:
+
+1. In the admin panel, open your user, check **Enable API Key**, and save. Keys are encrypted with `PAYLOAD_SECRET`, so changing the secret invalidates them.
+2. Add the server to your client with the header `Authorization: users API-Key <key>`. For Claude Code:
+
+   ```bash
+   claude mcp add --transport http payload http://localhost:3000/api/mcp --header "Authorization: users API-Key <key>"
+   ```
+
+   Clients that only support stdio can use `npx -y mcp-remote <url> --header "Authorization: users API-Key <key>"`.
+
+In development you can skip auth with `http://localhost:3000/api/mcp?overrideAccess=true`; the endpoint rejects that parameter in production. Configure descriptions, tools, prompts and resources in the `mcpPlugin` call in `src/payload.config.ts`.
+
 ### Current limitations
 
 - No image resizing or cropping on Workers (no `sharp`).
