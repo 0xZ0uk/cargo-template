@@ -99,8 +99,20 @@ When you add features that produce append-only data, keep it out of the main D1 
 See the [Collections](https://payloadcms.com/docs/configuration/collections) docs for details on how to extend this functionality.
 
 - **Users (Authentication):** auth-enabled collection with access to the admin panel. See the [Authentication](https://payloadcms.com/docs/authentication/overview#authentication-overview) docs.
-- **Media:** upload-enabled collection, stored in R2 in production. Cropping and focal points are disabled because they need `sharp`, which Workers can't run.
+- **Pages:** the website's pages, ported from Payload's `website` template. Each page has a hero (`src/heros`), a `layout` of blocks (`src/blocks`: Call to Action, Content, Media) and an SEO tab from `@payloadcms/plugin-seo`. Pages have drafts with autosave, a preview button and live preview.
+- **Header / Footer (globals):** up to six navigation links each, pointing at a page or a custom URL.
+- **Media:** upload-enabled collection, stored in R2 in production. Cropping and focal points are disabled because they need `sharp`, which Workers can't run. The optional `caption` is rendered under media blocks.
 - **Folders / Tags:** used to organise media.
+
+### Frontend
+
+Pages render at `/$slug` (`src/app/_frontend/$slug.tsx`). The page with the slug `home` renders at `/`, and `/home` redirects there. Until a `home` page exists, `/` shows a static placeholder (`src/collections/Pages/homeStatic.ts`). Both routes load data through the `loadPage` server function in `src/app/_frontend/pages.functions.ts`, which queries the Local API with the visitor's access, so anonymous visitors only see published pages. `head()` turns each page's SEO fields into the title, description and Open Graph tags.
+
+The `_frontend` layout route loads the Header and Footer globals once per full page load (`src/app/_frontend/layout.functions.ts`); client-side navigation reuses them. When a page has a high-impact hero, the header switches to its dark theme so it stays readable over the image. Pages that don't exist render the 404 inside the layout, with the header and footer.
+
+Drafts render only for logged-in users who add `?draft=true`, which is the URL the admin's Preview and Live Preview use. In live preview, `LivePreviewListener` reloads the route data each time the document saves. Every request is server-rendered from D1, so publishing needs no revalidation step.
+
+The frontend uses Tailwind CSS 4 (`src/app/_frontend/styles.css`, `tailwind.config.mjs`) with the website template's shadcn/ui tokens. Tailwind only processes that stylesheet, and only frontend routes load it, so admin styles are unaffected. Images render as plain `<img>` tags because Workers can't run sharp to create resized variants.
 
 ### MCP
 
