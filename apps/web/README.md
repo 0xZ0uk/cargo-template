@@ -40,7 +40,13 @@ Put the production secret in `.env.production.local` (`PAYLOAD_SECRET=...`), or 
 > [!IMPORTANT]
 > [`wrangler.jsonc`](./wrangler.jsonc) ships with the `database_id` of the template's own D1 database, which your account can't reach. **Replace it with the `database_id` printed by `d1 create`** before you run `pnpm deploy`, or the migrations and the deploy fail.
 
-If you rename the Worker, database or bucket, update the names in `wrangler.jsonc` too, then run `pnpm cf-typegen`.
+Then add the bucket's lifecycle rule. It expires the SEO analyzer's cache objects under `seo-analyzer/cache/` after 7 days, so keys left behind by an old config or locale don't pile up. Cache entries live 15 minutes anyway; if a key that's still in use expires (an invalidation marker on a site with no edits for a week), the next request just rebuilds.
+
+```bash
+pnpm r2:lifecycle
+```
+
+If you rename the Worker, database or bucket, update the names in `wrangler.jsonc` (and in the `r2:lifecycle` script) too, then run `pnpm cf-typegen`. The `ratelimits` bindings in `wrangler.jsonc` use account-wide `namespace_id`s: give each Worker on the account its own ids, or they share counters.
 
 Wrangler stores the local D1 database under `.wrangler/state` by `database_id`, so changing the id gives `pnpm dev` a new, empty local database. To keep your local data, change the id before you start developing. Otherwise, copy the old `.sqlite` file in `.wrangler/state/v3/d1/miniflare-D1DatabaseObject/` to the new file name.
 
@@ -85,6 +91,7 @@ Run these inside `apps/web`, or from the repo root as `pnpm web <command>` (e.g.
 | `pnpm build`          | Build the Worker and static assets                              |
 | `pnpm preview`        | Build and run in local workerd (local D1 + R2)                  |
 | `pnpm deploy`         | Migrate remote D1, build and deploy                             |
+| `pnpm r2:lifecycle`   | Add the R2 rule that expires stale SEO cache objects            |
 | `pnpm generate:types` | Regenerate Cloudflare (`cloudflare-env.d.ts`) and Payload types |
 | `pnpm migrate:create` | Create a migration in `src/db/migrations`                       |
 | `pnpm migrate`        | Apply migrations to the local D1 database                       |

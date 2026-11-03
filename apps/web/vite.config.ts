@@ -14,6 +14,20 @@ const payloadServerEntry = realpathSync(
   path.resolve(__dirname, 'node_modules/payload/dist/index.js'),
 )
 
+// `@payloadcms/storage-r2` lazily imports the AWS S3 client for `copyFile`, which only runs
+// when `r2Storage` gets `copyCredentials` (this app doesn't pass them). Bundled anyway, the
+// SDK adds ~1.7 MB of chunks to the Worker. In the Workers build both imports resolve to a
+// stub that throws. Remove this if you pass `copyCredentials`.
+const AWS_COPY_STUB_ID = '\0r2-copy-file-stub'
+const AWS_COPY_IMPORTS = new Set(['@aws-sdk/client-s3', '@payloadcms/storage-s3/copy-file'])
+const AWS_COPY_STUB = `
+const unavailable = () => {
+  throw new Error('R2 file copy is not bundled in this Worker (see AWS_COPY_STUB in vite.config.ts).')
+}
+export class S3 { constructor() { unavailable() } }
+export const copyS3File = unavailable
+`
+
 // `vite dev` runs on Node (with Wrangler's binding proxy), and `varlock run` loads its env.
 // Builds and `pnpm preview` run in workerd, the same runtime as production.
 const isCloudflareRuntime = (env: ConfigEnv) =>
@@ -29,8 +43,19 @@ const payloadConfig = withPayload(
           name: 'payload-cloudflare-server-entry',
           enforce: 'pre',
           resolveId(source) {
-            if (source === 'payload' && ['rsc', 'ssr'].includes(this.environment.name)) {
+            if (!['rsc', 'ssr'].includes(this.environment.name)) {
+              return
+            }
+            if (source === 'payload') {
               return payloadServerEntry
+            }
+            if (AWS_COPY_IMPORTS.has(source)) {
+              return AWS_COPY_STUB_ID
+            }
+          },
+          load(id) {
+            if (id === AWS_COPY_STUB_ID) {
+              return AWS_COPY_STUB
             }
           },
           // workerd does not define `import.meta.url` for bundled modules. These code paths

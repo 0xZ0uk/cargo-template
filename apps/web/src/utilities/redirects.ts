@@ -1,12 +1,12 @@
 /**
  * Pure helpers for applying the SEO analyzer's `seo-redirects` records on the frontend.
  *
- * The plugin stores `from` as a same-site path (`normalizeFromPath`: leading `/`, no
- * scheme, no `//`, no backslashes or control characters) and `to` as a relative path or an
- * absolute http(s) URL (`validateRedirectTarget`). Case and trailing slashes are kept as
- * typed, so matching normalises both sides. The plugin doesn't export its safety helpers
- * from the package entry, so the `to` policy is mirrored in `safeRedirectTarget`.
+ * The plugin stores `from` as a same-site path (`normalizeFromPath`) and `to` as a relative
+ * path or an absolute http(s) URL (`validateRedirectTarget`). Both checks are reused from the
+ * plugin's `shared` entry, so a record the admin accepts and one the site applies follow the
+ * same policy. Case and trailing slashes are kept as typed, so matching normalises both sides.
  */
+import { normalizeFromPath, validateRedirectTarget } from '@cargo/payload-seo-analyzer/shared'
 
 export type RedirectStatus = 301 | 302
 
@@ -29,29 +29,14 @@ export type ResolvedRedirect = {
   statusCode: RedirectStatus
 }
 
-const SCHEME_RE = /^([a-zA-Z][a-zA-Z0-9+.-]*):/
-
-const hasControlOrSpace = (value: string) => {
-  for (let i = 0; i < value.length; i++) {
-    const code = value.charCodeAt(i)
-    if (code <= 0x20 || code === 0x7f) return true
-  }
-  return false
-}
-
 /**
  * Key used to compare a request path with a stored `from`: percent-decoded, lower-cased,
  * with a leading slash and no trailing slash (the root stays `/`). Returns null for values
  * that can never be a same-site path.
  */
 export const normalizeRedirectPath = (raw: unknown): string | null => {
-  if (typeof raw !== 'string') return null
-
-  const trimmed = raw.trim()
-  if (!trimmed || trimmed.includes('\\') || hasControlOrSpace(trimmed)) return null
-  if (SCHEME_RE.test(trimmed) || trimmed.startsWith('//')) return null
-
-  let path = trimmed.startsWith('/') ? trimmed : `/${trimmed}`
+  let path = normalizeFromPath(raw)
+  if (!path) return null
 
   try {
     // `decodeURI` leaves reserved characters (`%2F`, `%3F`, …) encoded, which keeps `/a%2Fb`
@@ -72,27 +57,9 @@ export const normalizeRedirectPath = (raw: unknown): string | null => {
  * other scheme (`javascript:`, `data:`, …) are refused.
  */
 export const safeRedirectTarget = (raw: unknown): string | null => {
-  if (typeof raw !== 'string') return null
+  const result = validateRedirectTarget(raw)
 
-  const trimmed = raw.trim()
-  if (!trimmed || trimmed.includes('\\') || hasControlOrSpace(trimmed)) return null
-  if (trimmed.startsWith('//')) return null
-
-  const scheme = SCHEME_RE.exec(trimmed)
-  if (scheme) {
-    const name = scheme[1]?.toLowerCase()
-    if (name !== 'http' && name !== 'https') return null
-
-    try {
-      return new URL(trimmed).toString()
-    } catch {
-      return null
-    }
-  }
-
-  const path = trimmed.startsWith('/') ? trimmed : `/${trimmed}`
-
-  return path.startsWith('//') ? null : path
+  return result.valid ? (result.normalized ?? null) : null
 }
 
 /**
