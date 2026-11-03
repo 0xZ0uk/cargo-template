@@ -1,7 +1,10 @@
 'use client'
 
 import React, { useState, useId } from 'react'
+import { Collapsible } from '@payloadcms/ui'
 import { useDashboardT } from '../hooks/useSeoLocale.js'
+import { cx, rangeTone, TonePill } from '../ui/index.js'
+import './SeoSocialPreview.css'
 
 // ---------------------------------------------------------------------------
 // Props
@@ -14,35 +17,6 @@ export interface SeoSocialPreviewProps {
 }
 
 // ---------------------------------------------------------------------------
-// Color palette (neubrutalist — matches SeoAnalyzer.tsx)
-// ---------------------------------------------------------------------------
-const C = {
-  cyan: '#00E5FF',
-  black: '#000',
-  white: '#fff',
-  bg: '#fafafa',
-  green: '#22c55e',
-  yellow: '#FFD600',
-  orange: '#FF8A00',
-  red: '#ef4444',
-  textPrimary: 'var(--theme-text, #1a1a1a)',
-  textSecondary: 'var(--theme-elevation-600, #6b7280)',
-  border: 'var(--theme-border-color, #000)',
-  surfaceBg: 'var(--theme-elevation-0, #fff)',
-  surface50: 'var(--theme-elevation-50, #f9fafb)',
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-function charCountColor(len: number, min: number, max: number): string {
-  if (len >= min && len <= max) return C.green
-  if (len > 0 && len < min) return C.orange
-  if (len > max) return C.red
-  return C.textSecondary
-}
-
-// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 export function SeoSocialPreview({
@@ -52,7 +26,6 @@ export function SeoSocialPreview({
   hostname,
 }: SeoSocialPreviewProps) {
   const t = useDashboardT()
-  const [open, setOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<'facebook' | 'twitter'>('facebook')
   // This component is rendered inside the document editor, once per locale tab
   // on a localized document: literal ids would collide.
@@ -69,48 +42,19 @@ export function SeoSocialPreview({
   const twDesc = desc || t.socialPreview.pageDescriptionPlaceholder
 
   return (
-    <div style={{ marginBottom: 8 }}>
-      {/* Header — collapsible */}
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        aria-expanded={open}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          width: '100%',
-          boxSizing: 'border-box',
-          textAlign: 'left',
-          font: 'inherit',
-          padding: '10px 12px',
-          cursor: 'pointer',
-          borderRadius: 8,
-          border: `2px solid ${C.border}`,
-          backgroundColor: C.surface50,
-          userSelect: 'none',
-        }}
-      >
-        <span
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            fontSize: 12,
-            fontWeight: 800,
-            textTransform: 'uppercase',
-            letterSpacing: '0.04em',
-            color: C.textPrimary,
-          }}
-        >
+    <Collapsible
+      className="seo-social"
+      header={
+        <span className="seo-social__title">
           {/* Share icon (SVG) */}
           <svg
-            width="14"
-            height="14"
+            aria-hidden="true"
+            width="16"
+            height="16"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            strokeWidth="2.5"
+            strokeWidth="2"
             strokeLinecap="round"
             strokeLinejoin="round"
           >
@@ -122,177 +66,75 @@ export function SeoSocialPreview({
           </svg>
           {t.socialPreview.title}
         </span>
-        <span
-          style={{
-            fontSize: 10,
-            transition: 'transform 0.2s',
-            display: 'inline-block',
-            transform: open ? 'rotate(90deg)' : 'none',
-            color: C.textSecondary,
-          }}
-        >
-          {'\u25B6'}
-        </span>
-      </button>
-
-      {/* Body */}
-      {open && (
-        <div
-          style={{
-            padding: '12px 0 0',
-          }}
-        >
-          {/* Tab switcher */}
-          <div role="tablist" aria-label={t.socialPreview.title} style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-            <TabButton
-              label={t.socialPreview.facebook}
-              active={activeTab === 'facebook'}
-              onClick={() => setActiveTab('facebook')}
-              id={`${uid}-tab-facebook`}
-              panelId={`${uid}-panel-facebook`}
-            />
-            <TabButton
-              label={t.socialPreview.twitter}
-              active={activeTab === 'twitter'}
-              onClick={() => setActiveTab('twitter')}
-              id={`${uid}-tab-twitter`}
-              panelId={`${uid}-panel-twitter`}
-            />
-          </div>
-
-          {/* Facebook Preview */}
-          {activeTab === 'facebook' && (
-            <div role="tabpanel" id={`${uid}-panel-facebook`} aria-labelledby={`${uid}-tab-facebook`}>
-              <div
-                style={{
-                  backgroundColor: '#f0f2f5',
-                  padding: 12,
-                  borderRadius: 8,
-                }}
-              >
-                <div
-                  style={{
-                    border: '1px solid #dadde1',
-                    borderRadius: 8,
-                    overflow: 'hidden',
-                    backgroundColor: '#fff',
-                  }}
-                >
-                  {/* Image area */}
-                  <ImagePlaceholder imageUrl={imageUrl} label={t.socialPreview.ogImage} />
-
-                  {/* Content */}
-                  <div style={{ padding: '10px 12px', backgroundColor: '#f0f2f5' }}>
-                    <div
-                      style={{
-                        fontSize: 11,
-                        color: '#606770',
-                        textTransform: 'uppercase',
-                        letterSpacing: 0.3,
-                      }}
-                    >
-                      {host}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 14,
-                        fontWeight: 600,
-                        color: '#1d2129',
-                        lineHeight: 1.3,
-                        marginTop: 4,
-                        overflow: 'hidden',
-                        display: '-webkit-box',
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: 'vertical',
-                      }}
-                    >
-                      {fbTitle}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        color: '#606770',
-                        lineHeight: 1.4,
-                        marginTop: 4,
-                        overflow: 'hidden',
-                        display: '-webkit-box',
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: 'vertical',
-                      }}
-                    >
-                      {fbDesc}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Character counters */}
-              <CharCounters titleLen={title.length} descLen={desc.length} titleLabel={t.socialPreview.previewTitle} descLabel={t.socialPreview.previewDescription} charsLabel={t.common.characters} />
-            </div>
-          )}
-
-          {/* Twitter/X Preview */}
-          {activeTab === 'twitter' && (
-            <div role="tabpanel" id={`${uid}-panel-twitter`} aria-labelledby={`${uid}-tab-twitter`}>
-              <div
-                style={{
-                  border: '1px solid #cfd9de',
-                  borderRadius: 16,
-                  overflow: 'hidden',
-                  backgroundColor: '#fff',
-                }}
-              >
-                {/* Image area */}
-                <ImagePlaceholder imageUrl={imageUrl} label={t.socialPreview.cardImage} />
-
-                {/* Content */}
-                <div style={{ padding: 12 }}>
-                  <div
-                    style={{
-                      fontSize: 11,
-                      color: '#536471',
-                    }}
-                  >
-                    {host}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 14,
-                      fontWeight: 700,
-                      color: '#0f1419',
-                      lineHeight: 1.3,
-                      marginTop: 4,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {twTitle}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 12,
-                      color: '#536471',
-                      lineHeight: 1.4,
-                      marginTop: 4,
-                      overflow: 'hidden',
-                      display: '-webkit-box',
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: 'vertical',
-                    }}
-                  >
-                    {twDesc}
-                  </div>
-                </div>
-              </div>
-
-              {/* Character counters */}
-              <CharCounters titleLen={title.length} descLen={desc.length} titleLabel={t.socialPreview.previewTitle} descLabel={t.socialPreview.previewDescription} charsLabel={t.common.characters} />
-            </div>
-          )}
+      }
+      initCollapsed
+    >
+      <div className="seo-stack">
+        {/* Tab switcher */}
+        <div role="tablist" aria-label={t.socialPreview.title} className="seo-social__tabs">
+          <TabButton
+            label={t.socialPreview.facebook}
+            active={activeTab === 'facebook'}
+            onClick={() => setActiveTab('facebook')}
+            id={`${uid}-tab-facebook`}
+            panelId={`${uid}-panel-facebook`}
+          />
+          <TabButton
+            label={t.socialPreview.twitter}
+            active={activeTab === 'twitter'}
+            onClick={() => setActiveTab('twitter')}
+            id={`${uid}-tab-twitter`}
+            panelId={`${uid}-panel-twitter`}
+          />
         </div>
-      )}
-    </div>
+
+        {/* Facebook Preview */}
+        {activeTab === 'facebook' && (
+          <div
+            role="tabpanel"
+            id={`${uid}-panel-facebook`}
+            aria-labelledby={`${uid}-tab-facebook`}
+            className="seo-stack"
+          >
+            <div className="seo-social__fb">
+              <div className="seo-social__fb-card">
+                <ImagePlaceholder imageUrl={imageUrl} label={t.socialPreview.ogImage} />
+                <div className="seo-social__fb-body">
+                  <div className="seo-social__fb-host">{host}</div>
+                  <div className="seo-social__fb-title">{fbTitle}</div>
+                  <div className="seo-social__fb-desc">{fbDesc}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Character counters */}
+            <CharCounters titleLen={title.length} descLen={desc.length} titleLabel={t.socialPreview.previewTitle} descLabel={t.socialPreview.previewDescription} charsLabel={t.common.characters} />
+          </div>
+        )}
+
+        {/* Twitter/X Preview */}
+        {activeTab === 'twitter' && (
+          <div
+            role="tabpanel"
+            id={`${uid}-panel-twitter`}
+            aria-labelledby={`${uid}-tab-twitter`}
+            className="seo-stack"
+          >
+            <div className="seo-social__tw-card">
+              <ImagePlaceholder imageUrl={imageUrl} label={t.socialPreview.cardImage} />
+              <div className="seo-social__tw-body">
+                <div className="seo-social__tw-host">{host}</div>
+                <div className="seo-social__tw-title">{twTitle}</div>
+                <div className="seo-social__tw-desc">{twDesc}</div>
+              </div>
+            </div>
+
+            {/* Character counters */}
+            <CharCounters titleLen={title.length} descLen={desc.length} titleLabel={t.socialPreview.previewTitle} descLabel={t.socialPreview.previewDescription} charsLabel={t.common.characters} />
+          </div>
+        )}
+      </div>
+    </Collapsible>
   )
 }
 
@@ -314,8 +156,8 @@ function TabButton({
   panelId?: string
 }) {
   return (
-    // role="tab" + aria-selected: the active tab used to be signalled by
-    // background colour and a box-shadow only.
+    // role="tab" + aria-selected: the active tab is signalled to assistive tech, not by
+    // colour alone. Same look as Payload's own tabs (see SeoSocialPreview.css).
     <button
       type="button"
       role="tab"
@@ -323,18 +165,7 @@ function TabButton({
       aria-selected={active}
       aria-controls={panelId}
       onClick={onClick}
-      style={{
-        padding: '4px 12px',
-        borderRadius: 6,
-        border: `2px solid ${C.border}`,
-        fontSize: 11,
-        fontWeight: 700,
-        cursor: 'pointer',
-        backgroundColor: active ? C.cyan : C.surfaceBg,
-        color: active ? C.black : C.textPrimary,
-        boxShadow: active ? `2px 2px 0 0 ${C.border}` : 'none',
-        transition: 'background-color 0.15s',
-      }}
+      className={cx('seo-social__tab', active && 'seo-social__tab--active')}
     >
       {label}
     </button>
@@ -349,74 +180,31 @@ function ImagePlaceholder({
   label: string
 }) {
   if (imageUrl) {
-    return (
-      <div
-        style={{
-          width: '100%',
-          aspectRatio: '16 / 9',
-          backgroundImage: `url(${imageUrl})`,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          backgroundColor: '#e4e6eb',
-        }}
-      />
-    )
+    // The URL comes from the document data, so it stays inline.
+    return <div className="seo-social__image" style={{ backgroundImage: `url(${imageUrl})` }} />
   }
 
   return (
-    <div
-      style={{
-        width: '100%',
-        aspectRatio: '16 / 9',
-        backgroundColor: '#e4e6eb',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: '#8a8d91',
-        gap: 4,
-      }}
-    >
-      <span style={{ fontSize: 24 }}>{'\uD83D\uDCF7'}</span>
-      <span style={{ fontSize: 11, fontWeight: 600 }}>{label}</span>
+    <div className="seo-social__image seo-social__image--empty">
+      <span>{label}</span>
     </div>
   )
 }
 
 function CharCounters({ titleLen, descLen, titleLabel, descLabel, charsLabel }: { titleLen: number; descLen: number; titleLabel: string; descLabel: string; charsLabel: string }) {
   return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 4,
-        marginTop: 10,
-        padding: '0 2px',
-      }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
-        <span style={{ color: C.textSecondary, fontWeight: 600 }}>{titleLabel}</span>
-        <span
-          style={{
-            fontWeight: 700,
-            fontVariantNumeric: 'tabular-nums',
-            color: charCountColor(titleLen, 30, 60),
-          }}
-        >
+    <div className="seo-stack seo-stack--tight">
+      <div className="seo-row seo-row--between seo-row--nowrap">
+        <span className="seo-text seo-text--small seo-text--secondary">{titleLabel}</span>
+        <TonePill tone={rangeTone(titleLen, 30, 60)}>
           {titleLen} / 60 {charsLabel}
-        </span>
+        </TonePill>
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
-        <span style={{ color: C.textSecondary, fontWeight: 600 }}>{descLabel}</span>
-        <span
-          style={{
-            fontWeight: 700,
-            fontVariantNumeric: 'tabular-nums',
-            color: charCountColor(descLen, 120, 160),
-          }}
-        >
+      <div className="seo-row seo-row--between seo-row--nowrap">
+        <span className="seo-text seo-text--small seo-text--secondary">{descLabel}</span>
+        <TonePill tone={rangeTone(descLen, 120, 160)}>
           {descLen} / 160 {charsLabel}
-        </span>
+        </TonePill>
       </div>
     </div>
   )

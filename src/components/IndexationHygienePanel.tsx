@@ -1,17 +1,8 @@
 'use client'
 
 import React, { useCallback, useEffect, useState } from 'react'
-
-const C = {
-  text: 'var(--theme-text, #1a1a1a)',
-  sub: 'var(--theme-elevation-600, #6b7280)',
-  card: 'var(--theme-elevation-50, #f9fafb)',
-  bg: 'var(--theme-elevation-0, #fff)',
-  border: 'var(--theme-elevation-200, #e5e7eb)',
-  green: '#22c55e',
-  red: '#ef4444',
-  amber: '#f59e0b',
-}
+import { Banner, Button, RefreshIcon } from '@payloadcms/ui'
+import { Card, Checklist, Grid, LoadingState, StatTile, TonePill, type Tone } from '../ui/index.js'
 
 type Severity = 'pass' | 'warning' | 'fail'
 
@@ -52,7 +43,7 @@ const S = {
     subtitle: 'Audit cross-page : noindex de masse, canonical cassé / dupliqué / manquant. Le seul « crash » SEO on-page vraiment actionnable.',
     unavailable: 'Audit d’indexation indisponible (réservé aux admins).',
     loading: 'Analyse de l’indexation…',
-    clean: 'Indexation saine — aucun problème détecté. 🎉',
+    clean: 'Indexation saine — aucun problème détecté.',
     refresh: 'Rafraîchir',
     docs: 'documents analysés',
     noindex: 'En noindex',
@@ -70,7 +61,7 @@ const S = {
     subtitle: 'Cross-page audit: mass noindex, broken / duplicated / missing canonicals. The one truly actionable on-page SEO “crash”.',
     unavailable: 'Indexation audit unavailable (admin only).',
     loading: 'Analyzing indexation…',
-    clean: 'Healthy indexation — no issues found. 🎉',
+    clean: 'Healthy indexation — no issues found.',
     refresh: 'Refresh',
     docs: 'documents analyzed',
     noindex: 'Noindexed',
@@ -85,10 +76,10 @@ const S = {
   },
 } as const
 
-function sevColor(sev?: Severity): string {
-  if (sev === 'fail') return C.red
-  if (sev === 'warning') return C.amber
-  return C.green
+function sevTone(sev?: Severity): Tone {
+  if (sev === 'fail') return 'danger'
+  if (sev === 'warning') return 'warning'
+  return 'success'
 }
 
 export function IndexationHygienePanel({ locale }: { locale: 'fr' | 'en' }) {
@@ -128,122 +119,103 @@ export function IndexationHygienePanel({ locale }: { locale: 'fr' | 'en' }) {
   const h = data?.hygiene
   const sevLabel = (sev?: Severity) => (sev === 'fail' ? s.fail : sev === 'warning' ? s.warning : s.pass)
 
-  const card: React.CSSProperties = {
-    padding: 16,
-    borderRadius: 12,
-    border: `1px solid ${C.border}`,
-    backgroundColor: C.card,
-    marginBottom: 20,
-  }
-  const btn = (bg: string): React.CSSProperties => ({
-    padding: '5px 10px',
-    borderRadius: 6,
-    border: `1px solid ${bg}`,
-    backgroundColor: bg,
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: 700,
-    cursor: 'pointer',
-  })
-
-  const counter = (label: string, value: number, color: string) => (
-    <div key={label} style={{ minWidth: 120 }}>
-      <div style={{ fontSize: 20, fontWeight: 700, color }}>{value}</div>
-      <div style={{ fontSize: 11, color: C.sub }}>{label}</div>
-    </div>
+  const counter = (label: string, value: number, tone: Tone) => (
+    <StatTile key={label} label={label} tone={tone} value={value} />
   )
 
-  const docList = (docs: DocRef[] | undefined, color: string) =>
+  const docList = (docs: DocRef[] | undefined, tone: Tone) =>
     docs && docs.length > 0 ? (
-      <ul style={{ margin: '4px 0 0', paddingLeft: 16, fontSize: 11, color: C.sub }}>
-        {docs.slice(0, 8).map((d, i) => (
-          <li key={`${d.slug || d.id || i}`} style={{ color }}>
-            {d.title || d.slug || String(d.id)}
-            {d.canonical ? <span style={{ color: C.sub }}> → {d.canonical}</span> : null}
-          </li>
-        ))}
-      </ul>
+      <Checklist
+        items={docs.slice(0, 8).map((d, i) => ({
+          id: `${d.slug || d.id || i}`,
+          tone,
+          content: (
+            <span className="seo-text seo-text--small">
+              {d.title || d.slug || String(d.id)}
+              {d.canonical ? <span className="seo-text--secondary"> → {d.canonical}</span> : null}
+            </span>
+          ),
+        }))}
+      />
     ) : null
 
-  return (
-    <div style={card}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <div>
-          <div style={{ fontSize: 16, fontWeight: 800, color: C.text }}>
-            {s.title}
-            {h && (
-              <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, color: '#fff', backgroundColor: sevColor(h.overallSeverity), padding: '2px 8px', borderRadius: 999 }}>
-                {sevLabel(h.overallSeverity)}
-              </span>
-            )}
-          </div>
-          <div style={{ fontSize: 12, color: C.sub, marginTop: 2 }}>{s.subtitle}</div>
-        </div>
-        {!unavailable && (
-          <button type="button" onClick={() => void load()} style={btn(C.sub)}>
-            {s.refresh}
-          </button>
-        )}
-      </div>
+  const section = (title: string, tone: Tone, body: React.ReactNode) => (
+    <section className="seo-stack seo-stack--tight">
+      <h4 className={`seo-text seo-text--strong seo-text--${tone}`}>{title}</h4>
+      {body}
+    </section>
+  )
 
-      {error && <div role="alert" style={{ color: C.red, fontSize: 13, fontWeight: 600, marginTop: 10 }}>{error}</div>}
-      {unavailable && <div style={{ marginTop: 12, fontSize: 13, color: C.sub }}>{s.unavailable}</div>}
-      {loading && !unavailable && <div style={{ marginTop: 12, fontSize: 13, color: C.sub }}>{s.loading}</div>}
+  return (
+    <Card
+      actions={
+        <>
+          {h && <TonePill tone={sevTone(h.overallSeverity)}>{sevLabel(h.overallSeverity)}</TonePill>}
+          {!unavailable && (
+            <Button buttonStyle="secondary" icon={<RefreshIcon />} margin={false} onClick={() => void load()} size="medium">
+              {s.refresh}
+            </Button>
+          )}
+        </>
+      }
+      title={s.title}
+    >
+      <p className="seo-text seo-text--small seo-text--secondary">{s.subtitle}</p>
+
+      {error && (
+        <div role="alert">
+          <Banner type="danger">{error}</Banner>
+        </div>
+      )}
+      {unavailable && <Banner type="default">{s.unavailable}</Banner>}
+      {loading && !unavailable && <LoadingState label={s.loading} />}
 
       {!loading && !unavailable && h && (
-        <div style={{ marginTop: 12 }}>
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 8 }}>
-            {counter(s.noindex, h.noindex?.count ?? 0, h.noindex?.massNoindex ? C.red : C.amber)}
-            {counter(s.dupCanonical, h.canonical?.duplicated?.docCount ?? 0, sevColor(h.canonical?.duplicated?.severity))}
-            {counter(s.missingCanonical, h.canonical?.missing?.count ?? 0, sevColor(h.canonical?.missing?.severity))}
-            {counter(s.danglingCanonical, h.canonical?.dangling?.count ?? 0, sevColor(h.canonical?.dangling?.severity))}
-          </div>
-          <div style={{ fontSize: 11, color: C.sub, marginBottom: 8 }}>
+        <>
+          <Grid>
+            {counter(s.noindex, h.noindex?.count ?? 0, h.noindex?.massNoindex ? 'danger' : 'warning')}
+            {counter(s.dupCanonical, h.canonical?.duplicated?.docCount ?? 0, sevTone(h.canonical?.duplicated?.severity))}
+            {counter(s.missingCanonical, h.canonical?.missing?.count ?? 0, sevTone(h.canonical?.missing?.severity))}
+            {counter(s.danglingCanonical, h.canonical?.dangling?.count ?? 0, sevTone(h.canonical?.dangling?.severity))}
+          </Grid>
+          <p className="seo-text seo-text--small seo-text--secondary">
             {h.totalDocs} {s.docs}
             {h.noindex?.massNoindex ? ` · ${s.massNoindex} (${Math.round((h.noindex.pct ?? 0) * 100)}%)` : ''}
-          </div>
+          </p>
 
           {(h.canonical?.duplicated?.docCount ?? 0) === 0 &&
           (h.canonical?.missing?.count ?? 0) === 0 &&
           (h.canonical?.dangling?.count ?? 0) === 0 &&
           (h.noindex?.count ?? 0) === 0 ? (
-            <div style={{ fontSize: 13, color: C.green }}>{s.clean}</div>
+            <Banner type="success">{s.clean}</Banner>
           ) : (
-            <div style={{ display: 'grid', gap: 10 }}>
-              {(h.canonical?.dangling?.count ?? 0) > 0 && (
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: sevColor(h.canonical.dangling.severity) }}>{s.danglingCanonical}</div>
-                  {docList(h.canonical.dangling.docs, C.text)}
-                </div>
-              )}
-              {(h.canonical?.duplicated?.docCount ?? 0) > 0 && (
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: sevColor(h.canonical.duplicated.severity) }}>{s.dupCanonical}</div>
-                  <ul style={{ margin: '4px 0 0', paddingLeft: 16, fontSize: 11, color: C.sub }}>
-                    {(h.canonical.duplicated.groups || []).slice(0, 6).map((g, i) => (
-                      <li key={`${g.canonical || i}`}>
-                        <span style={{ color: C.text }}>{g.canonical}</span> — {g.count}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {(h.canonical?.missing?.count ?? 0) > 0 && (
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: sevColor(h.canonical.missing.severity) }}>{s.missingCanonical}</div>
-                  {docList(h.canonical.missing.docs, C.text)}
-                </div>
-              )}
-              {(h.noindex?.count ?? 0) > 0 && (
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: h.noindex.massNoindex ? C.red : C.amber }}>{s.noindex}</div>
-                  {docList(h.noindex.docs, C.text)}
-                </div>
-              )}
+            <div className="seo-stack">
+              {(h.canonical?.dangling?.count ?? 0) > 0 &&
+                section(s.danglingCanonical, sevTone(h.canonical.dangling.severity), docList(h.canonical.dangling.docs, sevTone(h.canonical.dangling.severity)))}
+              {(h.canonical?.duplicated?.docCount ?? 0) > 0 &&
+                section(
+                  s.dupCanonical,
+                  sevTone(h.canonical.duplicated.severity),
+                  <Checklist
+                    items={(h.canonical.duplicated.groups || []).slice(0, 6).map((g, i) => ({
+                      id: `${g.canonical || i}`,
+                      tone: sevTone(h.canonical.duplicated.severity),
+                      content: (
+                        <span className="seo-text seo-text--small">
+                          {g.canonical} <span className="seo-text--secondary">— {g.count}</span>
+                        </span>
+                      ),
+                    }))}
+                  />,
+                )}
+              {(h.canonical?.missing?.count ?? 0) > 0 &&
+                section(s.missingCanonical, sevTone(h.canonical.missing.severity), docList(h.canonical.missing.docs, sevTone(h.canonical.missing.severity)))}
+              {(h.noindex?.count ?? 0) > 0 &&
+                section(s.noindex, h.noindex.massNoindex ? 'danger' : 'warning', docList(h.noindex.docs, h.noindex.massNoindex ? 'danger' : 'warning'))}
             </div>
           )}
-        </div>
+        </>
       )}
-    </div>
+    </Card>
   )
 }

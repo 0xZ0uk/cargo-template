@@ -1,17 +1,9 @@
 'use client'
 
 import React, { useState } from 'react'
-
-const C = {
-  text: 'var(--theme-text, #1a1a1a)',
-  sub: 'var(--theme-elevation-600, #6b7280)',
-  card: 'var(--theme-elevation-50, #f9fafb)',
-  bg: 'var(--theme-elevation-0, #fff)',
-  border: 'var(--theme-elevation-200, #e5e7eb)',
-  violet: '#7c3aed',
-  red: '#ef4444',
-  blue: '#3b82f6',
-}
+import { Banner, Button, Pill } from '@payloadcms/ui'
+import { Card } from '../ui/index.js'
+import './ContentBriefPanel.css'
 
 const S = {
   fr: {
@@ -95,126 +87,110 @@ export function ContentBriefPanel({ locale }: { locale: 'fr' | 'en' }) {
     }
   }
 
-  const card: React.CSSProperties = {
-    padding: 16,
-    borderRadius: 12,
-    border: `1px solid ${C.border}`,
-    backgroundColor: C.card,
-    marginBottom: 20,
-  }
-  const chip: React.CSSProperties = {
-    display: 'inline-block',
-    fontSize: 11,
-    padding: '3px 8px',
-    borderRadius: 999,
-    backgroundColor: 'rgba(59,130,246,0.12)',
-    color: C.blue,
-    border: `1px solid ${C.border}`,
-    margin: '0 6px 6px 0',
-  }
-  const h4: React.CSSProperties = { fontSize: 12, fontWeight: 800, color: C.text, margin: '14px 0 6px', textTransform: 'uppercase' }
+  const canGenerate = !busy && keyword.trim().length > 0
 
   return (
-    <div style={card}>
-      <div style={{ fontSize: 16, fontWeight: 800, color: C.text }}>{s.title}</div>
-      <div style={{ fontSize: 12, color: C.sub, marginTop: 2, marginBottom: 12 }}>{s.subtitle}</div>
+    <Card title={s.title}>
+      <p className="seo-text seo-text--small seo-text--secondary">{s.subtitle}</p>
 
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      <div className="seo-brief__form">
         <input
           aria-label={s.keywordLabel}
-          value={keyword}
+          className="seo-input"
           onChange={(e) => setKeyword(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') void generate()
           }}
           placeholder={s.placeholder}
-          style={{
-            flex: 1,
-            minWidth: 220,
-            padding: '8px 12px',
-            fontSize: 13,
-            borderRadius: 8,
-            border: `1px solid ${C.border}`,
-            backgroundColor: C.bg,
-            color: C.text,
-          }}
+          value={keyword}
         />
-        <button
-          type="button"
-          onClick={() => void generate()}
-          disabled={busy || !keyword.trim()}
-          style={{
-            padding: '8px 14px',
-            borderRadius: 8,
-            border: `1px solid ${C.violet}`,
-            backgroundColor: C.violet,
-            color: '#fff',
-            fontSize: 12,
-            fontWeight: 700,
-            cursor: busy || !keyword.trim() ? 'not-allowed' : 'pointer',
-            opacity: busy || !keyword.trim() ? 0.6 : 1,
-          }}
-        >
-          {busy ? s.generating : `✨ ${s.generate}`}
-        </button>
+        <Button buttonStyle="primary" disabled={!canGenerate} margin={false} onClick={() => void generate()}>
+          {busy ? s.generating : s.generate}
+        </Button>
       </div>
 
-      {error && <div role="alert" style={{ color: C.red, fontSize: 13, fontWeight: 600, marginTop: 10 }}>{error}</div>}
+      {error && (
+        <div role="alert">
+          <Banner type="danger">{error}</Banner>
+        </div>
+      )}
 
       {brief && (
-        <div style={{ marginTop: 8 }}>
+        <div className="seo-stack">
           {brief.recommendedWordCount > 0 && (
-            <div style={{ fontSize: 12, color: C.sub, marginTop: 10 }}>
-              {s.words}: <b style={{ color: C.text }}>~{brief.recommendedWordCount} {s.wordsUnit}</b>
-            </div>
+            <p className="seo-text seo-text--small seo-text--secondary">
+              {s.words}:{' '}
+              <strong className="seo-text--strong">
+                ~{brief.recommendedWordCount} {s.wordsUnit}
+              </strong>
+            </p>
           )}
 
           {brief.outline.length > 0 && (
-            <>
-              <div style={h4}>{s.outline}</div>
-              <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: C.text, lineHeight: 1.6 }}>
+            <section className="seo-stack seo-stack--tight">
+              <h4 className="seo-text seo-text--strong">{s.outline}</h4>
+              <ul className="seo-brief__list">
                 {brief.outline.map((o, i) => (
-                  <li key={i} style={{ marginLeft: o.level === 'h3' ? 18 : 0, color: o.level === 'h3' ? C.sub : C.text, fontWeight: o.level === 'h2' ? 700 : 400 }}>
+                  <li
+                    className={o.level === 'h3' ? 'seo-brief__outline-h3' : 'seo-brief__outline-h2'}
+                    key={i}
+                  >
                     {o.text}
                   </li>
                 ))}
               </ul>
-            </>
+            </section>
           )}
 
           {brief.entities.length > 0 && (
-            <>
-              <div style={h4}>{s.entities}</div>
-              <div>{brief.entities.map((e, i) => <span key={i} style={chip}>{e}</span>)}</div>
-            </>
+            <section className="seo-stack seo-stack--tight">
+              <h4 className="seo-text seo-text--strong">{s.entities}</h4>
+              <div className="seo-row">
+                {brief.entities.map((e, i) => (
+                  <Pill key={i} pillStyle="light" size="small">
+                    {e}
+                  </Pill>
+                ))}
+              </div>
+            </section>
           )}
 
           {brief.questions.length > 0 && (
-            <>
-              <div style={h4}>{s.questions}</div>
-              <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: C.text, lineHeight: 1.6 }}>
-                {brief.questions.map((q, i) => <li key={i}>{q}</li>)}
+            <section className="seo-stack seo-stack--tight">
+              <h4 className="seo-text seo-text--strong">{s.questions}</h4>
+              <ul className="seo-brief__list">
+                {brief.questions.map((q, i) => (
+                  <li key={i}>{q}</li>
+                ))}
               </ul>
-            </>
+            </section>
           )}
 
           {brief.internalLinkIdeas.length > 0 && (
-            <>
-              <div style={h4}>{s.links}</div>
-              <div>{brief.internalLinkIdeas.map((l, i) => <span key={i} style={chip}>{l}</span>)}</div>
-            </>
+            <section className="seo-stack seo-stack--tight">
+              <h4 className="seo-text seo-text--strong">{s.links}</h4>
+              <div className="seo-row">
+                {brief.internalLinkIdeas.map((l, i) => (
+                  <Pill key={i} pillStyle="light" size="small">
+                    {l}
+                  </Pill>
+                ))}
+              </div>
+            </section>
           )}
 
           {brief.notes.length > 0 && (
-            <>
-              <div style={h4}>{s.notes}</div>
-              <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: C.sub, lineHeight: 1.6 }}>
-                {brief.notes.map((n, i) => <li key={i}>{n}</li>)}
+            <section className="seo-stack seo-stack--tight">
+              <h4 className="seo-text seo-text--strong">{s.notes}</h4>
+              <ul className="seo-brief__list seo-brief__list--notes">
+                {brief.notes.map((n, i) => (
+                  <li key={i}>{n}</li>
+                ))}
               </ul>
-            </>
+            </section>
           )}
         </div>
       )}
-    </div>
+    </Card>
   )
 }

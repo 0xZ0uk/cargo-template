@@ -1,19 +1,9 @@
 'use client'
 
 import React, { useCallback, useEffect, useState } from 'react'
+import { Banner, Button } from '@payloadcms/ui'
 import { useSeoFeature } from '../hooks/useSeoLocale.js'
-
-const C = {
-  text: 'var(--theme-text, #1a1a1a)',
-  sub: 'var(--theme-elevation-600, #6b7280)',
-  card: 'var(--theme-elevation-50, #f9fafb)',
-  bg: 'var(--theme-elevation-0, #fff)',
-  border: 'var(--theme-elevation-200, #e5e7eb)',
-  green: '#22c55e',
-  red: '#ef4444',
-  amber: '#f59e0b',
-  blue: '#3b82f6',
-}
+import { Card, Checklist, EmptyState, LoadingState, TonePill, type Tone } from '../ui/index.js'
 
 const S = {
   fr: {
@@ -29,7 +19,7 @@ const S = {
     sendNow: 'Envoyer maintenant',
     sending: 'Envoi…',
     loading: 'Chargement…',
-    noIssues: 'Aucun problème détecté sur la période. 🎉',
+    noIssues: 'Aucun problème détecté sur la période.',
     scoreReg: 'Régressions de score',
     notFound: 'Nouveaux 404',
     rankDrops: 'Chutes de position',
@@ -50,7 +40,7 @@ const S = {
     sendNow: 'Send now',
     sending: 'Sending…',
     loading: 'Loading…',
-    noIssues: 'No issues for the period. 🎉',
+    noIssues: 'No issues for the period.',
     scoreReg: 'Score regressions',
     notFound: 'New 404s',
     rankDrops: 'Ranking drops',
@@ -141,96 +131,79 @@ export function AlertsPanel({ locale }: { locale: 'fr' | 'en' }) {
     }
   }
 
-  const card: React.CSSProperties = {
-    padding: 16,
-    borderRadius: 12,
-    border: `1px solid ${C.border}`,
-    backgroundColor: C.card,
-    marginBottom: 20,
-  }
-  const btn: React.CSSProperties = {
-    padding: '8px 12px',
-    borderRadius: 8,
-    border: `1px solid ${C.blue}`,
-    backgroundColor: C.blue,
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: 700,
-    cursor: busy ? 'wait' : 'pointer',
-    opacity: busy ? 0.6 : 1,
-  }
-  const chip = (ok: boolean, label: string): React.CSSProperties => ({
-    fontSize: 11,
-    fontWeight: 700,
-    padding: '3px 8px',
-    borderRadius: 999,
-    color: '#fff',
-    backgroundColor: ok ? C.green : C.sub,
-    marginRight: 6,
-  })
-
   const hasChannel = config && (config.webhookConfigured || config.emailConfigured)
 
-  const list = (title: string, rows: string[]) =>
+  const list = (title: string, rows: string[], tone: Tone) =>
     rows.length ? (
-      <div style={{ marginTop: 10 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 4 }}>
-          {title} <span style={{ color: C.amber }}>({rows.length})</span>
-        </div>
-        <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: C.sub, lineHeight: 1.6 }}>
-          {rows.slice(0, 8).map((r, i) => (
-            <li key={i}>{r}</li>
-          ))}
-        </ul>
-      </div>
+      <section className="seo-stack seo-stack--tight">
+        <h4 className="seo-row seo-text seo-text--strong">
+          {title}
+          <TonePill tone={tone}>{rows.length}</TonePill>
+        </h4>
+        <Checklist
+          items={rows.slice(0, 8).map((r, i) => ({
+            id: String(i),
+            tone,
+            content: <span className="seo-text seo-text--small">{r}</span>,
+          }))}
+        />
+      </section>
     ) : null
 
   return (
-    <div style={card}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-        <div>
-          <div style={{ fontSize: 16, fontWeight: 800, color: C.text }}>{s.title}</div>
-          <div style={{ fontSize: 12, color: C.sub, marginTop: 2 }}>{s.subtitle}</div>
-        </div>
-        {hasChannel && (
-          <button type="button" onClick={sendNow} disabled={busy} style={btn}>
+    <Card
+      actions={
+        hasChannel ? (
+          <Button buttonStyle="secondary" disabled={busy} margin={false} onClick={sendNow} size="medium">
             {busy ? s.sending : s.sendNow}
-          </button>
-        )}
-      </div>
+          </Button>
+        ) : undefined
+      }
+      title={s.title}
+    >
+      <p className="seo-text seo-text--small seo-text--secondary">{s.subtitle}</p>
 
-      {error && <div role="alert" style={{ color: C.red, fontSize: 13, fontWeight: 600, marginTop: 10 }}>{error}</div>}
-      {notice && <div style={{ color: C.green, fontSize: 13, fontWeight: 600, marginTop: 10 }}>{notice}</div>}
-
-      {config && (
-        <div style={{ marginTop: 12 }}>
-          <span style={chip(config.webhookConfigured, s.webhook)}>
-            {s.webhook}: {config.webhookConfigured ? s.configured : s.missing}
-          </span>
-          <span style={chip(config.emailConfigured, s.email)}>
-            {s.email}: {config.emailConfigured ? s.configured : s.missing}
-          </span>
+      {error && (
+        <div role="alert">
+          <Banner type="danger">{error}</Banner>
+        </div>
+      )}
+      {notice && (
+        <div role="status">
+          <Banner type="success">{notice}</Banner>
         </div>
       )}
 
-      {!loading && !hasChannel && <div style={{ marginTop: 12, fontSize: 13, color: C.sub }}>{s.notConfigured}</div>}
+      {config && (
+        <div className="seo-row">
+          <TonePill tone={config.webhookConfigured ? 'success' : 'neutral'}>
+            {s.webhook}: {config.webhookConfigured ? s.configured : s.missing}
+          </TonePill>
+          <TonePill tone={config.emailConfigured ? 'success' : 'neutral'}>
+            {s.email}: {config.emailConfigured ? s.configured : s.missing}
+          </TonePill>
+        </div>
+      )}
 
-      {loading && <div style={{ marginTop: 12, fontSize: 13, color: C.sub }}>{s.loading}</div>}
+      {!loading && !hasChannel && <Banner type="default">{s.notConfigured}</Banner>}
+
+      {loading && <LoadingState label={s.loading} />}
 
       {digest && (
-        <div style={{ marginTop: 8 }}>
-          <div style={{ fontSize: 12, color: C.sub, marginTop: 6 }}>
+        <div className="seo-stack">
+          <p className="seo-text seo-text--small seo-text--secondary">
             {digest.totalIssues} {s.issues}
-          </div>
-          {digest.totalIssues === 0 && <div style={{ marginTop: 8, fontSize: 13, color: C.sub }}>{s.noIssues}</div>}
+          </p>
+          {digest.totalIssues === 0 && <EmptyState title={s.noIssues} />}
           {list(
             s.scoreReg,
             digest.scoreRegressions.map((r) => `${r.collection}/${r.documentId} — ${r.from} → ${r.to} (−${r.drop})`),
+            'danger',
           )}
-          {list(s.notFound, digest.newNotFound.map((n) => `${n.url} — ${n.count}×`))}
-          {list(s.rankDrops, digest.rankDrops.map((d) => `“${d.query}” — #${d.from} → #${d.to} (▼${d.drop})`))}
+          {list(s.notFound, digest.newNotFound.map((n) => `${n.url} — ${n.count}×`), 'warning')}
+          {list(s.rankDrops, digest.rankDrops.map((d) => `“${d.query}” — #${d.from} → #${d.to} (−${d.drop})`), 'danger')}
         </div>
       )}
-    </div>
+    </Card>
   )
 }

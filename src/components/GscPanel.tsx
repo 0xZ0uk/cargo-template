@@ -1,18 +1,10 @@
 'use client'
 
 import React, { useCallback, useEffect, useState } from 'react'
+import { Banner, Button, RefreshIcon } from '@payloadcms/ui'
 import { useSeoFeature } from '../hooks/useSeoLocale.js'
-
-const C = {
-  text: 'var(--theme-text, #1a1a1a)',
-  sub: 'var(--theme-elevation-600, #6b7280)',
-  card: 'var(--theme-elevation-50, #f9fafb)',
-  bg: 'var(--theme-elevation-0, #fff)',
-  border: 'var(--theme-elevation-200, #e5e7eb)',
-  green: '#22c55e',
-  red: '#ef4444',
-  blue: '#3b82f6',
-}
+import { Card, DataTable, EmptyState, LoadingState, TonePill } from '../ui/index.js'
+import './GscPanel.css'
 
 const S = {
   fr: {
@@ -24,6 +16,7 @@ const S = {
     connect: 'Connecter Google Search Console',
     disconnect: 'Déconnecter',
     connectedAs: 'Connecté',
+    notConnected: 'Non connecté',
     fetch: 'Récupérer les données (28 j)',
     fetching: 'Chargement…',
     byQuery: 'Par requête',
@@ -47,6 +40,7 @@ const S = {
     connect: 'Connect Google Search Console',
     disconnect: 'Disconnect',
     connectedAs: 'Connected',
+    notConnected: 'Not connected',
     fetch: 'Fetch data (28 d)',
     fetching: 'Loading…',
     byQuery: 'By query',
@@ -162,135 +156,139 @@ export function GscPanel({ locale }: { locale: 'fr' | 'en' }) {
     }
   }
 
-  const btn = (primary: boolean): React.CSSProperties => ({
-    padding: '8px 12px',
-    borderRadius: 8,
-    border: `1px solid ${primary ? C.blue : C.border}`,
-    backgroundColor: primary ? C.blue : C.bg,
-    color: primary ? '#fff' : C.text,
-    fontSize: 12,
-    fontWeight: 700,
-    cursor: 'pointer',
-    opacity: busy ? 0.6 : 1,
-  })
-
-  const card: React.CSSProperties = {
-    padding: 16,
-    borderRadius: 12,
-    border: `1px solid ${C.border}`,
-    backgroundColor: C.card,
-    marginBottom: 20,
-  }
-
   if (!status) {
     return (
-      <div style={card}>
-        <div style={{ fontSize: 16, fontWeight: 800, color: C.text }}>{s.title}</div>
-        <div style={{ fontSize: 12, color: C.sub, marginTop: 6 }}>…</div>
-      </div>
+      <Card title={s.title}>
+        <LoadingState />
+      </Card>
     )
   }
 
   return (
-    <div style={card}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-        <div>
-          <div style={{ fontSize: 16, fontWeight: 800, color: C.text }}>{s.title}</div>
-          <div style={{ fontSize: 12, color: C.sub, marginTop: 2 }}>{s.subtitle}</div>
-        </div>
-        <span
-          style={{
-            fontSize: 11,
-            fontWeight: 800,
-            padding: '4px 10px',
-            borderRadius: 999,
-            color: '#fff',
-            backgroundColor: status.connected ? C.green : C.sub,
-          }}
-        >
-          {status.connected ? '● ' + s.connectedAs : '○'}
-        </span>
-      </div>
+    <Card
+      actions={
+        <TonePill tone={status.connected ? 'success' : 'neutral'}>
+          {status.connected ? s.connectedAs : s.notConnected}
+        </TonePill>
+      }
+      title={s.title}
+    >
+      <p className="seo-text seo-text--small seo-text--secondary">{s.subtitle}</p>
 
-      {error && <div role="alert" style={{ color: C.red, fontSize: 13, fontWeight: 600, marginTop: 10 }}>{error}</div>}
+      {error && (
+        <div role="alert">
+          <Banner type="danger">{error}</Banner>
+        </div>
+      )}
 
       {!status.configured && (
-        <div style={{ marginTop: 12, fontSize: 13, color: C.sub, lineHeight: 1.5 }}>
-          {s.notConfigured}
-          {status.redirectUri && (
-            <div style={{ marginTop: 8 }}>
-              <span style={{ fontWeight: 700 }}>{s.redirectHint}</span>{' '}
-              <code style={{ fontSize: 12 }}>{status.redirectUri}</code>
-            </div>
-          )}
-        </div>
+        <Banner type="default">
+          <div className="seo-stack seo-stack--tight">
+            <span>{s.notConfigured}</span>
+            {status.redirectUri && (
+              <span>
+                <strong>{s.redirectHint}</strong> <code className="seo-mono">{status.redirectUri}</code>
+              </span>
+            )}
+          </div>
+        </Banner>
       )}
 
       {status.configured && !status.connected && (
-        <div style={{ marginTop: 12 }}>
-          <button type="button" onClick={connect} disabled={busy} style={btn(true)}>
-            {s.connect}
-          </button>
-          <button type="button" onClick={() => void loadStatus()} disabled={busy} style={{ ...btn(false), marginLeft: 8 }}>
-            {s.refreshStatus}
-          </button>
-          <div style={{ fontSize: 11, color: C.sub, marginTop: 8 }}>{s.connectHint}</div>
-        </div>
+        <>
+          <div className="seo-row">
+            <Button buttonStyle="primary" disabled={busy} margin={false} onClick={connect} size="medium">
+              {s.connect}
+            </Button>
+            <Button
+              buttonStyle="secondary"
+              disabled={busy}
+              icon={<RefreshIcon />}
+              margin={false}
+              onClick={() => void loadStatus()}
+              size="medium"
+            >
+              {s.refreshStatus}
+            </Button>
+          </div>
+          <p className="seo-text seo-text--small seo-text--secondary">{s.connectHint}</p>
+        </>
       )}
 
       {status.configured && status.connected && (
-        <div style={{ marginTop: 12 }}>
-          <div style={{ fontSize: 12, color: C.sub, marginBottom: 10 }}>
+        <>
+          <p className="seo-text seo-text--small seo-text--secondary">
             {s.connectedAs}
             {status.connectedEmail ? ` · ${status.connectedEmail}` : ''}
             {status.propertyUrl ? ` · ${status.propertyUrl}` : ''}
-          </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-            <button type="button" onClick={() => void fetchData('query')} disabled={dataLoading} style={btn(dimension === 'query')}>
+          </p>
+          <div className="seo-row">
+            <Button
+              aria-pressed={dimension === 'query'}
+              buttonStyle={dimension === 'query' ? 'primary' : 'secondary'}
+              disabled={dataLoading}
+              margin={false}
+              onClick={() => void fetchData('query')}
+              size="medium"
+            >
               {s.byQuery}
-            </button>
-            <button type="button" onClick={() => void fetchData('page')} disabled={dataLoading} style={btn(dimension === 'page')}>
+            </Button>
+            <Button
+              aria-pressed={dimension === 'page'}
+              buttonStyle={dimension === 'page' ? 'primary' : 'secondary'}
+              disabled={dataLoading}
+              margin={false}
+              onClick={() => void fetchData('page')}
+              size="medium"
+            >
               {s.byPage}
-            </button>
-            <button type="button" onClick={disconnect} disabled={busy} style={btn(false)}>
+            </Button>
+            <span className="seo-spacer" />
+            <Button buttonStyle="secondary" disabled={busy} margin={false} onClick={disconnect} size="medium">
               {s.disconnect}
-            </button>
+            </Button>
           </div>
 
-          {dataLoading && <div style={{ fontSize: 13, color: C.sub }}>{s.fetching}</div>}
+          {dataLoading && <LoadingState label={s.fetching} />}
 
-          {rows && rows.length === 0 && <div style={{ fontSize: 13, color: C.sub }}>{s.noData}</div>}
+          {rows && rows.length === 0 && <EmptyState title={s.noData} />}
 
           {rows && rows.length > 0 && (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                <thead>
-                  <tr style={{ textAlign: 'left', color: C.sub }}>
-                    <th style={{ padding: '6px 8px' }}>{dimension === 'query' ? s.query : s.page}</th>
-                    <th style={{ padding: '6px 8px', textAlign: 'right' }}>{s.clicks}</th>
-                    <th style={{ padding: '6px 8px', textAlign: 'right' }}>{s.impressions}</th>
-                    <th style={{ padding: '6px 8px', textAlign: 'right' }}>{s.ctr}</th>
-                    <th style={{ padding: '6px 8px', textAlign: 'right' }}>{s.position}</th>
+            <DataTable aria-label={dimension === 'query' ? s.byQuery : s.byPage}>
+              <thead>
+                <tr>
+                  <th scope="col">{dimension === 'query' ? s.query : s.page}</th>
+                  <th className="seo-table__num" scope="col">
+                    {s.clicks}
+                  </th>
+                  <th className="seo-table__num" scope="col">
+                    {s.impressions}
+                  </th>
+                  <th className="seo-table__num" scope="col">
+                    {s.ctr}
+                  </th>
+                  <th className="seo-table__num" scope="col">
+                    {s.position}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r, i) => (
+                  <tr key={i}>
+                    <td className="seo-gsc__key" title={r.keys?.[0]}>
+                      {r.keys?.[0] || '—'}
+                    </td>
+                    <td className="seo-table__num seo-text--strong">{r.clicks}</td>
+                    <td className="seo-table__num">{r.impressions}</td>
+                    <td className="seo-table__num">{(r.ctr * 100).toFixed(1)}%</td>
+                    <td className="seo-table__num">{r.position.toFixed(1)}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r, i) => (
-                    <tr key={i} style={{ borderTop: `1px solid ${C.border}`, color: C.text }}>
-                      <td style={{ padding: '6px 8px', maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {r.keys?.[0] || '—'}
-                      </td>
-                      <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700 }}>{r.clicks}</td>
-                      <td style={{ padding: '6px 8px', textAlign: 'right' }}>{r.impressions}</td>
-                      <td style={{ padding: '6px 8px', textAlign: 'right' }}>{(r.ctr * 100).toFixed(1)}%</td>
-                      <td style={{ padding: '6px 8px', textAlign: 'right' }}>{r.position.toFixed(1)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                ))}
+              </tbody>
+            </DataTable>
           )}
-        </div>
+        </>
       )}
-    </div>
+    </Card>
   )
 }

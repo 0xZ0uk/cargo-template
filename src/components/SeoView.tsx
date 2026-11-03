@@ -1,29 +1,42 @@
 'use client'
 
 import React, { useEffect, useState, useMemo, useCallback, useId } from 'react'
+import {
+  Banner,
+  Button,
+  CheckIcon,
+  ChevronIcon,
+  EditIcon,
+  Link,
+  RefreshIcon,
+  SearchIcon,
+  SortDownIcon,
+  SortUpIcon,
+  XIcon,
+  useConfig,
+} from '@payloadcms/ui'
+import { formatAdminURL } from 'payload/shared'
 import { ContentDecaySection } from './ContentDecaySection.js'
 import { useDashboardT, useSeoLocale } from '../hooks/useSeoLocale.js'
 import { escapeHtml } from '../helpers/escapeHtml.js'
 import type { DashboardTranslations } from '../dashboard-i18n.js'
 import { toCsv } from '../helpers/csv.js'
 import { LiveRegion } from './LiveRegion.js'
-
-// ---------------------------------------------------------------------------
-// Design tokens — uses Payload CSS variables for theme compatibility
-// ---------------------------------------------------------------------------
-const V = {
-  text: 'var(--theme-text, #1a1a1a)',
-  textSecondary: 'var(--theme-elevation-600, #6b7280)',
-  bg: 'var(--theme-elevation-0, #fff)',
-  bgCard: 'var(--theme-elevation-50, #f9fafb)',
-  border: 'var(--theme-elevation-200, #e5e7eb)',
-  green: '#22c55e',
-  yellow: '#f59e0b',
-  orange: '#f97316',
-  red: '#ef4444',
-  blue: '#3b82f6',
-  cyan: '#06b6d4',
-}
+import {
+  DataTable,
+  EmptyState,
+  Grid,
+  LoadingState,
+  ScorePill,
+  StatTile,
+  TonePill,
+  ViewBody,
+  ViewHeader,
+  cx,
+  scoreTone,
+  type Tone,
+} from '../ui/index.js'
+import './SeoView.css'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -86,94 +99,18 @@ type QuickFilter = 'none' | 'noMeta' | 'noH1' | 'lowReadability'
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-function getScoreColor(score: number): string {
-  if (score >= 80) return V.green
-  if (score >= 50) return V.yellow
-  return V.red
-}
 
-function getScoreBg(score: number): string {
-  if (score >= 80) return 'rgba(34,197,94,0.12)'
-  if (score >= 50) return 'rgba(245,158,11,0.12)'
-  return 'rgba(239,68,68,0.12)'
+/** Text class for a tone (`seo-text--success`…), secondary text for neutral. */
+function toneText(tone: Tone): string {
+  return tone === 'neutral' ? 'seo-text--secondary' : `seo-text--${tone}`
 }
 
 function itemKey(item: AuditItem): string {
   return `${item.collection}::${item.id}`
 }
 
-// ---------------------------------------------------------------------------
-// Shared inline styles
-// ---------------------------------------------------------------------------
-const btnBase: React.CSSProperties = {
-  padding: '6px 14px',
-  borderRadius: 6,
-  border: `1px solid ${V.border}`,
-  fontWeight: 600,
-  fontSize: 11,
-  cursor: 'pointer',
-  textTransform: 'uppercase',
-  letterSpacing: 0.3,
-}
-
-const selectStyle: React.CSSProperties = {
-  padding: '6px 12px',
-  borderRadius: 6,
-  border: `1px solid ${V.border}`,
-  fontSize: 12,
-  color: V.text,
-  backgroundColor: V.bg,
-}
-
-// A1: Updated grid — checkbox(30) + page(1fr) + collection(85) + score(55) + keyword(120) + h1(35) + og(30) + int links(60) + ext links(60) + words(50) + readability(45) + date(80) + edit(35)
-const TABLE_COLS = '30px 1fr 85px 55px 120px 35px 30px 60px 60px 50px 45px 80px 35px'
-
-// ---------------------------------------------------------------------------
-// StatCard sub-component
-// ---------------------------------------------------------------------------
-function StatCard({
-  label,
-  value,
-  color,
-}: {
-  label: string
-  value: number
-  color: string
-}) {
-  return (
-    <div
-      style={{
-        padding: '14px 16px',
-        borderRadius: 10,
-        border: `1px solid ${V.border}`,
-        backgroundColor: V.bgCard,
-      }}
-    >
-      <div
-        style={{
-          fontSize: 24,
-          fontWeight: 800,
-          color,
-          lineHeight: 1,
-          marginBottom: 4,
-        }}
-      >
-        {value}
-      </div>
-      <div
-        style={{
-          fontSize: 10,
-          fontWeight: 600,
-          color: V.textSecondary,
-          textTransform: 'uppercase',
-          letterSpacing: 0.4,
-        }}
-      >
-        {label}
-      </div>
-    </div>
-  )
-}
+/** Number of columns in the audit table (the inline edit row spans all of them). */
+const COLUMN_COUNT = 13
 
 // ---------------------------------------------------------------------------
 // SortHeader sub-component
@@ -184,32 +121,30 @@ function SortHeader({
   currentSort,
   currentDir,
   onSort,
+  numeric,
 }: {
   label: string
   sortKey: SortKey
   currentSort: SortKey
   currentDir: 'asc' | 'desc'
   onSort: (key: SortKey) => void
+  numeric?: boolean
 }) {
   const isActive = currentSort === sortKey
   return (
-    <button
-      type="button"
-      onClick={() => onSort(sortKey)}
-      style={{
-        cursor: 'pointer',
-        userSelect: 'none',
-        background: 'none',
-        border: 'none',
-        padding: 0,
-        font: 'inherit',
-        textAlign: 'left',
-        color: isActive ? V.text : V.textSecondary,
-        fontWeight: isActive ? 800 : 600,
-      }}
+    <th
+      aria-sort={isActive ? (currentDir === 'asc' ? 'ascending' : 'descending') : undefined}
+      className={cx(numeric && 'seo-table__num')}
     >
-      {label} {isActive && (currentDir === 'asc' ? '\u25B2' : '\u25BC')}
-    </button>
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className={cx('seo-audit__sort', isActive && 'seo-audit__sort--active')}
+      >
+        {label}
+        {isActive && (currentDir === 'asc' ? <SortUpIcon /> : <SortDownIcon />)}
+      </button>
+    </th>
   )
 }
 
@@ -243,128 +178,62 @@ function InlineEditPanel({
   const descOk = descLen > 0 && descLen <= 160
 
   return (
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: TABLE_COLS,
-        padding: '12px 14px',
-        borderBottom: `1px solid ${V.border}`,
-        backgroundColor: 'rgba(59,130,246,0.04)',
-      }}
-    >
+    <tr className="seo-audit__edit-row">
       {/* Span entire row */}
-      <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {/* Meta title */}
-        <div>
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: 4,
-            }}
-          >
-            <label htmlFor={titleId} style={{ fontSize: 10, fontWeight: 700, color: V.textSecondary, textTransform: 'uppercase' }}>
-              {t.seoView.metaTitle}
-            </label>
-            <span
-              style={{
-                fontSize: 10,
-                fontWeight: 700,
-                color: titleOk ? V.green : V.red,
-              }}
-            >
-              {titleLen}/60
-            </span>
+      <td colSpan={COLUMN_COUNT}>
+        <div className="seo-stack">
+          {/* Meta title */}
+          <div className="seo-field">
+            <div className="seo-row seo-row--between">
+              <label className="seo-field__label" htmlFor={titleId}>
+                {t.seoView.metaTitle}
+              </label>
+              <span className={cx('seo-text seo-text--small seo-text--strong', toneText(titleOk ? 'success' : 'danger'))}>
+                {titleLen}/60
+              </span>
+            </div>
+            <input
+              id={titleId}
+              type="text"
+              value={metaTitle}
+              onChange={(e) => setMetaTitle(e.target.value)}
+              maxLength={70}
+              className={cx('seo-input', !titleOk && 'seo-audit__input--invalid')}
+            />
           </div>
-          <input
-            id={titleId}
-            type="text"
-            value={metaTitle}
-            onChange={(e) => setMetaTitle(e.target.value)}
-            maxLength={70}
-            style={{
-              width: '100%',
-              padding: '6px 10px',
-              borderRadius: 6,
-              border: `1px solid ${titleOk ? V.border : V.red}`,
-              fontSize: 12,
-              color: V.text,
-              backgroundColor: V.bg,
-            }}
-          />
-        </div>
 
-        {/* Meta description */}
-        <div>
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: 4,
-            }}
-          >
-            <label htmlFor={descId} style={{ fontSize: 10, fontWeight: 700, color: V.textSecondary, textTransform: 'uppercase' }}>
-              {t.seoView.metaDesc}
-            </label>
-            <span
-              style={{
-                fontSize: 10,
-                fontWeight: 700,
-                color: descOk ? V.green : V.red,
-              }}
-            >
-              {descLen}/160
-            </span>
+          {/* Meta description */}
+          <div className="seo-field">
+            <div className="seo-row seo-row--between">
+              <label className="seo-field__label" htmlFor={descId}>
+                {t.seoView.metaDesc}
+              </label>
+              <span className={cx('seo-text seo-text--small seo-text--strong', toneText(descOk ? 'success' : 'danger'))}>
+                {descLen}/160
+              </span>
+            </div>
+            <textarea
+              id={descId}
+              value={metaDescription}
+              onChange={(e) => setMetaDescription(e.target.value)}
+              maxLength={170}
+              rows={2}
+              className={cx('seo-textarea', !descOk && 'seo-audit__input--invalid')}
+            />
           </div>
-          <textarea
-            id={descId}
-            value={metaDescription}
-            onChange={(e) => setMetaDescription(e.target.value)}
-            maxLength={170}
-            rows={2}
-            style={{
-              width: '100%',
-              padding: '6px 10px',
-              borderRadius: 6,
-              border: `1px solid ${descOk ? V.border : V.red}`,
-              fontSize: 12,
-              color: V.text,
-              backgroundColor: V.bg,
-              resize: 'vertical',
-            }}
-          />
-        </div>
 
-        {/* Buttons */}
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button type="button"
-            onClick={onCancel}
-            style={{
-              ...btnBase,
-              backgroundColor: V.bgCard,
-              color: V.text,
-            }}
-          >
-            {t.common.cancel}
-          </button>
-          <button type="button"
-            onClick={() => onSave(metaTitle, metaDescription)}
-            disabled={saving}
-            style={{
-              ...btnBase,
-              backgroundColor: saving ? V.bgCard : V.blue,
-              color: saving ? V.textSecondary : '#fff',
-              opacity: saving ? 0.6 : 1,
-              cursor: saving ? 'not-allowed' : 'pointer',
-            }}
-          >
-            {saving ? t.common.saving : t.common.save}
-          </button>
+          {/* Buttons */}
+          <div className="seo-audit__actions">
+            <Button buttonStyle="secondary" onClick={onCancel}>
+              {t.common.cancel}
+            </Button>
+            <Button buttonStyle="primary" disabled={saving} onClick={() => onSave(metaTitle, metaDescription)}>
+              {saving ? t.common.saving : t.common.save}
+            </Button>
+          </div>
         </div>
-      </div>
-    </div>
+      </td>
+    </tr>
   )
 }
 
@@ -379,6 +248,7 @@ function TableRow({
   onRowClick,
   t,
   locale,
+  adminRoute,
 }: {
   item: AuditItem
   selected: boolean
@@ -387,305 +257,174 @@ function TableRow({
   onRowClick: () => void
   t: DashboardTranslations
   locale: string
+  adminRoute: string
 }) {
-  const scoreColor = getScoreColor(item.score)
-  const scoreBg = getScoreBg(item.score)
-  const [editHover, setEditHover] = useState(false)
-
   // A2: Meta missing badges
   const missingMeta = !item.metaTitle || !item.metaDescription
-  const badgeStyle: React.CSSProperties = {
-    fontSize: 8,
-    fontWeight: 700,
-    color: '#fff',
-    backgroundColor: V.red,
-    padding: '1px 4px',
-    borderRadius: 3,
-    marginRight: 4,
-    marginTop: 3,
-    display: 'inline-block',
-  }
+  const editHref = formatAdminURL({
+    adminRoute,
+    path: `/collections/${item.collection}/${item.id}` as `/${string}`,
+  })
 
   return (
-    <div
+    <tr
       onClick={(e) => {
         // B3: Don't toggle expand when clicking checkbox or edit
         const target = e.target as HTMLElement
         if (target.tagName === 'INPUT' || target.closest('[data-edit-link]')) return
         onRowClick()
       }}
-      style={{
-        display: 'grid',
-        gridTemplateColumns: TABLE_COLS,
-        padding: '10px 14px',
-        borderBottom: `1px solid ${V.border}`,
-        alignItems: 'center',
-        gap: 8,
-        fontSize: 12,
-        cursor: 'pointer',
-        backgroundColor: expanded ? 'rgba(59,130,246,0.04)' : 'transparent',
-      }}
+      className={cx('seo-audit__row', expanded && 'seo-audit__row--expanded')}
     >
       {/* B1: Checkbox */}
-      <div style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
-        <input
-          type="checkbox"
-          aria-label={item.title || item.slug}
-          checked={selected}
-          onChange={onToggle}
-          style={{ cursor: 'pointer' }}
-        />
-      </div>
+      <td className="cell-_select" onClick={(e) => e.stopPropagation()}>
+        <div className="select-row">
+          <input
+            type="checkbox"
+            aria-label={item.title || item.slug}
+            checked={selected}
+            onChange={onToggle}
+            className="seo-audit__check"
+          />
+        </div>
+      </td>
 
       {/* Title + slug + A2 meta badges.
-          The row <div> keeps its click handler as a mouse convenience, but the
+          The row keeps its click handler as a mouse convenience, but the
           title is a real <button>: it is what makes the expand/collapse
           reachable from the keyboard. The row itself must NOT become a button —
           it already contains a checkbox and an edit link, and interactive
           elements cannot nest. */}
-      <div style={{ overflow: 'hidden' }}>
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation()
-            onRowClick()
-          }}
-          aria-expanded={expanded}
-          style={{
-            display: 'block',
-            width: '100%',
-            background: 'none',
-            border: 'none',
-            padding: 0,
-            cursor: 'pointer',
-            textAlign: 'left',
-            fontFamily: 'inherit',
-            fontSize: 'inherit',
-            fontWeight: 700,
-            color: V.text,
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-          }}
-        >
-          {item.title || t.common.noTitle}
-          {item.isCornerstone && (
-            <span
-              style={{
-                marginLeft: 6,
-                fontSize: 8,
-                fontWeight: 800,
-                color: '#7c3aed',
-                textTransform: 'uppercase',
-                verticalAlign: 'middle',
-              }}
-            >
-              {t.seoView.cornerstone}
-            </span>
-          )}
-        </button>
-        <div style={{ fontSize: 10, color: V.textSecondary, marginTop: 1 }}>
-          <span
-            style={{
-              padding: '0 4px',
-              borderRadius: 3,
-              fontSize: 9,
-              fontWeight: 700,
-              textTransform: 'uppercase',
-              backgroundColor:
-                item.collection === 'pages'
-                  ? 'rgba(37,99,235,0.15)'
-                  : 'rgba(217,119,6,0.2)',
+      <td className="seo-audit__page">
+        <div className="seo-audit__title-row">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              onRowClick()
             }}
+            aria-expanded={expanded}
+            className="cell-link seo-audit__title"
           >
-            {item.collection === 'pages' ? t.common.page : t.common.article}
-          </span>{' '}
-          /{item.slug}
+            {item.title || t.common.noTitle}
+          </button>
+          {item.isCornerstone && <TonePill tone="brand">{t.seoView.cornerstone}</TonePill>}
+        </div>
+        <div className="seo-row seo-row--nowrap seo-text seo-text--small seo-text--secondary">
+          <TonePill tone="neutral">{item.collection === 'pages' ? t.common.page : t.common.article}</TonePill>
+          <span className="seo-truncate">/{item.slug}</span>
         </div>
         {/* A2: Missing meta badges */}
         {missingMeta && (
-          <div>
-            {!item.metaTitle && <span style={badgeStyle}>{t.seoView.metaTitle}</span>}
-            {!item.metaDescription && <span style={badgeStyle}>{t.seoView.metaDesc}</span>}
+          <div className="seo-row seo-audit__missing">
+            {!item.metaTitle && <TonePill tone="danger">{t.seoView.metaTitle}</TonePill>}
+            {!item.metaDescription && <TonePill tone="danger">{t.seoView.metaDesc}</TonePill>}
           </div>
         )}
-      </div>
+      </td>
 
       {/* Collection */}
-      <div style={{ fontSize: 11, color: V.textSecondary }}>{item.collection}</div>
+      <td className="seo-text--secondary">{item.collection}</td>
 
       {/* Score + A6 trend */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-        <span
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '3px 10px',
-            borderRadius: 6,
-            fontWeight: 800,
-            fontSize: 13,
-            color: scoreColor,
-            backgroundColor: scoreBg,
-            minWidth: 40,
-            textAlign: 'center',
-          }}
-        >
-          {item.score}
-        </span>
-        {/* A6: Score trend indicator */}
-        {item.previousScore != null && item.previousScore !== item.score && (
-          <span
-            title={`${t.seoView.previousLabel} ${item.previousScore}`}
-            style={{
-              fontSize: 10,
-              fontWeight: 800,
-              color: item.score > item.previousScore ? V.green : V.red,
-              lineHeight: 1,
-            }}
-          >
-            {item.score > item.previousScore ? '\u2191' : '\u2193'}
-          </span>
-        )}
-        {/* AI-readiness sub-score (SEO 2026) */}
-        {item.aiReadiness != null && (
-          <span
-            title={t.seoAnalyzer.aiReadinessTooltip}
-            style={{
-              fontSize: 10,
-              fontWeight: 800,
-              color: getScoreColor(item.aiReadiness),
-              lineHeight: 1,
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {'\u2728'}{item.aiReadiness}
-          </span>
-        )}
-      </div>
+      <td>
+        <div className="seo-row seo-row--nowrap">
+          <ScorePill score={item.score} />
+          {/* A6: Score trend indicator */}
+          {item.previousScore != null && item.previousScore !== item.score && (
+            <span
+              title={`${t.seoView.previousLabel} ${item.previousScore}`}
+              className={cx('seo-text--strong', toneText(item.score > item.previousScore ? 'success' : 'danger'))}
+            >
+              {item.score > item.previousScore ? '\u2191' : '\u2193'}
+            </span>
+          )}
+          {/* AI-readiness sub-score (SEO 2026) */}
+          {item.aiReadiness != null && (
+            <span
+              title={t.seoAnalyzer.aiReadinessTooltip}
+              className={cx('seo-text--small seo-text--strong seo-audit__nowrap', toneText(scoreTone(item.aiReadiness)))}
+            >
+              {t.seoAnalyzer.aiReadiness} {item.aiReadiness}
+            </span>
+          )}
+        </div>
+      </td>
 
       {/* Focus keyword + A5 multi-keyword */}
-      <div
-        style={{
-          fontSize: 11,
-          color: item.focusKeyword ? V.text : V.red,
-          fontWeight: item.focusKeyword ? 600 : 400,
-          fontStyle: item.focusKeyword ? 'normal' : 'italic',
-          overflow: 'hidden',
-        }}
-      >
-        <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+      <td className="seo-audit__keyword">
+        <div className={cx('seo-truncate', item.focusKeyword ? 'seo-text--strong' : 'seo-text--danger')}>
           {item.focusKeyword || t.common.none}
         </div>
         {/* A5: Secondary keywords */}
         {item.focusKeywords && item.focusKeywords.length > 0 && (
           <div>
             {item.focusKeywords.map((kw, i) => (
-              <div
-                key={i}
-                style={{
-                  fontSize: 9,
-                  color: V.textSecondary,
-                  fontWeight: 400,
-                  fontStyle: 'normal',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                }}
-              >
+              <div className="seo-truncate seo-text seo-text--small seo-text--secondary" key={i}>
                 +{kw}
               </div>
             ))}
           </div>
         )}
-      </div>
+      </td>
 
       {/* A1: H1 count */}
-      <div style={{ textAlign: 'center' }}>
-        <span
-          style={{
-            fontSize: 10,
-            fontWeight: 700,
-            color: item.h1Count === 1 ? V.green : V.red,
-            backgroundColor: item.h1Count === 1 ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)',
-            padding: '2px 6px',
-            borderRadius: 4,
-          }}
-        >
-          {item.h1Count}
-        </span>
-      </div>
+      <td>
+        <TonePill tone={item.h1Count === 1 ? 'success' : 'danger'}>{item.h1Count}</TonePill>
+      </td>
 
       {/* A1: OG image */}
-      <div style={{ textAlign: 'center', fontSize: 12 }}>
+      <td>
         {item.hasOgImage ? (
-          <span style={{ color: V.green, fontWeight: 700 }}>{'\u2713'}</span>
+          <span className={toneText('success')}>
+            <CheckIcon size={16} />
+          </span>
         ) : (
-          <span style={{ color: V.red, fontWeight: 700 }}>{'\u2717'}</span>
+          <span className={toneText('danger')}>
+            <XIcon size={16} />
+          </span>
         )}
-      </div>
+      </td>
 
       {/* A1: Internal links */}
-      <div style={{ fontSize: 11, color: V.textSecondary, textAlign: 'right' }}>
-        {item.internalLinkCount}
-      </div>
+      <td className="seo-table__num seo-text--secondary">{item.internalLinkCount}</td>
 
       {/* A1: External links */}
-      <div style={{ fontSize: 11, color: V.textSecondary, textAlign: 'right' }}>
-        {item.externalLinkCount}
-      </div>
+      <td className="seo-table__num seo-text--secondary">{item.externalLinkCount}</td>
 
       {/* Word count */}
-      <div style={{ fontSize: 11, color: V.textSecondary, textAlign: 'right' }}>
-        {item.wordCount}
-      </div>
+      <td className="seo-table__num seo-text--secondary">{item.wordCount}</td>
 
       {/* Readability */}
-      <div
-        style={{
-          fontSize: 11,
-          fontWeight: 700,
-          color:
-            item.readabilityScore >= 60
-              ? V.green
-              : item.readabilityScore >= 40
-                ? V.yellow
-                : V.red,
-          textAlign: 'right',
-        }}
+      <td
+        className={cx(
+          'seo-table__num seo-text--strong',
+          toneText(scoreTone(item.readabilityScore, { good: 60, ok: 40 })),
+        )}
       >
         {item.readabilityScore > 0 ? item.readabilityScore : '-'}
-      </div>
+      </td>
 
       {/* Updated at */}
-      <div style={{ fontSize: 10, color: V.textSecondary, textAlign: 'right' }}>
+      <td className="seo-table__num seo-text--secondary">
         {item.updatedAt ? new Date(item.updatedAt).toLocaleDateString(locale) : '-'}
-      </div>
+      </td>
 
       {/* Edit link */}
-      <div style={{ textAlign: 'center' }} data-edit-link>
-        {/* A real <a href>, not a span with role="link": it restores keyboard
-            activation, middle-click, "open in new tab" and the status bar. */}
-        <a
-          href={`/admin/collections/${item.collection}/${item.id}`}
+      <td data-edit-link>
+        {/* A real link (<a href>): it restores keyboard activation, middle-click,
+            "open in new tab" and the status bar. */}
+        <Link
+          href={editHref}
           title={t.common.edit}
           aria-label={`${t.common.edit} — ${item.title || item.slug}`}
-          onMouseEnter={() => setEditHover(true)}
-          onMouseLeave={() => setEditHover(false)}
           onClick={(e) => e.stopPropagation()}
-          style={{
-            cursor: 'pointer',
-            fontSize: 15,
-            textDecoration: 'none',
-            color: editHover ? V.blue : V.textSecondary,
-            transition: 'color 0.15s',
-            userSelect: 'none',
-          }}
+          className="seo-audit__edit"
         >
-          &#9998;
-        </a>
-      </div>
-    </div>
+          <EditIcon />
+        </Link>
+      </td>
+    </tr>
   )
 }
 
@@ -726,60 +465,32 @@ function BulkActionBar({
   if (count === 0) return null
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        padding: '12px 24px',
-        backgroundColor: V.bgCard,
-        borderTop: `2px solid ${V.border}`,
-        zIndex: 50,
-        display: 'flex',
-        alignItems: 'center',
-        gap: 12,
-        justifyContent: 'space-between',
-        fontFamily: 'var(--font-body, system-ui)',
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: V.text }}>
+    <div className="seo-audit__bulk">
+      <div className="seo-row">
+        <span className="seo-text seo-text--strong">
           {count} {t.common.selected}{count > 1 ? 's' : ''}
         </span>
-        <button type="button"
-          onClick={onDeselectAll}
-          style={{ ...btnBase, backgroundColor: V.bg, color: V.textSecondary }}
-        >
+        <Button buttonStyle="secondary" onClick={onDeselectAll}>
           {t.common.deselectAll}
-        </button>
+        </Button>
       </div>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button type="button"
-          onClick={onExportCsv}
-          style={{ ...btnBase, backgroundColor: V.cyan, color: '#000' }}
-        >
+      <div className="seo-row">
+        <Button buttonStyle="secondary" onClick={onExportCsv}>
           {t.common.exportCsv}
-        </button>
-        <button type="button"
-          onClick={() => { if (!optimizing) onOptimizeMeta() }}
+        </Button>
+        <Button
+          buttonStyle="primary"
           disabled={optimizing}
-          style={{ ...btnBase, backgroundColor: '#7c3aed', color: '#fff', opacity: optimizing ? 0.6 : 1 }}
+          onClick={() => { if (!optimizing) onOptimizeMeta() }}
         >
-          {optimizing ? t.seoView.bulkOptimizing : `✨ ${t.seoView.bulkOptimizeMeta}`}
-        </button>
-        <button type="button"
-          onClick={onMarkCornerstone}
-          style={{ ...btnBase, backgroundColor: '#7c3aed', color: '#fff' }}
-        >
+          {optimizing ? t.seoView.bulkOptimizing : t.seoView.bulkOptimizeMeta}
+        </Button>
+        <Button buttonStyle="secondary" onClick={onMarkCornerstone}>
           {t.seoView.markCornerstone}
-        </button>
-        <button type="button"
-          onClick={onUnmarkCornerstone}
-          style={{ ...btnBase, backgroundColor: V.bg, color: V.text }}
-        >
+        </Button>
+        <Button buttonStyle="secondary" onClick={onUnmarkCornerstone}>
           {t.seoView.unmarkCornerstone}
-        </button>
+        </Button>
       </div>
     </div>
   )
@@ -791,6 +502,11 @@ function BulkActionBar({
 export function SeoView() {
   const locale = useSeoLocale()
   const t = useDashboardT()
+  const {
+    config: {
+      routes: { admin: adminRoute },
+    },
+  } = useConfig()
   const [items, setItems] = useState<AuditItem[]>([])
   const [stats, setStats] = useState<AuditStats | null>(null)
   const [loading, setLoading] = useState(true)
@@ -1459,622 +1175,461 @@ export function SeoView() {
 
   // Loading state
   if (loading) {
+    const loadingMessage = building ? t.seoView.buildingAudit : t.seoView.loadingAudit
     return (
-      <div
-        style={{
-          padding: 60,
-          textAlign: 'center',
-          color: V.textSecondary,
-          fontSize: 14,
-          fontFamily: 'var(--font-body, system-ui)',
-        }}
-      >
-        {building ? t.seoView.buildingAudit : t.seoView.loadingAudit}
-        <LiveRegion message={building ? t.seoView.buildingAudit : t.seoView.loadingAudit} />
-      </div>
+      <>
+        <ViewHeader title={t.seoView.auditTitle} />
+        <ViewBody>
+          <LoadingState label={loadingMessage} />
+          <LiveRegion message={loadingMessage} />
+        </ViewBody>
+      </>
     )
   }
 
   // Opt-in: the audit hasn't been built yet — don't auto-run it (heavy on large/rich sites).
   if (notBuilt) {
     return (
-      <div style={{ padding: 60, textAlign: 'center', fontFamily: 'var(--font-body, system-ui)' }}>
-        <div style={{ color: V.textSecondary, fontSize: 13, lineHeight: 1.6, maxWidth: 520, margin: '0 auto 18px' }}>
-          {t.seoView.auditNotRun}
-        </div>
-        <button type="button"
-          onClick={() => fetchAudit('run')}
-          style={{ ...btnBase, backgroundColor: '#16a34a', color: '#fff', fontWeight: 700 }}
-        >
-          {t.seoView.runAudit}
-        </button>
-      </div>
+      <>
+        <ViewHeader title={t.seoView.auditTitle} />
+        <ViewBody>
+          <div className="seo-empty">
+            <p className="seo-text seo-text--secondary seo-audit__intro">{t.seoView.auditNotRun}</p>
+            <Button buttonStyle="primary" onClick={() => fetchAudit('run')}>
+              {t.seoView.runAudit}
+            </Button>
+          </div>
+        </ViewBody>
+      </>
     )
   }
 
   // Error state
   if (error) {
     return (
-      <div
-        style={{
-          padding: 60,
-          textAlign: 'center',
-          fontFamily: 'var(--font-body, system-ui)',
-        }}
-      >
-        <div style={{ color: V.red, fontWeight: 700, fontSize: 14, marginBottom: 8 }}>
-          {t.common.loadingError}
-        </div>
-        <div style={{ color: V.textSecondary, fontSize: 12, marginBottom: 16 }}>{error}</div>
-        <LiveRegion assertive message={`${t.common.loadingError}: ${error}`} />
-        <button type="button"
-          onClick={() => fetchAudit('refresh')}
-          style={{ ...btnBase, backgroundColor: V.bgCard, color: V.text }}
-        >
-          {t.common.retry}
-        </button>
-      </div>
+      <>
+        <ViewHeader title={t.seoView.auditTitle} />
+        <ViewBody>
+          <Banner type="danger">
+            <div className="seo-stack seo-stack--tight">
+              <strong>{t.common.loadingError}</strong>
+              <span>{error}</span>
+            </div>
+          </Banner>
+          <LiveRegion assertive message={`${t.common.loadingError}: ${error}`} />
+          <div>
+            <Button buttonStyle="secondary" onClick={() => fetchAudit('refresh')}>
+              {t.common.retry}
+            </Button>
+          </div>
+        </ViewBody>
+      </>
     )
   }
 
+  const quickFilters: Array<{ key: QuickFilter; label: string; count: number; tone: Tone }> = [
+    { key: 'noMeta', label: t.seoView.missingMeta, count: quickFilterCounts.noMeta, tone: 'danger' },
+    { key: 'noH1', label: t.seoView.missingH1, count: quickFilterCounts.noH1, tone: 'warning' },
+    { key: 'lowReadability', label: t.seoView.lowReadability, count: quickFilterCounts.lowReadability, tone: 'warning' },
+  ]
+
   return (
-    <div
-      style={{
-        padding: '20px 24px',
-        maxWidth: 1400,
-        margin: '0 auto',
-        fontFamily: 'var(--font-body, system-ui)',
-        paddingBottom: selectedIds.size > 0 ? 70 : 20,
-      }}
-    >
-      {/* Header */}
-      <div
-        style={{
-          marginBottom: 24,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: 12,
-        }}
-      >
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0, color: V.text }}>
-            {t.seoView.auditTitle}
-          </h1>
-          <p style={{ fontSize: 12, color: V.textSecondary, margin: '4px 0 0' }}>
-            {stats?.totalPages || 0} {t.seoView.pagesAnalyzed}
-          </p>
-          {/* The audit can run for minutes; without this the only signal that it
-              finished is a visual one. */}
-          <LiveRegion message={`${stats?.totalPages || 0} ${t.seoView.pagesAnalyzed}`} />
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button type="button"
-            onClick={handleOptimizeSite}
-            disabled={bulkOptimizing || items.length === 0}
-            title={t.seoView.optimizeSiteHint}
-            style={{ ...btnBase, backgroundColor: '#7c3aed', color: '#fff', opacity: bulkOptimizing || items.length === 0 ? 0.6 : 1 }}
-          >
-            {bulkOptimizing ? t.seoView.bulkOptimizing : `✨ ${t.seoView.optimizeSite}`}
-          </button>
-          <button type="button"
-            onClick={() => fetchAudit('refresh')}
-            style={{ ...btnBase, backgroundColor: V.bgCard, color: V.text }}
-          >
-            &#8635; {t.common.refresh}
-          </button>
-          <button type="button"
-            onClick={handleExportCsv}
-            style={{ ...btnBase, backgroundColor: V.cyan, color: '#000' }}
-          >
-            {t.common.exportCsv}
-          </button>
-          <button type="button"
-            onClick={handleExportPdf}
-            style={{ ...btnBase, backgroundColor: V.blue, color: '#fff' }}
-          >
-            {t.common.exportPdf}
-          </button>
-        </div>
-      </div>
-
-      {/* Bulk apply confirmation — avoids an auto-rebuild; user refreshes once when done */}
-      {bulkApplied && (
-        <div
-          style={{
-            marginBottom: 16,
-            padding: '10px 14px',
-            borderRadius: 8,
-            border: `1px solid ${V.border}`,
-            backgroundColor: 'rgba(34,197,94,0.10)',
-            color: V.text,
-            fontSize: 13,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 12,
-          }}
-        >
-          <span>{t.seoView.bulkAppliedNote}</span>
-          <button type="button"
-            onClick={() => {
-              setBulkApplied(false)
-              fetchAudit('refresh')
-            }}
-            style={{ ...btnBase, backgroundColor: V.bgCard, color: V.text }}
-          >
-            &#8635; {t.common.refresh}
-          </button>
-        </div>
-      )}
-
-      {/* Stats cards */}
-      {stats && (
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-            gap: 12,
-            marginBottom: 20,
-          }}
-        >
-          <StatCard label={t.seoView.averageScore} value={stats.avgScore} color={getScoreColor(stats.avgScore)} />
-          <StatCard label={t.seoView.goodLabel} value={stats.good} color={V.green} />
-          <StatCard label={t.seoView.needsWorkLabel} value={stats.needsWork} color={V.yellow} />
-          <StatCard label={t.seoView.criticalLabel} value={stats.critical} color={V.red} />
-          <StatCard label={t.seoView.noKeyword} value={stats.noKeyword} color={V.orange} />
-          <StatCard label={t.seoView.wordsAvg} value={stats.avgWordCount} color={V.blue} />
-        </div>
-      )}
-
-      {/* Content Decay */}
-      <ContentDecaySection items={items as AuditItem[]} />
-
-      {/* Filters */}
-      <div
-        style={{
-          display: 'flex',
-          gap: 10,
-          marginBottom: 10,
-          flexWrap: 'wrap',
-          alignItems: 'center',
-        }}
-      >
-        <input
-          type="text"
-          aria-label={t.seoView.searchPlaceholder}
-          placeholder={t.seoView.searchPlaceholder}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{
-            padding: '6px 12px',
-            borderRadius: 6,
-            border: `1px solid ${V.border}`,
-            fontSize: 12,
-            minWidth: 220,
-            color: V.text,
-            backgroundColor: V.bg,
-          }}
-        />
-        <select
-          aria-label={t.seoView.allCollections}
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          style={selectStyle}
-        >
-          <option value="all">{t.seoView.allCollections}</option>
-          {collections.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
-        <select
-          aria-label={t.seoView.allScores}
-          value={scoreFilter}
-          onChange={(e) => setScoreFilter(e.target.value as typeof scoreFilter)}
-          style={selectStyle}
-        >
-          <option value="all">{t.seoView.allScores}</option>
-          <option value="good">{t.seoView.goodScores}</option>
-          <option value="needsWork">{t.seoView.needsWork}</option>
-          <option value="critical">{t.seoView.criticalScores}</option>
-        </select>
-        <span style={{ fontSize: 11, color: V.textSecondary, fontWeight: 600 }}>
-          {filteredItems.length} {t.seoView.resultsDisplayed}
-        </span>
-      </div>
-
-      {/* A4: Quick filter buttons */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-        {([
-          { key: 'noMeta' as QuickFilter, label: t.seoView.missingMeta, count: quickFilterCounts.noMeta, color: V.red },
-          { key: 'noH1' as QuickFilter, label: t.seoView.missingH1, count: quickFilterCounts.noH1, color: V.orange },
-          { key: 'lowReadability' as QuickFilter, label: t.seoView.lowReadability, count: quickFilterCounts.lowReadability, color: V.yellow },
-        ]).map((qf) => {
-          const isActive = quickFilter === qf.key
-          return (
-            <button type="button"
-              key={qf.key}
-              onClick={() => setQuickFilter(isActive ? 'none' : qf.key)}
-              style={{
-                ...btnBase,
-                backgroundColor: isActive ? `${qf.color}15` : V.bg,
-                borderColor: isActive ? qf.color : V.border,
-                color: isActive ? qf.color : V.textSecondary,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-              }}
+    <>
+      <ViewHeader
+        actions={
+          <>
+            <Button
+              buttonStyle="primary"
+              disabled={bulkOptimizing || items.length === 0}
+              onClick={handleOptimizeSite}
+              tooltip={t.seoView.optimizeSiteHint}
             >
-              {qf.label}
-              <span
-                style={{
-                  fontSize: 9,
-                  fontWeight: 800,
-                  backgroundColor: isActive ? qf.color : V.border,
-                  color: isActive ? '#fff' : V.textSecondary,
-                  borderRadius: 8,
-                  padding: '1px 6px',
-                  minWidth: 18,
-                  textAlign: 'center',
+              {bulkOptimizing ? t.seoView.bulkOptimizing : t.seoView.optimizeSite}
+            </Button>
+            <Button buttonStyle="secondary" icon={<RefreshIcon />} iconPosition="left" onClick={() => fetchAudit('refresh')}>
+              {t.common.refresh}
+            </Button>
+            <Button buttonStyle="secondary" onClick={handleExportCsv}>
+              {t.common.exportCsv}
+            </Button>
+            <Button buttonStyle="secondary" onClick={handleExportPdf}>
+              {t.common.exportPdf}
+            </Button>
+          </>
+        }
+        description={`${stats?.totalPages || 0} ${t.seoView.pagesAnalyzed}`}
+        title={t.seoView.auditTitle}
+      />
+      <ViewBody>
+        {/* The audit can run for minutes; without this the only signal that it
+            finished is a visual one. */}
+        <LiveRegion message={`${stats?.totalPages || 0} ${t.seoView.pagesAnalyzed}`} />
+
+        {/* Bulk apply confirmation — avoids an auto-rebuild; user refreshes once when done */}
+        {bulkApplied && (
+          <Banner type="success">
+            <div className="seo-row seo-row--between seo-audit__banner">
+              <span>{t.seoView.bulkAppliedNote}</span>
+              <Button
+                buttonStyle="secondary"
+                icon={<RefreshIcon />}
+                iconPosition="left"
+                onClick={() => {
+                  setBulkApplied(false)
+                  fetchAudit('refresh')
                 }}
               >
-                {qf.count}
-              </span>
-            </button>
-          )
-        })}
-      </div>
+                {t.common.refresh}
+              </Button>
+            </div>
+          </Banner>
+        )}
 
-      {/* Table */}
-      <div
-        style={{
-          border: `1px solid ${V.border}`,
-          borderRadius: 10,
-          overflow: 'hidden',
-        }}
-      >
-        {/* A3: Sticky table header */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: TABLE_COLS,
-            padding: '10px 14px',
-            backgroundColor: V.bgCard,
-            borderBottom: `1px solid ${V.border}`,
-            fontWeight: 700,
-            fontSize: 10,
-            textTransform: 'uppercase',
-            color: V.textSecondary,
-            letterSpacing: 0.5,
-            gap: 8,
-            position: 'sticky',
-            top: 0,
-            zIndex: 10,
-          }}
-        >
-          {/* B1: Select all checkbox */}
-          <div style={{ textAlign: 'center' }}>
+        {/* Stats cards */}
+        {stats && (
+          <Grid>
+            <StatTile label={t.seoView.averageScore} tone={scoreTone(stats.avgScore)} value={stats.avgScore} />
+            <StatTile label={t.seoView.goodLabel} tone="success" value={stats.good} />
+            <StatTile label={t.seoView.needsWorkLabel} tone="warning" value={stats.needsWork} />
+            <StatTile label={t.seoView.criticalLabel} tone="danger" value={stats.critical} />
+            <StatTile label={t.seoView.noKeyword} tone="warning" value={stats.noKeyword} />
+            <StatTile label={t.seoView.wordsAvg} value={stats.avgWordCount} />
+          </Grid>
+        )}
+
+        {/* Content Decay */}
+        <ContentDecaySection items={items as AuditItem[]} />
+
+        {/* Filters */}
+        <div className="seo-audit__toolbar">
+          <div className="seo-audit__search">
+            <SearchIcon className="seo-audit__search-icon" />
             <input
-              type="checkbox"
-              aria-label={allPageSelected ? t.common.deselectAll : t.sitemapAudit.selectAll}
-              checked={allPageSelected}
-              onChange={handleSelectAll}
-              style={{ cursor: 'pointer' }}
+              type="text"
+              aria-label={t.seoView.searchPlaceholder}
+              placeholder={t.seoView.searchPlaceholder}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="seo-input"
             />
           </div>
-          <SortHeader
-            label={t.common.page}
-            sortKey="title"
-            currentSort={sortBy}
-            currentDir={sortDir}
-            onSort={handleSort}
-          />
-          <SortHeader
-            label={t.seoView.collection}
-            sortKey="collection"
-            currentSort={sortBy}
-            currentDir={sortDir}
-            onSort={handleSort}
-          />
-          <SortHeader
-            label={t.seoView.score}
-            sortKey="score"
-            currentSort={sortBy}
-            currentDir={sortDir}
-            onSort={handleSort}
-          />
-          <SortHeader
-            label={t.seoView.keyword}
-            sortKey="focusKeyword"
-            currentSort={sortBy}
-            currentDir={sortDir}
-            onSort={handleSort}
-          />
-          {/* A1: H1 — sortable */}
-          <SortHeader
-            label={t.seoView.h1}
-            sortKey="h1Count"
-            currentSort={sortBy}
-            currentDir={sortDir}
-            onSort={handleSort}
-          />
-          {/* A1: OG — not sortable */}
-          <span>{t.seoView.og}</span>
-          {/* A1: Internal links — sortable */}
-          <SortHeader
-            label={t.seoView.internal}
-            sortKey="internalLinkCount"
-            currentSort={sortBy}
-            currentDir={sortDir}
-            onSort={handleSort}
-          />
-          {/* A1: External links — not sortable */}
-          <span>{t.seoView.external}</span>
-          <SortHeader
-            label={t.seoView.words}
-            sortKey="wordCount"
-            currentSort={sortBy}
-            currentDir={sortDir}
-            onSort={handleSort}
-          />
-          <SortHeader
-            label={t.seoView.readability}
-            sortKey="readabilityScore"
-            currentSort={sortBy}
-            currentDir={sortDir}
-            onSort={handleSort}
-          />
-          <SortHeader
-            label={t.seoView.updated}
-            sortKey="updatedAt"
-            currentSort={sortBy}
-            currentDir={sortDir}
-            onSort={handleSort}
-          />
-          <span />
-        </div>
-
-        {/* A3: Scrollable table body */}
-        <div style={{ maxHeight: 'calc(100vh - 380px)', overflowY: 'auto' }}>
-          {filteredItems.length === 0 ? (
-            <div
-              style={{
-                padding: 40,
-                textAlign: 'center',
-                color: V.textSecondary,
-                fontSize: 12,
-              }}
-            >
-              {t.common.noResults}
-            </div>
-          ) : (
-            paginatedItems.map((item) => {
-              const key = itemKey(item)
-              const isExpanded = expandedId === key
-              return (
-                <React.Fragment key={`${item.collection}-${item.id}`}>
-                  <TableRow
-                    item={item}
-                    selected={selectedIds.has(key)}
-                    onToggle={() => {
-                      setSelectedIds((prev) => {
-                        const next = new Set(prev)
-                        if (next.has(key)) next.delete(key)
-                        else next.add(key)
-                        return next
-                      })
-                    }}
-                    expanded={isExpanded}
-                    onRowClick={() => setExpandedId(isExpanded ? null : key)}
-                    t={t}
-                    locale={locale}
-                  />
-                  {/* B3: Inline edit panel */}
-                  {isExpanded && (
-                    <>
-                      <InlineEditPanel
-                        item={item}
-                        saving={saving}
-                        onCancel={() => setExpandedId(null)}
-                        onSave={(title, desc) => handleInlineSave(item, title, desc)}
-                        t={t}
-                      />
-                      {saveError && (
-                        <div
-                          style={{
-                            padding: '8px 14px',
-                            backgroundColor: 'rgba(239,68,68,0.08)',
-                            borderBottom: `1px solid ${V.border}`,
-                            fontSize: 11,
-                            fontWeight: 600,
-                            color: V.red,
-                          }}
-                        >
-                          {saveError}
-                        </div>
-                      )}
-                    </>
-                  )}
-                </React.Fragment>
-              )
-            })
-          )}
-        </div>
-      </div>
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 8,
-            marginTop: 16,
-            fontSize: 12,
-          }}
-        >
-          <button type="button"
-            onClick={() => setCurrentPage(1)}
-            disabled={currentPage === 1}
-            style={{
-              ...btnBase,
-              backgroundColor: V.bgCard,
-              color: currentPage === 1 ? V.textSecondary : V.text,
-              opacity: currentPage === 1 ? 0.5 : 1,
-            }}
+          <select
+            aria-label={t.seoView.allCollections}
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            className="seo-select seo-select--inline"
           >
-            &laquo;
-          </button>
-          <button type="button"
-            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-            disabled={currentPage === 1}
-            style={{
-              ...btnBase,
-              backgroundColor: V.bgCard,
-              color: currentPage === 1 ? V.textSecondary : V.text,
-              opacity: currentPage === 1 ? 0.5 : 1,
-            }}
+            <option value="all">{t.seoView.allCollections}</option>
+            {collections.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+          <select
+            aria-label={t.seoView.allScores}
+            value={scoreFilter}
+            onChange={(e) => setScoreFilter(e.target.value as typeof scoreFilter)}
+            className="seo-select seo-select--inline"
           >
-            &lsaquo; {t.common.previous}
-          </button>
-          <span style={{ color: V.textSecondary, fontWeight: 600, padding: '0 8px' }}>
-            {t.common.page} {currentPage} / {totalPages}
+            <option value="all">{t.seoView.allScores}</option>
+            <option value="good">{t.seoView.goodScores}</option>
+            <option value="needsWork">{t.seoView.needsWork}</option>
+            <option value="critical">{t.seoView.criticalScores}</option>
+          </select>
+          <span className="seo-text seo-text--small seo-text--secondary">
+            {filteredItems.length} {t.seoView.resultsDisplayed}
           </span>
-          <button type="button"
-            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-            disabled={currentPage === totalPages}
-            style={{
-              ...btnBase,
-              backgroundColor: V.bgCard,
-              color: currentPage === totalPages ? V.textSecondary : V.text,
-              opacity: currentPage === totalPages ? 0.5 : 1,
-            }}
-          >
-            {t.common.next} &rsaquo;
-          </button>
-          <button type="button"
-            onClick={() => setCurrentPage(totalPages)}
-            disabled={currentPage === totalPages}
-            style={{
-              ...btnBase,
-              backgroundColor: V.bgCard,
-              color: currentPage === totalPages ? V.textSecondary : V.text,
-              opacity: currentPage === totalPages ? 0.5 : 1,
-            }}
-          >
-            &raquo;
-          </button>
         </div>
-      )}
 
-      {/* B2: Bulk action bar */}
-      <BulkActionBar
-        count={selectedIds.size}
-        onDeselectAll={() => setSelectedIds(new Set())}
-        onExportCsv={handleBulkExportCsv}
-        onMarkCornerstone={() => handleBulkCornerstone(true)}
-        onUnmarkCornerstone={() => handleBulkCornerstone(false)}
-        onOptimizeMeta={handleBulkOptimizeMeta}
-        optimizing={bulkOptimizing}
-        t={t}
-      />
-
-      {/* Bulk AI optimize — before → after preview (review + export before writing) */}
-      {bulkPreview && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(0,0,0,0.5)',
-            zIndex: 100,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 24,
-            fontFamily: 'var(--font-body, system-ui)',
-          }}
-          onClick={() => { if (!bulkApplying) setBulkPreview(null) }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: 'min(900px, 100%)',
-              maxHeight: '85vh',
-              display: 'flex',
-              flexDirection: 'column',
-              backgroundColor: V.bgCard,
-              border: `1px solid ${V.border}`,
-              borderRadius: 12,
-              overflow: 'hidden',
-            }}
-          >
-            <div style={{ padding: '16px 20px', borderBottom: `1px solid ${V.border}` }}>
-              <div style={{ fontSize: 16, fontWeight: 800, color: V.text }}>{t.seoView.bulkPreviewTitle}</div>
-              <div style={{ fontSize: 12, color: V.textSecondary, marginTop: 4 }}>
-                {bulkPreview.results.length} / {bulkPreview.total}
-                {bulkPreview.capped ? ` · ${t.seoView.bulkCappedNote}` : ''}
-              </div>
-            </div>
-
-            <div style={{ overflowY: 'auto', padding: '8px 20px', flex: 1 }}>
-              {bulkPreview.results.length === 0 && (
-                <div style={{ padding: 24, textAlign: 'center', color: V.textSecondary, fontSize: 14 }}>
-                  {t.seoView.bulkNoChanges}
-                </div>
-              )}
-              {bulkPreview.results.map((r) => {
-                const fields: Array<{ label: string; before: string; after: string }> = []
-                if (r.before.metaTitle !== r.after.metaTitle) fields.push({ label: 'Title', before: r.before.metaTitle, after: r.after.metaTitle })
-                if (r.before.metaDescription !== r.after.metaDescription) fields.push({ label: 'Description', before: r.before.metaDescription, after: r.after.metaDescription })
-                if (r.before.focusKeyword !== r.after.focusKeyword) fields.push({ label: 'Keyword', before: r.before.focusKeyword, after: r.after.focusKeyword })
-                return (
-                  <div key={`${r.collection}::${r.id}`} style={{ padding: '10px 0', borderBottom: `1px solid ${V.border}` }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: V.text, marginBottom: 6 }}>
-                      {r.title || `${r.collection}/${r.id}`}{' '}
-                      <span style={{ fontSize: 10, color: V.textSecondary, fontWeight: 400 }}>{r.collection}</span>
-                    </div>
-                    {fields.map((f, i) => (
-                      <div key={i} style={{ marginBottom: 4, fontSize: 12 }}>
-                        <span style={{ fontSize: 10, fontWeight: 700, color: V.textSecondary, textTransform: 'uppercase' }}>{f.label}</span>
-                        <div style={{ color: V.red, textDecoration: f.before ? 'line-through' : 'none', opacity: 0.75 }}>
-                          {f.before || t.seoAnalyzer.emptyValue}
-                        </div>
-                        <div style={{ color: V.green, fontWeight: 600 }}>{f.after || t.seoAnalyzer.emptyValue}</div>
-                      </div>
-                    ))}
-                  </div>
-                )
-              })}
-            </div>
-
-            <div style={{ padding: '14px 20px', borderTop: `1px solid ${V.border}`, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-              <button type="button"
-                onClick={handleExportBulkPreviewCsv}
-                disabled={bulkPreview.results.length === 0}
-                style={{ ...btnBase, backgroundColor: V.cyan, color: '#000', opacity: bulkPreview.results.length === 0 ? 0.5 : 1 }}
+        {/* A4: Quick filter buttons */}
+        <div className="seo-row">
+          {quickFilters.map((qf) => {
+            const isActive = quickFilter === qf.key
+            return (
+              <Button
+                aria-pressed={isActive}
+                buttonStyle="pill"
+                key={qf.key}
+                onClick={() => setQuickFilter(isActive ? 'none' : qf.key)}
+                selected={isActive}
               >
-                {t.seoView.bulkExport}
-              </button>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button type="button" onClick={() => setBulkPreview(null)} disabled={bulkApplying} style={{ ...btnBase, backgroundColor: V.bg, color: V.text }}>
-                  {t.seoView.bulkCancel}
-                </button>
-                <button type="button"
-                  onClick={handleBulkApplyPreview}
-                  disabled={bulkApplying || bulkPreview.results.length === 0}
-                  style={{ ...btnBase, backgroundColor: '#7c3aed', color: '#fff', opacity: bulkApplying || bulkPreview.results.length === 0 ? 0.6 : 1 }}
+                {qf.label}
+                <TonePill tone={isActive ? qf.tone : 'neutral'}>{qf.count}</TonePill>
+              </Button>
+            )
+          })}
+        </div>
+
+        {/* Table */}
+        <DataTable aria-label={t.seoView.auditTitle} className="seo-audit__table">
+          {/* A3: Sticky table header */}
+          <thead>
+            <tr>
+              {/* B1: Select all checkbox */}
+              <th className="heading-_select">
+                <input
+                  type="checkbox"
+                  aria-label={allPageSelected ? t.common.deselectAll : t.sitemapAudit.selectAll}
+                  checked={allPageSelected}
+                  onChange={handleSelectAll}
+                  className="seo-audit__check"
+                />
+              </th>
+              <SortHeader
+                label={t.common.page}
+                sortKey="title"
+                currentSort={sortBy}
+                currentDir={sortDir}
+                onSort={handleSort}
+              />
+              <SortHeader
+                label={t.seoView.collection}
+                sortKey="collection"
+                currentSort={sortBy}
+                currentDir={sortDir}
+                onSort={handleSort}
+              />
+              <SortHeader
+                label={t.seoView.score}
+                sortKey="score"
+                currentSort={sortBy}
+                currentDir={sortDir}
+                onSort={handleSort}
+              />
+              <SortHeader
+                label={t.seoView.keyword}
+                sortKey="focusKeyword"
+                currentSort={sortBy}
+                currentDir={sortDir}
+                onSort={handleSort}
+              />
+              {/* A1: H1 — sortable */}
+              <SortHeader
+                label={t.seoView.h1}
+                sortKey="h1Count"
+                currentSort={sortBy}
+                currentDir={sortDir}
+                onSort={handleSort}
+              />
+              {/* A1: OG — not sortable */}
+              <th>{t.seoView.og}</th>
+              {/* A1: Internal links — sortable */}
+              <SortHeader
+                label={t.seoView.internal}
+                sortKey="internalLinkCount"
+                currentSort={sortBy}
+                currentDir={sortDir}
+                onSort={handleSort}
+                numeric
+              />
+              {/* A1: External links — not sortable */}
+              <th className="seo-table__num">{t.seoView.external}</th>
+              <SortHeader
+                label={t.seoView.words}
+                sortKey="wordCount"
+                currentSort={sortBy}
+                currentDir={sortDir}
+                onSort={handleSort}
+                numeric
+              />
+              <SortHeader
+                label={t.seoView.readability}
+                sortKey="readabilityScore"
+                currentSort={sortBy}
+                currentDir={sortDir}
+                onSort={handleSort}
+                numeric
+              />
+              <SortHeader
+                label={t.seoView.updated}
+                sortKey="updatedAt"
+                currentSort={sortBy}
+                currentDir={sortDir}
+                onSort={handleSort}
+                numeric
+              />
+              <th />
+            </tr>
+          </thead>
+
+          {/* A3: Scrollable table body */}
+          <tbody>
+            {filteredItems.length === 0 ? (
+              <tr>
+                <td colSpan={COLUMN_COUNT}>
+                  <EmptyState title={t.common.noResults} />
+                </td>
+              </tr>
+            ) : (
+              paginatedItems.map((item) => {
+                const key = itemKey(item)
+                const isExpanded = expandedId === key
+                return (
+                  <React.Fragment key={`${item.collection}-${item.id}`}>
+                    <TableRow
+                      item={item}
+                      selected={selectedIds.has(key)}
+                      onToggle={() => {
+                        setSelectedIds((prev) => {
+                          const next = new Set(prev)
+                          if (next.has(key)) next.delete(key)
+                          else next.add(key)
+                          return next
+                        })
+                      }}
+                      expanded={isExpanded}
+                      onRowClick={() => setExpandedId(isExpanded ? null : key)}
+                      t={t}
+                      locale={locale}
+                      adminRoute={adminRoute}
+                    />
+                    {/* B3: Inline edit panel */}
+                    {isExpanded && (
+                      <>
+                        <InlineEditPanel
+                          item={item}
+                          saving={saving}
+                          onCancel={() => setExpandedId(null)}
+                          onSave={(title, desc) => handleInlineSave(item, title, desc)}
+                          t={t}
+                        />
+                        {saveError && (
+                          <tr>
+                            <td colSpan={COLUMN_COUNT}>
+                              <Banner type="danger">{saveError}</Banner>
+                            </td>
+                          </tr>
+                        )}
+                      </>
+                    )}
+                  </React.Fragment>
+                )
+              })
+            )}
+          </tbody>
+        </DataTable>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="seo-row seo-audit__pagination">
+            <Button
+              buttonStyle="secondary"
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage(1)}
+            >
+              &laquo;
+            </Button>
+            <Button
+              buttonStyle="secondary"
+              disabled={currentPage === 1}
+              icon={<ChevronIcon direction="left" />}
+              iconPosition="left"
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+            >
+              {t.common.previous}
+            </Button>
+            <span className="seo-text seo-text--secondary seo-text--strong">
+              {t.common.page} {currentPage} / {totalPages}
+            </span>
+            <Button
+              buttonStyle="secondary"
+              disabled={currentPage === totalPages}
+              icon={<ChevronIcon direction="right" />}
+              iconPosition="right"
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+            >
+              {t.common.next}
+            </Button>
+            <Button
+              buttonStyle="secondary"
+              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage(totalPages)}
+            >
+              &raquo;
+            </Button>
+          </div>
+        )}
+
+        {/* B2: Bulk action bar */}
+        <BulkActionBar
+          count={selectedIds.size}
+          onDeselectAll={() => setSelectedIds(new Set())}
+          onExportCsv={handleBulkExportCsv}
+          onMarkCornerstone={() => handleBulkCornerstone(true)}
+          onUnmarkCornerstone={() => handleBulkCornerstone(false)}
+          onOptimizeMeta={handleBulkOptimizeMeta}
+          optimizing={bulkOptimizing}
+          t={t}
+        />
+
+        {/* Bulk AI optimize — before → after preview (review + export before writing) */}
+        {bulkPreview && (
+          <div
+            className="seo-audit__overlay"
+            onClick={() => { if (!bulkApplying) setBulkPreview(null) }}
+          >
+            <div className="seo-audit__modal" onClick={(e) => e.stopPropagation()}>
+              <div className="seo-audit__modal-header">
+                <h2 className="seo-heading">{t.seoView.bulkPreviewTitle}</h2>
+                <p className="seo-text seo-text--small seo-text--secondary">
+                  {bulkPreview.results.length} / {bulkPreview.total}
+                  {bulkPreview.capped ? ` · ${t.seoView.bulkCappedNote}` : ''}
+                </p>
+              </div>
+
+              <div className="seo-audit__modal-body">
+                {bulkPreview.results.length === 0 && <EmptyState title={t.seoView.bulkNoChanges} />}
+                {bulkPreview.results.map((r) => {
+                  const fields: Array<{ label: string; before: string; after: string }> = []
+                  if (r.before.metaTitle !== r.after.metaTitle) fields.push({ label: 'Title', before: r.before.metaTitle, after: r.after.metaTitle })
+                  if (r.before.metaDescription !== r.after.metaDescription) fields.push({ label: 'Description', before: r.before.metaDescription, after: r.after.metaDescription })
+                  if (r.before.focusKeyword !== r.after.focusKeyword) fields.push({ label: 'Keyword', before: r.before.focusKeyword, after: r.after.focusKeyword })
+                  return (
+                    <div className="seo-audit__change" key={`${r.collection}::${r.id}`}>
+                      <div className="seo-text seo-text--strong">
+                        {r.title || `${r.collection}/${r.id}`}{' '}
+                        <span className="seo-text--small seo-text--secondary">{r.collection}</span>
+                      </div>
+                      {fields.map((f, i) => (
+                        <div className="seo-stack seo-stack--tight" key={i}>
+                          <span className="seo-field__label">{f.label}</span>
+                          <div className={cx('seo-text seo-text--danger', f.before && 'seo-audit__before')}>
+                            {f.before || t.seoAnalyzer.emptyValue}
+                          </div>
+                          <div className="seo-text seo-text--success seo-text--strong">{f.after || t.seoAnalyzer.emptyValue}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                })}
+              </div>
+
+              <div className="seo-audit__modal-footer">
+                <Button
+                  buttonStyle="secondary"
+                  disabled={bulkPreview.results.length === 0}
+                  onClick={handleExportBulkPreviewCsv}
                 >
-                  {bulkApplying ? t.seoView.bulkApplying : `${t.seoView.bulkApply} (${bulkPreview.results.length})`}
-                </button>
+                  {t.seoView.bulkExport}
+                </Button>
+                <div className="seo-row">
+                  <Button buttonStyle="secondary" disabled={bulkApplying} onClick={() => setBulkPreview(null)}>
+                    {t.seoView.bulkCancel}
+                  </Button>
+                  <Button
+                    buttonStyle="primary"
+                    disabled={bulkApplying || bulkPreview.results.length === 0}
+                    onClick={handleBulkApplyPreview}
+                  >
+                    {bulkApplying ? t.seoView.bulkApplying : `${t.seoView.bulkApply} (${bulkPreview.results.length})`}
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </ViewBody>
+    </>
   )
 }

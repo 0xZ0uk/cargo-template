@@ -1,18 +1,8 @@
 'use client'
 
 import React, { useCallback, useEffect, useState } from 'react'
-
-const C = {
-  text: 'var(--theme-text, #1a1a1a)',
-  sub: 'var(--theme-elevation-600, #6b7280)',
-  card: 'var(--theme-elevation-50, #f9fafb)',
-  bg: 'var(--theme-elevation-0, #fff)',
-  border: 'var(--theme-elevation-200, #e5e7eb)',
-  green: '#22c55e',
-  red: '#ef4444',
-  amber: '#f59e0b',
-  blue: '#3b82f6',
-}
+import { Banner, Button, RefreshIcon } from '@payloadcms/ui'
+import { Card, Checklist, Grid, LoadingState, StatTile, TonePill, scoreTone, type Tone } from '../ui/index.js'
 
 interface PageOption {
   id: string | number
@@ -63,6 +53,7 @@ const S = {
     ctr: 'CTR',
     position: 'Position',
     refresh: 'Rafraîchir',
+    grade: 'Note',
   },
   en: {
     title: 'Content Grade (GSC coverage)',
@@ -81,14 +72,15 @@ const S = {
     ctr: 'CTR',
     position: 'Position',
     refresh: 'Refresh',
+    grade: 'Grade',
   },
 } as const
 
-function gradeColor(grade?: string): string {
-  if (!grade) return C.sub
-  if (grade === 'A' || grade === 'B') return C.green
-  if (grade === 'C') return C.amber
-  return C.red
+function gradeTone(grade?: string): Tone {
+  if (!grade) return 'neutral'
+  if (grade === 'A' || grade === 'B') return 'success'
+  if (grade === 'C') return 'warning'
+  return 'danger'
 }
 
 export function ContentGradePanel({ locale }: { locale: 'fr' | 'en' }) {
@@ -152,32 +144,26 @@ export function ContentGradePanel({ locale }: { locale: 'fr' | 'en' }) {
     void grade(value)
   }
 
-  const card: React.CSSProperties = { padding: 16, borderRadius: 12, border: `1px solid ${C.border}`, backgroundColor: C.card, marginBottom: 20 }
-  const selectStyle: React.CSSProperties = {
-    padding: '8px 10px',
-    borderRadius: 8,
-    border: `1px solid ${C.border}`,
-    backgroundColor: C.bg,
-    color: C.text,
-    fontSize: 13,
-    minWidth: 260,
-    maxWidth: '100%',
-  }
-
   return (
-    <div style={card}>
-      <div>
-        <div style={{ fontSize: 16, fontWeight: 800, color: C.text }}>{s.title}</div>
-        <div style={{ fontSize: 12, color: C.sub, marginTop: 2, marginBottom: 12 }}>{s.subtitle}</div>
-      </div>
+    <Card
+      actions={
+        selected && !grading ? (
+          <Button buttonStyle="secondary" icon={<RefreshIcon />} margin={false} onClick={() => void grade(selected)} size="medium">
+            {s.refresh}
+          </Button>
+        ) : undefined
+      }
+      title={s.title}
+    >
+      <p className="seo-text seo-text--small seo-text--secondary">{s.subtitle}</p>
 
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+      <div className="seo-row">
         <select
           aria-label={s.selectPage}
-          value={selected}
-          onChange={(e) => onSelect(e.target.value)}
-          style={selectStyle}
+          className="seo-select seo-select--inline"
           disabled={pagesLoading}
+          onChange={(e) => onSelect(e.target.value)}
+          value={selected}
         >
           <option value="">{pagesLoading ? s.loadingPages : pages.length === 0 ? s.noPages : s.selectPage}</option>
           {pages.map((p) => (
@@ -186,94 +172,73 @@ export function ContentGradePanel({ locale }: { locale: 'fr' | 'en' }) {
             </option>
           ))}
         </select>
-        {selected && !grading && (
-          <button
-            type="button"
-            onClick={() => void grade(selected)}
-            style={{ padding: '8px 12px', borderRadius: 8, border: `1px solid ${C.sub}`, backgroundColor: C.bg, color: C.text, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
-          >
-            {s.refresh}
-          </button>
-        )}
       </div>
 
-      {error && <div role="alert" style={{ color: C.red, fontSize: 13, fontWeight: 600, marginTop: 10 }}>{error}</div>}
-      {grading && <div style={{ marginTop: 12, fontSize: 13, color: C.sub }}>{s.grading}</div>}
-
-      {!grading && data && data.gscConnected === false && (
-        <div style={{ marginTop: 12, fontSize: 13, color: C.sub }}>{data.message || s.needGsc}</div>
+      {error && (
+        <div role="alert">
+          <Banner type="danger">{error}</Banner>
+        </div>
       )}
+      {grading && <LoadingState label={s.grading} />}
+
+      {!grading && data && data.gscConnected === false && <Banner type="default">{data.message || s.needGsc}</Banner>}
 
       {!grading && data && data.gscConnected !== false && (
-        <div style={{ marginTop: 14 }}>
-          <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
-            <div
-              style={{
-                width: 56,
-                height: 56,
-                borderRadius: 12,
-                backgroundColor: gradeColor(data.grade),
-                color: '#fff',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 28,
-                fontWeight: 900,
-              }}
-            >
-              {data.grade ?? '—'}
-            </div>
-            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-              {typeof data.score === 'number' && (
-                <div>
-                  <div style={{ fontSize: 20, fontWeight: 700, color: C.text }}>{Math.round(data.score)}</div>
-                  <div style={{ fontSize: 11, color: C.sub }}>Score /100</div>
-                </div>
-              )}
-              {data.subScores?.coverage != null && (
-                <div>
-                  <div style={{ fontSize: 20, fontWeight: 700, color: C.blue }}>{Math.round(data.subScores.coverage)}</div>
-                  <div style={{ fontSize: 11, color: C.sub }}>{s.coverage}</div>
-                </div>
-              )}
-              {data.weightedPosition != null && (
-                <div>
-                  <div style={{ fontSize: 20, fontWeight: 700, color: C.amber }}>{data.weightedPosition.toFixed(1)}</div>
-                  <div style={{ fontSize: 11, color: C.sub }}>{s.position}</div>
-                </div>
-              )}
-            </div>
-          </div>
+        <>
+          <Grid>
+            <StatTile label={s.grade} tone={gradeTone(data.grade)} value={data.grade ?? '—'} />
+            {typeof data.score === 'number' && (
+              <StatTile label="Score /100" tone={scoreTone(data.score)} value={Math.round(data.score)} />
+            )}
+            {data.subScores?.coverage != null && (
+              <StatTile label={s.coverage} tone={scoreTone(data.subScores.coverage)} value={Math.round(data.subScores.coverage)} />
+            )}
+            {data.weightedPosition != null && (
+              <StatTile
+                label={s.position}
+                tone={data.weightedPosition <= 10 ? 'success' : data.weightedPosition <= 30 ? 'warning' : 'danger'}
+                value={data.weightedPosition.toFixed(1)}
+              />
+            )}
+          </Grid>
 
           {data.coverageGaps && data.coverageGaps.length > 0 && (
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 4 }}>{s.coverageGaps}</div>
-              <ul style={{ margin: 0, paddingLeft: 16, fontSize: 12, color: C.sub }}>
-                {data.coverageGaps.slice(0, 10).map((g, i) => (
-                  <li key={`${g.query || i}`} style={{ marginBottom: 2 }}>
-                    <span style={{ color: C.text }}>{g.query}</span>
-                    {g.nearTop && <span style={{ color: C.amber, fontWeight: 700 }}> · {s.nearTop}</span>}
-                    {g.missingTerms && g.missingTerms.length > 0 && (
-                      <span style={{ color: C.red }}> · {s.missing}: {g.missingTerms.slice(0, 5).join(', ')}</span>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
+            <section className="seo-stack seo-stack--tight">
+              <h4 className="seo-text seo-text--strong">{s.coverageGaps}</h4>
+              <Checklist
+                items={data.coverageGaps.slice(0, 10).map((g, i) => ({
+                  id: `${g.query || i}`,
+                  tone: 'warning',
+                  content: (
+                    <span className="seo-row seo-text seo-text--small">
+                      <span className="seo-text--strong">{g.query}</span>
+                      {g.nearTop && <TonePill tone="warning">{s.nearTop}</TonePill>}
+                      {g.missingTerms && g.missingTerms.length > 0 && (
+                        <span className="seo-text--danger">
+                          {s.missing}: {g.missingTerms.slice(0, 5).join(', ')}
+                        </span>
+                      )}
+                    </span>
+                  ),
+                }))}
+              />
+            </section>
           )}
 
           {data.recommendations && data.recommendations.length > 0 && (
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 4 }}>{s.recommendations}</div>
-              <ul style={{ margin: 0, paddingLeft: 16, fontSize: 12, color: C.sub }}>
-                {data.recommendations.slice(0, 8).map((r, i) => (
-                  <li key={i} style={{ marginBottom: 2 }}>{r}</li>
-                ))}
-              </ul>
-            </div>
+            <section className="seo-stack seo-stack--tight">
+              <h4 className="seo-text seo-text--strong">{s.recommendations}</h4>
+              <Checklist
+                items={data.recommendations.slice(0, 8).map((r, i) => ({
+                  id: String(i),
+                  tone: 'brand',
+                  content: <span className="seo-text seo-text--small">{r}</span>,
+                }))}
+              />
+            </section>
           )}
-        </div>
+        </>
       )}
-    </div>
+    </Card>
   )
 }

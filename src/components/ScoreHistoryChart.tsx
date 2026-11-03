@@ -1,7 +1,19 @@
 'use client'
 
 import React, { useEffect, useState, useMemo, useId } from 'react'
+import { Banner } from '@payloadcms/ui'
 import { useDashboardT } from '../hooks/useSeoLocale.js'
+import {
+  Card,
+  EmptyState,
+  LoadingState,
+  ScorePill,
+  TONE_MARK,
+  TonePill,
+  scoreTone,
+  type Tone,
+} from '../ui/index.js'
+import './ScoreHistoryChart.css'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -28,33 +40,11 @@ interface ScoreHistoryChartProps {
 }
 
 // ---------------------------------------------------------------------------
-// Color palette (neubrutalist — same as SeoAnalyzer)
-// ---------------------------------------------------------------------------
-const C = {
-  green: '#22c55e',
-  yellow: '#f59e0b',
-  orange: '#f97316',
-  red: '#ef4444',
-  black: '#000',
-  white: '#fff',
-  text: 'var(--theme-text, #1a1a1a)',
-  textSecondary: 'var(--theme-elevation-600, #6b7280)',
-  border: 'var(--theme-border-color, #000)',
-  surface: 'var(--theme-elevation-0, #fff)',
-  surface50: 'var(--theme-elevation-50, #f9fafb)',
-  borderLight: 'var(--theme-elevation-200, #e5e7eb)',
-}
-
-// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function getScoreColor(score: number): string {
-  if (score >= 91) return C.green
-  if (score >= 71) return C.yellow
-  if (score >= 41) return C.orange
-  return C.red
-}
+/** Score bands of the analyzer: 71+ is good, 41-70 needs work, below is poor. */
+const SCORE_THRESHOLDS = { good: 71, ok: 41 }
 
 function getTrendIcon(trend: 'improving' | 'declining' | 'stable'): string {
   switch (trend) {
@@ -67,14 +57,14 @@ function getTrendIcon(trend: 'improving' | 'declining' | 'stable'): string {
   }
 }
 
-function getTrendColor(trend: 'improving' | 'declining' | 'stable'): string {
+function getTrendTone(trend: 'improving' | 'declining' | 'stable'): Tone {
   switch (trend) {
     case 'improving':
-      return C.green
+      return 'success'
     case 'declining':
-      return C.red
+      return 'danger'
     case 'stable':
-      return C.yellow
+      return 'warning'
   }
 }
 
@@ -150,7 +140,7 @@ function Sparkline({
 
   // Color based on latest score
   const latestScore = data.length > 0 ? data[data.length - 1] : 0
-  const lineColor = getScoreColor(latestScore)
+  const lineColor = TONE_MARK[scoreTone(latestScore, SCORE_THRESHOLDS)]
 
   // useId(), not Math.random(): the random id changed on every render (so the
   // gradient reference was rebuilt each time) and differed between the server
@@ -160,7 +150,7 @@ function Sparkline({
   if (data.length === 0) return null
 
   return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+    <svg className="seo-chart" height={height} viewBox={`0 0 ${width} ${height}`} width={width}>
       <defs>
         <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={lineColor} stopOpacity={0.25} />
@@ -178,8 +168,7 @@ function Sparkline({
             y1={y}
             x2={width - padding.right}
             y2={y}
-            stroke={C.borderLight}
-            strokeWidth={0.5}
+            className="seo-chart__grid"
             strokeDasharray="2,2"
             opacity={0.5}
           />
@@ -215,7 +204,8 @@ function Sparkline({
             cx={x}
             cy={y}
             r={isLast ? 3 : 1.5}
-            fill={isLast ? lineColor : C.white}
+            className={isLast ? undefined : 'seo-score-history__point'}
+            fill={isLast ? lineColor : undefined}
             stroke={lineColor}
             strokeWidth={isLast ? 2 : 1}
           />
@@ -280,64 +270,17 @@ const ScoreHistoryChart: React.FC<ScoreHistoryChartProps> = ({ documentId, colle
 
   // Loading state
   if (loading) {
-    return (
-      <div
-        style={{
-          padding: '12px 14px',
-          borderRadius: 8,
-          border: `1px solid ${C.borderLight}`,
-          backgroundColor: C.surface50,
-          fontSize: 11,
-          color: C.textSecondary,
-          textAlign: 'center',
-        }}
-      >
-        {t.scoreHistory.loading}
-      </div>
-    )
+    return <LoadingState label={t.scoreHistory.loading} />
   }
 
   // Error state
   if (error) {
-    return (
-      <div
-        style={{
-          padding: '12px 14px',
-          borderRadius: 8,
-          border: `1px solid ${C.red}`,
-          backgroundColor: 'rgba(239,68,68,0.05)',
-          fontSize: 11,
-          color: C.red,
-          textAlign: 'center',
-        }}
-      >
-        {t.scoreHistory.loadingError}
-      </div>
-    )
+    return <Banner type="danger">{t.scoreHistory.loadingError}</Banner>
   }
 
   // Empty state
   if (!data || data.history.length === 0) {
-    return (
-      <div
-        style={{
-          padding: '12px 14px',
-          borderRadius: 8,
-          border: `1px solid ${C.borderLight}`,
-          backgroundColor: C.surface50,
-          fontSize: 11,
-          color: C.textSecondary,
-          textAlign: 'center',
-          lineHeight: 1.5,
-        }}
-      >
-        {t.scoreHistory.noHistory}
-        <br />
-        <span style={{ fontSize: 10 }}>
-          {t.scoreHistory.noHistoryDesc}
-        </span>
-      </div>
-    )
+    return <EmptyState description={t.scoreHistory.noHistoryDesc} title={t.scoreHistory.noHistory} />
   }
 
   const { history, trend, scoreDelta } = data
@@ -345,7 +288,6 @@ const ScoreHistoryChart: React.FC<ScoreHistoryChartProps> = ({ documentId, colle
   const latestScore = scores[scores.length - 1]
   const firstDate = history.length > 0 ? formatDate(history[0].snapshotDate) : ''
   const lastDate = history.length > 0 ? formatDate(history[history.length - 1].snapshotDate) : ''
-  const trendColor = getTrendColor(trend)
   const trendIcon = getTrendIcon(trend)
   const trendLabel = getTrendLabel(trend, {
     improving: t.scoreHistory.improving,
@@ -354,126 +296,46 @@ const ScoreHistoryChart: React.FC<ScoreHistoryChartProps> = ({ documentId, colle
   })
 
   return (
-    <div
-      style={{
-        borderRadius: 8,
-        border: `2px solid ${C.border}`,
-        backgroundColor: C.surface,
-        overflow: 'hidden',
-        marginBottom: 12,
-      }}
-    >
-      {/* Header */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '8px 12px',
-          borderBottom: `1px solid ${C.borderLight}`,
-          backgroundColor: C.surface50,
-        }}
-      >
-        <span
-          style={{
-            fontSize: 10,
-            fontWeight: 800,
-            textTransform: 'uppercase' as const,
-            letterSpacing: '0.06em',
-            color: C.text,
-          }}
-        >
-          {t.scoreHistory.scoreEvolution}
-        </span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+    <Card
+      actions={
+        <div className="seo-row seo-row--nowrap">
           {/* Trend badge */}
-          <span
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 3,
-              padding: '2px 8px',
-              borderRadius: 6,
-              fontSize: 10,
-              fontWeight: 700,
-              backgroundColor: `${trendColor}18`,
-              color: trendColor,
-              border: `1px solid ${trendColor}40`,
-            }}
-          >
-            <span style={{ fontSize: 12 }}>{trendIcon}</span>
-            {trendLabel}
-          </span>
+          <TonePill tone={getTrendTone(trend)}>
+            {trendIcon} {trendLabel}
+          </TonePill>
 
           {/* Score delta badge */}
           {scoreDelta !== 0 && (
-            <span
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                padding: '2px 6px',
-                borderRadius: 6,
-                fontSize: 10,
-                fontWeight: 800,
-                backgroundColor:
-                  scoreDelta > 0 ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)',
-                color: scoreDelta > 0 ? C.green : C.red,
-              }}
-            >
+            <TonePill tone={scoreDelta > 0 ? 'success' : 'danger'}>
               {scoreDelta > 0 ? '+' : ''}
               {scoreDelta}
-            </span>
+            </TonePill>
           )}
         </div>
-      </div>
-
+      }
+      className="seo-score-history"
+      footer={
+        <div className="seo-row seo-row--between seo-row--nowrap seo-score-history__footer">
+          <span className="seo-text seo-text--small seo-text--secondary">
+            <span className="seo-text--strong">{history.length}</span> {t.scoreHistory.measures}
+          </span>
+          <span className="seo-row seo-row--nowrap seo-text seo-text--small seo-text--secondary">
+            {t.scoreHistory.latestScore}
+            <ScorePill score={latestScore} thresholds={SCORE_THRESHOLDS} />
+          </span>
+        </div>
+      }
+      title={t.scoreHistory.scoreEvolution}
+    >
       {/* Sparkline chart */}
-      <div style={{ padding: '8px 10px 4px' }}>
-        <Sparkline data={scores} width={260} height={60} />
-      </div>
+      <Sparkline data={scores} width={260} height={60} />
 
       {/* X-axis date labels */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          padding: '0 12px 6px',
-          fontSize: 9,
-          color: C.textSecondary,
-          fontWeight: 600,
-        }}
-      >
+      <div className="seo-row seo-row--between seo-text seo-text--small seo-text--secondary">
         <span>{firstDate}</span>
         <span>{lastDate}</span>
       </div>
-
-      {/* Footer stats */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '6px 12px',
-          borderTop: `1px solid ${C.borderLight}`,
-          backgroundColor: C.surface50,
-          fontSize: 10,
-          color: C.textSecondary,
-        }}
-      >
-        <span>
-          <span style={{ fontWeight: 700, color: C.text }}>
-            {history.length}
-          </span>{' '}
-          {t.scoreHistory.measures}
-        </span>
-        <span>
-          {t.scoreHistory.latestScore}{' '}
-          <span style={{ fontWeight: 800, color: getScoreColor(latestScore) }}>
-            {latestScore}
-          </span>
-        </span>
-      </div>
-    </div>
+    </Card>
   )
 }
 

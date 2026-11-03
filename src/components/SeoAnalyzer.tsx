@@ -1,7 +1,19 @@
 'use client'
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useAllFormFields } from '@payloadcms/ui'
+import {
+  Banner,
+  Button,
+  CheckIcon,
+  ChevronIcon,
+  Collapsible,
+  CopyIcon,
+  InfoIcon,
+  NewTabIcon,
+  useAllFormFields,
+  WarningIcon,
+  XIcon,
+} from '@payloadcms/ui'
 import {
   analyzeSeo,
   extractTextFromLexical,
@@ -10,151 +22,13 @@ import {
   type CheckCategory,
   type RuleGroup,
 } from '../index.js'
+import { SCORE_GOOD, SCORE_OK } from '../constants.js'
 import { SeoSocialPreview } from './SeoSocialPreview.js'
 import { useDashboardT, useSeoAnalysisLocale, type SeoAnalysisLocaleOptions } from '../hooks/useSeoLocale.js'
 import { type DashboardTranslations } from '../dashboard-i18n.js'
 import { withSeoErrorBoundary } from './withSeoErrorBoundary.js'
-
-// ---------------------------------------------------------------------------
-// Color palette (neubrutalist — matches custom.scss)
-// ---------------------------------------------------------------------------
-const C = {
-  cyan: '#00E5FF',
-  yellow: '#FFD600',
-  orange: '#FF8A00',
-  black: '#000',
-  white: '#fff',
-  green: '#22c55e',
-  red: '#ef4444',
-  bg: '#fafafa',
-  textPrimary: 'var(--theme-text, #1a1a1a)',
-  textSecondary: 'var(--theme-elevation-600, #6b7280)',
-  border: 'var(--theme-border-color, #000)',
-  inputBg: 'var(--theme-input-bg, #fff)',
-  surfaceBg: 'var(--theme-elevation-0, #fff)',
-  surface50: 'var(--theme-elevation-50, #f9fafb)',
-}
-
-// ---------------------------------------------------------------------------
-// Styles (inline — neubrutalist)
-// ---------------------------------------------------------------------------
-const styles = {
-  wrapper: {
-    fontFamily: 'var(--font-body, Inter, system-ui, sans-serif)',
-  } as React.CSSProperties,
-
-  scoreRing: (_color: string) =>
-    ({
-      position: 'relative',
-      width: 90,
-      height: 90,
-      borderRadius: '50%',
-      border: `3px solid ${C.border}`,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      flexDirection: 'column',
-      background: C.surfaceBg,
-      boxShadow: '3px 3px 0 0 var(--theme-border-color, rgba(0,0,0,1))',
-      flexShrink: 0,
-    }) as React.CSSProperties,
-
-  scoreNumber: {
-    fontSize: 26,
-    fontWeight: 900,
-    lineHeight: 1,
-  } as React.CSSProperties,
-
-  scoreLabel: {
-    fontSize: 10,
-    fontWeight: 800,
-    textTransform: 'uppercase' as const,
-    letterSpacing: '0.06em',
-    marginTop: 2,
-  } as React.CSSProperties,
-
-  levelBadge: (bg: string, color: string) =>
-    ({
-      display: 'inline-block',
-      padding: '4px 12px',
-      borderRadius: 8,
-      fontSize: 12,
-      fontWeight: 800,
-      backgroundColor: bg,
-      color,
-      border: `2px solid ${C.border}`,
-      textTransform: 'uppercase' as const,
-      letterSpacing: '0.04em',
-    }) as React.CSSProperties,
-
-  categoryHeader: {
-    // These headers render as <button> (keyboard + screen-reader support);
-    // these four properties strip the native button look.
-    width: '100%',
-    boxSizing: 'border-box' as const,
-    textAlign: 'left' as const,
-    fontFamily: 'inherit',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: '10px 14px',
-    cursor: 'pointer',
-    borderRadius: 8,
-    border: `2px solid ${C.border}`,
-    fontWeight: 800,
-    fontSize: 13,
-    textTransform: 'uppercase' as const,
-    letterSpacing: '0.04em',
-    transition: 'background-color 0.15s',
-    userSelect: 'none' as const,
-    marginBottom: 6,
-  } as React.CSSProperties,
-
-  groupHeader: {
-    width: '100%',
-    boxSizing: 'border-box' as const,
-    textAlign: 'left' as const,
-    fontFamily: 'inherit',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: '6px 10px',
-    cursor: 'pointer',
-    borderRadius: 6,
-    fontWeight: 700,
-    fontSize: 11,
-    textTransform: 'uppercase' as const,
-    letterSpacing: '0.03em',
-    userSelect: 'none' as const,
-    marginBottom: 4,
-    marginTop: 4,
-    backgroundColor: 'var(--theme-elevation-50, #f9fafb)',
-    border: '1px solid var(--theme-elevation-200, #e5e7eb)',
-  } as React.CSSProperties,
-
-  checkItem: {
-    display: 'flex',
-    alignItems: 'flex-start',
-    gap: 8,
-    padding: '8px 12px',
-    borderRadius: 6,
-    fontSize: 12,
-    lineHeight: 1.5,
-    marginBottom: 4,
-  } as React.CSSProperties,
-
-  statusIcon: {
-    flexShrink: 0,
-    width: 18,
-    height: 18,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 4,
-    fontWeight: 900,
-    fontSize: 11,
-  } as React.CSSProperties,
-}
+import { Card, Checklist, cx, ScoreRing, statusTone, TonePill, type Tone } from '../ui/index.js'
+import './SeoAnalyzer.css'
 
 // ---------------------------------------------------------------------------
 // Group labels (i18n)
@@ -211,18 +85,19 @@ const GROUP_ORDER: RuleGroup[] = [
 // ---------------------------------------------------------------------------
 // Score level helpers
 // ---------------------------------------------------------------------------
-function getLevelColor(level: SeoAnalysis['level']): string {
+
+/** Same cut-offs as the analyzer's levels, so the ring and the level pill agree. */
+const LEVEL_THRESHOLDS = { good: SCORE_GOOD, ok: SCORE_OK }
+
+function getLevelTone(level: SeoAnalysis['level']): Tone {
   switch (level) {
     case 'excellent':
-      return C.green
     case 'good':
-      return C.yellow
+      return 'success'
     case 'ok':
-      return C.orange
-    case 'poor':
-      return C.red
+      return 'warning'
     default:
-      return C.red
+      return 'danger'
   }
 }
 
@@ -254,30 +129,30 @@ function getCategoryLabel(cat: CheckCategory, t: DashboardTranslations): string 
   }
 }
 
-function getCategoryBg(cat: CheckCategory): string {
-  switch (cat) {
-    case 'critical':
-      return 'rgba(239,68,68,0.08)'
-    case 'important':
-      return 'rgba(255,138,0,0.08)'
-    case 'bonus':
-      return 'rgba(0,229,255,0.08)'
+/** Icon for a tone: check, warning, cross, or info for anything unknown. */
+function toneIcon(tone: Tone): React.ReactNode {
+  switch (tone) {
+    case 'success':
+      return <CheckIcon size={16} />
+    case 'warning':
+      return <WarningIcon size={16} />
+    case 'danger':
+      return <XIcon size={16} />
     default:
-      return 'transparent'
+      return <InfoIcon />
   }
 }
 
-function getStatusIcon(status: SeoCheck['status']): { symbol: string; bg: string; color: string } {
-  switch (status) {
-    case 'pass':
-      return { symbol: '\u2713', bg: 'rgba(34,197,94,0.15)', color: '#16a34a' }
-    case 'warning':
-      return { symbol: '!', bg: 'rgba(255,138,0,0.15)', color: '#d97706' }
-    case 'fail':
-      return { symbol: '\u2717', bg: 'rgba(239,68,68,0.15)', color: '#dc2626' }
-    default:
-      return { symbol: '?', bg: '#eee', color: '#999' }
-  }
+/** Small toned icon used in collapsible headers. */
+function StatusMark({ tone }: { tone: Tone }) {
+  return <span className={cx('seo-analyzer__status', tone !== 'neutral' && `seo-analyzer__status--${tone}`)}>{toneIcon(tone)}</span>
+}
+
+/** Tone of a set of checks: any failure, else any warning, else success. */
+function groupTone(checks: SeoCheck[]): Tone {
+  if (checks.some((c) => c.status === 'fail')) return 'danger'
+  if (checks.some((c) => c.status === 'warning')) return 'warning'
+  return 'success'
 }
 
 // ---------------------------------------------------------------------------
@@ -295,126 +170,46 @@ function GroupSubSection({
   const [open, setOpen] = useState(true)
 
   const passCount = checks.filter((c) => c.status === 'pass').length
-  const failCount = checks.filter((c) => c.status === 'fail').length
   const total = checks.length
 
   // Summary icon for the group header
-  const groupStatus = failCount > 0 ? 'fail' : passCount === total ? 'pass' : 'warning'
-  const groupIcon = getStatusIcon(groupStatus)
+  const tone = groupTone(checks)
 
   return (
-    <div style={{ marginBottom: 2 }}>
-      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} style={styles.groupHeader}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: C.textPrimary }}>
-          <span
-            style={{
-              width: 14,
-              height: 14,
-              borderRadius: 3,
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 9,
-              fontWeight: 900,
-              backgroundColor: groupIcon.bg,
-              color: groupIcon.color,
-            }}
-          >
-            {groupIcon.symbol}
-          </span>
-          {getGroupLabels(t)[group] || group}
-          <span
-            style={{
-              fontWeight: 600,
-              fontSize: 10,
-              color: C.textSecondary,
-              textTransform: 'none' as const,
-            }}
-          >
+    <Collapsible
+      className="seo-analyzer__group"
+      header={
+        <>
+          <StatusMark tone={tone} />
+          <span className="row-label">{getGroupLabels(t)[group] || group}</span>
+          <TonePill tone="neutral">
             {passCount}/{total}
-          </span>
-        </span>
-        <span
-          style={{
-            fontSize: 10,
-            transition: 'transform 0.2s',
-            display: 'inline-block',
-            transform: open ? 'rotate(90deg)' : 'none',
-            color: C.textSecondary,
-          }}
-        >
-          {'\u25B6'}
-        </span>
-      </button>
-
-      {open && (
-        <div style={{ paddingLeft: 8 }}>
-          {checks.map((check) => {
-            const icon = getStatusIcon(check.status)
-            return (
-              <div
-                key={check.id}
-                style={{
-                  ...styles.checkItem,
-                  backgroundColor:
-                    check.status === 'fail'
-                      ? 'rgba(239,68,68,0.05)'
-                      : check.status === 'warning'
-                        ? 'rgba(255,138,0,0.05)'
-                        : 'transparent',
-                }}
-              >
-                <span
-                  style={{
-                    ...styles.statusIcon,
-                    backgroundColor: icon.bg,
-                    color: icon.color,
-                  }}
-                >
-                  {icon.symbol}
-                </span>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div
-                    style={{
-                      fontWeight: 700,
-                      fontSize: 12,
-                      marginBottom: 2,
-                      color: C.textPrimary,
-                    }}
-                  >
-                    {check.label}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 11,
-                      color: C.textSecondary,
-                      lineHeight: 1.4,
-                    }}
-                  >
-                    {check.message}
-                  </div>
-                  {check.tip && check.status !== 'pass' && (
-                    <div
-                      style={{
-                        fontSize: 10,
-                        color: C.textSecondary,
-                        lineHeight: 1.4,
-                        marginTop: 4,
-                        paddingLeft: 8,
-                        borderLeft: '2px solid var(--theme-elevation-200, #e5e7eb)',
-                        fontStyle: 'italic',
-                      }}
-                    >
-                      {check.tip}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
-    </div>
+          </TonePill>
+        </>
+      }
+      isCollapsed={!open}
+      onToggle={(collapsed) => setOpen(!collapsed)}
+    >
+      <Checklist
+        items={checks.map((check) => {
+          const itemTone = statusTone(check.status)
+          return {
+            id: check.id,
+            tone: itemTone,
+            icon: toneIcon(itemTone),
+            content: (
+              <>
+                <span className="seo-text seo-text--small seo-text--strong">{check.label}</span>
+                <span className="seo-text seo-text--small seo-text--secondary">{check.message}</span>
+                {check.tip && check.status !== 'pass' && (
+                  <span className="seo-text seo-text--small seo-text--secondary seo-analyzer__tip">{check.tip}</span>
+                )}
+              </>
+            ),
+          }
+        })}
+      />
+    </Collapsible>
   )
 }
 
@@ -463,50 +258,25 @@ function CategorySection({
   }, [checks])
 
   return (
-    <div style={{ marginBottom: 8 }}>
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        aria-expanded={open}
-        style={{
-          ...styles.categoryHeader,
-          backgroundColor: getCategoryBg(category),
-        }}
-      >
-        <span style={{ color: C.textPrimary }}>
-          {getCategoryLabel(category, t)}{' '}
-          <span
-            style={{
-              fontWeight: 700,
-              fontSize: 11,
-              color: C.textSecondary,
-              textTransform: 'none' as const,
-            }}
-          >
-            ({passCount}/{total})
-          </span>
-        </span>
-        <span
-          style={{
-            fontSize: 14,
-            transition: 'transform 0.2s',
-            display: 'inline-block',
-            transform: open ? 'rotate(90deg)' : 'none',
-            color: C.textSecondary,
-          }}
-        >
-          {'\u25B6'}
-        </span>
-      </button>
-
-      {open && (
-        <div style={{ paddingLeft: 4 }}>
-          {groupedChecks.map(({ group, checks: groupChecks }) => (
-            <GroupSubSection key={group} group={group} checks={groupChecks} t={t} />
-          ))}
-        </div>
-      )}
-    </div>
+    <Collapsible
+      className="seo-analyzer__category"
+      header={
+        <>
+          <span className="row-label">{getCategoryLabel(category, t)}</span>
+          <TonePill tone={groupTone(checks)}>
+            {passCount}/{total}
+          </TonePill>
+        </>
+      }
+      isCollapsed={!open}
+      onToggle={(collapsed) => setOpen(!collapsed)}
+    >
+      <div className="seo-stack seo-stack--tight">
+        {groupedChecks.map(({ group, checks: groupChecks }) => (
+          <GroupSubSection key={group} group={group} checks={groupChecks} t={t} />
+        ))}
+      </div>
+    </Collapsible>
   )
 }
 
@@ -641,7 +411,6 @@ function AiDiffRow({
   labelCurrent,
   labelSuggested,
   emptyValue,
-  C: colors,
 }: {
   label: string
   current: string
@@ -649,35 +418,65 @@ function AiDiffRow({
   labelCurrent: string
   labelSuggested: string
   emptyValue: string
-  C: typeof C
 }) {
   return (
-    <div style={{ marginBottom: 10 }}>
-      <div style={{ fontSize: 10, fontWeight: 700, color: colors.textSecondary, textTransform: 'uppercase' as const, marginBottom: 4 }}>
-        {label}
+    <div className="seo-stack seo-stack--tight">
+      <span className="seo-field__label">{label}</span>
+      <div className="seo-text seo-text--small seo-text--secondary">
+        <span className="seo-text--strong">{labelCurrent}: </span>
+        <span className={cx(current && 'seo-analyzer__struck')}>{current || emptyValue}</span>
       </div>
-      <div style={{ fontSize: 11, color: colors.textSecondary, marginBottom: 3 }}>
-        <span style={{ fontWeight: 700 }}>{labelCurrent}: </span>
-        <span style={{ textDecoration: current ? 'line-through' : 'none', opacity: 0.7 }}>
-          {current || emptyValue}
-        </span>
+      <div className="seo-inset seo-text seo-text--small seo-analyzer__suggested">
+        <TonePill tone="success">{labelSuggested}</TonePill>
+        <span>{suggested || emptyValue}</span>
       </div>
-      <div
-        style={{
-          padding: '6px 10px',
-          borderRadius: 6,
-          border: `1px solid var(--theme-elevation-200, #e5e7eb)`,
-          backgroundColor: colors.surface50,
-          fontSize: 12,
-          color: colors.textPrimary,
-          lineHeight: 1.5,
-        }}
-      >
-        <span style={{ fontSize: 10, fontWeight: 700, color: colors.green, textTransform: 'uppercase' as const, marginRight: 6 }}>
-          {labelSuggested}
-        </span>
-        {suggested || emptyValue}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// AI generate — one generated meta value with its length and a copy button
+// ---------------------------------------------------------------------------
+function AiMetaValue({
+  label,
+  value,
+  min,
+  max,
+  copied,
+  onCopy,
+  copyLabel,
+  emptyValue,
+}: {
+  label: string
+  value: string
+  min: number
+  max: number
+  copied: boolean
+  onCopy: () => void
+  copyLabel: string
+  emptyValue: string
+}) {
+  return (
+    <div className="seo-stack seo-stack--tight">
+      <div className="seo-row seo-row--between seo-row--nowrap">
+        <span className="seo-field__label">{label}</span>
+        <div className="seo-row seo-row--nowrap">
+          <TonePill tone={value.length >= min && value.length <= max ? 'success' : 'warning'}>
+            {value.length}/{max}
+          </TonePill>
+          <Button
+            buttonStyle="ghost"
+            icon={copied ? <CheckIcon size={16} /> : <CopyIcon size={16} />}
+            margin={false}
+            onClick={onCopy}
+            size="medium"
+            type="button"
+          >
+            {copyLabel}
+          </Button>
+        </div>
       </div>
+      <div className="seo-inset seo-text seo-text--small">{value || emptyValue}</div>
     </div>
   )
 }
@@ -955,6 +754,14 @@ const SeoAnalyzerInner: React.FC<SeoAnalyzerFieldProps> = ({ field }) => {
     return { analysis: result, wordCount: wc }
   }, [formFields, focusKeyword, focusKeywords, isCornerstone, updatedAt, contentLastReviewed, getFieldValue, analysisLocale])
 
+  // The page host for the social preview. Read after mount: during SSR there is no
+  // window, and reading it in render made the server and client markup disagree
+  // (hydration error once the preview body is rendered while collapsed).
+  const [hostname, setHostname] = useState('example.com')
+  useEffect(() => {
+    setHostname(window.location.hostname)
+  }, [])
+
   // Social preview data — extracted from form state
   const socialPreviewData = useMemo(() => {
     const metaTitle = getFieldValue('meta.title') as string | undefined
@@ -968,14 +775,8 @@ const SeoAnalyzerInner: React.FC<SeoAnalyzerFieldProps> = ({ field }) => {
       imageUrl = (metaImage as { url?: string }).url || undefined
     }
 
-    // Detect hostname from window
-    let hostname = 'example.com'
-    if (typeof window !== 'undefined') {
-      hostname = window.location.hostname
-    }
-
     return { metaTitle, metaDescription, imageUrl, hostname, slug }
-  }, [formFields, getFieldValue])
+  }, [formFields, getFieldValue, hostname])
 
   // Internal linking — extract text content for suggestions
   const textContentForLinks = useMemo(() => {
@@ -1037,7 +838,6 @@ const SeoAnalyzerInner: React.FC<SeoAnalyzerFieldProps> = ({ field }) => {
 
   const scoreDelta = initialScoreRef.current !== null ? analysis.score - initialScoreRef.current : null
 
-  const levelColor = getLevelColor(analysis.level)
   const levelLabel = getLevelLabel(analysis.level, t)
 
   // Group checks by category
@@ -1053,7 +853,7 @@ const SeoAnalyzerInner: React.FC<SeoAnalyzerFieldProps> = ({ field }) => {
 
   // Feature 2: Smart Suggestions based on failed/warning checks
   const suggestions = useMemo(() => {
-    const items: Array<{ icon: string; text: string; checkId: string }> = []
+    const items: Array<{ tone: Tone; text: string; checkId: string }> = []
 
     // Collect failed and warning checks sorted by priority
     const prioritized: SeoCheck[] = []
@@ -1074,503 +874,260 @@ const SeoAnalyzerInner: React.FC<SeoAnalyzerFieldProps> = ({ field }) => {
       if (alreadyHasGroup) continue
 
       let text = ''
-      let icon = ''
 
       if (check.id.startsWith('title-length') || check.id.startsWith('title-')) {
         const match = check.message.match(/(\d+)\s*caract|\b(\d+)\s*char/)
         const charCount = match ? (match[1] || match[2]) : '?'
         text = `${t.seoAnalyzer.adjustTitle} (${t.seoAnalyzer.currently} ${charCount} ${t.seoAnalyzer.titleCharactersIdeal})`
-        icon = '\u270D'
       } else if (check.id.startsWith('meta-desc')) {
         text = t.seoAnalyzer.writeMetaDesc
-        icon = '\u2709'
       } else if (check.id === 'content-wordcount') {
         text = t.seoAnalyzer.enrichContent
-        icon = '\u270D'
       } else if (check.id === 'keyword-in-title') {
         text = t.seoAnalyzer.includeKeywordInTitle
-        icon = '\uD83C\uDFAF'
       } else if (check.id === 'keyword-in-meta') {
         text = t.seoAnalyzer.includeKeywordInDesc
-        icon = '\uD83C\uDFAF'
       } else if (check.id.startsWith('images-alt') || check.id === 'images-alt') {
         text = t.seoAnalyzer.addAltText
-        icon = '\uD83D\uDDBC'
       } else if (check.id.startsWith('linking-internal') || check.id === 'linking-internal') {
         text = t.seoAnalyzer.addInternalLinks
-        icon = '\uD83D\uDD17'
       } else {
         // Generic: use tip or message
         text = check.tip || check.message
-        icon = check.status === 'fail' ? '\u26A0' : '\u2139'
       }
 
       if (text) {
-        items.push({ icon, text, checkId: check.id })
+        items.push({ tone: statusTone(check.status), text, checkId: check.id })
       }
     }
 
     return items
   }, [analysis.checks, t])
 
-  return (
-    <div style={styles.wrapper}>
-      {/* Header with score ring */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 16,
-          marginBottom: 16,
-          padding: '16px',
-          borderRadius: 12,
-          border: `2px solid ${C.border}`,
-          backgroundColor: C.surfaceBg,
-          boxShadow: '3px 3px 0 0 var(--theme-border-color, rgba(0,0,0,1))',
-        }}
-      >
-        <div style={styles.scoreRing(levelColor)}>
-          {/* SVG ring progress */}
-          <svg
-            width="90"
-            height="90"
-            viewBox="0 0 90 90"
-            style={{ position: 'absolute', top: 0, left: 0 }}
-          >
-            <circle
-              cx="45"
-              cy="45"
-              r="40"
-              fill="none"
-              stroke="var(--theme-elevation-200, #e5e7eb)"
-              strokeWidth="4"
-            />
-            <circle
-              cx="45"
-              cy="45"
-              r="40"
-              fill="none"
-              stroke={levelColor}
-              strokeWidth="4"
-              strokeLinecap="round"
-              strokeDasharray={`${(analysis.score / 100) * 251.2} 251.2`}
-              transform="rotate(-90 45 45)"
-              style={{ transition: 'stroke-dasharray 0.5s ease' }}
-            />
-          </svg>
-          <span style={{ ...styles.scoreNumber, color: levelColor }}>{analysis.score}</span>
-          <span style={{ ...styles.scoreLabel, color: C.textSecondary }}>{t.seoAnalyzer.outOf100}</span>
-        </div>
+  const handleAiGenerate = async () => {
+    setAiGenerating(true)
+    setAiResult(null)
+    try {
+      const title = getFieldValue('title') as string || ''
+      const slug = getFieldValue('slug') as string || ''
+      const content = getFieldValue('content')
+      const heroRichTextVal = getFieldValue('hero.richText')
 
-        <div style={{ flex: 1 }}>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              marginBottom: 6,
-            }}
-          >
-            <div
-              style={{
-                fontWeight: 900,
-                fontSize: 15,
-                textTransform: 'uppercase',
-                letterSpacing: '0.04em',
-                color: C.textPrimary,
-              }}
-            >
-              {t.seoAnalyzer.seoScore}
+      // Extract text from content for the AI endpoint
+      let textContent = ''
+      if (content) textContent += extractTextFromLexical(content)
+      if (heroRichTextVal) textContent += ' ' + extractTextFromLexical(heroRichTextVal)
+
+      // Also extract from layout blocks
+      let blockIdx = 0
+      while (blockIdx < 100) {
+        const blockType = getFieldValue(`layout.${blockIdx}.blockType`) as string | undefined
+        if (!blockType) break
+        const rt = getFieldValue(`layout.${blockIdx}.richText`)
+        if (rt) textContent += ' ' + extractTextFromLexical(rt)
+        let colIdx = 0
+        while (colIdx < 20) {
+          const colRt = getFieldValue(`layout.${blockIdx}.columns.${colIdx}.richText`)
+          if (colRt === undefined && colIdx > 0) break
+          if (colRt) textContent += ' ' + extractTextFromLexical(colRt)
+          colIdx++
+        }
+        blockIdx++
+      }
+
+      const res = await fetch('/api/seo-plugin/ai-generate', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          focusKeyword: focusKeyword || '',
+          content: textContent.trim(),
+          slug,
+        }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setAiResult(data)
+      }
+    } catch {
+      // Silently fail
+    }
+    setAiGenerating(false)
+  }
+
+  const handleAiOptimize = async () => {
+    setAiOptimizing(true)
+    setAiOptimizeResult(null)
+    setAiOptimizeApplied(false)
+    setAiOptimizeError(false)
+    try {
+      const res = await fetch('/api/seo-plugin/ai-optimize', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ collection: currentCollection, id: documentId }),
+      })
+      if (res.ok) {
+        setAiOptimizeResult(await res.json())
+      } else {
+        setAiOptimizeError(true)
+      }
+    } catch {
+      setAiOptimizeError(true)
+    }
+    setAiOptimizing(false)
+  }
+
+  // Cannibalization risk grows with the number of other pages using the keyword
+  const cannibalizationHigh = (keywordUsage?.pages.length ?? 0) > 2
+
+  return (
+    <div className="seo-sidebar seo-analyzer">
+      {/* Header with score ring */}
+      <Card
+        actions={
+          /* Feature 1: Score delta badge */
+          scoreDelta !== null && scoreDelta !== 0 ? (
+            <TonePill tone={scoreDelta > 0 ? 'success' : 'danger'}>
+              {scoreDelta > 0 ? '+' : ''}
+              {scoreDelta}
+            </TonePill>
+          ) : undefined
+        }
+        title={t.seoAnalyzer.seoScore}
+      >
+        <div className="seo-analyzer__score">
+          <ScoreRing
+            aria-label={`${analysis.score} ${t.seoAnalyzer.outOf100}`}
+            label={
+              <span className="seo-analyzer__ring-label">
+                <span className="seo-analyzer__ring-value">{analysis.score}</span>
+                <span className="seo-analyzer__ring-caption">{t.seoAnalyzer.outOf100}</span>
+              </span>
+            }
+            score={analysis.score}
+            size={80}
+            thresholds={LEVEL_THRESHOLDS}
+          />
+
+          <div className="seo-stack seo-stack--tight seo-analyzer__score-meta">
+            <div className="seo-row">
+              <TonePill tone={getLevelTone(analysis.level)}>{levelLabel}</TonePill>
+              {isCornerstone && <TonePill tone="brand">{t.seoAnalyzer.cornerstoneLabel}</TonePill>}
+              {analysis.aiReadiness && (
+                <span title={t.seoAnalyzer.aiReadinessTooltip}>
+                  <TonePill tone={getLevelTone(analysis.aiReadiness.level)}>
+                    {t.seoAnalyzer.aiReadiness} {analysis.aiReadiness.score}
+                  </TonePill>
+                </span>
+              )}
             </div>
-            {/* Feature 1: Score delta badge */}
-            {scoreDelta !== null && scoreDelta !== 0 && (
-              <span
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  padding: '2px 8px',
-                  borderRadius: 6,
-                  fontSize: 12,
-                  fontWeight: 900,
-                  border: `2px solid ${C.border}`,
-                  backgroundColor: scoreDelta > 0 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)',
-                  color: scoreDelta > 0 ? C.green : C.red,
-                  boxShadow: '1px 1px 0 0 var(--theme-border-color, rgba(0,0,0,1))',
-                }}
-              >
-                {scoreDelta > 0 ? '+' : ''}{scoreDelta}
-              </span>
-            )}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <div style={styles.levelBadge(levelColor, levelColor === C.yellow ? C.black : C.white)}>
-              {levelLabel}
-            </div>
-            {isCornerstone && (
-              <div style={{
-                display: 'inline-block',
-                padding: '4px 10px',
-                borderRadius: 8,
-                fontSize: 11,
-                fontWeight: 900,
-                backgroundColor: '#7c3aed',
-                color: '#fff',
-                border: `2px solid ${C.border}`,
-                textTransform: 'uppercase' as const,
-                letterSpacing: '0.04em',
-              }}>
-                {t.seoAnalyzer.cornerstoneLabel}
-              </div>
-            )}
-            {analysis.aiReadiness && (
-              <div
-                title={t.seoAnalyzer.aiReadinessTooltip}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  padding: '4px 10px',
-                  borderRadius: 8,
-                  fontSize: 11,
-                  fontWeight: 900,
-                  backgroundColor: getLevelColor(analysis.aiReadiness.level),
-                  color: getLevelColor(analysis.aiReadiness.level) === C.yellow ? C.black : C.white,
-                  border: `2px solid ${C.border}`,
-                  textTransform: 'uppercase' as const,
-                  letterSpacing: '0.04em',
-                }}
-              >
-                {'✨'} {t.seoAnalyzer.aiReadiness} {analysis.aiReadiness.score}
-              </div>
-            )}
-          </div>
-          <div
-            style={{
-              fontSize: 11,
-              color: C.textSecondary,
-              marginTop: 6,
-              lineHeight: 1.4,
-            }}
-          >
-            {passChecks} / {totalChecks} {t.seoAnalyzer.checksPassed}
-            {failChecks > 0 && (
-              <span style={{ color: C.red, fontWeight: 700 }}>
-                {' '}
-                ({failChecks} {t.seoAnalyzer.errorsCount})
-              </span>
-            )}
-            {failChecks === 0 && warnChecks > 0 && (
-              <span style={{ color: C.orange, fontWeight: 700 }}>
-                {' '}
-                ({warnChecks} {t.seoAnalyzer.warningsCount})
-              </span>
-            )}
+            <p className="seo-text seo-text--small seo-text--secondary">
+              {passChecks} / {totalChecks} {t.seoAnalyzer.checksPassed}
+              {failChecks > 0 && (
+                <span className="seo-text--danger seo-text--strong">
+                  {' '}
+                  ({failChecks} {t.seoAnalyzer.errorsCount})
+                </span>
+              )}
+              {failChecks === 0 && warnChecks > 0 && (
+                <span className="seo-text--warning seo-text--strong">
+                  {' '}
+                  ({warnChecks} {t.seoAnalyzer.warningsCount})
+                </span>
+              )}
+            </p>
           </div>
         </div>
-      </div>
+      </Card>
 
       {/* Reading time + word count info bar */}
       {wordCount > 0 && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            marginBottom: 12,
-            padding: '8px 14px',
-            borderRadius: 8,
-            border: `1px solid var(--theme-elevation-200, #e5e7eb)`,
-            backgroundColor: C.surface50,
-            fontSize: 11,
-            color: C.textSecondary,
-          }}
-        >
-          <span style={{ fontWeight: 700, color: C.textPrimary }}>
+        <div className="seo-inset seo-text seo-text--small seo-text--secondary seo-analyzer__facts">
+          <span className="seo-text seo-text--small seo-text--strong">
             {t.seoAnalyzer.readingTime.replace('{n}', String(readingTime))}
           </span>
-          <span style={{ opacity: 0.4 }}>|</span>
           <span>{wordCount} {t.seoAnalyzer.wordsLabel}</span>
           {focusKeywords.length > 0 && (
-            <>
-              <span style={{ opacity: 0.4 }}>|</span>
-              <span>{focusKeywords.length} {t.seoAnalyzer.secondaryKeywords}</span>
-            </>
+            <span>{focusKeywords.length} {t.seoAnalyzer.secondaryKeywords}</span>
           )}
         </div>
       )}
 
       {/* AI Meta Generation */}
-      <div style={{ marginBottom: 12 }}>
-        <button
-          type="button"
+      <div className="seo-stack seo-stack--tight">
+        <Button
+          buttonStyle="secondary"
+          className="seo-analyzer__action"
           disabled={aiGenerating}
-          onClick={async () => {
-            setAiGenerating(true)
-            setAiResult(null)
-            try {
-              const title = getFieldValue('title') as string || ''
-              const slug = getFieldValue('slug') as string || ''
-              const content = getFieldValue('content')
-              const heroRichTextVal = getFieldValue('hero.richText')
-
-              // Extract text from content for the AI endpoint
-              let textContent = ''
-              if (content) textContent += extractTextFromLexical(content)
-              if (heroRichTextVal) textContent += ' ' + extractTextFromLexical(heroRichTextVal)
-
-              // Also extract from layout blocks
-              let blockIdx = 0
-              while (blockIdx < 100) {
-                const blockType = getFieldValue(`layout.${blockIdx}.blockType`) as string | undefined
-                if (!blockType) break
-                const rt = getFieldValue(`layout.${blockIdx}.richText`)
-                if (rt) textContent += ' ' + extractTextFromLexical(rt)
-                let colIdx = 0
-                while (colIdx < 20) {
-                  const colRt = getFieldValue(`layout.${blockIdx}.columns.${colIdx}.richText`)
-                  if (colRt === undefined && colIdx > 0) break
-                  if (colRt) textContent += ' ' + extractTextFromLexical(colRt)
-                  colIdx++
-                }
-                blockIdx++
-              }
-
-              const res = await fetch('/api/seo-plugin/ai-generate', {
-                method: 'POST',
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  title,
-                  focusKeyword: focusKeyword || '',
-                  content: textContent.trim(),
-                  slug,
-                }),
-              })
-              if (res.ok) {
-                const data = await res.json()
-                setAiResult(data)
-              }
-            } catch {
-              // Silently fail
-            }
-            setAiGenerating(false)
-          }}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            width: '100%',
-            padding: '10px 14px',
-            borderRadius: 8,
-            border: `2px solid ${C.border}`,
-            backgroundColor: C.cyan,
-            color: C.black,
-            fontWeight: 800,
-            fontSize: 12,
-            cursor: aiGenerating ? 'wait' : 'pointer',
-            opacity: aiGenerating ? 0.7 : 1,
-            textTransform: 'uppercase' as const,
-            letterSpacing: '0.04em',
-            justifyContent: 'center',
-            boxShadow: '2px 2px 0 0 var(--theme-border-color, rgba(0,0,0,1))',
-          }}
+          margin={false}
+          onClick={handleAiGenerate}
+          size="medium"
+          type="button"
         >
-          {aiGenerating ? t.common.generating : `\u2728 ${t.seoAnalyzer.generateMeta}`}
-        </button>
+          {aiGenerating ? t.common.generating : t.seoAnalyzer.generateMeta}
+        </Button>
 
         {/* AI Results panel */}
         {aiResult && (
-          <div
-            style={{
-              marginTop: 8,
-              padding: '12px 14px',
-              borderRadius: 8,
-              border: `2px solid ${C.border}`,
-              backgroundColor: C.surfaceBg,
-            }}
-          >
+          <Card>
             {/* Generated meta title */}
-            <div style={{ marginBottom: 10 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                <span style={{ fontSize: 10, fontWeight: 700, color: C.textSecondary, textTransform: 'uppercase' as const }}>
-                  {t.seoAnalyzer.metaTitle}
-                </span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span
-                    style={{
-                      fontSize: 10,
-                      fontWeight: 700,
-                      color: aiResult.metaTitle.length >= 50 && aiResult.metaTitle.length <= 60 ? C.green : C.orange,
-                    }}
-                  >
-                    {aiResult.metaTitle.length}/60
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      navigator.clipboard.writeText(aiResult.metaTitle)
-                      setAiCopied('title')
-                      setTimeout(() => setAiCopied(null), 1500)
-                    }}
-                    style={{
-                      padding: '2px 8px',
-                      borderRadius: 4,
-                      fontSize: 9,
-                      fontWeight: 800,
-                      textTransform: 'uppercase' as const,
-                      backgroundColor: aiCopied === 'title' ? C.green : C.surface50,
-                      color: aiCopied === 'title' ? C.white : C.textPrimary,
-                      border: `1px solid ${C.border}`,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {aiCopied === 'title' ? '\u2713' : t.common.copy}
-                  </button>
-                </div>
-              </div>
-              <div
-                style={{
-                  padding: '6px 10px',
-                  borderRadius: 6,
-                  border: `1px solid var(--theme-elevation-200, #e5e7eb)`,
-                  backgroundColor: C.surface50,
-                  fontSize: 12,
-                  color: C.textPrimary,
-                  lineHeight: 1.5,
-                }}
-              >
-                {aiResult.metaTitle || t.seoAnalyzer.emptyValue}
-              </div>
-            </div>
+            <AiMetaValue
+              copied={aiCopied === 'title'}
+              copyLabel={t.common.copy}
+              emptyValue={t.seoAnalyzer.emptyValue}
+              label={t.seoAnalyzer.metaTitle}
+              max={60}
+              min={50}
+              onCopy={() => {
+                navigator.clipboard.writeText(aiResult.metaTitle)
+                setAiCopied('title')
+                setTimeout(() => setAiCopied(null), 1500)
+              }}
+              value={aiResult.metaTitle}
+            />
 
             {/* Generated meta description */}
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                <span style={{ fontSize: 10, fontWeight: 700, color: C.textSecondary, textTransform: 'uppercase' as const }}>
-                  {t.seoAnalyzer.metaDescription}
-                </span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span
-                    style={{
-                      fontSize: 10,
-                      fontWeight: 700,
-                      color: aiResult.metaDescription.length >= 120 && aiResult.metaDescription.length <= 160 ? C.green : C.orange,
-                    }}
-                  >
-                    {aiResult.metaDescription.length}/160
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      navigator.clipboard.writeText(aiResult.metaDescription)
-                      setAiCopied('desc')
-                      setTimeout(() => setAiCopied(null), 1500)
-                    }}
-                    style={{
-                      padding: '2px 8px',
-                      borderRadius: 4,
-                      fontSize: 9,
-                      fontWeight: 800,
-                      textTransform: 'uppercase' as const,
-                      backgroundColor: aiCopied === 'desc' ? C.green : C.surface50,
-                      color: aiCopied === 'desc' ? C.white : C.textPrimary,
-                      border: `1px solid ${C.border}`,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {aiCopied === 'desc' ? '\u2713' : t.common.copy}
-                  </button>
-                </div>
-              </div>
-              <div
-                style={{
-                  padding: '6px 10px',
-                  borderRadius: 6,
-                  border: `1px solid var(--theme-elevation-200, #e5e7eb)`,
-                  backgroundColor: C.surface50,
-                  fontSize: 12,
-                  color: C.textPrimary,
-                  lineHeight: 1.5,
-                }}
-              >
-                {aiResult.metaDescription || t.seoAnalyzer.emptyValue}
-              </div>
-            </div>
-          </div>
+            <AiMetaValue
+              copied={aiCopied === 'desc'}
+              copyLabel={t.common.copy}
+              emptyValue={t.seoAnalyzer.emptyValue}
+              label={t.seoAnalyzer.metaDescription}
+              max={160}
+              min={120}
+              onCopy={() => {
+                navigator.clipboard.writeText(aiResult.metaDescription)
+                setAiCopied('desc')
+                setTimeout(() => setAiCopied(null), 1500)
+              }}
+              value={aiResult.metaDescription}
+            />
+          </Card>
         )}
       </div>
 
       {/* AI Optimize — scan → propose → apply (meta only) */}
-      <div style={{ marginBottom: 12 }}>
-        <button
-          type="button"
+      <div className="seo-stack seo-stack--tight">
+        <Button
+          buttonStyle="secondary"
+          className="seo-analyzer__action"
           disabled={aiOptimizing || !documentId}
-          title={!documentId ? t.seoAnalyzer.applySaveHint : undefined}
-          onClick={async () => {
-            setAiOptimizing(true)
-            setAiOptimizeResult(null)
-            setAiOptimizeApplied(false)
-            setAiOptimizeError(false)
-            try {
-              const res = await fetch('/api/seo-plugin/ai-optimize', {
-                method: 'POST',
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ collection: currentCollection, id: documentId }),
-              })
-              if (res.ok) {
-                setAiOptimizeResult(await res.json())
-              } else {
-                setAiOptimizeError(true)
-              }
-            } catch {
-              setAiOptimizeError(true)
-            }
-            setAiOptimizing(false)
-          }}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            width: '100%',
-            padding: '10px 14px',
-            borderRadius: 8,
-            border: `2px solid ${C.border}`,
-            backgroundColor: '#7c3aed',
-            color: '#fff',
-            fontWeight: 800,
-            fontSize: 12,
-            cursor: aiOptimizing || !documentId ? 'not-allowed' : 'pointer',
-            opacity: aiOptimizing || !documentId ? 0.6 : 1,
-            textTransform: 'uppercase' as const,
-            letterSpacing: '0.04em',
-            justifyContent: 'center',
-            boxShadow: '2px 2px 0 0 var(--theme-border-color, rgba(0,0,0,1))',
-          }}
+          extraButtonProps={!documentId ? { title: t.seoAnalyzer.applySaveHint } : undefined}
+          margin={false}
+          onClick={handleAiOptimize}
+          size="medium"
+          type="button"
         >
-          {aiOptimizing ? t.seoAnalyzer.optimizeRunning : `✨ ${t.seoAnalyzer.optimizeWithAi}`}
-        </button>
+          {aiOptimizing ? t.seoAnalyzer.optimizeRunning : t.seoAnalyzer.optimizeWithAi}
+        </Button>
 
-        {aiOptimizeError && (
-          <div style={{ marginTop: 8, padding: '8px 12px', borderRadius: 6, fontSize: 11, color: C.white, backgroundColor: C.red }}>
-            {t.common.loadingError}
-          </div>
-        )}
+        {aiOptimizeError && <Banner type="danger">{t.common.loadingError}</Banner>}
 
         {aiOptimizeResult && (
-          <div
-            style={{
-              marginTop: 8,
-              padding: '12px 14px',
-              borderRadius: 8,
-              border: `2px solid ${C.border}`,
-              backgroundColor: C.surfaceBg,
-            }}
-          >
+          <Card>
             {aiOptimizeResult.method === 'heuristic' && (
-              <div style={{ fontSize: 10, color: C.textSecondary, marginBottom: 8, fontStyle: 'italic' }}>
-                {t.seoAnalyzer.heuristicNote}
-              </div>
+              <p className="seo-text seo-text--small seo-text--secondary">{t.seoAnalyzer.heuristicNote}</p>
             )}
 
             {/* Title: current → suggested */}
@@ -1581,7 +1138,6 @@ const SeoAnalyzerInner: React.FC<SeoAnalyzerFieldProps> = ({ field }) => {
               labelCurrent={t.seoAnalyzer.labelCurrent}
               labelSuggested={t.seoAnalyzer.labelSuggested}
               emptyValue={t.seoAnalyzer.emptyValue}
-              C={C}
             />
             {/* Description: current → suggested */}
             <AiDiffRow
@@ -1591,7 +1147,6 @@ const SeoAnalyzerInner: React.FC<SeoAnalyzerFieldProps> = ({ field }) => {
               labelCurrent={t.seoAnalyzer.labelCurrent}
               labelSuggested={t.seoAnalyzer.labelSuggested}
               emptyValue={t.seoAnalyzer.emptyValue}
-              C={C}
             />
             {/* Focus keyword — only when AI proposes filling an empty one */}
             {aiOptimizeResult.suggestions.focusKeyword &&
@@ -1603,17 +1158,14 @@ const SeoAnalyzerInner: React.FC<SeoAnalyzerFieldProps> = ({ field }) => {
                   labelCurrent={t.seoAnalyzer.labelCurrent}
                   labelSuggested={t.seoAnalyzer.labelSuggested}
                   emptyValue={t.seoAnalyzer.emptyValue}
-                  C={C}
                 />
               )}
 
             {/* Rationale */}
             {aiOptimizeResult.suggestions.rationale.length > 0 && (
-              <div style={{ marginTop: 4, marginBottom: 10 }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: C.textSecondary, textTransform: 'uppercase' as const, marginBottom: 4 }}>
-                  {t.seoAnalyzer.whyChanges}
-                </div>
-                <ul style={{ margin: 0, paddingLeft: 16, fontSize: 11, color: C.textPrimary, lineHeight: 1.5 }}>
+              <div className="seo-stack seo-stack--tight">
+                <span className="seo-field__label">{t.seoAnalyzer.whyChanges}</span>
+                <ul className="seo-text seo-text--small seo-analyzer__bullets">
                   {aiOptimizeResult.suggestions.rationale.map((r, i) => (
                     <li key={i}>{r}</li>
                   ))}
@@ -1622,9 +1174,12 @@ const SeoAnalyzerInner: React.FC<SeoAnalyzerFieldProps> = ({ field }) => {
             )}
 
             {/* Apply button */}
-            <button
-              type="button"
+            <Button
+              buttonStyle="primary"
+              className="seo-analyzer__action"
               disabled={aiOptimizeApplied}
+              icon={aiOptimizeApplied ? <CheckIcon size={16} /> : undefined}
+              margin={false}
               onClick={() => {
                 const sug = aiOptimizeResult.suggestions
                 if (sug.metaTitle) dispatchFields({ type: 'UPDATE', path: 'meta.title', value: sug.metaTitle })
@@ -1634,272 +1189,103 @@ const SeoAnalyzerInner: React.FC<SeoAnalyzerFieldProps> = ({ field }) => {
                 }
                 setAiOptimizeApplied(true)
               }}
-              style={{
-                width: '100%',
-                padding: '9px 14px',
-                borderRadius: 6,
-                border: `2px solid ${C.border}`,
-                backgroundColor: aiOptimizeApplied ? C.green : C.cyan,
-                color: aiOptimizeApplied ? C.white : C.black,
-                fontWeight: 800,
-                fontSize: 11,
-                textTransform: 'uppercase' as const,
-                letterSpacing: '0.04em',
-                cursor: aiOptimizeApplied ? 'default' : 'pointer',
-              }}
+              size="medium"
+              type="button"
             >
-              {aiOptimizeApplied ? `✓ ${t.seoAnalyzer.applied}` : t.seoAnalyzer.applyAll}
-            </button>
+              {aiOptimizeApplied ? t.seoAnalyzer.applied : t.seoAnalyzer.applyAll}
+            </Button>
             {aiOptimizeApplied && (
-              <div style={{ marginTop: 6, fontSize: 10, color: C.textSecondary, textAlign: 'center' }}>
+              <p className="seo-text seo-text--small seo-text--secondary seo-analyzer__centered">
                 {t.seoAnalyzer.applySaveHint}
-              </div>
+              </p>
             )}
-          </div>
+          </Card>
         )}
       </div>
 
       {/* Feature 2: Smart Suggestions */}
       {suggestions.length > 0 && (
-        <div
-          style={{
-            marginBottom: 12,
-            borderRadius: 8,
-            border: `2px solid ${C.border}`,
-            backgroundColor: C.surfaceBg,
-            overflow: 'hidden',
-          }}
+        <Collapsible
+          header={
+            <>
+              <span className="row-label">{t.seoAnalyzer.improvementSuggestions}</span>
+              <TonePill tone="neutral">{suggestions.length}</TonePill>
+            </>
+          }
+          isCollapsed={!suggestionsOpen}
+          onToggle={(collapsed) => setSuggestionsOpen(!collapsed)}
         >
-          <button
-            type="button"
-            onClick={() => setSuggestionsOpen(!suggestionsOpen)}
-            aria-expanded={suggestionsOpen}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              width: '100%',
-              boxSizing: 'border-box' as const,
-              textAlign: 'left' as const,
-              fontFamily: 'inherit',
-              border: 'none',
-              padding: '10px 14px',
-              cursor: 'pointer',
-              fontWeight: 800,
-              fontSize: 12,
-              textTransform: 'uppercase' as const,
-              letterSpacing: '0.04em',
-              backgroundColor: 'rgba(0,229,255,0.08)',
-              userSelect: 'none' as const,
-              color: C.textPrimary,
-            }}
-          >
-            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              {'\uD83D\uDCA1'} {t.seoAnalyzer.improvementSuggestions}
-              <span style={{ fontWeight: 600, fontSize: 10, color: C.textSecondary, textTransform: 'none' as const }}>
-                ({suggestions.length})
-              </span>
-            </span>
-            <span
-              style={{
-                fontSize: 10,
-                transition: 'transform 0.2s',
-                display: 'inline-block',
-                transform: suggestionsOpen ? 'rotate(90deg)' : 'none',
-                color: C.textSecondary,
-              }}
-            >
-              {'\u25B6'}
-            </span>
-          </button>
-          {suggestionsOpen && (
-            <div style={{ padding: '8px 14px 12px' }}>
-              {suggestions.map((suggestion, idx) => (
-                <div
-                  key={idx}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: 8,
-                    padding: '6px 8px',
-                    borderRadius: 6,
-                    fontSize: 11,
-                    lineHeight: 1.5,
-                    marginBottom: 4,
-                    cursor: 'default',
-                    backgroundColor: idx % 2 === 0 ? 'transparent' : C.surface50,
-                    color: C.textPrimary,
-                  }}
-                >
-                  <span style={{ flexShrink: 0, fontSize: 13, lineHeight: 1.4 }}>
-                    {suggestion.icon}
-                  </span>
-                  <span style={{ fontWeight: 600 }}>
-                    {suggestion.text}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+          <Checklist
+            items={suggestions.map((suggestion, idx) => ({
+              id: String(idx),
+              tone: suggestion.tone,
+              icon: toneIcon(suggestion.tone),
+              content: <span className="seo-text seo-text--small seo-text--strong">{suggestion.text}</span>,
+            }))}
+          />
+        </Collapsible>
       )}
 
       {/* Feature 3: Enhanced Keyword Cannibalization Warning */}
       {keywordUsage && keywordUsage.used && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'flex-start',
-            gap: 8,
-            marginBottom: 12,
-            padding: '10px 14px',
-            borderRadius: 8,
-            border: `2px solid ${keywordUsage.pages.length > 2 ? C.red : C.orange}`,
-            backgroundColor: keywordUsage.pages.length > 2 ? 'rgba(239,68,68,0.08)' : 'rgba(255,138,0,0.08)',
-            fontSize: 11,
-            lineHeight: 1.5,
-          }}
-        >
-          <span
-            style={{
-              flexShrink: 0,
-              width: 20,
-              height: 20,
-              borderRadius: 4,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 12,
-              fontWeight: 900,
-              backgroundColor: keywordUsage.pages.length > 2 ? 'rgba(239,68,68,0.2)' : 'rgba(255,138,0,0.2)',
-              color: keywordUsage.pages.length > 2 ? '#dc2626' : '#d97706',
-            }}
-          >
-            !
-          </span>
-          <div style={{ flex: 1 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-              <span style={{ fontWeight: 800, color: C.textPrimary }}>
-                {t.seoAnalyzer.seoCannibalization}
-              </span>
-              <span
-                style={{
-                  display: 'inline-block',
-                  padding: '2px 8px',
-                  borderRadius: 4,
-                  fontSize: 9,
-                  fontWeight: 900,
-                  textTransform: 'uppercase' as const,
-                  letterSpacing: '0.04em',
-                  backgroundColor: keywordUsage.pages.length > 2 ? C.red : C.orange,
-                  color: C.white,
-                  border: `1px solid ${C.border}`,
-                }}
-              >
-                {keywordUsage.pages.length > 2 ? t.seoAnalyzer.highRisk : t.cannibalization.warning}
-              </span>
+        <Banner type={cannibalizationHigh ? 'danger' : 'warning'}>
+          <div className="seo-stack seo-stack--tight seo-analyzer__banner">
+            <div className="seo-row seo-row--between">
+              <strong>{t.seoAnalyzer.seoCannibalization}</strong>
+              <TonePill tone={cannibalizationHigh ? 'danger' : 'warning'}>
+                {cannibalizationHigh ? t.seoAnalyzer.highRisk : t.cannibalization.warning}
+              </TonePill>
             </div>
-            <div style={{ color: C.textSecondary }}>
+            <div className="seo-text--small">
               &quot;{focusKeyword}&quot; —{' '}
-              <strong style={{ color: C.textPrimary }}>{keywordUsage.pages.length} {t.cannibalization.pages}</strong>.
-              {keywordUsage.pages.length > 2
+              <strong>{keywordUsage.pages.length} {t.cannibalization.pages}</strong>.
+              {cannibalizationHigh
                 ? ` ${t.seoAnalyzer.duplicationHarmsRanking}`
                 : ` ${t.seoAnalyzer.diluteRanking}`}
             </div>
-            <div style={{ marginTop: 6 }}>
-              <button
-                type="button"
-                onClick={() => setCannibalizationExpanded(!cannibalizationExpanded)}
+            <div>
+              <Button
                 aria-expanded={cannibalizationExpanded}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  cursor: 'pointer',
-                  background: 'none',
-                  border: 'none',
-                  fontFamily: 'inherit',
-                  fontSize: 10,
-                  fontWeight: 700,
-                  color: C.cyan,
-                  userSelect: 'none' as const,
-                  padding: '2px 0',
-                }}
+                buttonStyle="ghost"
+                icon={<ChevronIcon direction={cannibalizationExpanded ? 'up' : 'down'} />}
+                iconPosition="right"
+                margin={false}
+                onClick={() => setCannibalizationExpanded(!cannibalizationExpanded)}
+                size="medium"
+                type="button"
               >
-                <span
-                  style={{
-                    fontSize: 8,
-                    transition: 'transform 0.2s',
-                    display: 'inline-block',
-                    transform: cannibalizationExpanded ? 'rotate(90deg)' : 'none',
-                  }}
-                >
-                  {'\u25B6'}
-                </span>
                 {t.seoAnalyzer.viewPages} ({keywordUsage.pages.length})
-              </button>
-              {cannibalizationExpanded && (
-                <div
-                  style={{
-                    marginTop: 6,
-                    padding: '6px 0',
-                    borderTop: '1px solid var(--theme-elevation-200, #e5e7eb)',
-                  }}
-                >
-                  {keywordUsage.pages.map((page, idx) => (
-                    <div
-                      key={idx}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: 8,
-                        padding: '4px 0',
-                        borderBottom: idx < keywordUsage.pages.length - 1 ? '1px solid var(--theme-elevation-100, #f3f4f6)' : 'none',
-                      }}
-                    >
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 700, fontSize: 11, color: C.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
-                          {page.title}
-                        </div>
-                        <div style={{ fontSize: 10, color: C.textSecondary, opacity: 0.7 }}>
-                          {page.collection === 'pages' ? t.common.page : t.common.article} — /{page.slug}
-                        </div>
+              </Button>
+            </div>
+            {cannibalizationExpanded && (
+              <ul className="seo-analyzer__list">
+                {keywordUsage.pages.map((page, idx) => (
+                  <li className="seo-analyzer__list-item" key={idx}>
+                    <div className="seo-analyzer__list-main">
+                      <div className="seo-text--small seo-text--strong seo-truncate">{page.title}</div>
+                      <div className="seo-text--small">
+                        {page.collection === 'pages' ? t.common.page : t.common.article} — /{page.slug}
                       </div>
-                      <a
-                        href={`/admin/collections/${page.collection}/${page.slug}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{
-                          flexShrink: 0,
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 3,
-                          padding: '3px 8px',
-                          borderRadius: 4,
-                          fontSize: 9,
-                          fontWeight: 800,
-                          textTransform: 'uppercase' as const,
-                          letterSpacing: '0.03em',
-                          backgroundColor: C.cyan,
-                          color: C.black,
-                          border: `1px solid ${C.border}`,
-                          textDecoration: 'none',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        {t.common.edit} {'\u2197'}
-                      </a>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div style={{ marginTop: 6, fontStyle: 'italic', fontSize: 10, color: C.textSecondary }}>
-              {t.seoAnalyzer.uniqueKeywordAdvice}
-            </div>
+                    <Button
+                      buttonStyle="secondary"
+                      el="anchor"
+                      icon={<NewTabIcon size={16} />}
+                      iconPosition="right"
+                      margin={false}
+                      newTab
+                      size="medium"
+                      url={`/admin/collections/${page.collection}/${page.slug}`}
+                    >
+                      {t.common.edit}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="seo-text--small seo-analyzer__advice">{t.seoAnalyzer.uniqueKeywordAdvice}</div>
           </div>
-        </div>
+        </Banner>
       )}
 
       {/* Social Preview */}
@@ -1912,148 +1298,58 @@ const SeoAnalyzerInner: React.FC<SeoAnalyzerFieldProps> = ({ field }) => {
 
       {/* Internal Linking Suggestions */}
       {(linkSuggestions.length > 0 || linkSuggestionsLoading) && (
-        <div
-          style={{
-            marginBottom: 12,
-            borderRadius: 8,
-            border: `2px solid ${C.border}`,
-            backgroundColor: C.surfaceBg,
-            overflow: 'hidden',
-          }}
+        <Collapsible
+          header={
+            <>
+              <span className="row-label">{t.seoAnalyzer.suggestedInternalLinks}</span>
+              <TonePill tone="neutral">{linkSuggestionsLoading ? '...' : linkSuggestions.length}</TonePill>
+            </>
+          }
+          isCollapsed={!linkingSectionOpen}
+          onToggle={(collapsed) => setLinkingSectionOpen(!collapsed)}
         >
-          <button
-            type="button"
-            onClick={() => setLinkingSectionOpen(!linkingSectionOpen)}
-            aria-expanded={linkingSectionOpen}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              width: '100%',
-              boxSizing: 'border-box' as const,
-              textAlign: 'left' as const,
-              fontFamily: 'inherit',
-              border: 'none',
-              padding: '10px 14px',
-              cursor: 'pointer',
-              fontWeight: 800,
-              fontSize: 12,
-              textTransform: 'uppercase' as const,
-              letterSpacing: '0.04em',
-              backgroundColor: 'rgba(34,197,94,0.08)',
-              userSelect: 'none' as const,
-              color: C.textPrimary,
-            }}
-          >
-            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              {'\uD83D\uDD17'} {t.seoAnalyzer.suggestedInternalLinks}
-              <span style={{ fontWeight: 600, fontSize: 10, color: C.textSecondary, textTransform: 'none' as const }}>
-                {linkSuggestionsLoading ? '...' : `(${linkSuggestions.length})`}
-              </span>
-            </span>
-            <span
-              style={{
-                fontSize: 10,
-                transition: 'transform 0.2s',
-                display: 'inline-block',
-                transform: linkingSectionOpen ? 'rotate(90deg)' : 'none',
-                color: C.textSecondary,
-              }}
-            >
-              {'\u25B6'}
-            </span>
-          </button>
-          {linkingSectionOpen && (
-            <div style={{ padding: '8px 14px 12px' }}>
-              {linkSuggestionsLoading && (
-                <div style={{ fontSize: 11, color: C.textSecondary, padding: '8px 0', textAlign: 'center' }}>
-                  {t.seoAnalyzer.analyzingContent}
-                </div>
-              )}
-              {!linkSuggestionsLoading && linkSuggestions.map((link, idx) => (
-                <div
-                  key={`${link.collection}-${link.slug}`}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: 8,
-                    padding: '8px',
-                    borderRadius: 6,
-                    fontSize: 11,
-                    marginBottom: 4,
-                    backgroundColor: idx % 2 === 0 ? 'transparent' : C.surface50,
-                  }}
-                >
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                      <span style={{ fontWeight: 700, fontSize: 12, color: C.textPrimary }}>
-                        {link.title}
-                      </span>
-                      <span
-                        style={{
-                          fontSize: 9,
-                          fontWeight: 700,
-                          padding: '1px 6px',
-                          borderRadius: 4,
-                          backgroundColor:
-                            link.matchType === 'keyword' ? 'rgba(34,197,94,0.15)' :
-                            link.matchType === 'title' ? 'rgba(0,229,255,0.15)' :
-                            'rgba(255,138,0,0.15)',
-                          color:
-                            link.matchType === 'keyword' ? '#16a34a' :
-                            link.matchType === 'title' ? '#0891b2' :
-                            '#d97706',
-                          textTransform: 'uppercase' as const,
-                        }}
-                      >
+          {linkSuggestionsLoading && (
+            <p className="seo-text seo-text--small seo-text--secondary seo-analyzer__centered">
+              {t.seoAnalyzer.analyzingContent}
+            </p>
+          )}
+          {!linkSuggestionsLoading && (
+            <ul className="seo-analyzer__list">
+              {linkSuggestions.map((link) => (
+                <li className="seo-analyzer__list-item" key={`${link.collection}-${link.slug}`}>
+                  <div className="seo-analyzer__list-main">
+                    <div className="seo-row seo-row--nowrap">
+                      <span className="seo-text seo-text--small seo-text--strong seo-truncate">{link.title}</span>
+                      <TonePill tone={link.matchType === 'keyword' ? 'success' : link.matchType === 'title' ? 'neutral' : 'warning'}>
                         {link.matchType}
-                      </span>
+                      </TonePill>
                     </div>
-                    <div style={{ fontSize: 10, color: C.textSecondary, fontFamily: 'monospace' }}>
-                      /{link.slug}
-                    </div>
+                    <div className="seo-mono seo-text--secondary">/{link.slug}</div>
                     {link.contextPhrase && (
-                      <div
-                        style={{
-                          fontSize: 10,
-                          color: C.textSecondary,
-                          marginTop: 4,
-                          fontStyle: 'italic',
-                          lineHeight: 1.4,
-                        }}
-                      >
+                      <div className="seo-text seo-text--small seo-text--secondary seo-analyzer__tip">
                         {link.contextPhrase}
                       </div>
                     )}
                   </div>
-                  <button
-                    type="button"
+                  <Button
+                    buttonStyle="secondary"
+                    icon={copiedSlug === link.slug ? <CheckIcon size={16} /> : <CopyIcon size={16} />}
+                    margin={false}
                     onClick={() => {
                       navigator.clipboard.writeText(`/${link.slug}`)
                       setCopiedSlug(link.slug)
                       setTimeout(() => setCopiedSlug(null), 1500)
                     }}
-                    style={{
-                      flexShrink: 0,
-                      padding: '4px 8px',
-                      borderRadius: 4,
-                      fontSize: 9,
-                      fontWeight: 800,
-                      textTransform: 'uppercase' as const,
-                      letterSpacing: '0.03em',
-                      backgroundColor: copiedSlug === link.slug ? C.green : C.cyan,
-                      color: copiedSlug === link.slug ? C.white : C.black,
-                      border: `1px solid ${C.border}`,
-                      cursor: 'pointer',
-                    }}
+                    size="medium"
+                    type="button"
                   >
-                    {copiedSlug === link.slug ? '\u2713' : t.common.copy}
-                  </button>
-                </div>
+                    {t.common.copy}
+                  </Button>
+                </li>
               ))}
-            </div>
+            </ul>
           )}
-        </div>
+        </Collapsible>
       )}
 
       {/* Check categories */}

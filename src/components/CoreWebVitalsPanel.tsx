@@ -1,19 +1,9 @@
 'use client'
 
 import React, { useState } from 'react'
-
-// Local design tokens (Payload CSS variables) — kept self-contained.
-const C = {
-  text: 'var(--theme-text, #1a1a1a)',
-  sub: 'var(--theme-elevation-600, #6b7280)',
-  card: 'var(--theme-elevation-50, #f9fafb)',
-  bg: 'var(--theme-elevation-0, #fff)',
-  border: 'var(--theme-elevation-200, #e5e7eb)',
-  green: '#22c55e',
-  yellow: '#f59e0b',
-  red: '#ef4444',
-  blue: '#3b82f6',
-}
+import { Banner, Button, Tabs } from '@payloadcms/ui'
+import { Card, Field, Grid, StatTile, type Tone } from '../ui/index.js'
+import './CoreWebVitalsPanel.css'
 
 const S = {
   fr: {
@@ -74,11 +64,11 @@ interface CwvResponse {
   metrics: { lcp: Metric; inp: Metric; cls: Metric; tbt: Metric }
 }
 
-function ratingColor(r?: Rating): string {
-  if (r === 'good') return C.green
-  if (r === 'needs-improvement') return C.yellow
-  if (r === 'poor') return C.red
-  return C.sub
+function ratingTone(r?: Rating): Tone {
+  if (r === 'good') return 'success'
+  if (r === 'needs-improvement') return 'warning'
+  if (r === 'poor') return 'danger'
+  return 'neutral'
 }
 
 function formatValue(m: Metric, key: string): string {
@@ -119,105 +109,68 @@ export function CoreWebVitalsPanel({ locale }: { locale: 'fr' | 'en' }) {
   const labelByKey: Record<string, string> = { lcp: 'LCP', inp: 'INP', cls: 'CLS' }
 
   const metricCard = (key: 'lcp' | 'inp' | 'cls', m: Metric) => (
-    <div
+    <StatTile
+      hint={
+        <>
+          {m.rating === 'good' ? s.good : m.rating === 'needs-improvement' ? s.ni : m.rating === 'poor' ? s.poor : s.na}
+          {m.note && <span className="seo-cwv__note">{s.noInp}</span>}
+          {key === 'inp' && <span className="seo-cwv__note seo-text--brand">{s.inpHint}</span>}
+        </>
+      }
       key={key}
-      style={{
-        flex: 1,
-        minWidth: 120,
-        padding: 14,
-        borderRadius: 10,
-        border: `1px solid ${C.border}`,
-        backgroundColor: C.bg,
-      }}
-    >
-      <div style={{ fontSize: 11, fontWeight: 700, color: C.sub, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-        {labelByKey[key]}
-      </div>
-      <div style={{ fontSize: 24, fontWeight: 800, color: ratingColor(m.rating), lineHeight: 1.2, marginTop: 4 }}>
-        {formatValue(m, key)}
-      </div>
-      <div style={{ fontSize: 11, fontWeight: 700, color: ratingColor(m.rating) }}>
-        {m.rating === 'good' ? s.good : m.rating === 'needs-improvement' ? s.ni : m.rating === 'poor' ? s.poor : s.na}
-      </div>
-      {m.note && <div style={{ fontSize: 10, color: C.sub, marginTop: 4 }}>{s.noInp}</div>}
-      {key === 'inp' && <div style={{ fontSize: 10, color: C.blue, marginTop: 4, fontWeight: 700 }}>{s.inpHint}</div>}
-    </div>
+      label={labelByKey[key]}
+      tone={ratingTone(m.rating)}
+      value={formatValue(m, key)}
+    />
   )
 
-  const inputStyle: React.CSSProperties = {
-    flex: 1,
-    minWidth: 200,
-    padding: '8px 10px',
-    borderRadius: 8,
-    border: `1px solid ${C.border}`,
-    backgroundColor: C.bg,
-    color: C.text,
-    fontSize: 13,
-  }
-  const btnStyle = (active: boolean): React.CSSProperties => ({
-    padding: '8px 12px',
-    borderRadius: 8,
-    border: `1px solid ${active ? C.blue : C.border}`,
-    backgroundColor: active ? C.blue : C.bg,
-    color: active ? '#fff' : C.text,
-    fontSize: 12,
-    fontWeight: 700,
-    cursor: 'pointer',
-  })
-
   return (
-    <div
-      style={{
-        padding: 16,
-        borderRadius: 12,
-        border: `1px solid ${C.border}`,
-        backgroundColor: C.card,
-        marginBottom: 20,
-      }}
-    >
-      <div style={{ fontSize: 16, fontWeight: 800, color: C.text }}>{s.title}</div>
-      <div style={{ fontSize: 12, color: C.sub, marginTop: 2, marginBottom: 12 }}>{s.subtitle}</div>
+    <Card title={s.title}>
+      <p className="seo-text seo-text--small seo-text--secondary">{s.subtitle}</p>
 
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 12 }}>
-        <input
-          type="url"
-          aria-label={s.urlLabel}
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder={s.urlPlaceholder}
-          style={inputStyle}
+      <div className="seo-cwv__form">
+        <Field className="seo-cwv__url" label={s.urlLabel}>
+          <input
+            aria-label={s.urlLabel}
+            className="seo-input"
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder={s.urlPlaceholder}
+            type="url"
+            value={url}
+          />
+        </Field>
+        <Tabs<'mobile' | 'desktop'>
+          onChange={setStrategy}
+          tabs={[
+            { label: s.mobile, value: 'mobile' },
+            { label: s.desktop, value: 'desktop' },
+          ]}
+          value={strategy}
         />
-        <button type="button" onClick={() => setStrategy('mobile')} style={btnStyle(strategy === 'mobile')}>
-          {s.mobile}
-        </button>
-        <button type="button" onClick={() => setStrategy('desktop')} style={btnStyle(strategy === 'desktop')}>
-          {s.desktop}
-        </button>
-        <button
-          type="button"
-          onClick={run}
-          disabled={loading || !url}
-          style={{ ...btnStyle(true), opacity: loading || !url ? 0.6 : 1 }}
-        >
+        <Button buttonStyle="primary" disabled={loading || !url} margin={false} onClick={run} size="medium">
           {loading ? s.testing : s.test}
-        </button>
+        </Button>
       </div>
 
-      {error && <div role="alert" style={{ color: C.red, fontSize: 13, fontWeight: 600 }}>{error}</div>}
+      {error && (
+        <div role="alert">
+          <Banner type="danger">{error}</Banner>
+        </div>
+      )}
 
       {data && (
-        <div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+        <>
+          <Grid>
             {metricCard('lcp', data.metrics.lcp)}
             {metricCard('inp', data.metrics.inp)}
             {metricCard('cls', data.metrics.cls)}
-          </div>
-          <div style={{ fontSize: 11, color: C.sub, marginTop: 8 }}>
+          </Grid>
+          <p className="seo-text seo-text--small seo-text--secondary">
             {data.source === 'field' ? s.sourceField : s.sourceLab}
             {!data.keyConfigured && ` · ${s.noKey}`}
-          </div>
-        </div>
+          </p>
+        </>
       )}
-    </div>
+    </Card>
   )
 }

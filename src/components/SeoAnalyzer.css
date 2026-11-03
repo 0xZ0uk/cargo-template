@@ -1,0 +1,163 @@
+/*
+ * Editor sidebar (SeoAnalyzer). Layout on top of Payload's Collapsible, Button, Banner
+ * and the shared primitives in ui/styles.css. Payload tokens only.
+ */
+
+.seo-analyzer {
+  min-width: 0;
+}
+
+/* Score header: ring on the left, level and counts on the right. */
+.seo-analyzer__score {
+  display: flex;
+  align-items: center;
+  gap: var(--spacer-3);
+}
+
+.seo-analyzer__score-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.seo-analyzer__ring-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1;
+}
+
+.seo-analyzer__ring-value {
+  font-size: var(--text-body-large-bold-font-size, var(--text-body-medium-bold-font-size));
+  font-weight: var(--text-body-medium-bold-font-weight);
+}
+
+.seo-analyzer__ring-caption {
+  color: var(--color-text-secondary);
+  font-size: var(--text-body-small-font-size);
+  font-weight: var(--text-body-medium-font-weight);
+}
+
+/* Reading time, word count, secondary keywords on one wrapping line. */
+.seo-analyzer__facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacer-1) var(--spacer-2);
+}
+
+.seo-analyzer__facts > * + *::before {
+  content: '\00B7';
+  margin-inline-end: var(--spacer-2);
+}
+
+/* Full-width action buttons. */
+.seo-analyzer__action {
+  width: 100%;
+  justify-content: center;
+}
+
+.seo-analyzer__centered {
+  text-align: center;
+}
+
+.seo-analyzer__struck {
+  text-decoration: line-through;
+}
+
+.seo-analyzer__suggested {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--spacer-1) var(--spacer-2);
+}
+
+.seo-analyzer__bullets {
+  margin: 0;
+  padding-inline-start: var(--spacer-3);
+}
+
+/* Tips and context phrases under a message. */
+.seo-analyzer__tip {
+  padding-inline-start: var(--spacer-2);
+  border-inline-start: var(--stroke-width-medium) solid var(--color-border);
+  font-style: italic;
+}
+
+.seo-analyzer__advice {
+  font-style: italic;
+}
+
+/* Inside a Banner the text keeps the banner's own color. */
+.seo-analyzer__banner {
+  min-width: 0;
+}
+
+/* Rows of pages / link suggestions. */
+.seo-analyzer__list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.seo-analyzer__list-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacer-2);
+  padding: var(--spacer-2) 0;
+}
+
+.seo-analyzer__list-item + .seo-analyzer__list-item {
+  border-top: var(--stroke-width-small) solid var(--color-border);
+}
+
+.seo-analyzer__list-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--spacer-1);
+  min-width: 0;
+}
+
+/* Collapsible sections: tighter than Payload's field-level padding for a narrow sidebar,
+   and status marks in group headers. */
+.seo-analyzer .collapsible__content {
+  --collapsible-content-padding: var(--spacer-2) var(--spacer-3);
+}
+
+.seo-analyzer__status {
+  display: inline-flex;
+  flex-shrink: 0;
+  width: var(--spacer-3);
+  height: var(--spacer-3);
+  color: var(--color-icon-secondary);
+}
+
+.seo-analyzer__status svg,
+.seo-analyzer .seo-checklist__icon svg {
+  width: 100%;
+  height: 100%;
+  color: inherit;
+}
+
+.seo-analyzer__status--success {
+  color: var(--color-icon-success);
+}
+
+.seo-analyzer__status--warning {
+  color: var(--color-icon-warning);
+}
+
+.seo-analyzer__status--danger {
+  color: var(--color-icon-danger);
+}
+
+/* Last item of a checklist: no trailing separator or padding against the content edge. */
+.seo-analyzer .collapsible__content > .seo-checklist > .seo-checklist__item:last-child {
+  padding-bottom: 0;
+}
+
+.seo-analyzer .collapsible__content > .seo-checklist > .seo-checklist__item:first-child {
+  padding-top: 0;
+}

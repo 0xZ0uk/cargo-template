@@ -12,9 +12,11 @@
 'use client'
 
 import React, { useMemo } from 'react'
-import { useFormFields } from '@payloadcms/ui'
+import { CheckIcon, XIcon, useFormFields } from '@payloadcms/ui'
+import { Card, Meter, TonePill, type Tone } from '../ui/index.js'
 import { useDashboardT } from '../hooks/useSeoLocale.js'
 import { withSeoErrorBoundary } from './withSeoErrorBoundary.js'
+import './MetaField.css'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -27,40 +29,20 @@ interface OverviewFieldProps {
 }
 
 // ---------------------------------------------------------------------------
-// Color palette (neubrutalist — matches SeoAnalyzer.tsx)
-// ---------------------------------------------------------------------------
-
-const C = {
-  cyan: '#00E5FF',
-  black: '#000',
-  white: '#fff',
-  green: '#22c55e',
-  yellow: '#FFD600',
-  orange: '#FF8A00',
-  red: '#ef4444',
-  textPrimary: 'var(--theme-text, #1a1a1a)',
-  textSecondary: 'var(--theme-elevation-600, #6b7280)',
-  border: 'var(--theme-border-color, #000)',
-  surfaceBg: 'var(--theme-elevation-0, #fff)',
-  surface50: 'var(--theme-elevation-50, #f9fafb)',
-}
-
-// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function getCompletenessColor(count: number): string {
+function getCompletenessTone(count: number): Tone {
   switch (count) {
     case 0:
-      return C.red
+      return 'danger'
     case 1:
-      return C.orange
     case 2:
-      return C.yellow
+      return 'warning'
     case 3:
-      return C.green
+      return 'success'
     default:
-      return C.textSecondary
+      return 'neutral'
   }
 }
 
@@ -114,9 +96,8 @@ function OverviewFieldInner({
     }
   }, [formFields])
 
-  const completenessColor = getCompletenessColor(completedCount)
+  const completenessTone = getCompletenessTone(completedCount)
   const completenessLabel = getCompletenessLabel(completedCount, t.overview)
-  const completenessPercent = (completedCount / 3) * 100
 
   const indicators: Array<{ label: string; filled: boolean }> = [
     { label: t.overview.titleLabel, filled: hasTitle },
@@ -125,163 +106,33 @@ function OverviewFieldInner({
   ]
 
   return (
-    <div
-      style={{
-        fontFamily: 'var(--font-body, Inter, system-ui, sans-serif)',
-        padding: '12px 14px',
-        borderRadius: 10,
-        border: `2px solid ${C.border}`,
-        backgroundColor: C.surfaceBg,
-        boxShadow: '3px 3px 0 0 var(--theme-border-color, rgba(0,0,0,1))',
-        marginBottom: 12,
-      }}
+    <Card
+      actions={<TonePill tone={completenessTone}>{completedCount}/3</TonePill>}
+      className="seo-overview"
+      title={t.overview.metaCompleteness}
     >
-      {/* Header */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: 10,
-        }}
-      >
-        <span
-          style={{
-            fontSize: 12,
-            fontWeight: 800,
-            textTransform: 'uppercase' as const,
-            letterSpacing: '0.04em',
-            color: C.textPrimary,
-          }}
-        >
-          {t.overview.metaCompleteness}
-        </span>
-        <span
-          style={{
-            display: 'inline-block',
-            padding: '2px 10px',
-            borderRadius: 6,
-            fontSize: 11,
-            fontWeight: 800,
-            backgroundColor: completenessColor,
-            color: completenessColor === C.yellow ? C.black : C.white,
-            border: `2px solid ${C.border}`,
-            textTransform: 'uppercase' as const,
-            letterSpacing: '0.03em',
-          }}
-        >
-          {completedCount}/3
-        </span>
-      </div>
+      <Meter aria-label={t.overview.metaCompleteness} max={3} tone={completenessTone} value={completedCount} />
 
-      {/* Progress bar */}
-      <div
-        style={{
-          height: 6,
-          borderRadius: 3,
-          backgroundColor: 'var(--theme-elevation-200, #e5e7eb)',
-          overflow: 'hidden',
-          marginBottom: 10,
-          border: '1px solid var(--theme-elevation-200, #e5e7eb)',
-        }}
-      >
-        <div
-          style={{
-            height: '100%',
-            width: `${completenessPercent}%`,
-            backgroundColor: completenessColor,
-            borderRadius: 3,
-            transition: 'width 0.3s ease, background-color 0.3s ease',
-          }}
-        />
-      </div>
-
-      {/* Status label */}
-      <div
-        style={{
-          fontSize: 10,
-          fontWeight: 700,
-          color: completenessColor,
-          textAlign: 'center' as const,
-          marginBottom: 10,
-          textTransform: 'uppercase' as const,
-          letterSpacing: '0.04em',
-        }}
-      >
+      <p className={`seo-text seo-text--small seo-text--${completenessTone === 'neutral' ? 'secondary' : completenessTone}`}>
         {completenessLabel}
-      </div>
+      </p>
 
-      {/* Indicators */}
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 6,
-        }}
-      >
+      <ul className="seo-overview__rows">
         {indicators.map((item) => (
-          <div
-            key={item.label}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              padding: '6px 10px',
-              borderRadius: 6,
-              backgroundColor: item.filled
-                ? 'rgba(34,197,94,0.06)'
-                : 'rgba(239,68,68,0.04)',
-            }}
-          >
-            {/* Status icon */}
-            <span
-              style={{
-                width: 18,
-                height: 18,
-                borderRadius: 4,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 11,
-                fontWeight: 900,
-                backgroundColor: item.filled
-                  ? 'rgba(34,197,94,0.15)'
-                  : 'rgba(239,68,68,0.15)',
-                color: item.filled ? '#16a34a' : '#dc2626',
-                flexShrink: 0,
-              }}
-            >
-              {item.filled ? '\u2713' : '\u2717'}
+          <li className="seo-overview__row" key={item.label}>
+            <span className={`seo-meta-field__status-icon seo-meta-field__status-icon--${item.filled ? 'success' : 'warning'}`}>
+              {item.filled ? <CheckIcon /> : <XIcon />}
             </span>
-
-            {/* Label */}
-            <span
-              style={{
-                fontSize: 12,
-                fontWeight: 600,
-                color: item.filled ? C.textPrimary : C.textSecondary,
-              }}
-            >
+            <span className={item.filled ? 'seo-text seo-text--small' : 'seo-text seo-text--small seo-text--secondary'}>
               {item.label}
             </span>
-
-            {/* Status text */}
-            <span
-              style={{
-                marginLeft: 'auto',
-                fontSize: 10,
-                fontWeight: 700,
-                color: item.filled ? C.green : C.red,
-                textTransform: 'uppercase' as const,
-                letterSpacing: '0.03em',
-              }}
-            >
-              {item.filled ? t.overview.set : t.overview.missing}
+            <span className="seo-overview__row-state">
+              <TonePill tone={item.filled ? 'success' : 'neutral'}>{item.filled ? t.overview.set : t.overview.missing}</TonePill>
             </span>
-          </div>
+          </li>
         ))}
-      </div>
-    </div>
+      </ul>
+    </Card>
   )
 }
 

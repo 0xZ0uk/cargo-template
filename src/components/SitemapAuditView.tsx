@@ -1,43 +1,27 @@
 'use client'
 
 import React, { useEffect, useState, useMemo, useCallback, useId } from 'react'
+import { Button, Banner, CheckIcon, EditIcon, EyeIcon, Pill, RefreshIcon, Tabs, TrashIcon, useConfig } from '@payloadcms/ui'
+import { formatAdminURL } from 'payload/shared'
 import { useDashboardT, useSeoLocale } from '../hooks/useSeoLocale.js'
 import { type DashboardTranslations } from '../dashboard-i18n.js'
 import { LiveRegion } from './LiveRegion.js'
 import { toCsv } from '../helpers/csv.js'
-
-// ---------------------------------------------------------------------------
-// Design tokens — uses Payload CSS variables for theme compatibility
-// ---------------------------------------------------------------------------
-const V = {
-  text: 'var(--theme-text, #1a1a1a)',
-  textSecondary: 'var(--theme-elevation-600, #6b7280)',
-  bg: 'var(--theme-elevation-0, #fff)',
-  bgCard: 'var(--theme-elevation-50, #f9fafb)',
-  border: 'var(--theme-elevation-200, #e5e7eb)',
-  green: '#22c55e',
-  yellow: '#f59e0b',
-  orange: '#f97316',
-  red: '#ef4444',
-  blue: '#3b82f6',
-  cyan: '#06b6d4',
-  purple: '#8b5cf6',
-}
-
-// ---------------------------------------------------------------------------
-// Score color helpers (same as SeoView)
-// ---------------------------------------------------------------------------
-function getScoreColor(score: number): string {
-  if (score >= 80) return V.green
-  if (score >= 50) return V.yellow
-  return V.red
-}
-
-function getScoreBg(score: number): string {
-  if (score >= 80) return 'rgba(34,197,94,0.12)'
-  if (score >= 50) return 'rgba(245,158,11,0.12)'
-  return 'rgba(239,68,68,0.12)'
-}
+import {
+  Card,
+  cx,
+  DataTable,
+  Dot,
+  EmptyState,
+  Grid,
+  LoadingState,
+  ScorePill,
+  StatTile,
+  TonePill,
+  ViewBody,
+  ViewHeader,
+} from '../ui/index.js'
+import './SitemapAuditView.css'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -117,19 +101,6 @@ interface ExternalLinksData {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Shared inline styles
-// ---------------------------------------------------------------------------
-const btnBase: React.CSSProperties = {
-  padding: '6px 14px',
-  borderRadius: 6,
-  border: `1px solid ${V.border}`,
-  fontWeight: 600,
-  fontSize: 11,
-  cursor: 'pointer',
-  textTransform: 'uppercase',
-  letterSpacing: 0.3,
-}
 
 // ---------------------------------------------------------------------------
 // HoverPreview sub-component (C5)
@@ -146,30 +117,14 @@ function HoverPreview({ children, content }: { children: React.ReactNode; conten
 
   return (
     <span
+      className="seo-sitemap__hover"
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onMouseMove={handleMouseMove}
-      style={{ position: 'relative' }}
     >
       {children}
       {show && (
-        <div
-          style={{
-            position: 'fixed',
-            left: pos.x,
-            top: pos.y,
-            backgroundColor: '#1a1a2e',
-            color: '#fff',
-            padding: '10px 14px',
-            borderRadius: 8,
-            maxWidth: 300,
-            zIndex: 100,
-            fontSize: 11,
-            boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
-            pointerEvents: 'none',
-            lineHeight: 1.4,
-          }}
-        >
+        <div className="seo-sitemap__hover-card" style={{ left: pos.x, top: pos.y }}>
           {content}
         </div>
       )}
@@ -178,111 +133,14 @@ function HoverPreview({ children, content }: { children: React.ReactNode; conten
 }
 
 // ---------------------------------------------------------------------------
-// ScoreBadge sub-component (C3)
+// CollectionPill sub-component
 // ---------------------------------------------------------------------------
-function ScoreBadge({ score }: { score: number | undefined }) {
-  if (score === undefined) return null
-  return (
-    <span
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '3px 8px',
-        borderRadius: 6,
-        fontWeight: 800,
-        fontSize: 11,
-        color: getScoreColor(score),
-        backgroundColor: getScoreBg(score),
-        marginLeft: 6,
-      }}
-    >
-      {score}
-    </span>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// StatCard sub-component
-// ---------------------------------------------------------------------------
-function StatCard({
-  label,
-  value,
-  color,
-  subtitle,
-}: {
-  label: string
-  value: number | string
-  color: string
-  subtitle?: string
-}) {
-  return (
-    <div
-      style={{
-        padding: '14px 16px',
-        borderRadius: 10,
-        border: `1px solid ${V.border}`,
-        backgroundColor: V.bgCard,
-      }}
-    >
-      <div
-        style={{
-          fontSize: 24,
-          fontWeight: 800,
-          color,
-          lineHeight: 1,
-          marginBottom: 4,
-        }}
-      >
-        {value}
-      </div>
-      <div
-        style={{
-          fontSize: 10,
-          fontWeight: 600,
-          color: V.textSecondary,
-          textTransform: 'uppercase',
-          letterSpacing: 0.4,
-        }}
-      >
-        {label}
-      </div>
-      {subtitle && (
-        <div
-          style={{
-            fontSize: 9,
-            color: V.textSecondary,
-            marginTop: 2,
-          }}
-        >
-          {subtitle}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// CollectionBadge sub-component
-// ---------------------------------------------------------------------------
-function CollectionBadge({ collection, articleLabel }: { collection: string; articleLabel?: string }) {
+function CollectionPill({ collection, articleLabel }: { collection: string; articleLabel?: string }) {
   const isPages = collection === 'pages'
   return (
-    <span
-      style={{
-        display: 'inline-block',
-        padding: '1px 6px',
-        borderRadius: 3,
-        fontSize: 9,
-        fontWeight: 700,
-        textTransform: 'uppercase',
-        backgroundColor: isPages ? 'rgba(37,99,235,0.15)' : 'rgba(217,119,6,0.2)',
-        color: isPages ? V.blue : V.orange,
-        letterSpacing: 0.3,
-      }}
-    >
-      {isPages ? 'Page' : (articleLabel || 'Article')}
-    </span>
+    <Pill pillStyle={isPages ? 'light' : 'light-gray'} size="small">
+      {isPages ? 'Page' : articleLabel || 'Article'}
+    </Pill>
   )
 }
 
@@ -291,130 +149,79 @@ function CollectionBadge({ collection, articleLabel }: { collection: string; art
 // ---------------------------------------------------------------------------
 function EditButton({ collection, id }: { collection: string; id: number | string }) {
   const t = useDashboardT()
-  const [hover, setHover] = useState(false)
+  const {
+    config: {
+      routes: { admin: adminRoute },
+    },
+  } = useConfig()
   return (
-    <a
-      href={`/admin/collections/${collection}/${id}`}
-      title={t.common.edit}
+    <Button
       aria-label={t.common.edit}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{
-        cursor: 'pointer',
-        fontSize: 15,
-        textDecoration: 'none',
-        color: hover ? V.blue : V.textSecondary,
-        transition: 'color 0.15s',
-        userSelect: 'none',
-      }}
-    >
-      &#9998;
-    </a>
+      buttonStyle="ghost"
+      el="link"
+      icon={<EditIcon />}
+      margin={false}
+      to={formatAdminURL({ adminRoute, path: `/collections/${collection}/${id}` })}
+      tooltip={t.common.edit}
+    />
   )
 }
 
 // ---------------------------------------------------------------------------
-// Tab button sub-component
+// Layout helpers shared by every tab
 // ---------------------------------------------------------------------------
-function TabButton({
-  active,
-  label,
+/** Visually hidden text for icon-only / checkbox column headers. */
+function SrOnly({ children }: { children: React.ReactNode }) {
+  return <span className="seo-sitemap__sr-only">{children}</span>
+}
+
+/** One card per list: title, count pill, and the content flush against the card edge. */
+function ListCard({
+  title,
   count,
-  color,
-  onClick,
-  id,
-  panelId,
+  flush = true,
+  children,
 }: {
-  active: boolean
-  label: string
-  count: number
-  color: string
-  onClick: () => void
-  /** id of this tab, referenced by the panel's aria-labelledby */
-  id?: string
-  /** id of the panel this tab controls */
-  panelId?: string
+  title: string
+  count?: number
+  flush?: boolean
+  children: React.ReactNode
 }) {
-  const [hover, setHover] = useState(false)
   return (
-    // Without role="tab" + aria-selected, the active tab was signalled by
-    // border, colour and font weight only — none of which a screen reader
-    // reports.
-    <button type="button"
-      role="tab"
-      id={id}
-      aria-selected={active}
-      aria-controls={panelId}
-      onClick={onClick}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{
-        padding: '8px 16px',
-        borderRadius: 8,
-        border: active ? `2px solid ${color}` : `1px solid ${V.border}`,
-        backgroundColor: active ? `${color}12` : hover ? V.bgCard : V.bg,
-        color: active ? color : V.text,
-        fontWeight: active ? 800 : 600,
-        fontSize: 12,
-        cursor: 'pointer',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 6,
-        transition: 'all 0.15s',
-      }}
+    <Card
+      actions={count !== undefined ? <Pill size="small">{count}</Pill> : undefined}
+      flush={flush}
+      title={title}
     >
-      {label}
-      <span
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          minWidth: 20,
-          height: 18,
-          padding: '0 5px',
-          borderRadius: 9,
-          fontSize: 10,
-          fontWeight: 800,
-          backgroundColor: active ? color : V.border,
-          color: active ? '#fff' : V.textSecondary,
-        }}
-      >
-        {count}
-      </span>
-    </button>
+      {children}
+    </Card>
   )
 }
 
-// ---------------------------------------------------------------------------
-// EmptyState sub-component
-// ---------------------------------------------------------------------------
-function EmptyState({ message }: { message: string }) {
+/** Page title cell: bold truncated title (optionally wrapped), used by every page table. */
+function TitleText({ children, title }: { children: React.ReactNode; title?: string }) {
   return (
-    <div
-      style={{
-        padding: '40px 20px',
-        textAlign: 'center',
-        color: V.textSecondary,
-        fontSize: 12,
-      }}
-    >
-      <div style={{ fontSize: 28, marginBottom: 8, opacity: 0.4 }}>&#10003;</div>
-      {message}
+    <span className="seo-text seo-text--strong seo-truncate seo-sitemap__title" title={title}>
+      {children}
+    </span>
+  )
+}
+
+/** Error banner + retry button, for the tabs that fetch their own data. */
+function ErrorState({ error, onRetry }: { error: string; onRetry: () => void }) {
+  const t = useDashboardT()
+  return (
+    <div className="seo-stack">
+      <Banner type="danger">
+        {t.common.loadingError}: {error}
+      </Banner>
+      <div>
+        <Button buttonStyle="secondary" margin={false} onClick={onRetry}>
+          {t.common.retry}
+        </Button>
+      </div>
     </div>
   )
-}
-
-// ---------------------------------------------------------------------------
-// Row base style
-// ---------------------------------------------------------------------------
-const rowStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  padding: '10px 14px',
-  borderBottom: `1px solid ${V.border}`,
-  gap: 12,
-  fontSize: 12,
 }
 
 // ---------------------------------------------------------------------------
@@ -423,72 +230,66 @@ const rowStyle: React.CSSProperties = {
 function OrphanTab({ pages, scoreMap }: { pages: OrphanPage[]; scoreMap: Map<string, number> }) {
   const t = useDashboardT()
   if (pages.length === 0) {
-    return <EmptyState message={t.sitemapAudit.noOrphanedPages} />
+    return (
+      <ListCard count={0} title={t.sitemapAudit.orphanedPages}>
+        <EmptyState title={t.sitemapAudit.noOrphanedPages} />
+      </ListCard>
+    )
   }
   return (
-    <div>
-      <div
-        style={{
-          padding: '8px 14px',
-          fontSize: 11,
-          color: V.textSecondary,
-          backgroundColor: V.bgCard,
-          borderBottom: `1px solid ${V.border}`,
-          fontWeight: 600,
-        }}
-      >
-        {t.sitemapAudit.orphanedPagesDesc}
-      </div>
-      {pages.map((page) => (
-        <div key={`${page.collection}-${page.id}`} style={rowStyle}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div
-              style={{
-                fontWeight: 700,
-                color: V.text,
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                display: 'flex',
-                alignItems: 'center',
-              }}
-            >
-              <HoverPreview content={<>{page.title}<br />/{page.slug}</>}>
-                <span>{page.title || t.common.noTitle}</span>
-              </HoverPreview>
-              <ScoreBadge score={scoreMap.get(page.slug)} />
-            </div>
-            <div style={{ fontSize: 10, color: V.textSecondary, marginTop: 2 }}>
-              <CollectionBadge collection={page.collection} articleLabel={t.common.article} />{' '}
-              <span style={{ marginLeft: 4 }}>/{page.slug}</span>
-            </div>
-          </div>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              flexShrink: 0,
-            }}
-          >
-            <span
-              style={{
-                fontSize: 10,
-                fontWeight: 700,
-                color: V.red,
-                textTransform: 'uppercase',
-                padding: '2px 8px',
-                borderRadius: 4,
-                backgroundColor: 'rgba(239,68,68,0.1)',
-              }}
-            >
-              {t.sitemapAudit.zeroIncomingLinks}
-            </span>
-            <EditButton collection={page.collection} id={page.id} />
-          </div>
-        </div>
-      ))}
-    </div>
+    <ListCard count={pages.length} title={t.sitemapAudit.orphanedPages}>
+      <p className="seo-sitemap__intro">{t.sitemapAudit.orphanedPagesDesc}</p>
+      <DataTable aria-label={t.sitemapAudit.orphanedPages} bare>
+        <thead>
+          <tr>
+            <th>{t.common.page}</th>
+            <th>{t.seoView.collection}</th>
+            <th>{t.seoView.slug}</th>
+            <th className="seo-table__num">{t.seoView.score}</th>
+            <th>
+              <SrOnly>{t.sitemapAudit.orphaned}</SrOnly>
+            </th>
+            <th>
+              <SrOnly>{t.redirectManager.actions}</SrOnly>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {pages.map((page) => {
+            const score = scoreMap.get(page.slug)
+            return (
+              <tr key={`${page.collection}-${page.id}`}>
+                <td>
+                  <HoverPreview
+                    content={
+                      <>
+                        {page.title}
+                        <br />/{page.slug}
+                      </>
+                    }
+                  >
+                    <TitleText>{page.title || t.common.noTitle}</TitleText>
+                  </HoverPreview>
+                </td>
+                <td>
+                  <CollectionPill articleLabel={t.common.article} collection={page.collection} />
+                </td>
+                <td>
+                  <span className="seo-mono seo-text--secondary">/{page.slug}</span>
+                </td>
+                <td className="seo-table__num">{score !== undefined && <ScorePill score={score} />}</td>
+                <td>
+                  <TonePill tone="danger">{t.sitemapAudit.zeroIncomingLinks}</TonePill>
+                </td>
+                <td className="seo-table__num">
+                  <EditButton collection={page.collection} id={page.id} />
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </DataTable>
+    </ListCard>
   )
 }
 
@@ -498,95 +299,85 @@ function OrphanTab({ pages, scoreMap }: { pages: OrphanPage[]; scoreMap: Map<str
 function WeakTab({ pages, scoreMap }: { pages: WeakPage[]; scoreMap: Map<string, number> }) {
   const t = useDashboardT()
   if (pages.length === 0) {
-    return <EmptyState message={t.sitemapAudit.noFragilePages} />
+    return (
+      <ListCard count={0} title={t.sitemapAudit.fragilePages}>
+        <EmptyState title={t.sitemapAudit.noFragilePages} />
+      </ListCard>
+    )
   }
   return (
-    <div>
-      <div
-        style={{
-          padding: '8px 14px',
-          fontSize: 11,
-          color: V.textSecondary,
-          backgroundColor: V.bgCard,
-          borderBottom: `1px solid ${V.border}`,
-          fontWeight: 600,
-        }}
-      >
-        {t.sitemapAudit.fragilePagesDesc}
-      </div>
-      {pages.map((page) => (
-        <div key={`${page.collection}-${page.id}`} style={rowStyle}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div
-              style={{
-                fontWeight: 700,
-                color: V.text,
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                display: 'flex',
-                alignItems: 'center',
-              }}
-            >
-              {page.title || t.common.noTitle}
-              <ScoreBadge score={scoreMap.get(page.slug)} />
-            </div>
-            <div style={{ fontSize: 10, color: V.textSecondary, marginTop: 2 }}>
-              <CollectionBadge collection={page.collection} articleLabel={t.common.article} />{' '}
-              <span style={{ marginLeft: 4 }}>/{page.slug}</span>
-            </div>
-          </div>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              flexShrink: 0,
-            }}
-          >
-            <div style={{ textAlign: 'right' }}>
-              <span
-                style={{
-                  fontSize: 10,
-                  fontWeight: 700,
-                  color: V.orange,
-                  textTransform: 'uppercase',
-                  padding: '2px 8px',
-                  borderRadius: 4,
-                  backgroundColor: 'rgba(249,115,22,0.1)',
-                }}
-              >
-                {t.sitemapAudit.oneIncomingLink}
-              </span>
-              {page.incomingFrom && page.incomingFrom.length > 0 && (
-                <div style={{ fontSize: 9, color: V.textSecondary, marginTop: 2 }}>
-                  <HoverPreview
-                    content={
-                      <>
-                        <div style={{ fontWeight: 700 }}>/{page.incomingFrom[0].slug}</div>
-                        {page.incomingFrom[0].anchorText && (
-                          <div style={{ marginTop: 4, fontStyle: 'italic', opacity: 0.85 }}>
-                            &laquo; {page.incomingFrom[0].anchorText} &raquo;
-                          </div>
+    <ListCard count={pages.length} title={t.sitemapAudit.fragilePages}>
+      <p className="seo-sitemap__intro">{t.sitemapAudit.fragilePagesDesc}</p>
+      <DataTable aria-label={t.sitemapAudit.fragilePages} bare>
+        <thead>
+          <tr>
+            <th>{t.common.page}</th>
+            <th>{t.seoView.collection}</th>
+            <th>{t.seoView.slug}</th>
+            <th className="seo-table__num">{t.seoView.score}</th>
+            <th>
+              <SrOnly>{t.sitemapAudit.fragile}</SrOnly>
+            </th>
+            <th>
+              <SrOnly>{t.redirectManager.actions}</SrOnly>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {pages.map((page) => {
+            const score = scoreMap.get(page.slug)
+            const first = page.incomingFrom && page.incomingFrom.length > 0 ? page.incomingFrom[0] : null
+            return (
+              <tr key={`${page.collection}-${page.id}`}>
+                <td>
+                  <TitleText title={page.title}>{page.title || t.common.noTitle}</TitleText>
+                </td>
+                <td>
+                  <CollectionPill articleLabel={t.common.article} collection={page.collection} />
+                </td>
+                <td>
+                  <span className="seo-mono seo-text--secondary">/{page.slug}</span>
+                </td>
+                <td className="seo-table__num">{score !== undefined && <ScorePill score={score} />}</td>
+                <td>
+                  <div className="seo-sitemap__cell">
+                    <TonePill tone="warning">{t.sitemapAudit.oneIncomingLink}</TonePill>
+                    {first && (
+                      <span className="seo-text seo-text--small seo-text--secondary">
+                        <HoverPreview
+                          content={
+                            <>
+                              <div className="seo-sitemap__hover-strong">/{first.slug}</div>
+                              {first.anchorText && (
+                                <div className="seo-sitemap__hover-quote">
+                                  &laquo; {first.anchorText} &raquo;
+                                </div>
+                              )}
+                            </>
+                          }
+                        >
+                          <span>
+                            {t.sitemapAudit.from} /{first.slug}
+                          </span>
+                        </HoverPreview>
+                        {first.anchorText && (
+                          <span className="seo-sitemap__anchor">
+                            {t.sitemapAudit.anchor} &laquo; {first.anchorText} &raquo;
+                          </span>
                         )}
-                      </>
-                    }
-                  >
-                    <span>{t.sitemapAudit.from} /{page.incomingFrom[0].slug}</span>
-                  </HoverPreview>
-                  {page.incomingFrom[0].anchorText && (
-                    <div style={{ fontSize: 9, color: V.textSecondary, fontStyle: 'italic', marginTop: 1 }}>
-                      {t.sitemapAudit.anchor} &laquo; {page.incomingFrom[0].anchorText} &raquo;
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-            <EditButton collection={page.collection} id={page.id} />
-          </div>
-        </div>
-      ))}
-    </div>
+                      </span>
+                    )}
+                  </div>
+                </td>
+                <td className="seo-table__num">
+                  <EditButton collection={page.collection} id={page.id} />
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </DataTable>
+    </ListCard>
   )
 }
 
@@ -596,66 +387,52 @@ function WeakTab({ pages, scoreMap }: { pages: WeakPage[]; scoreMap: Map<string,
 function HubsTab({ hubs }: { hubs: LinkHub[] }) {
   const t = useDashboardT()
   if (hubs.length === 0) {
-    return <EmptyState message={t.sitemapAudit.noLinkHubs} />
+    return (
+      <ListCard count={0} title={t.sitemapAudit.linkHubs}>
+        <EmptyState title={t.sitemapAudit.noLinkHubs} />
+      </ListCard>
+    )
   }
   return (
-    <div>
-      <div
-        style={{
-          padding: '8px 14px',
-          fontSize: 11,
-          color: V.textSecondary,
-          backgroundColor: V.bgCard,
-          borderBottom: `1px solid ${V.border}`,
-          fontWeight: 600,
-        }}
-      >
-        {t.sitemapAudit.linkHubsDesc}
-      </div>
-      {hubs.map((hub) => (
-        <div key={`${hub.collection}-${hub.id}`} style={rowStyle}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div
-              style={{
-                fontWeight: 700,
-                color: V.text,
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-              }}
-            >
-              {hub.title || t.common.noTitle}
-            </div>
-            <div style={{ fontSize: 10, color: V.textSecondary, marginTop: 2 }}>
-              <CollectionBadge collection={hub.collection} articleLabel={t.common.article} />{' '}
-              <span style={{ marginLeft: 4 }}>/{hub.slug}</span>
-            </div>
-          </div>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              flexShrink: 0,
-            }}
-          >
-            <span
-              style={{
-                fontSize: 13,
-                fontWeight: 800,
-                color: V.purple,
-                padding: '2px 10px',
-                borderRadius: 6,
-                backgroundColor: 'rgba(139,92,246,0.1)',
-              }}
-            >
-              {hub.outgoingCount} {t.sitemapAudit.links}
-            </span>
-            <EditButton collection={hub.collection} id={hub.id} />
-          </div>
-        </div>
-      ))}
-    </div>
+    <ListCard count={hubs.length} title={t.sitemapAudit.linkHubs}>
+      <p className="seo-sitemap__intro">{t.sitemapAudit.linkHubsDesc}</p>
+      <DataTable aria-label={t.sitemapAudit.linkHubs} bare>
+        <thead>
+          <tr>
+            <th>{t.common.page}</th>
+            <th>{t.seoView.collection}</th>
+            <th>{t.seoView.slug}</th>
+            <th className="seo-table__num">{t.sitemapAudit.links}</th>
+            <th>
+              <SrOnly>{t.redirectManager.actions}</SrOnly>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {hubs.map((hub) => (
+            <tr key={`${hub.collection}-${hub.id}`}>
+              <td>
+                <TitleText title={hub.title}>{hub.title || t.common.noTitle}</TitleText>
+              </td>
+              <td>
+                <CollectionPill articleLabel={t.common.article} collection={hub.collection} />
+              </td>
+              <td>
+                <span className="seo-mono seo-text--secondary">/{hub.slug}</span>
+              </td>
+              <td className="seo-table__num">
+                <TonePill tone="brand">
+                  {hub.outgoingCount} {t.sitemapAudit.links}
+                </TonePill>
+              </td>
+              <td className="seo-table__num">
+                <EditButton collection={hub.collection} id={hub.id} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </DataTable>
+    </ListCard>
   )
 }
 
@@ -812,249 +589,159 @@ function BrokenTab({ links, onRefresh }: { links: BrokenLink[]; onRefresh: () =>
   }, [links, selectedIds, createdRedirects, manualInputs])
 
   if (links.length === 0) {
-    return <EmptyState message={t.sitemapAudit.noBrokenLinks} />
+    return (
+      <ListCard count={0} title={t.sitemapAudit.brokenLinks}>
+        <EmptyState title={t.sitemapAudit.noBrokenLinks} />
+      </ListCard>
+    )
   }
   return (
-    <div>
+    <ListCard count={links.length} title={t.sitemapAudit.brokenLinks}>
       {/* Bulk action bar */}
-      <div
-        style={{
-          padding: '8px 14px',
-          fontSize: 11,
-          color: V.textSecondary,
-          backgroundColor: V.bgCard,
-          borderBottom: `1px solid ${V.border}`,
-          fontWeight: 600,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: 8,
-        }}
-      >
-        <span>
-          {t.sitemapAudit.brokenLinksDesc}
-        </span>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+      <div className="seo-sitemap__toolbar">
+        <p className="seo-text seo-text--small seo-text--secondary">{t.sitemapAudit.brokenLinksDesc}</p>
+        <div className="seo-row">
           {bulkResult && (
-            <span
-              style={{
-                fontSize: 10,
-                fontWeight: 700,
-                color: bulkResult.errors > 0 ? V.orange : V.green,
-                padding: '2px 8px',
-                borderRadius: 4,
-                backgroundColor: bulkResult.errors > 0 ? 'rgba(249,115,22,0.1)' : 'rgba(34,197,94,0.1)',
-              }}
-            >
-              {bulkResult.created} {t.sitemapAudit.created}{bulkResult.errors > 0 ? `, ${bulkResult.errors} ${t.sitemapAudit.errors}` : ''}
-            </span>
+            <TonePill tone={bulkResult.errors > 0 ? 'warning' : 'success'}>
+              {bulkResult.created} {t.sitemapAudit.created}
+              {bulkResult.errors > 0 ? `, ${bulkResult.errors} ${t.sitemapAudit.errors}` : ''}
+            </TonePill>
           )}
           {selectedIds.size > 0 && (
-            <button type="button"
+            <Button
+              buttonStyle="primary"
               disabled={bulkLoading || selectedWithSuggestion === 0}
+              margin={false}
               onClick={handleBulkCreate}
-              style={{
-                ...btnBase,
-                fontSize: 10,
-                padding: '4px 12px',
-                backgroundColor: selectedWithSuggestion > 0 ? V.blue : V.bgCard,
-                color: selectedWithSuggestion > 0 ? '#fff' : V.textSecondary,
-                border: 'none',
-                opacity: bulkLoading || selectedWithSuggestion === 0 ? 0.5 : 1,
-              }}
             >
               {bulkLoading ? '...' : `301 selection (${selectedWithSuggestion})`}
-            </button>
+            </Button>
           )}
-          <button type="button"
+          <Button
+            buttonStyle="secondary"
             disabled={bulkLoading || withSuggestionCount === 0}
+            margin={false}
             onClick={handleBulkCreateAll}
-            style={{
-              ...btnBase,
-              fontSize: 10,
-              padding: '4px 12px',
-              backgroundColor: withSuggestionCount > 0 ? V.green : V.bgCard,
-              color: withSuggestionCount > 0 ? '#fff' : V.textSecondary,
-              border: 'none',
-              opacity: bulkLoading || withSuggestionCount === 0 ? 0.5 : 1,
-            }}
           >
             {bulkLoading ? '...' : `301 tout (${withSuggestionCount})`}
-          </button>
+          </Button>
         </div>
       </div>
       {/* Select all row */}
-      <div
-        style={{
-          padding: '4px 14px',
-          borderBottom: `1px solid ${V.border}`,
-          backgroundColor: V.bg,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          fontSize: 10,
-          color: V.textSecondary,
-        }}
-      >
-        <input
-          type="checkbox"
-          aria-label={t.sitemapAudit.selectAll}
-          checked={selectedIds.size === links.length && links.length > 0}
-          onChange={toggleSelectAll}
-          style={{ cursor: 'pointer' }}
-        />
-        <span>{selectedIds.size > 0 ? `${selectedIds.size} ${t.sitemapAudit.selectedItems}` : t.sitemapAudit.selectAll}</span>
+      <div className="seo-sitemap__toolbar seo-sitemap__toolbar--compact">
+        <label className="seo-checkbox seo-text--small seo-text--secondary">
+          <input
+            type="checkbox"
+            aria-label={t.sitemapAudit.selectAll}
+            checked={selectedIds.size === links.length && links.length > 0}
+            onChange={toggleSelectAll}
+          />
+          <span>{selectedIds.size > 0 ? `${selectedIds.size} ${t.sitemapAudit.selectedItems}` : t.sitemapAudit.selectAll}</span>
+        </label>
       </div>
-      {links.map((link, idx) => {
-        const key = `${link.sourceSlug}::${link.targetSlug}`
-        const isCreated = createdRedirects.has(link.targetSlug)
-        const isLoading = loadingRedirects.has(link.targetSlug)
-        const manualTo = manualInputs[key] ?? ''
-        const isSelected = selectedIds.has(key)
+      <DataTable aria-label={t.sitemapAudit.brokenLinks} bare>
+        <thead>
+          <tr>
+            <th className="seo-sitemap__check">
+              <SrOnly>{t.sitemapAudit.selectAll}</SrOnly>
+            </th>
+            <th>{t.common.page}</th>
+            <th>{t.sitemapAudit.brokenLinks}</th>
+            <th>{t.sitemapAudit.targetSlug}</th>
+            <th>
+              <SrOnly>{t.redirectManager.actions}</SrOnly>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {links.map((link, idx) => {
+            const key = `${link.sourceSlug}::${link.targetSlug}`
+            const isCreated = createdRedirects.has(link.targetSlug)
+            const isLoading = loadingRedirects.has(link.targetSlug)
+            const manualTo = manualInputs[key] ?? ''
+            const isSelected = selectedIds.has(key)
 
-        return (
-          <div
-            key={`broken-${idx}`}
-            style={{
-              ...rowStyle,
-              backgroundColor: isSelected ? 'rgba(59,130,246,0.04)' : undefined,
-            }}
-          >
-            <input
-              type="checkbox"
-              aria-label={`${t.sitemapAudit.brokenLinks}: ${link.sourceSlug} \u2192 ${link.targetSlug}`}
-              checked={isSelected}
-              onChange={() => toggleSelect(key)}
-              style={{ cursor: 'pointer', flexShrink: 0 }}
-            />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div
-                style={{
-                  fontWeight: 700,
-                  color: V.text,
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                }}
-              >
-                {link.sourceTitle || t.common.noTitle}
-              </div>
-              <div style={{ fontSize: 10, color: V.textSecondary, marginTop: 2 }}>
-                <CollectionBadge collection={link.collection} articleLabel={t.common.article} />{' '}
-                <span style={{ marginLeft: 4 }}>/{link.sourceSlug}</span>
-              </div>
-            </div>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                flexShrink: 0,
-              }}
-            >
-              <div style={{ textAlign: 'right' }}>
-                <span
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 700,
-                    color: V.red,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 4,
-                  }}
-                >
-                  &#10007;
-                </span>
-                <HoverPreview content={<span style={{ fontFamily: 'monospace' }}>{link.targetUrl}</span>}>
-                  <span
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 600,
-                      color: V.red,
-                      marginLeft: 4,
-                      fontFamily: 'monospace',
-                    }}
-                  >
-                    {link.targetUrl}
-                  </span>
-                </HoverPreview>
-                <div style={{ fontSize: 9, color: V.textSecondary, marginTop: 2 }}>
-                  slug: {link.targetSlug}
-                </div>
-                {/* C1: Suggestion display */}
-                {link.suggestedSlug && (
-                  <div style={{ fontSize: 9, color: V.green, fontWeight: 600, marginTop: 2 }}>
-                    {t.sitemapAudit.suggestion} /{link.suggestedSlug}
+            return (
+              <tr className={isSelected ? 'seo-sitemap__row--selected' : undefined} key={`broken-${idx}`}>
+                <td className="seo-sitemap__check">
+                  <input
+                    type="checkbox"
+                    aria-label={`${t.sitemapAudit.brokenLinks}: ${link.sourceSlug} → ${link.targetSlug}`}
+                    checked={isSelected}
+                    onChange={() => toggleSelect(key)}
+                  />
+                </td>
+                <td>
+                  <div className="seo-sitemap__cell">
+                    <TitleText title={link.sourceTitle}>{link.sourceTitle || t.common.noTitle}</TitleText>
+                    <div className="seo-row seo-row--nowrap">
+                      <CollectionPill articleLabel={t.common.article} collection={link.collection} />
+                      <span className="seo-mono seo-text--secondary">/{link.sourceSlug}</span>
+                    </div>
                   </div>
-                )}
-                {/* C2: Redirect creation */}
-                <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
-                  {isCreated ? (
-                    <span
-                      style={{
-                        fontSize: 10,
-                        fontWeight: 700,
-                        color: V.green,
-                        padding: '2px 8px',
-                        borderRadius: 4,
-                        backgroundColor: 'rgba(34,197,94,0.1)',
-                      }}
-                    >
-                      &#10003; {t.sitemapAudit.createdLabel}
+                </td>
+                <td>
+                  <div className="seo-sitemap__cell">
+                    <span className="seo-row seo-row--nowrap">
+                      <Dot tone="danger" />
+                      <HoverPreview content={<span className="seo-mono">{link.targetUrl}</span>}>
+                        <span className="seo-mono seo-text--danger seo-truncate seo-sitemap__url">{link.targetUrl}</span>
+                      </HoverPreview>
                     </span>
-                  ) : (
-                    <>
-                      {!link.suggestedSlug && (
-                        <input
-                          type="text"
-                          aria-label={`${t.sitemapAudit.targetSlug} \u2014 ${link.targetSlug}`}
-                          placeholder={t.sitemapAudit.targetSlug}
-                          value={manualTo}
-                          onChange={(e) =>
-                            setManualInputs((prev) => ({ ...prev, [key]: e.target.value }))
-                          }
-                          style={{
-                            padding: '2px 6px',
-                            borderRadius: 4,
-                            border: `1px solid ${V.border}`,
-                            fontSize: 10,
-                            width: 100,
-                            color: V.text,
-                            backgroundColor: V.bg,
+                    <span className="seo-text seo-text--small seo-text--secondary">slug: {link.targetSlug}</span>
+                    {/* C1: Suggestion display */}
+                    {link.suggestedSlug && (
+                      <span className="seo-text seo-text--small seo-text--success">
+                        {t.sitemapAudit.suggestion} /{link.suggestedSlug}
+                      </span>
+                    )}
+                  </div>
+                </td>
+                <td>
+                  {/* C2: Redirect creation */}
+                  <div className="seo-sitemap__redirect">
+                    {isCreated ? (
+                      <Pill alignIcon="left" icon={<CheckIcon />} pillStyle="success" size="small">
+                        {t.sitemapAudit.createdLabel}
+                      </Pill>
+                    ) : (
+                      <>
+                        {!link.suggestedSlug && (
+                          <input
+                            type="text"
+                            aria-label={`${t.sitemapAudit.targetSlug} — ${link.targetSlug}`}
+                            className="seo-input seo-input--inline seo-sitemap__slug-input"
+                            placeholder={t.sitemapAudit.targetSlug}
+                            value={manualTo}
+                            onChange={(e) =>
+                              setManualInputs((prev) => ({ ...prev, [key]: e.target.value }))
+                            }
+                          />
+                        )}
+                        <Button
+                          buttonStyle="secondary"
+                          disabled={isLoading || (!link.suggestedSlug && !manualTo)}
+                          margin={false}
+                          onClick={() => {
+                            const to = link.suggestedSlug || manualTo
+                            if (to) handleCreateRedirect(link.targetSlug, to)
                           }}
-                        />
-                      )}
-                      <button type="button"
-                        disabled={isLoading || (!link.suggestedSlug && !manualTo)}
-                        onClick={() => {
-                          const to = link.suggestedSlug || manualTo
-                          if (to) handleCreateRedirect(link.targetSlug, to)
-                        }}
-                        style={{
-                          padding: '2px 8px',
-                          borderRadius: 4,
-                          border: `1px solid ${V.border}`,
-                          fontSize: 10,
-                          fontWeight: 700,
-                          cursor: isLoading || (!link.suggestedSlug && !manualTo) ? 'not-allowed' : 'pointer',
-                          backgroundColor: V.bgCard,
-                          color: V.text,
-                          opacity: isLoading || (!link.suggestedSlug && !manualTo) ? 0.5 : 1,
-                        }}
-                      >
-                        {isLoading ? '...' : '301 →'}
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-              <EditButton collection={link.collection} id={link.sourceId} />
-            </div>
-          </div>
-        )
-      })}
-    </div>
+                        >
+                          {isLoading ? '...' : '301 →'}
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </td>
+                <td className="seo-table__num">
+                  <EditButton collection={link.collection} id={link.sourceId} />
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </DataTable>
+    </ListCard>
   )
 }
 
@@ -1189,30 +876,26 @@ function Logs404Tab() {
 
   if (loading) {
     return (
-      <div style={{ padding: '40px 20px', textAlign: 'center', color: V.textSecondary, fontSize: 13 }}>
-        {t.sitemapAudit.loading404}
-      </div>
+      <ListCard flush={false} title={t.sitemapAudit.logs404}>
+        <LoadingState label={t.sitemapAudit.loading404} />
+      </ListCard>
     )
   }
 
   if (error) {
     return (
-      <div style={{ padding: '40px 20px', textAlign: 'center' }}>
-        <div style={{ color: V.red, fontWeight: 700, fontSize: 13, marginBottom: 8 }}>
-          {t.common.loadingError}: {error}
-        </div>
-        <button type="button"
-          onClick={fetchLogs}
-          style={{ ...btnBase, backgroundColor: V.bgCard, color: V.text }}
-        >
-          {t.common.retry}
-        </button>
-      </div>
+      <ListCard flush={false} title={t.sitemapAudit.logs404}>
+        <ErrorState error={error} onRetry={fetchLogs} />
+      </ListCard>
     )
   }
 
   if (logs.length === 0) {
-    return <EmptyState message={t.sitemapAudit.no404Errors} />
+    return (
+      <ListCard count={0} title={t.sitemapAudit.logs404}>
+        <EmptyState title={t.sitemapAudit.no404Errors} />
+      </ListCard>
+    )
   }
 
   const selectedWithInput = logs.filter(
@@ -1220,219 +903,151 @@ function Logs404Tab() {
   ).length
 
   return (
-    <div>
+    <ListCard count={logs.length} title={t.sitemapAudit.logs404}>
       {/* Header */}
-      <div
-        style={{
-          padding: '8px 14px',
-          fontSize: 11,
-          color: V.textSecondary,
-          backgroundColor: V.bgCard,
-          borderBottom: `1px solid ${V.border}`,
-          fontWeight: 600,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: 8,
-        }}
-      >
-        <span>
-          {t.sitemapAudit.pages404Desc}
-        </span>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+      <div className="seo-sitemap__toolbar">
+        <p className="seo-text seo-text--small seo-text--secondary">{t.sitemapAudit.pages404Desc}</p>
+        <div className="seo-row">
           {selectedIds.size > 0 && selectedWithInput > 0 && (
-            <button type="button"
-              disabled={bulkLoading}
-              onClick={handleBulkRedirect}
-              style={{
-                ...btnBase,
-                fontSize: 10,
-                padding: '4px 12px',
-                backgroundColor: V.blue,
-                color: '#fff',
-                border: 'none',
-                opacity: bulkLoading ? 0.5 : 1,
-              }}
-            >
+            <Button buttonStyle="primary" disabled={bulkLoading} margin={false} onClick={handleBulkRedirect}>
               {bulkLoading ? '...' : `301 selection (${selectedWithInput})`}
-            </button>
+            </Button>
           )}
-          <button type="button"
+          <Button
+            buttonStyle="secondary"
+            icon={<RefreshIcon />}
+            iconPosition="left"
+            margin={false}
             onClick={fetchLogs}
-            style={{ ...btnBase, fontSize: 10, padding: '4px 12px', backgroundColor: V.bgCard, color: V.text }}
           >
-            &#8635; {t.common.refresh}
-          </button>
+            {t.common.refresh}
+          </Button>
         </div>
       </div>
 
       {/* Select all row */}
-      <div
-        style={{
-          padding: '4px 14px',
-          borderBottom: `1px solid ${V.border}`,
-          backgroundColor: V.bg,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          fontSize: 10,
-          color: V.textSecondary,
-        }}
-      >
-        <input
-          type="checkbox"
-          aria-label={t.sitemapAudit.selectAll}
-          checked={selectedIds.size === logs.length && logs.length > 0}
-          onChange={toggleSelectAll}
-          style={{ cursor: 'pointer' }}
-        />
-        <span>{selectedIds.size > 0 ? `${selectedIds.size} ${t.sitemapAudit.selectedItems}` : t.sitemapAudit.selectAll}</span>
+      <div className="seo-sitemap__toolbar seo-sitemap__toolbar--compact">
+        <label className="seo-checkbox seo-text--small seo-text--secondary">
+          <input
+            type="checkbox"
+            aria-label={t.sitemapAudit.selectAll}
+            checked={selectedIds.size === logs.length && logs.length > 0}
+            onChange={toggleSelectAll}
+          />
+          <span>{selectedIds.size > 0 ? `${selectedIds.size} ${t.sitemapAudit.selectedItems}` : t.sitemapAudit.selectAll}</span>
+        </label>
       </div>
 
       {/* Log rows */}
-      {logs.map((log) => {
-        const isCreated = createdRedirects.has(log.url)
-        const isLoading = loadingRedirects.has(log.url)
-        const isSelected = selectedIds.has(String(log.id))
-        const manualTo = manualInputs[log.url] ?? ''
+      <DataTable aria-label={t.sitemapAudit.logs404} bare>
+        <thead>
+          <tr>
+            <th className="seo-sitemap__check">
+              <SrOnly>{t.sitemapAudit.selectAll}</SrOnly>
+            </th>
+            <th>{t.seoConfig.url}</th>
+            <th>{t.sitemapAudit.targetSlug}</th>
+            <th>
+              <SrOnly>{t.redirectManager.actions}</SrOnly>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {logs.map((log) => {
+            const isCreated = createdRedirects.has(log.url)
+            const isLoading = loadingRedirects.has(log.url)
+            const isSelected = selectedIds.has(String(log.id))
+            const manualTo = manualInputs[log.url] ?? ''
 
-        return (
-          <div
-            key={log.id}
-            style={{
-              ...rowStyle,
-              backgroundColor: isSelected ? 'rgba(59,130,246,0.04)' : undefined,
-            }}
-          >
-            <input
-              type="checkbox"
-              aria-label={log.url}
-              checked={isSelected}
-              onChange={() => toggleSelect(String(log.id))}
-              style={{ cursor: 'pointer', flexShrink: 0 }}
-            />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div
-                style={{
-                  fontWeight: 700,
-                  color: V.red,
-                  fontSize: 12,
-                  fontFamily: 'monospace',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                }}
-              >
-                {log.url}
-              </div>
-              <div style={{ fontSize: 9, color: V.textSecondary, marginTop: 2, display: 'flex', gap: 8 }}>
-                <span style={{ fontWeight: 700, color: V.orange }}>
-                  {log.count}x
-                </span>
-                <span>
-                  {t.sitemapAudit.last} {log.lastSeen ? new Date(log.lastSeen).toLocaleDateString(locale) : '?'}
-                </span>
-                {log.referrer && (
-                  <span title={log.referrer}>
-                    {t.sitemapAudit.ref} {log.referrer.length > 30 ? log.referrer.slice(0, 28) + '...' : log.referrer}
-                  </span>
-                )}
-              </div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-              {isCreated ? (
-                <span
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 700,
-                    color: V.green,
-                    padding: '2px 8px',
-                    borderRadius: 4,
-                    backgroundColor: 'rgba(34,197,94,0.1)',
-                  }}
-                >
-                  &#10003; 301
-                </span>
-              ) : (
-                <>
+            return (
+              <tr className={isSelected ? 'seo-sitemap__row--selected' : undefined} key={log.id}>
+                <td className="seo-sitemap__check">
                   <input
-                    type="text"
-                    aria-label={`${t.sitemapAudit.targetSlug} \u2014 ${log.url}`}
-                    placeholder={t.sitemapAudit.targetSlug}
-                    value={manualTo}
-                    onChange={(e) =>
-                      setManualInputs((prev) => ({ ...prev, [log.url]: e.target.value }))
-                    }
-                    style={{
-                      padding: '2px 6px',
-                      borderRadius: 4,
-                      border: `1px solid ${V.border}`,
-                      fontSize: 10,
-                      width: 120,
-                      color: V.text,
-                      backgroundColor: V.bg,
-                    }}
+                    type="checkbox"
+                    aria-label={log.url}
+                    checked={isSelected}
+                    onChange={() => toggleSelect(String(log.id))}
                   />
-                  <button type="button"
-                    disabled={isLoading || !manualTo}
-                    onClick={() => {
-                      if (manualTo) {
-                        const to = manualTo.startsWith('/') ? manualTo : `/${manualTo}`
-                        handleCreateRedirect(log.url, to)
-                      }
-                    }}
-                    style={{
-                      padding: '2px 8px',
-                      borderRadius: 4,
-                      border: `1px solid ${V.border}`,
-                      fontSize: 10,
-                      fontWeight: 700,
-                      cursor: isLoading || !manualTo ? 'not-allowed' : 'pointer',
-                      backgroundColor: V.bgCard,
-                      color: V.text,
-                      opacity: isLoading || !manualTo ? 0.5 : 1,
-                    }}
-                  >
-                    {isLoading ? '...' : '301 →'}
-                  </button>
-                </>
-              )}
-              <button type="button"
-                onClick={() => handleIgnore(log.id)}
-                title={t.sitemapAudit.ignore}
-                style={{
-                  padding: '2px 6px',
-                  borderRadius: 4,
-                  border: `1px solid ${V.border}`,
-                  fontSize: 10,
-                  cursor: 'pointer',
-                  backgroundColor: V.bg,
-                  color: V.textSecondary,
-                }}
-              >
-                &#128065;
-              </button>
-              <button type="button"
-                onClick={() => handleDelete(log.id)}
-                title={t.common.delete}
-                style={{
-                  padding: '2px 6px',
-                  borderRadius: 4,
-                  border: `1px solid ${V.border}`,
-                  fontSize: 10,
-                  cursor: 'pointer',
-                  backgroundColor: V.bg,
-                  color: V.red,
-                }}
-              >
-                &#128465;
-              </button>
-            </div>
-          </div>
-        )
-      })}
-    </div>
+                </td>
+                <td>
+                  <div className="seo-sitemap__cell">
+                    <span className="seo-mono seo-text--danger seo-truncate seo-sitemap__url" title={log.url}>
+                      {log.url}
+                    </span>
+                    <div className="seo-row seo-text seo-text--small seo-text--secondary">
+                      <TonePill tone="warning">{log.count}x</TonePill>
+                      <span>
+                        {t.sitemapAudit.last} {log.lastSeen ? new Date(log.lastSeen).toLocaleDateString(locale) : '?'}
+                      </span>
+                      {log.referrer && (
+                        <span title={log.referrer}>
+                          {t.sitemapAudit.ref} {log.referrer.length > 30 ? log.referrer.slice(0, 28) + '...' : log.referrer}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  <div className="seo-sitemap__redirect">
+                    {isCreated ? (
+                      <Pill alignIcon="left" icon={<CheckIcon />} pillStyle="success" size="small">
+                        301
+                      </Pill>
+                    ) : (
+                      <>
+                        <input
+                          type="text"
+                          aria-label={`${t.sitemapAudit.targetSlug} — ${log.url}`}
+                          className="seo-input seo-input--inline seo-sitemap__slug-input"
+                          placeholder={t.sitemapAudit.targetSlug}
+                          value={manualTo}
+                          onChange={(e) =>
+                            setManualInputs((prev) => ({ ...prev, [log.url]: e.target.value }))
+                          }
+                        />
+                        <Button
+                          buttonStyle="secondary"
+                          disabled={isLoading || !manualTo}
+                          margin={false}
+                          onClick={() => {
+                            if (manualTo) {
+                              const to = manualTo.startsWith('/') ? manualTo : `/${manualTo}`
+                              handleCreateRedirect(log.url, to)
+                            }
+                          }}
+                        >
+                          {isLoading ? '...' : '301 →'}
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </td>
+                <td className="seo-table__num">
+                  <div className="seo-row seo-row--nowrap seo-sitemap__actions">
+                    <Button
+                      aria-label={t.sitemapAudit.ignore}
+                      buttonStyle="ghost"
+                      icon={<EyeIcon />}
+                      margin={false}
+                      onClick={() => handleIgnore(log.id)}
+                      tooltip={t.sitemapAudit.ignore}
+                    />
+                    <Button
+                      aria-label={t.common.delete}
+                      buttonStyle="ghost"
+                      icon={<TrashIcon />}
+                      margin={false}
+                      onClick={() => handleDelete(log.id)}
+                      tooltip={t.common.delete}
+                    />
+                  </div>
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </DataTable>
+    </ListCard>
   )
 }
 
@@ -1501,52 +1116,34 @@ function ExternalLinksTab() {
   // Initial state: prompt to scan
   if (!data && !loading && !error) {
     return (
-      <div style={{ padding: '40px 20px', textAlign: 'center' }}>
-        <div style={{ fontSize: 36, marginBottom: 12, opacity: 0.3 }}>&#128279;</div>
-        <div style={{ fontSize: 13, color: V.textSecondary, marginBottom: 16 }}>
-          {t.sitemapAudit.checkExternalLinksDesc}
-        </div>
-        <button type="button"
-          onClick={() => handleScan()}
-          style={{
-            ...btnBase,
-            backgroundColor: V.cyan,
-            color: '#000',
-            border: 'none',
-            padding: '10px 24px',
-            fontSize: 12,
-          }}
-        >
-          {t.sitemapAudit.scanExternalLinks}
-        </button>
-      </div>
+      <ListCard title={t.sitemapAudit.externalLinks}>
+        <EmptyState
+          action={
+            <Button buttonStyle="primary" margin={false} onClick={() => handleScan()}>
+              {t.sitemapAudit.scanExternalLinks}
+            </Button>
+          }
+          title={t.sitemapAudit.checkExternalLinksDesc}
+        />
+      </ListCard>
     )
   }
 
   // Loading state
   if (loading) {
     return (
-      <div style={{ padding: '40px 20px', textAlign: 'center', color: V.textSecondary, fontSize: 13 }}>
-        <div style={{ fontSize: 24, marginBottom: 8, animation: 'spin 1s linear infinite' }}>&#8635;</div>
-        {t.sitemapAudit.verificationInProgress}
-      </div>
+      <ListCard flush={false} title={t.sitemapAudit.externalLinks}>
+        <LoadingState label={t.sitemapAudit.verificationInProgress} />
+      </ListCard>
     )
   }
 
   // Error state
   if (error) {
     return (
-      <div style={{ padding: '40px 20px', textAlign: 'center' }}>
-        <div style={{ color: V.red, fontWeight: 700, fontSize: 13, marginBottom: 8 }}>
-          {t.common.loadingError}: {error}
-        </div>
-        <button type="button"
-          onClick={() => handleScan()}
-          style={{ ...btnBase, backgroundColor: V.bgCard, color: V.text }}
-        >
-          {t.common.retry}
-        </button>
-      </div>
+      <ListCard flush={false} title={t.sitemapAudit.externalLinks}>
+        <ErrorState error={error} onRetry={() => handleScan()} />
+      </ListCard>
     )
   }
 
@@ -1555,160 +1152,118 @@ function ExternalLinksTab() {
   const { stats } = data
 
   return (
-    <div>
+    <ListCard count={data.results.length} title={t.sitemapAudit.externalLinks}>
       {/* Stats bar */}
-      <div
-        style={{
-          padding: '10px 14px',
-          backgroundColor: V.bgCard,
-          borderBottom: `1px solid ${V.border}`,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: 8,
-        }}
-      >
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center', fontSize: 11, fontWeight: 600 }}>
-          <span style={{ color: V.text }}>{stats.total} {t.sitemapAudit.total}</span>
-          <span style={{ color: V.green }}>{stats.ok} {t.common.ok}</span>
-          <span style={{ color: V.red }}>{stats.broken + stats.timeout} {t.sitemapAudit.broken}</span>
+      <div className="seo-sitemap__toolbar">
+        <div className="seo-row">
+          <Pill size="small">
+            {stats.total} {t.sitemapAudit.total}
+          </Pill>
+          <TonePill tone="success">
+            {stats.ok} {t.common.ok}
+          </TonePill>
+          <TonePill tone="danger">
+            {stats.broken + stats.timeout} {t.sitemapAudit.broken}
+          </TonePill>
           {stats.timeout > 0 && (
-            <span style={{ color: V.orange }}>{stats.timeout} {t.sitemapAudit.timeout}</span>
+            <TonePill tone="warning">
+              {stats.timeout} {t.sitemapAudit.timeout}
+            </TonePill>
           )}
         </div>
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div className="seo-row">
           {/* Filter toggles */}
           {(['all', 'broken', 'ok'] as ExternalFilter[]).map((f) => {
             const active = filter === f
             const label = f === 'all' ? t.sitemapAudit.all : f === 'broken' ? t.sitemapAudit.brokenLabel : t.common.ok
             return (
-              <button type="button"
+              <Button
+                aria-pressed={active}
+                buttonStyle="pill"
                 key={f}
+                margin={false}
                 onClick={() => setFilter(f)}
-                style={{
-                  padding: '3px 10px',
-                  borderRadius: 4,
-                  border: active ? `2px solid ${V.cyan}` : `1px solid ${V.border}`,
-                  backgroundColor: active ? `rgba(6,182,212,0.1)` : V.bg,
-                  color: active ? V.cyan : V.textSecondary,
-                  fontWeight: active ? 800 : 600,
-                  fontSize: 10,
-                  cursor: 'pointer',
-                  textTransform: 'uppercase',
-                }}
+                selected={active}
               >
                 {label}
-              </button>
+              </Button>
             )
           })}
           {/* Export CSV (broken only) */}
           {stats.broken + stats.timeout > 0 && (
-            <button type="button"
-              onClick={handleExportCSV}
-              style={{
-                ...btnBase,
-                fontSize: 10,
-                padding: '3px 10px',
-                backgroundColor: V.bgCard,
-                color: V.text,
-              }}
-            >
+            <Button buttonStyle="secondary" margin={false} onClick={handleExportCSV}>
               {t.common.exportCsv}
-            </button>
+            </Button>
           )}
           {/* Rescan */}
-          <button type="button"
+          <Button
+            buttonStyle="secondary"
+            icon={<RefreshIcon />}
+            iconPosition="left"
+            margin={false}
             onClick={() => handleScan(true)}
-            style={{
-              ...btnBase,
-              fontSize: 10,
-              padding: '3px 10px',
-              backgroundColor: V.bgCard,
-              color: V.text,
-            }}
-            title={t.sitemapAudit.forceNewVerification}
+            tooltip={t.sitemapAudit.forceNewVerification}
           >
-            &#8635; {t.sitemapAudit.rescan}
-          </button>
+            {t.sitemapAudit.rescan}
+          </Button>
         </div>
       </div>
 
       {/* Results table */}
       {filteredResults.length === 0 ? (
-        <EmptyState message={filter === 'broken' ? t.sitemapAudit.noBrokenLinks : t.sitemapAudit.noExternalLinks} />
+        <EmptyState title={filter === 'broken' ? t.sitemapAudit.noBrokenLinks : t.sitemapAudit.noExternalLinks} />
       ) : (
-        filteredResults.map((result, idx) => (
-          <div key={`ext-${idx}`} style={rowStyle}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div
-                style={{
-                  fontWeight: 600,
-                  fontSize: 11,
-                  color: V.text,
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  fontFamily: 'monospace',
-                }}
-              >
-                <a
-                  href={result.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ color: result.ok ? V.blue : V.red, textDecoration: 'none' }}
-                  title={result.url}
-                >
-                  {result.url.length > 60 ? result.url.substring(0, 60) + '...' : result.url}
-                </a>
-              </div>
-              <div style={{ fontSize: 9, color: V.textSecondary, marginTop: 2 }}>
-                {result.sourcePages.map((p, i) => (
-                  <span key={`src-${i}`}>
-                    {i > 0 && ', '}
-                    <CollectionBadge collection={p.collection} articleLabel={t.common.article} />{' '}
-                    <span style={{ marginLeft: 2 }}>/{p.slug}</span>
-                  </span>
-                ))}
-              </div>
-            </div>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                flexShrink: 0,
-              }}
-            >
-              {/* Status badge */}
-              <span
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  padding: '2px 8px',
-                  borderRadius: 4,
-                  fontSize: 10,
-                  fontWeight: 700,
-                  backgroundColor: result.ok
-                    ? 'rgba(34,197,94,0.1)'
-                    : 'rgba(239,68,68,0.1)',
-                  color: result.ok ? V.green : V.red,
-                }}
-              >
-                {result.ok ? (
-                  <>&#10003; {result.status}</>
-                ) : result.error ? (
-                  <>{result.error.toUpperCase()}</>
-                ) : (
-                  <>&#10007; {result.status}</>
-                )}
-              </span>
-            </div>
-          </div>
-        ))
+        <DataTable aria-label={t.sitemapAudit.externalLinks} bare>
+          <thead>
+            <tr>
+              <th>{t.seoConfig.url}</th>
+              <th className="seo-table__num">
+                <SrOnly>HTTP</SrOnly>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredResults.map((result, idx) => (
+              <tr key={`ext-${idx}`}>
+                <td>
+                  <div className="seo-sitemap__cell">
+                    <a
+                      className={cx('seo-link seo-mono seo-truncate seo-sitemap__url', !result.ok && 'seo-sitemap__link--broken')}
+                      href={result.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={result.url}
+                    >
+                      {result.url.length > 60 ? result.url.substring(0, 60) + '...' : result.url}
+                    </a>
+                    <div className="seo-row seo-text seo-text--small seo-text--secondary">
+                      {result.sourcePages.map((p, i) => (
+                        <div className="seo-row seo-row--nowrap" key={`src-${i}`}>
+                          <CollectionPill articleLabel={t.common.article} collection={p.collection} />
+                          <span className="seo-mono">/{p.slug}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </td>
+                <td className="seo-table__num">
+                  {/* Status badge */}
+                  {result.ok ? (
+                    <Pill alignIcon="left" icon={<CheckIcon />} pillStyle="success" size="small">
+                      {result.status}
+                    </Pill>
+                  ) : (
+                    <Pill pillStyle="error" size="small">
+                      {result.error ? result.error.toUpperCase() : result.status}
+                    </Pill>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </DataTable>
       )}
-    </div>
+    </ListCard>
   )
 }
 
@@ -1858,43 +1413,36 @@ export function SitemapAuditView() {
   // Loading state
   if (loading) {
     return (
-      <div
-        style={{
-          padding: 60,
-          textAlign: 'center',
-          color: V.textSecondary,
-          fontSize: 14,
-          fontFamily: 'var(--font-body, system-ui)',
-        }}
-      >
-        {t.sitemapAudit.analyzingInternal}
-        <LiveRegion message={t.sitemapAudit.analyzingInternal} />
-      </div>
+      <>
+        <ViewHeader title={t.sitemapAudit.title} />
+        <ViewBody>
+          <LoadingState label={t.sitemapAudit.analyzingInternal} />
+          <LiveRegion message={t.sitemapAudit.analyzingInternal} />
+        </ViewBody>
+      </>
     )
   }
 
   // Error state
   if (error) {
     return (
-      <div
-        style={{
-          padding: 60,
-          textAlign: 'center',
-          fontFamily: 'var(--font-body, system-ui)',
-        }}
-      >
-        <div style={{ color: V.red, fontWeight: 700, fontSize: 14, marginBottom: 8 }}>
-          {t.common.loadingError}
-        </div>
-        <div style={{ color: V.textSecondary, fontSize: 12, marginBottom: 16 }}>{error}</div>
-        <LiveRegion assertive message={`${t.common.loadingError}: ${error}`} />
-        <button type="button"
-          onClick={fetchData}
-          style={{ ...btnBase, backgroundColor: V.bgCard, color: V.text }}
-        >
-          {t.common.retry}
-        </button>
-      </div>
+      <>
+        <ViewHeader title={t.sitemapAudit.title} />
+        <ViewBody>
+          <Banner type="danger">
+            <div className="seo-stack seo-stack--tight">
+              <strong>{t.common.loadingError}</strong>
+              <span>{error}</span>
+            </div>
+          </Banner>
+          <LiveRegion assertive message={`${t.common.loadingError}: ${error}`} />
+          <div>
+            <Button buttonStyle="secondary" margin={false} onClick={fetchData}>
+              {t.common.retry}
+            </Button>
+          </div>
+        </ViewBody>
+      </>
     )
   }
 
@@ -1902,201 +1450,118 @@ export function SitemapAuditView() {
 
   const { stats } = data
 
+  const tabs: Array<{ value: TabId; label: string; count?: number }> = [
+    { value: 'orphan', label: t.sitemapAudit.orphanedPages, count: filtered.orphanPages.length },
+    { value: 'weak', label: t.sitemapAudit.fragilePages, count: filtered.weakPages.length },
+    { value: 'hubs', label: t.sitemapAudit.linkHubs, count: filtered.linkHubs.length },
+    { value: 'broken', label: t.sitemapAudit.brokenLinks, count: filtered.brokenLinks.length },
+    { value: 'logs404', label: t.sitemapAudit.logs404, count: logs404Count },
+    { value: 'external', label: t.sitemapAudit.externalLinks },
+  ]
+
+  const summary = `${stats.totalPages} ${t.common.page.toLowerCase()}s, ${stats.totalLinks} ${t.sitemapAudit.links}`
+
   return (
-    <div
-      style={{
-        padding: '20px 24px',
-        maxWidth: 1400,
-        margin: '0 auto',
-        fontFamily: 'var(--font-body, system-ui)',
-      }}
-    >
-      {/* Header */}
-      <div
-        style={{
-          marginBottom: 24,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: 12,
-        }}
-      >
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0, color: V.text }}>
-            {t.sitemapAudit.title}
-          </h1>
-          <p style={{ fontSize: 12, color: V.textSecondary, margin: '4px 0 0' }}>
-            {stats.totalPages} {t.common.page.toLowerCase()}s, {stats.totalLinks} {t.sitemapAudit.links}
-          </p>
-          {/* The crawl runs for a while: announce that it is over. */}
-          <LiveRegion
-            message={`${stats.totalPages} ${t.common.page.toLowerCase()}s, ${stats.totalLinks} ${t.sitemapAudit.links}`}
+    <>
+      <ViewHeader
+        actions={
+          <>
+            {/* C6: Export buttons + Refresh */}
+            <Button buttonStyle="secondary" margin={false} onClick={() => exportJSON(data)}>
+              {t.common.exportJson}
+            </Button>
+            <Button buttonStyle="secondary" margin={false} onClick={() => exportCSV(data, t)}>
+              {t.common.exportCsv}
+            </Button>
+            <Button
+              buttonStyle="secondary"
+              icon={<RefreshIcon />}
+              iconPosition="left"
+              margin={false}
+              onClick={fetchData}
+            >
+              {t.common.refresh}
+            </Button>
+          </>
+        }
+        description={summary}
+        title={t.sitemapAudit.title}
+      />
+      <ViewBody>
+        {/* The crawl runs for a while: announce that it is over. */}
+        <LiveRegion message={summary} />
+
+        {/* Stats cards */}
+        <Grid>
+          <StatTile label={t.sitemapAudit.totalPages} value={stats.totalPages} />
+          <StatTile label={t.sitemapAudit.internalLinks} value={stats.totalLinks} />
+          <StatTile
+            hint={t.sitemapAudit.average}
+            label={t.sitemapAudit.linksPerPage}
+            tone={stats.avgLinksPerPage >= 3 ? 'success' : 'warning'}
+            value={stats.avgLinksPerPage}
           />
-        </div>
-        {/* C6: Export buttons + Refresh */}
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          <button type="button"
-            onClick={() => exportJSON(data)}
-            style={{ ...btnBase, backgroundColor: V.bgCard, color: V.text }}
-          >
-            {t.common.exportJson}
-          </button>
-          <button type="button"
-            onClick={() => exportCSV(data, t)}
-            style={{ ...btnBase, backgroundColor: V.bgCard, color: V.text }}
-          >
-            {t.common.exportCsv}
-          </button>
-          <button type="button"
-            onClick={fetchData}
-            style={{ ...btnBase, backgroundColor: V.bgCard, color: V.text }}
-          >
-            &#8635; {t.common.refresh}
-          </button>
-        </div>
-      </div>
+          <StatTile
+            label={t.sitemapAudit.orphaned}
+            tone={stats.orphanCount === 0 ? 'success' : 'danger'}
+            value={stats.orphanCount}
+          />
+          <StatTile
+            label={t.sitemapAudit.fragile}
+            tone={stats.weakCount === 0 ? 'success' : 'warning'}
+            value={stats.weakCount}
+          />
+          <StatTile
+            label={t.sitemapAudit.brokenLinks}
+            tone={stats.brokenCount === 0 ? 'success' : 'danger'}
+            value={stats.brokenCount}
+          />
+        </Grid>
 
-      {/* Stats cards */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-          gap: 12,
-          marginBottom: 20,
-        }}
-      >
-        <StatCard label={t.sitemapAudit.totalPages} value={stats.totalPages} color={V.blue} />
-        <StatCard label={t.sitemapAudit.internalLinks} value={stats.totalLinks} color={V.cyan} />
-        <StatCard
-          label={t.sitemapAudit.linksPerPage}
-          value={stats.avgLinksPerPage}
-          color={stats.avgLinksPerPage >= 3 ? V.green : V.yellow}
-          subtitle={t.sitemapAudit.average}
-        />
-        <StatCard
-          label={t.sitemapAudit.orphaned}
-          value={stats.orphanCount}
-          color={stats.orphanCount === 0 ? V.green : V.red}
-        />
-        <StatCard
-          label={t.sitemapAudit.fragile}
-          value={stats.weakCount}
-          color={stats.weakCount === 0 ? V.green : V.orange}
-        />
-        <StatCard
-          label={t.sitemapAudit.brokenLinks}
-          value={stats.brokenCount}
-          color={stats.brokenCount === 0 ? V.green : V.red}
-        />
-      </div>
-
-      {/* Search bar */}
-      <div style={{ marginBottom: 16 }}>
+        {/* Search bar */}
         <input
           type="text"
           aria-label={t.sitemapAudit.searchPlaceholder}
+          className="seo-input seo-sitemap__search"
           placeholder={t.sitemapAudit.searchPlaceholder}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          style={{
-            padding: '6px 12px',
-            borderRadius: 6,
-            border: `1px solid ${V.border}`,
-            fontSize: 12,
-            minWidth: 280,
-            color: V.text,
-            backgroundColor: V.bg,
-          }}
         />
-      </div>
 
-      {/* Tabs */}
-      <div
-        role="tablist"
-        aria-label={t.sitemapAudit.title}
-        style={{
-          display: 'flex',
-          gap: 8,
-          marginBottom: 16,
-          flexWrap: 'wrap',
-        }}
-      >
-        <TabButton
-          active={activeTab === 'orphan'}
-          label={t.sitemapAudit.orphanedPages}
-          count={filtered.orphanPages.length}
-          color={V.red}
-          onClick={() => setActiveTab('orphan')}
-          id={`${uid}-tab-orphan`}
-          panelId={`${uid}-panel-orphan`}
-        />
-        <TabButton
-          active={activeTab === 'weak'}
-          label={t.sitemapAudit.fragilePages}
-          count={filtered.weakPages.length}
-          color={V.orange}
-          onClick={() => setActiveTab('weak')}
-          id={`${uid}-tab-weak`}
-          panelId={`${uid}-panel-weak`}
-        />
-        <TabButton
-          active={activeTab === 'hubs'}
-          label={t.sitemapAudit.linkHubs}
-          count={filtered.linkHubs.length}
-          color={V.purple}
-          onClick={() => setActiveTab('hubs')}
-          id={`${uid}-tab-hubs`}
-          panelId={`${uid}-panel-hubs`}
-        />
-        <TabButton
-          active={activeTab === 'broken'}
-          label={t.sitemapAudit.brokenLinks}
-          count={filtered.brokenLinks.length}
-          color={V.red}
-          onClick={() => setActiveTab('broken')}
-          id={`${uid}-tab-broken`}
-          panelId={`${uid}-panel-broken`}
-        />
-        <TabButton
-          active={activeTab === 'logs404'}
-          label={t.sitemapAudit.logs404}
-          count={logs404Count}
-          color={V.orange}
-          onClick={() => setActiveTab('logs404')}
-          id={`${uid}-tab-logs404`}
-          panelId={`${uid}-panel-logs404`}
-        />
-        <TabButton
-          active={activeTab === 'external'}
-          label={t.sitemapAudit.externalLinks}
-          count={0}
-          color={V.cyan}
-          onClick={() => setActiveTab('external')}
-          id={`${uid}-tab-external`}
-          panelId={`${uid}-panel-external`}
-        />
-      </div>
+        {/* Tabs */}
+        <div role="group" aria-label={t.sitemapAudit.title}>
+          <Tabs<TabId>
+            onChange={setActiveTab}
+            tabs={tabs.map((tab) => ({
+              id: `${uid}-tab-${tab.value}`,
+              panelID: `${uid}-panel-${tab.value}`,
+              value: tab.value,
+              label: (
+                <>
+                  {tab.label}
+                  {tab.count !== undefined && <Pill size="small">{tab.count}</Pill>}
+                </>
+              ),
+            }))}
+            value={activeTab}
+          />
+        </div>
 
-      {/* Tab content */}
-      <div
-        role="tabpanel"
-        id={`${uid}-panel-${activeTab}`}
-        aria-labelledby={`${uid}-tab-${activeTab}`}
-        tabIndex={0}
-        style={{
-          border: `1px solid ${V.border}`,
-          borderRadius: 10,
-          overflow: 'hidden',
-        }}
-      >
-        {activeTab === 'orphan' && <OrphanTab pages={filtered.orphanPages} scoreMap={scoreMap} />}
-        {activeTab === 'weak' && <WeakTab pages={filtered.weakPages} scoreMap={scoreMap} />}
-        {activeTab === 'hubs' && <HubsTab hubs={filtered.linkHubs} />}
-        {activeTab === 'broken' && <BrokenTab links={filtered.brokenLinks} onRefresh={fetchData} />}
-        {activeTab === 'logs404' && <Logs404Tab />}
-        {activeTab === 'external' && <ExternalLinksTab />}
-      </div>
-    </div>
+        {/* Tab content */}
+        <div
+          role="tabpanel"
+          id={`${uid}-panel-${activeTab}`}
+          aria-labelledby={`${uid}-tab-${activeTab}`}
+          tabIndex={0}
+        >
+          {activeTab === 'orphan' && <OrphanTab pages={filtered.orphanPages} scoreMap={scoreMap} />}
+          {activeTab === 'weak' && <WeakTab pages={filtered.weakPages} scoreMap={scoreMap} />}
+          {activeTab === 'hubs' && <HubsTab hubs={filtered.linkHubs} />}
+          {activeTab === 'broken' && <BrokenTab links={filtered.brokenLinks} onRefresh={fetchData} />}
+          {activeTab === 'logs404' && <Logs404Tab />}
+          {activeTab === 'external' && <ExternalLinksTab />}
+        </div>
+      </ViewBody>
+    </>
   )
 }

@@ -1,0 +1,177 @@
+/*
+ * Social preview: the tabs and the frame follow the admin theme (Payload tokens). The
+ * Facebook and X cards are mock-ups of third-party surfaces, so they keep those networks'
+ * own light colors (like `.seo-serp` in ui/styles.css): they preview what readers see
+ * on the network, not the admin theme.
+ */
+
+.seo-social__title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacer-1-5);
+  min-width: 0;
+  color: var(--color-text);
+  font-size: var(--text-body-medium-bold-font-size);
+  font-weight: var(--text-body-medium-bold-font-weight);
+  line-height: var(--text-body-medium-bold-line-height);
+}
+
+.seo-social__title svg {
+  flex-shrink: 0;
+  color: var(--color-icon-secondary);
+}
+
+/* Tabs: same look as Payload's `Tabs` (underlined, brand indicator on the active tab). */
+.seo-social__tabs {
+  display: flex;
+  gap: var(--spacer-3);
+  box-shadow: inset 0 -1px var(--color-border);
+}
+
+.seo-social__tab {
+  position: relative;
+  margin: 0;
+  padding: var(--spacer-1) 0 var(--spacer-2);
+  color: var(--color-text-secondary);
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: var(--text-body-medium-font-size);
+  line-height: var(--text-body-medium-line-height);
+  white-space: nowrap;
+  cursor: pointer;
+  appearance: none;
+}
+
+.seo-social__tab::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 -1px;
+  height: 3px;
+  background: var(--color-bg-tertiary);
+  border-radius: var(--radius-full);
+  opacity: 0;
+}
+
+.seo-social__tab:hover::after {
+  opacity: 1;
+}
+
+.seo-social__tab:focus-visible {
+  outline: var(--accessibility-outline);
+  outline-offset: var(--accessibility-outline-inset);
+}
+
+.seo-social__tab--active {
+  color: var(--color-text);
+  font-weight: var(--text-body-medium-bold-font-weight);
+}
+
+.seo-social__tab--active::after,
+.seo-social__tab--active:hover::after {
+  background: var(--color-icon-brand);
+  opacity: 1;
+}
+
+/* ---------- Third-party card mock-ups (network colors on purpose) ---------- */
+
+.seo-social__image {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background-color: #e4e6eb;
+  background-position: center;
+  background-size: cover;
+}
+
+.seo-social__image--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #8a8d91;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.seo-social__fb {
+  padding: 12px;
+  background-color: #f0f2f5;
+  border-radius: var(--radius-medium);
+}
+
+.seo-social__fb-card {
+  overflow: hidden;
+  background-color: #fff;
+  border: 1px solid #dadde1;
+  border-radius: var(--radius-medium);
+}
+
+.seo-social__fb-body {
+  padding: 10px 12px;
+  background-color: #f0f2f5;
+  font-family: Helvetica, Arial, sans-serif;
+}
+
+.seo-social__fb-host {
+  color: #606770;
+  font-size: 11px;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+.seo-social__fb-title,
+.seo-social__fb-desc,
+.seo-social__tw-desc {
+  display: -webkit-box;
+  margin-top: 4px;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.seo-social__fb-title {
+  color: #1d2129;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.seo-social__fb-desc {
+  color: #606770;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.seo-social__tw-card {
+  overflow: hidden;
+  background-color: #fff;
+  border: 1px solid #cfd9de;
+  border-radius: 16px;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+.seo-social__tw-body {
+  padding: 12px;
+}
+
+.seo-social__tw-host {
+  color: #536471;
+  font-size: 11px;
+}
+
+.seo-social__tw-title {
+  margin-top: 4px;
+  overflow: hidden;
+  color: #0f1419;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.seo-social__tw-desc {
+  color: #536471;
+  font-size: 12px;
+  line-height: 1.4;
+}

@@ -1,0 +1,133 @@
+/* Sitemap audit view: layout details on top of the shared primitives (src/ui/styles.css). */
+
+.seo-sitemap__search {
+  max-width: 24rem;
+}
+
+/* Page title cells truncate instead of widening the table. */
+.seo-sitemap__title {
+  display: block;
+  max-width: 28rem;
+}
+
+.seo-sitemap__url {
+  display: block;
+  max-width: 28rem;
+}
+
+.seo-sitemap__link--broken.seo-link {
+  color: var(--color-text-danger);
+}
+
+/* Description line at the top of a list card. */
+.seo-sitemap__intro {
+  margin: 0;
+  padding: var(--spacer-2) var(--spacer-3);
+  color: var(--color-text-secondary);
+  font-size: var(--text-body-small-font-size);
+  line-height: var(--text-body-small-line-height);
+  border-bottom: var(--stroke-width-small) solid var(--color-border);
+}
+
+/* Actions / description bar above a table inside a card. */
+.seo-sitemap__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacer-2);
+  padding: var(--spacer-2) var(--spacer-3);
+  border-bottom: var(--stroke-width-small) solid var(--color-border);
+}
+
+.seo-sitemap__toolbar p {
+  margin: 0;
+}
+
+.seo-sitemap__toolbar--compact {
+  justify-content: flex-start;
+  padding-block: var(--spacer-1);
+  background: var(--color-bg-secondary);
+}
+
+/* Stacked content of a table cell. */
+.seo-sitemap__cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacer-1);
+  min-width: 0;
+}
+
+.seo-sitemap__anchor {
+  display: block;
+  font-style: italic;
+}
+
+th.seo-sitemap__check,
+td.seo-sitemap__check {
+  width: var(--spacer-5);
+  text-align: center;
+}
+
+.seo-sitemap__row--selected td {
+  background: var(--color-bg-selected);
+}
+
+.seo-sitemap__redirect {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacer-1);
+}
+
+.seo-sitemap__slug-input {
+  width: 9rem;
+}
+
+.seo-sitemap__actions {
+  justify-content: flex-end;
+}
+
+/* Visually hidden text for checkbox / icon-only column headers. */
+.seo-sitemap__sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Hover preview that follows the pointer (positioned from data via inline left/top). */
+.seo-sitemap__hover {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.seo-sitemap__hover-card {
+  position: fixed;
+  z-index: var(--z-popup);
+  max-width: 20rem;
+  padding: var(--spacer-2) var(--spacer-3);
+  color: var(--color-text-ontooltip);
+  background: var(--color-bg-tooltip);
+  border-radius: var(--radius-medium);
+  box-shadow: var(--elevation-300-tooltip);
+  font-size: var(--text-body-small-font-size);
+  line-height: var(--text-body-small-line-height);
+  pointer-events: none;
+}
+
+.seo-sitemap__hover-strong {
+  font-weight: var(--text-body-medium-bold-font-weight);
+}
+
+.seo-sitemap__hover-quote {
+  margin-top: var(--spacer-1);
+  font-style: italic;
+}

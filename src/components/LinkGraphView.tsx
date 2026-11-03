@@ -7,40 +7,37 @@
  */
 
 import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react'
+import { Banner, Button } from '@payloadcms/ui'
 import { getTranslations } from '../i18n.js'
 import { useSeoLocale } from '../hooks/useSeoLocale.js'
+import {
+  CHART_COLORS,
+  Card,
+  DataTable,
+  EmptyState,
+  Field,
+  Grid,
+  LoadingState,
+  StatTile,
+  TONE_MARK,
+  TonePill,
+  ViewBody,
+  ViewHeader,
+} from '../ui/index.js'
+import './LinkGraphView.css'
 
 // ---------------------------------------------------------------------------
-// Design tokens — uses Payload CSS variables for theme compatibility
+// Collection colors — chart series tokens, assigned by collection order.
+// The danger color is left out: it marks orphan nodes.
 // ---------------------------------------------------------------------------
 
-const V = {
-  text: 'var(--theme-text, #1a1a1a)',
-  textSecondary: 'var(--theme-elevation-600, #6b7280)',
-  bg: 'var(--theme-elevation-0, #fff)',
-  bgCard: 'var(--theme-elevation-50, #f9fafb)',
-  border: 'var(--theme-elevation-200, #e5e7eb)',
-  green: '#22c55e',
-  yellow: '#f59e0b',
-  orange: '#f97316',
-  red: '#ef4444',
-  blue: '#3b82f6',
-  cyan: '#06b6d4',
-}
-
-// ---------------------------------------------------------------------------
-// Collection color map
-// ---------------------------------------------------------------------------
-
-const COLLECTION_COLORS: Record<string, string> = {
-  pages: V.blue,
-  posts: V.green,
-  products: V.orange,
-}
-
-function getCollectionColor(collection: string): string {
-  return COLLECTION_COLORS[collection] || '#9ca3af'
-}
+const COLLECTION_SERIES = [
+  CHART_COLORS[0],
+  CHART_COLORS[1],
+  CHART_COLORS[2],
+  CHART_COLORS[4],
+  CHART_COLORS[5],
+]
 
 // ---------------------------------------------------------------------------
 // Types
@@ -117,7 +114,7 @@ const CB_LABELS = {
     add: 'À ajouter',
     depth: 'Profondeur',
     orphan: 'Orpheline',
-    none: 'Maillage interne sain — aucune page sous-maillée détectée. 🎉',
+    none: 'Maillage interne sain — aucune page sous-maillée détectée.',
   },
   en: {
     title: 'Crawl budget / internal linking',
@@ -131,7 +128,7 @@ const CB_LABELS = {
     add: 'To add',
     depth: 'Depth',
     orphan: 'Orphan',
-    none: 'Healthy internal mesh — no under-linked pages found. 🎉',
+    none: 'Healthy internal mesh — no under-linked pages found.',
   },
 } as const
 
@@ -352,6 +349,13 @@ export function LinkGraphView() {
     return Array.from(set).sort()
   }, [data])
 
+  const collectionColors = useMemo(() => {
+    const map = new Map<string, string>()
+    collections.forEach((c, i) => map.set(c, COLLECTION_SERIES[i % COLLECTION_SERIES.length]))
+    return map
+  }, [collections])
+  const getCollectionColor = (collection: string) => collectionColors.get(collection) ?? COLLECTION_SERIES[0]
+
   const filteredNodeIds = useMemo(() => {
     if (filterCollection === 'all') return new Set(simNodes.map((n) => n.id))
     return new Set(simNodes.filter((n) => n.collection === filterCollection).map((n) => n.id))
@@ -494,422 +498,300 @@ export function LinkGraphView() {
   const SVG_WIDTH = 1200
   const SVG_HEIGHT = 800
 
+  const header = <ViewHeader description={T.linkGraph.subtitle} title={T.linkGraph.title} />
+
   // Loading state
   if (loading) {
     return (
-      <div style={{ padding: '40px 20px', textAlign: 'center', color: V.textSecondary }}>
-        <div style={{ fontSize: 14 }}>{T.common.loading}</div>
-      </div>
+      <>
+        {header}
+        <ViewBody>
+          <LoadingState label={T.common.loading} />
+        </ViewBody>
+      </>
     )
   }
 
   // Error state
   if (error) {
     return (
-      <div style={{ padding: '40px 20px', textAlign: 'center' }}>
-        <div style={{ color: V.red, marginBottom: 12 }}>{T.common.error}: {error}</div>
-        <button type="button"
-          onClick={fetchData}
-          style={{
-            padding: '8px 16px',
-            background: V.blue,
-            color: '#fff',
-            border: 'none',
-            borderRadius: 6,
-            cursor: 'pointer',
-            fontSize: 13,
-          }}
-        >
-          {T.common.refresh}
-        </button>
-      </div>
+      <>
+        {header}
+        <ViewBody>
+          <Banner type="danger">
+            {T.common.error}: {error}
+          </Banner>
+          <div className="seo-row">
+            <Button buttonStyle="secondary" onClick={fetchData} type="button">
+              {T.common.refresh}
+            </Button>
+          </div>
+        </ViewBody>
+      </>
     )
   }
 
   // No data
   if (!data || data.nodes.length === 0) {
     return (
-      <div style={{ padding: '40px 20px', textAlign: 'center', color: V.textSecondary }}>
-        {T.common.noResults}
-      </div>
+      <>
+        {header}
+        <ViewBody>
+          <EmptyState title={T.common.noResults} />
+        </ViewBody>
+      </>
     )
   }
 
   return (
-    <div style={{ padding: '20px 20px 40px' }}>
-      {/* Header */}
-      <div style={{ marginBottom: 20 }}>
-        <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: V.text }}>
-          {T.linkGraph.title}
-        </h2>
-        <p style={{ margin: '4px 0 0', fontSize: 13, color: V.textSecondary }}>
-          {T.linkGraph.subtitle}
-        </p>
-      </div>
+    <>
+      {header}
+      <ViewBody>
+        {/* Stats bar */}
+        <Grid>
+          <StatTile label={T.linkGraph.nodes} value={data.stats.totalNodes} />
+          <StatTile label={T.linkGraph.edges} value={data.stats.totalEdges} />
+          <StatTile
+            label={T.linkGraph.orphanNodes}
+            tone={data.stats.orphanCount > 0 ? 'danger' : 'neutral'}
+            value={data.stats.orphanCount}
+          />
+          <StatTile label={T.linkGraph.hubNodes} tone="brand" value={data.stats.hubCount} />
+        </Grid>
 
-      {/* Stats bar */}
-      <div
-        style={{
-          display: 'flex',
-          gap: 16,
-          marginBottom: 16,
-          flexWrap: 'wrap',
-        }}
-      >
-        {[
-          { label: T.linkGraph.nodes, value: data.stats.totalNodes, color: V.blue },
-          { label: T.linkGraph.edges, value: data.stats.totalEdges, color: V.cyan },
-          { label: T.linkGraph.orphanNodes, value: data.stats.orphanCount, color: V.red },
-          { label: T.linkGraph.hubNodes, value: data.stats.hubCount, color: V.orange },
-        ].map(({ label, value, color }) => (
-          <div
-            key={label}
-            style={{
-              background: V.bgCard,
-              border: `1px solid ${V.border}`,
-              borderRadius: 8,
-              padding: '10px 18px',
-              minWidth: 120,
-              textAlign: 'center',
-            }}
-          >
-            <div style={{ fontSize: 22, fontWeight: 700, color }}>{value}</div>
-            <div style={{ fontSize: 12, color: V.textSecondary }}>{label}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Crawl budget / internal linking (SEO 2026) */}
-      {data.crawlBudget && (
-        <div style={{ background: V.bgCard, border: `1px solid ${V.border}`, borderRadius: 10, padding: 16, marginBottom: 16 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: V.text }}>{cb.title}</div>
-          <div style={{ fontSize: 12, color: V.textSecondary, marginTop: 2, marginBottom: 12 }}>{cb.subtitle}</div>
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 12 }}>
-            {[
-              { label: cb.underLinked, value: data.crawlBudget.underLinkedCount, color: V.orange },
-              { label: cb.suggested, value: data.crawlBudget.suggestedLinkCount, color: V.blue },
-              { label: cb.maxDepth, value: data.crawlBudget.maxDepth ?? '—', color: V.cyan },
-              { label: cb.unreachable, value: data.crawlBudget.unreachableCount, color: V.red },
-            ].map(({ label, value, color }) => (
-              <div key={label} style={{ minWidth: 110 }}>
-                <div style={{ fontSize: 20, fontWeight: 700, color }}>{value}</div>
-                <div style={{ fontSize: 11, color: V.textSecondary }}>{label}</div>
-              </div>
-            ))}
-          </div>
-          {data.underLinked && data.underLinked.length > 0 ? (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+        {/* Crawl budget / internal linking (SEO 2026) */}
+        {data.crawlBudget && (
+          <Card title={cb.title}>
+            <p className="seo-text seo-text--small seo-text--secondary">{cb.subtitle}</p>
+            <Grid>
+              <StatTile
+                label={cb.underLinked}
+                tone={data.crawlBudget.underLinkedCount > 0 ? 'warning' : 'neutral'}
+                value={data.crawlBudget.underLinkedCount}
+              />
+              <StatTile label={cb.suggested} tone="brand" value={data.crawlBudget.suggestedLinkCount} />
+              <StatTile label={cb.maxDepth} value={data.crawlBudget.maxDepth ?? '—'} />
+              <StatTile
+                label={cb.unreachable}
+                tone={data.crawlBudget.unreachableCount > 0 ? 'danger' : 'neutral'}
+                value={data.crawlBudget.unreachableCount}
+              />
+            </Grid>
+            {data.underLinked && data.underLinked.length > 0 ? (
+              <DataTable aria-label={cb.underLinked}>
                 <thead>
-                  <tr style={{ textAlign: 'left', color: V.textSecondary }}>
-                    <th style={{ padding: '6px 8px' }}>{cb.page}</th>
-                    <th style={{ padding: '6px 8px', textAlign: 'right' }}>{cb.inbound}</th>
-                    <th style={{ padding: '6px 8px', textAlign: 'right' }}>{cb.add}</th>
-                    <th style={{ padding: '6px 8px', textAlign: 'right' }}>{cb.depth}</th>
+                  <tr>
+                    <th>{cb.page}</th>
+                    <th className="seo-table__num">{cb.inbound}</th>
+                    <th className="seo-table__num">{cb.add}</th>
+                    <th className="seo-table__num">{cb.depth}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {data.underLinked.slice(0, 15).map((u) => (
-                    <tr key={u.slug} style={{ borderTop: `1px solid ${V.border}`, color: V.text }}>
-                      <td style={{ padding: '6px 8px', maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {u.title || u.slug}
-                        {u.isOrphan && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: V.red }}>{cb.orphan}</span>}
+                    <tr key={u.slug}>
+                      <td>
+                        <span className="seo-row seo-row--nowrap">
+                          <span className="seo-link-graph__page">{u.title || u.slug}</span>
+                          {u.isOrphan && <TonePill tone="danger">{cb.orphan}</TonePill>}
+                        </span>
                       </td>
-                      <td style={{ padding: '6px 8px', textAlign: 'right' }}>{u.inDegree}</td>
-                      <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: V.orange }}>+{u.suggestedInboundLinks}</td>
-                      <td style={{ padding: '6px 8px', textAlign: 'right', color: V.textSecondary }}>{u.depthFromHome ?? '∞'}</td>
+                      <td className="seo-table__num">{u.inDegree}</td>
+                      <td className="seo-table__num">+{u.suggestedInboundLinks}</td>
+                      <td className="seo-table__num">{u.depthFromHome ?? '∞'}</td>
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </DataTable>
+            ) : (
+              <Banner type="success">{cb.none}</Banner>
+            )}
+          </Card>
+        )}
+
+        {/* Controls bar */}
+        <div className="seo-row seo-link-graph__controls">
+          <Button
+            aria-label={T.linkGraph.zoomIn}
+            buttonStyle="secondary"
+            onClick={zoomIn}
+            tooltip={T.linkGraph.zoomIn}
+            type="button"
+          >
+            +
+          </Button>
+          <Button
+            aria-label={T.linkGraph.zoomOut}
+            buttonStyle="secondary"
+            onClick={zoomOut}
+            tooltip={T.linkGraph.zoomOut}
+            type="button"
+          >
+            -
+          </Button>
+          <Button buttonStyle="secondary" onClick={resetView} type="button">
+            {T.linkGraph.resetView}
+          </Button>
+
+          <label className="seo-checkbox">
+            <input checked={showLabels} onChange={(e) => setShowLabels(e.target.checked)} type="checkbox" />
+            {showLabels ? T.linkGraph.hideLabels : T.linkGraph.showLabels}
+          </label>
+
+          <Field label={T.linkGraph.filterByCollection}>
+            <select
+              aria-label={T.linkGraph.filterByCollection}
+              className="seo-select seo-select--inline"
+              onChange={(e) => setFilterCollection(e.target.value)}
+              value={filterCollection}
+            >
+              <option value="all">{T.linkGraph.all}</option>
+              {collections.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          {/* Legend */}
+          <ul aria-label={T.linkGraph.filterByCollection} className="seo-link-graph__legend">
+            {collections.map((c) => (
+              <li className="seo-row seo-row--nowrap seo-text seo-text--small seo-text--secondary" key={c}>
+                <span aria-hidden="true" className="seo-dot" style={{ background: getCollectionColor(c) }} />
+                {c}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* Graph container */}
+        <div className="seo-link-graph__canvas" ref={containerRef}>
+          <svg
+            className={`seo-link-graph__svg${isPanning ? ' seo-link-graph__svg--panning' : ''}`}
+            height={SVG_HEIGHT}
+            onMouseDown={handleMouseDown}
+            onMouseLeave={handleMouseUp}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onWheel={handleWheel}
+            ref={svgRef}
+            viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
+            width="100%"
+          >
+            {/* Background rect for pan detection */}
+            <rect fill="none" height={SVG_HEIGHT} pointerEvents="all" width={SVG_WIDTH} x={0} y={0} />
+
+            {/* Transform group (pan + zoom) */}
+            <g transform={`translate(${transform.x}, ${transform.y}) scale(${transform.scale})`}>
+              {/* Edges */}
+              {visibleEdges.map((edge, i) => {
+                const sourceNode = nodeMap.get(edge.source)
+                const targetNode = nodeMap.get(edge.target)
+                if (!sourceNode || !targetNode) return null
+
+                // Test the edge directly instead of looking its index up in
+                // `data.edges`: the indexOf ran per edge on every hover render,
+                // i.e. O(edges²) — about 9 million comparisons at 3 000 edges,
+                // which froze the tab on the slightest pan.
+                const isHighlighted =
+                  hoveredNode !== null &&
+                  (edge.source === hoveredNode || edge.target === hoveredNode)
+                const isDimmed = hoveredNode !== null && !isHighlighted
+
+                return (
+                  <line
+                    className={`seo-link-graph__edge${isHighlighted ? ' seo-link-graph__edge--active' : ''}${isDimmed ? ' seo-link-graph__edge--dimmed' : ''}`}
+                    key={`e-${i}`}
+                    x1={sourceNode.x}
+                    x2={targetNode.x}
+                    y1={sourceNode.y}
+                    y2={targetNode.y}
+                  />
+                )
+              })}
+
+              {/* Nodes */}
+              {visibleNodes.map((node) => {
+                const radius = getNodeRadius(node, maxDegree)
+                const isHovered = hoveredNode === node.id
+                const isConnected = connectedNodes.has(node.id)
+                const isDimmed = hoveredNode !== null && !isConnected
+
+                return (
+                  <g key={`n-${node.id}`}>
+                    {/* Node circle.
+                        This one CANNOT become a <button>: HTML interactive
+                        elements are not valid inside <svg> (only through a
+                        <foreignObject>, which would break the graph layout). It
+                        is therefore the one place where role + tabIndex +
+                        onKeyDown is the correct answer rather than a shortcut —
+                        with an accessible name, which it did not have. */}
+                    <circle
+                      aria-label={node.title}
+                      className={`seo-link-graph__node${isHovered ? ' seo-link-graph__node--hovered' : node.isHub ? ' seo-link-graph__node--hub' : ''}`}
+                      cx={node.x}
+                      cy={node.y}
+                      fillOpacity={isDimmed ? 0.15 : isHovered ? 1 : 0.75}
+                      onClick={() => handleNodeClick(node)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          handleNodeClick(node)
+                        }
+                      }}
+                      onMouseEnter={(e) => handleNodeHover(node, e)}
+                      onMouseLeave={handleNodeLeave}
+                      r={isHovered ? radius + 3 : radius}
+                      role="button"
+                      style={{ fill: node.isOrphan ? TONE_MARK.danger : getCollectionColor(node.collection) }}
+                      tabIndex={0}
+                    />
+
+                    {/* Label */}
+                    {showLabels && !isDimmed && (
+                      <text
+                        className="seo-chart__axis-label"
+                        pointerEvents="none"
+                        textAnchor="middle"
+                        x={node.x}
+                        y={node.y + radius + 12}
+                      >
+                        {node.title.length > 20 ? node.title.slice(0, 18) + '...' : node.title}
+                      </text>
+                    )}
+                  </g>
+                )
+              })}
+            </g>
+          </svg>
+
+          {/* Tooltip */}
+          {tooltipNode && (
+            <div className="seo-link-graph__tooltip" style={{ left: tooltipPos.x, top: tooltipPos.y }}>
+              <div className="seo-link-graph__tooltip-title">{tooltipNode.title}</div>
+              <div className="seo-link-graph__tooltip-muted">
+                /{tooltipNode.slug || 'home'} ({tooltipNode.collection})
+              </div>
+              <div className="seo-row">
+                <span>
+                  {T.linkGraph.incomingLinks}: {tooltipNode.inDegree}
+                </span>
+                <span>
+                  {T.linkGraph.outgoingLinks}: {tooltipNode.outDegree}
+                </span>
+              </div>
+              {(tooltipNode.isOrphan || tooltipNode.isHub) && (
+                <div className="seo-row">
+                  {tooltipNode.isOrphan && <TonePill tone="danger">{T.linkGraph.orphanNodes}</TonePill>}
+                  {tooltipNode.isHub && <TonePill tone="brand">{T.linkGraph.hubNodes}</TonePill>}
+                </div>
+              )}
+              <div className="seo-link-graph__tooltip-muted">{T.linkGraph.clickToOpen}</div>
             </div>
-          ) : (
-            <div style={{ fontSize: 13, color: V.textSecondary }}>{cb.none}</div>
           )}
         </div>
-      )}
-
-      {/* Controls bar */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          marginBottom: 12,
-          flexWrap: 'wrap',
-        }}
-      >
-        {/* Zoom controls */}
-        <button type="button"
-          onClick={zoomIn}
-          title={T.linkGraph.zoomIn}
-          style={controlBtnStyle}
-        >
-          +
-        </button>
-        <button type="button"
-          onClick={zoomOut}
-          title={T.linkGraph.zoomOut}
-          style={controlBtnStyle}
-        >
-          -
-        </button>
-        <button type="button"
-          onClick={resetView}
-          title={T.linkGraph.resetView}
-          style={controlBtnStyle}
-        >
-          {T.linkGraph.resetView}
-        </button>
-
-        <div style={{ width: 1, height: 24, background: V.border, margin: '0 4px' }} />
-
-        {/* Labels toggle */}
-        <label
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-            fontSize: 13,
-            color: V.text,
-            cursor: 'pointer',
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={showLabels}
-            onChange={(e) => setShowLabels(e.target.checked)}
-          />
-          {showLabels ? T.linkGraph.hideLabels : T.linkGraph.showLabels}
-        </label>
-
-        <div style={{ width: 1, height: 24, background: V.border, margin: '0 4px' }} />
-
-        {/* Collection filter */}
-        <label
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            fontSize: 13,
-            color: V.text,
-          }}
-        >
-          {T.linkGraph.filterByCollection}:
-          <select
-            value={filterCollection}
-            onChange={(e) => setFilterCollection(e.target.value)}
-            style={{
-              fontSize: 13,
-              padding: '4px 8px',
-              borderRadius: 4,
-              border: `1px solid ${V.border}`,
-              background: V.bg,
-              color: V.text,
-            }}
-          >
-            <option value="all">{T.linkGraph.all}</option>
-            {collections.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        {/* Legend */}
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 12, alignItems: 'center' }}>
-          {collections.map((c) => (
-            <div key={c} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
-              <div
-                style={{
-                  width: 10,
-                  height: 10,
-                  borderRadius: '50%',
-                  background: getCollectionColor(c),
-                }}
-              />
-              <span style={{ color: V.textSecondary }}>{c}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Graph container */}
-      <div
-        ref={containerRef}
-        style={{
-          position: 'relative',
-          border: `1px solid ${V.border}`,
-          borderRadius: 8,
-          overflow: 'hidden',
-          background: V.bg,
-        }}
-      >
-        <svg
-          ref={svgRef}
-          width="100%"
-          height={SVG_HEIGHT}
-          viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
-          style={{ cursor: isPanning ? 'grabbing' : 'grab', display: 'block' }}
-          onWheel={handleWheel}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
-        >
-          {/* Background rect for pan detection */}
-          <rect x={0} y={0} width={SVG_WIDTH} height={SVG_HEIGHT} fill="transparent" />
-
-          {/* Transform group (pan + zoom) */}
-          <g transform={`translate(${transform.x}, ${transform.y}) scale(${transform.scale})`}>
-            {/* Edges */}
-            {visibleEdges.map((edge, i) => {
-              const sourceNode = nodeMap.get(edge.source)
-              const targetNode = nodeMap.get(edge.target)
-              if (!sourceNode || !targetNode) return null
-
-              // Test the edge directly instead of looking its index up in
-              // `data.edges`: the indexOf ran per edge on every hover render,
-              // i.e. O(edges²) — about 9 million comparisons at 3 000 edges,
-              // which froze the tab on the slightest pan.
-              const isHighlighted =
-                hoveredNode !== null &&
-                (edge.source === hoveredNode || edge.target === hoveredNode)
-              const isDimmed = hoveredNode !== null && !isHighlighted
-
-              return (
-                <line
-                  key={`e-${i}`}
-                  x1={sourceNode.x}
-                  y1={sourceNode.y}
-                  x2={targetNode.x}
-                  y2={targetNode.y}
-                  stroke={isHighlighted ? V.cyan : '#d1d5db'}
-                  strokeWidth={isHighlighted ? 1.5 : 0.5}
-                  strokeOpacity={isDimmed ? 0.1 : isHighlighted ? 0.9 : 0.3}
-                />
-              )
-            })}
-
-            {/* Nodes */}
-            {visibleNodes.map((node) => {
-              const radius = getNodeRadius(node, maxDegree)
-              const color = getCollectionColor(node.collection)
-              const isHovered = hoveredNode === node.id
-              const isConnected = connectedNodes.has(node.id)
-              const isDimmed = hoveredNode !== null && !isConnected
-
-              return (
-                <g key={`n-${node.id}`}>
-                  {/* Node circle.
-                      This one CANNOT become a <button>: HTML interactive
-                      elements are not valid inside <svg> (only through a
-                      <foreignObject>, which would break the graph layout). It
-                      is therefore the one place where role + tabIndex +
-                      onKeyDown is the correct answer rather than a shortcut —
-                      with an accessible name, which it did not have. */}
-                  <circle
-                    cx={node.x}
-                    cy={node.y}
-                    r={isHovered ? radius + 3 : radius}
-                    fill={node.isOrphan ? V.red : color}
-                    fillOpacity={isDimmed ? 0.15 : isHovered ? 1 : 0.75}
-                    stroke={isHovered ? '#fff' : node.isHub ? V.orange : 'transparent'}
-                    strokeWidth={isHovered ? 2.5 : node.isHub ? 1.5 : 0}
-                    style={{ cursor: 'pointer', transition: 'r 0.15s, fill-opacity 0.15s' }}
-                    role="button"
-                    tabIndex={0}
-                    aria-label={node.title}
-                    onMouseEnter={(e) => handleNodeHover(node, e)}
-                    onMouseLeave={handleNodeLeave}
-                    onClick={() => handleNodeClick(node)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault()
-                        handleNodeClick(node)
-                      }
-                    }}
-                  />
-
-                  {/* Label */}
-                  {showLabels && !isDimmed && (
-                    <text
-                      x={node.x}
-                      y={node.y + radius + 12}
-                      textAnchor="middle"
-                      fontSize={9}
-                      fill={V.textSecondary}
-                      pointerEvents="none"
-                      style={{ userSelect: 'none' }}
-                    >
-                      {node.title.length > 20 ? node.title.slice(0, 18) + '...' : node.title}
-                    </text>
-                  )}
-                </g>
-              )
-            })}
-          </g>
-        </svg>
-
-        {/* Tooltip */}
-        {tooltipNode && (
-          <div
-            style={{
-              position: 'absolute',
-              left: tooltipPos.x,
-              top: tooltipPos.y,
-              background: 'rgba(0, 0, 0, 0.88)',
-              color: '#fff',
-              padding: '8px 12px',
-              borderRadius: 6,
-              fontSize: 12,
-              lineHeight: 1.5,
-              pointerEvents: 'none',
-              zIndex: 10,
-              maxWidth: 280,
-              whiteSpace: 'nowrap',
-            }}
-          >
-            <div style={{ fontWeight: 600, marginBottom: 2 }}>{tooltipNode.title}</div>
-            <div style={{ opacity: 0.7, fontSize: 11 }}>
-              /{tooltipNode.slug || 'home'} ({tooltipNode.collection})
-            </div>
-            <div style={{ marginTop: 4, display: 'flex', gap: 12 }}>
-              <span>{T.linkGraph.incomingLinks}: {tooltipNode.inDegree}</span>
-              <span>{T.linkGraph.outgoingLinks}: {tooltipNode.outDegree}</span>
-            </div>
-            {tooltipNode.isOrphan && (
-              <div style={{ marginTop: 2, color: V.red, fontWeight: 600, fontSize: 11 }}>
-                {T.linkGraph.orphanNodes}
-              </div>
-            )}
-            {tooltipNode.isHub && (
-              <div style={{ marginTop: 2, color: V.orange, fontWeight: 600, fontSize: 11 }}>
-                {T.linkGraph.hubNodes}
-              </div>
-            )}
-            <div style={{ marginTop: 4, fontSize: 10, opacity: 0.5 }}>
-              {T.linkGraph.clickToOpen}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+      </ViewBody>
+    </>
   )
-}
-
-// ---------------------------------------------------------------------------
-// Shared button style for controls
-// ---------------------------------------------------------------------------
-
-const controlBtnStyle: React.CSSProperties = {
-  padding: '4px 10px',
-  fontSize: 13,
-  background: V.bgCard,
-  color: V.text,
-  border: `1px solid ${V.border}`,
-  borderRadius: 4,
-  cursor: 'pointer',
-  lineHeight: 1.4,
 }

@@ -1,82 +1,11 @@
 'use client'
 
 import React, { useState, useCallback, useMemo, useId } from 'react'
+import { Banner, Button, PlusIcon, Tabs } from '@payloadcms/ui'
 import { useDashboardT } from '../hooks/useSeoLocale.js'
+import { Card, Field, TonePill, ViewBody, ViewHeader } from '../ui/index.js'
 import type { DashboardTranslations } from '../dashboard-i18n.js'
-
-// ---------------------------------------------------------------------------
-// Design tokens — uses Payload CSS variables for theme compatibility
-// ---------------------------------------------------------------------------
-const V = {
-  text: 'var(--theme-text, #1a1a1a)',
-  textSecondary: 'var(--theme-elevation-600, #6b7280)',
-  bg: 'var(--theme-elevation-0, #fff)',
-  bgCard: 'var(--theme-elevation-50, #f9fafb)',
-  border: 'var(--theme-elevation-200, #e5e7eb)',
-  borderDark: 'var(--theme-border-color, #000)',
-  green: '#22c55e',
-  red: '#ef4444',
-  cyan: '#00E5FF',
-  yellow: '#FFD600',
-  blue: '#3b82f6',
-  orange: '#f97316',
-  purple: '#8b5cf6',
-}
-
-// ---------------------------------------------------------------------------
-// Shared inline styles
-// ---------------------------------------------------------------------------
-const btnBase: React.CSSProperties = {
-  padding: '6px 14px',
-  borderRadius: 6,
-  border: `1px solid ${V.border}`,
-  fontWeight: 600,
-  fontSize: 11,
-  cursor: 'pointer',
-  textTransform: 'uppercase',
-  letterSpacing: 0.3,
-}
-
-const inputStyle: React.CSSProperties = {
-  padding: '8px 12px',
-  borderRadius: 6,
-  border: `1px solid ${V.border}`,
-  fontSize: 13,
-  color: V.text,
-  backgroundColor: V.bg,
-  width: '100%',
-  boxSizing: 'border-box',
-}
-
-const labelStyle: React.CSSProperties = {
-  display: 'block',
-  fontSize: 11,
-  fontWeight: 600,
-  color: V.textSecondary,
-  marginBottom: 4,
-  textTransform: 'uppercase',
-  letterSpacing: 0.4,
-}
-
-const cardStyle: React.CSSProperties = {
-  border: `1px solid ${V.border}`,
-  borderRadius: 10,
-  backgroundColor: V.bgCard,
-  overflow: 'hidden',
-}
-
-const cardHeaderStyle: React.CSSProperties = {
-  padding: '14px 18px',
-  borderBottom: `1px solid ${V.border}`,
-  fontWeight: 700,
-  fontSize: 14,
-  color: V.text,
-  backgroundColor: V.bg,
-}
-
-const cardBodyStyle: React.CSSProperties = {
-  padding: '18px',
-}
+import './SchemaBuilderView.css'
 
 // ---------------------------------------------------------------------------
 // Schema type definitions
@@ -97,8 +26,6 @@ interface SchemaField {
 
 interface SchemaTypeDef {
   label: string
-  icon: string
-  color: string
   jsonType: string
   fields: SchemaField[]
 }
@@ -107,8 +34,6 @@ function getSchemaTypes(t: DashboardTranslations): Record<string, SchemaTypeDef>
   return {
     LocalBusiness: {
       label: t.schemaBuilder.localBusiness,
-      icon: '\uD83C\uDFEA',
-      color: V.orange,
       jsonType: 'LocalBusiness',
       fields: [
         { name: 'name', label: t.schemaBuilder.name, type: 'text', required: true, placeholder: 'Ma Boulangerie' },
@@ -129,8 +54,6 @@ function getSchemaTypes(t: DashboardTranslations): Record<string, SchemaTypeDef>
     },
     Article: {
       label: t.schemaBuilder.article,
-      icon: '\uD83D\uDCDD',
-      color: V.blue,
       jsonType: 'Article',
       fields: [
         { name: 'headline', label: t.schemaBuilder.title, type: 'text', required: true, placeholder: 'Comment faire du pain maison' },
@@ -146,8 +69,6 @@ function getSchemaTypes(t: DashboardTranslations): Record<string, SchemaTypeDef>
     },
     Product: {
       label: t.schemaBuilder.product,
-      icon: '\uD83D\uDED2',
-      color: V.green,
       jsonType: 'Product',
       fields: [
         { name: 'name', label: t.schemaBuilder.productName, type: 'text', required: true, placeholder: 'Pain de campagne bio' },
@@ -174,8 +95,6 @@ function getSchemaTypes(t: DashboardTranslations): Record<string, SchemaTypeDef>
     },
     FAQ: {
       label: t.schemaBuilder.faq,
-      icon: '\u2753',
-      color: V.purple,
       jsonType: 'FAQPage',
       fields: [
         {
@@ -191,8 +110,6 @@ function getSchemaTypes(t: DashboardTranslations): Record<string, SchemaTypeDef>
     },
     HowTo: {
       label: t.schemaBuilder.howTo,
-      icon: '\uD83D\uDCD6',
-      color: V.cyan,
       jsonType: 'HowTo',
       fields: [
         { name: 'name', label: t.schemaBuilder.guideTitle, type: 'text', required: true, placeholder: 'Comment faire un gateau au chocolat' },
@@ -211,8 +128,6 @@ function getSchemaTypes(t: DashboardTranslations): Record<string, SchemaTypeDef>
     },
     Organization: {
       label: t.schemaBuilder.organization,
-      icon: '\uD83C\uDFE2',
-      color: '#6366f1',
       jsonType: 'Organization',
       fields: [
         { name: 'name', label: t.schemaBuilder.name, type: 'text', required: true, placeholder: 'My Company' },
@@ -238,8 +153,6 @@ function getSchemaTypes(t: DashboardTranslations): Record<string, SchemaTypeDef>
     },
     Event: {
       label: t.schemaBuilder.event,
-      icon: '\uD83C\uDF89',
-      color: '#ec4899',
       jsonType: 'Event',
       fields: [
         { name: 'name', label: t.schemaBuilder.name, type: 'text', required: true, placeholder: 'Salon du web 2026' },
@@ -481,6 +394,15 @@ function buildJsonLd(type: string, values: Record<string, any>): Record<string, 
 // JSON syntax highlighter (inline spans)
 // ---------------------------------------------------------------------------
 
+/** Token colors come from the admin's text tones, so the sample follows light/dark mode. */
+const TOKEN_CLASS: Record<'key' | 'string' | 'number' | 'boolean' | 'null', string> = {
+  key: 'seo-text--brand',
+  string: 'seo-text--success',
+  number: 'seo-text--warning',
+  boolean: 'seo-text--secondary',
+  null: 'seo-text--danger',
+}
+
 function syntaxHighlight(json: string): React.ReactNode[] {
   const nodes: React.ReactNode[] = []
   // Regex to match JSON tokens
@@ -526,16 +448,8 @@ function syntaxHighlight(json: string): React.ReactNode[] {
         parts.push(line.slice(lastIdx, match.start))
       }
 
-      const colorMap: Record<string, string> = {
-        key: V.blue,
-        string: V.green,
-        number: V.orange,
-        boolean: V.purple,
-        null: V.red,
-      }
-
       parts.push(
-        <span key={`${li}-${match.start}`} style={{ color: colorMap[match.type] || V.text }}>
+        <span className={TOKEN_CLASS[match.type]} key={`${li}-${match.start}`}>
           {match.text}
         </span>,
       )
@@ -548,7 +462,7 @@ function syntaxHighlight(json: string): React.ReactNode[] {
     }
 
     nodes.push(
-      <div key={`line-${li}`} style={{ minHeight: '1.3em' }}>
+      <div className="seo-schema__code-line" key={`line-${li}`}>
         {parts.length > 0 ? parts : ' '}
       </div>,
     )
@@ -568,22 +482,8 @@ function Toast({ message, onClose }: { message: string; onClose: () => void }) {
   }, [onClose])
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        bottom: 24,
-        right: 24,
-        padding: '12px 20px',
-        borderRadius: 8,
-        backgroundColor: V.green,
-        color: '#fff',
-        fontWeight: 700,
-        fontSize: 13,
-        zIndex: 9999,
-        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-      }}
-    >
-      {message}
+    <div className="seo-schema__toast" role="status">
+      <Banner type="success">{message}</Banner>
     </div>
   )
 }
@@ -673,90 +573,64 @@ export function SchemaBuilderView() {
     if (field.type === 'array') {
       const items = (values[field.name] || []) as Array<Record<string, unknown>>
       return (
-        <div key={fieldKey} style={{ marginBottom: 16 }}>
-          <label style={{ ...labelStyle, fontSize: 12, marginBottom: 8 }}>
+        <div className="seo-field" key={fieldKey}>
+          <span className="seo-field__label">
             {field.label}
-            {field.required && <span style={{ color: V.red, marginLeft: 4 }}>*</span>}
-          </label>
+            {field.required && <span className="seo-text--danger"> *</span>}
+          </span>
           {items.map((item, idx) => (
-            <div
-              key={`${fieldKey}-${idx}`}
-              style={{
-                border: `1px solid ${V.border}`,
-                borderRadius: 8,
-                padding: 14,
-                marginBottom: 10,
-                backgroundColor: V.bg,
-                position: 'relative',
-              }}
-            >
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  marginBottom: 10,
-                }}
-              >
-                <span style={{ fontSize: 11, fontWeight: 700, color: V.textSecondary }}>
-                  #{idx + 1}
-                </span>
-                <button type="button"
-                  onClick={() => removeArrayItem(field.name, idx)}
-                  style={{
-                    ...btnBase,
-                    padding: '2px 8px',
-                    backgroundColor: 'rgba(239,68,68,0.1)',
-                    color: V.red,
-                    border: `1px solid rgba(239,68,68,0.2)`,
-                    fontSize: 10,
-                  }}
-                >
+            <Card
+              actions={
+                <Button buttonStyle="destructive" onClick={() => removeArrayItem(field.name, idx)} type="button">
                   {t.common.delete}
-                </button>
-              </div>
+                </Button>
+              }
+              key={`${fieldKey}-${idx}`}
+              muted
+              title={`#${idx + 1}`}
+            >
               {(field.subFields || []).map((subField) => (
-                <div key={`${fieldKey}-${idx}-${subField.name}`} style={{ marginBottom: 10 }}>
-                  <label style={labelStyle} htmlFor={`${uid}-${fieldKey}-${idx}-${subField.name}`}>
-                    {subField.label}
-                    {subField.required && <span style={{ color: V.red, marginLeft: 4 }}>*</span>}
-                  </label>
+                <Field
+                  key={`${fieldKey}-${idx}-${subField.name}`}
+                  label={
+                    <>
+                      {subField.label}
+                      {subField.required && <span className="seo-text--danger"> *</span>}
+                    </>
+                  }
+                >
                   {subField.type === 'textarea' ? (
                     <textarea
+                      className="seo-textarea"
                       id={`${uid}-${fieldKey}-${idx}-${subField.name}`}
-                      value={(item[subField.name] as string) || ''}
                       onChange={(e) => updateArrayItem(field.name, idx, subField.name, e.target.value)}
                       placeholder={subField.placeholder}
                       rows={3}
-                      style={{ ...inputStyle, resize: 'vertical' }}
+                      value={(item[subField.name] as string) || ''}
                     />
                   ) : (
                     <input
+                      className="seo-input"
                       id={`${uid}-${fieldKey}-${idx}-${subField.name}`}
-                      type={subField.type === 'number' ? 'number' : 'text'}
-                      value={(item[subField.name] as string) || ''}
                       onChange={(e) => updateArrayItem(field.name, idx, subField.name, e.target.value)}
                       placeholder={subField.placeholder}
-                      style={inputStyle}
+                      type={subField.type === 'number' ? 'number' : 'text'}
+                      value={(item[subField.name] as string) || ''}
                     />
                   )}
-                </div>
+                </Field>
               ))}
-            </div>
+            </Card>
           ))}
-          <button type="button"
+          <Button
+            buttonStyle="secondary"
+            className="seo-schema__add"
+            icon={<PlusIcon />}
             onClick={() => addArrayItem(field.name)}
-            style={{
-              ...btnBase,
-              backgroundColor: V.bgCard,
-              color: V.blue,
-              border: `1px dashed ${V.border}`,
-              width: '100%',
-              textAlign: 'center',
-            }}
+            type="button"
           >
             {t.schemaBuilder.addButton}
-          </button>
+          </Button>
         </div>
       )
     }
@@ -771,26 +645,30 @@ export function SchemaBuilderView() {
       : (val: string) => updateField(field.name, val)
 
     return (
-      <div key={fieldKey} style={{ marginBottom: 14 }}>
-        <label style={labelStyle} htmlFor={`${uid}-${fieldKey}`}>
-          {field.label}
-          {field.required && <span style={{ color: V.red, marginLeft: 4 }}>*</span>}
-        </label>
+      <Field
+        key={fieldKey}
+        label={
+          <>
+            {field.label}
+            {field.required && <span className="seo-text--danger"> *</span>}
+          </>
+        }
+      >
         {field.type === 'textarea' ? (
           <textarea
+            className="seo-textarea"
             id={`${uid}-${fieldKey}`}
-            value={currentValue}
             onChange={(e) => onChangeHandler(e.target.value)}
             placeholder={field.placeholder}
             rows={3}
-            style={{ ...inputStyle, resize: 'vertical' }}
+            value={currentValue}
           />
         ) : field.type === 'select' ? (
           <select
+            className="seo-select"
             id={`${uid}-${fieldKey}`}
-            value={currentValue}
             onChange={(e) => onChangeHandler(e.target.value)}
-            style={inputStyle}
+            value={currentValue}
           >
             <option value="">{t.schemaBuilder.choose}</option>
             {(field.options || []).map((opt) => (
@@ -801,224 +679,86 @@ export function SchemaBuilderView() {
           </select>
         ) : field.type === 'datetime' ? (
           <input
+            className="seo-input"
             id={`${uid}-${fieldKey}`}
+            onChange={(e) => onChangeHandler(e.target.value)}
             type="datetime-local"
             value={currentValue}
-            onChange={(e) => onChangeHandler(e.target.value)}
-            style={inputStyle}
           />
         ) : (
           <input
+            className="seo-input"
             id={`${uid}-${fieldKey}`}
-            type={field.type === 'number' ? 'number' : 'text'}
-            value={currentValue}
             onChange={(e) => onChangeHandler(e.target.value)}
             placeholder={field.placeholder}
             step={field.type === 'number' ? 'any' : undefined}
-            style={inputStyle}
+            type={field.type === 'number' ? 'number' : 'text'}
+            value={currentValue}
           />
         )}
-      </div>
+      </Field>
     )
   }
 
   return (
-    <div
-      style={{
-        padding: '20px 24px',
-        maxWidth: 1200,
-        margin: '0 auto',
-        fontFamily: 'var(--font-body, system-ui)',
-      }}
-    >
-      {/* Header */}
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0, color: V.text }}>
-          <span style={{ marginRight: 8 }}>&#123;&#125;</span>
-          Schema.org Builder
-        </h1>
-        <p style={{ fontSize: 12, color: V.textSecondary, margin: '4px 0 0' }}>
-          {t.schemaBuilder.visualGeneratorDesc}
-        </p>
-      </div>
+    <>
+      <ViewHeader description={t.schemaBuilder.visualGeneratorDesc} title="Schema.org Builder" />
+      <ViewBody>
+        {/* Schema type selector */}
+        <Tabs
+          onChange={handleTypeChange}
+          tabs={Object.entries(schemaTypes).map(([key, typeDef]) => ({ label: typeDef.label, value: key }))}
+          value={selectedType}
+        />
 
-      {/* Schema type selector */}
-      <div
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: 8,
-          marginBottom: 24,
-        }}
-      >
-        {Object.entries(schemaTypes).map(([key, typeDef]) => {
-          const isSelected = selectedType === key
-          return (
-            <button type="button"
-              key={key}
-              onClick={() => handleTypeChange(key)}
-              style={{
-                ...btnBase,
-                padding: '10px 16px',
-                fontSize: 12,
-                backgroundColor: isSelected ? typeDef.color : V.bgCard,
-                color: isSelected ? '#fff' : V.text,
-                border: isSelected ? `2px solid ${typeDef.color}` : `1px solid ${V.border}`,
-                borderRadius: 8,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                transition: 'all 0.15s',
-              }}
-            >
-              <span style={{ fontSize: 16 }}>{typeDef.icon}</span>
-              {typeDef.label}
-            </button>
-          )
-        })}
-      </div>
-
-      {/* Main content: Form + Preview */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: 20,
-          alignItems: 'start',
-        }}
-      >
-        {/* Left: Form */}
-        <div style={cardStyle}>
-          <div style={{ ...cardHeaderStyle, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 18 }}>{def.icon}</span>
-            {def.label}
-            <span
-              style={{
-                marginLeft: 'auto',
-                fontSize: 10,
-                fontWeight: 600,
-                padding: '2px 8px',
-                borderRadius: 4,
-                backgroundColor: `${def.color}20`,
-                color: def.color,
-              }}
-            >
-              {def.jsonType}
-            </span>
-          </div>
-          <div style={cardBodyStyle}>
+        {/* Main content: Form + Preview */}
+        <div className="seo-schema__layout">
+          {/* Left: Form */}
+          <Card actions={<TonePill tone="neutral">{def.jsonType}</TonePill>} title={def.label}>
             {def.fields.map((field) => renderField(field))}
-          </div>
-        </div>
+          </Card>
 
-        {/* Right: Preview */}
-        <div style={{ position: 'sticky', top: 20 }}>
-          <div style={cardStyle}>
-            <div
-              style={{
-                ...cardHeaderStyle,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-              }}
+          {/* Right: Preview */}
+          <div className="seo-schema__preview">
+            <Card
+              actions={<TonePill tone="success">{t.schemaBuilder.liveUpdate}</TonePill>}
+              footer={
+                <>
+                  <Button buttonStyle="primary" onClick={() => copyToClipboard(jsonString, 'JSON-LD')} type="button">
+                    {t.schemaBuilder.copyJsonLd}
+                  </Button>
+                  <Button
+                    buttonStyle="secondary"
+                    onClick={() => copyToClipboard(scriptTag, 'Script tag')}
+                    type="button"
+                  >
+                    {t.schemaBuilder.copyScriptTag}
+                  </Button>
+                </>
+              }
+              title={t.schemaBuilder.jsonLdPreview}
             >
-              <span>{t.schemaBuilder.jsonLdPreview}</span>
-              <span
-                style={{
-                  fontSize: 10,
-                  fontWeight: 600,
-                  padding: '2px 8px',
-                  borderRadius: 4,
-                  backgroundColor: 'rgba(34,197,94,0.1)',
-                  color: V.green,
-                }}
+              <div
+                aria-label={t.schemaBuilder.jsonLdPreview}
+                className="seo-inset seo-mono seo-schema__code"
+                role="region"
+                tabIndex={0}
               >
-                {t.schemaBuilder.liveUpdate}
-              </span>
-            </div>
-            <div
-              style={{
-                ...cardBodyStyle,
-                padding: '14px 18px',
-                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, monospace',
-                fontSize: 12,
-                lineHeight: 1.5,
-                backgroundColor: '#0d1117',
-                color: '#e6edf3',
-                maxHeight: 500,
-                overflowY: 'auto',
-                borderBottomLeftRadius: 10,
-                borderBottomRightRadius: 10,
-              }}
-            >
-              {highlighted}
-            </div>
-          </div>
+                {highlighted}
+              </div>
+            </Card>
 
-          {/* Copy buttons */}
-          <div
-            style={{
-              display: 'flex',
-              gap: 10,
-              marginTop: 14,
-            }}
-          >
-            <button type="button"
-              onClick={() => copyToClipboard(jsonString, 'JSON-LD')}
-              style={{
-                ...btnBase,
-                flex: 1,
-                backgroundColor: V.blue,
-                color: '#fff',
-                border: 'none',
-                padding: '10px 16px',
-                fontSize: 12,
-                textAlign: 'center',
-              }}
-            >
-              {t.schemaBuilder.copyJsonLd}
-            </button>
-            <button type="button"
-              onClick={() => copyToClipboard(scriptTag, 'Script tag')}
-              style={{
-                ...btnBase,
-                flex: 1,
-                backgroundColor: V.green,
-                color: '#fff',
-                border: 'none',
-                padding: '10px 16px',
-                fontSize: 12,
-                textAlign: 'center',
-              }}
-            >
-              {t.schemaBuilder.copyScriptTag}
-            </button>
-          </div>
-
-          {/* Validation hint */}
-          <div
-            style={{
-              marginTop: 12,
-              padding: '10px 14px',
-              borderRadius: 8,
-              backgroundColor: 'rgba(59,130,246,0.06)',
-              border: `1px solid rgba(59,130,246,0.15)`,
-              fontSize: 11,
-              color: V.textSecondary,
-              lineHeight: 1.5,
-            }}
-          >
-            <strong style={{ color: V.blue }}>{t.schemaBuilder.tip}</strong> {t.schemaBuilder.validateOnRichResults}{' '}
-            <span style={{ fontWeight: 600, color: V.text }}>
-              search.google.com/test/rich-results
-            </span>{' '}
-            {t.schemaBuilder.beforeDeploying}
+            {/* Validation hint */}
+            <Banner type="default">
+              <strong>{t.schemaBuilder.tip}</strong> {t.schemaBuilder.validateOnRichResults}{' '}
+              <strong>search.google.com/test/rich-results</strong> {t.schemaBuilder.beforeDeploying}
+            </Banner>
           </div>
         </div>
-      </div>
 
-      {/* Toast notification */}
-      {toast && <Toast message={toast} onClose={() => setToast(null)} />}
-    </div>
+        {/* Toast notification */}
+        {toast && <Toast message={toast} onClose={() => setToast(null)} />}
+      </ViewBody>
+    </>
   )
 }

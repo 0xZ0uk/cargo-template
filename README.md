@@ -5,7 +5,8 @@
 > Differences from upstream:
 > - Requires `payload` / `@payloadcms/ui` 4.x. No dependency on Next.js: admin views use `DefaultTemplate` from `@payloadcms/ui/rsc` and redirect through Payload's server adapter, so they run under any Payload 4 adapter (Next.js, TanStack Start).
 > - Runs on Cloudflare Workers: no timers at config time, background schedulers are skipped on serverless isolates, client IP prefers `cf-connecting-ip`.
-> - Plugin collections set `versions: false` (Payload 4 versions collections by default).
+> - Plugin collections set `versions: false` (Payload 4 versions collections by default) and `admin.group: false` (managed from the SEO views, kept out of the sidebar).
+> - Admin UI rebuilt on `@payloadcms/ui` components and Payload 4 design tokens: native look in light and dark mode, SEO nav group that follows the feature flags. Conventions in [`src/ui/README.md`](src/ui/README.md).
 >
 > Replace `@consilioweb/payload-seo-analyzer` with `@0xz0uk/payload-seo-analyzer` in the docs below. The Next.js setup steps don't apply.
 

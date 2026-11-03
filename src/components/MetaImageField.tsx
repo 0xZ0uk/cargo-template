@@ -13,10 +13,12 @@
 'use client'
 
 import React, { useCallback, useState } from 'react'
-import { useField, useDocumentInfo } from '@payloadcms/ui'
+import { Banner, Button, CheckIcon, WarningIcon, useField, useDocumentInfo } from '@payloadcms/ui'
+import { cx } from '../ui/index.js'
 import { useDashboardT } from '../hooks/useSeoLocale.js'
 import { withSeoErrorBoundary } from './withSeoErrorBoundary.js'
 import { resolveMetaFieldOptions, type MetaFieldOptionProps } from './metaFieldOptions.js'
+import './MetaField.css'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -24,25 +26,6 @@ import { resolveMetaFieldOptions, type MetaFieldOptionProps } from './metaFieldO
 
 interface MetaImageFieldProps extends MetaFieldOptionProps {
   path: string
-}
-
-// ---------------------------------------------------------------------------
-// Color palette (neubrutalist — matches SeoAnalyzer.tsx)
-// ---------------------------------------------------------------------------
-
-const C = {
-  cyan: '#00E5FF',
-  black: '#000',
-  white: '#fff',
-  green: '#22c55e',
-  yellow: '#FFD600',
-  orange: '#FF8A00',
-  red: '#ef4444',
-  textPrimary: 'var(--theme-text, #1a1a1a)',
-  textSecondary: 'var(--theme-elevation-600, #6b7280)',
-  border: 'var(--theme-border-color, #000)',
-  surfaceBg: 'var(--theme-elevation-0, #fff)',
-  surface50: 'var(--theme-elevation-50, #f9fafb)',
 }
 
 // ---------------------------------------------------------------------------
@@ -101,126 +84,35 @@ function MetaImageFieldInner(props: MetaImageFieldProps) {
   }, [basePath, collectionSlug, globalSlug, docId, setValue])
 
   return (
-    <div
-      style={{
-        fontFamily: 'var(--font-body, Inter, system-ui, sans-serif)',
-        marginBottom: 16,
-      }}
-    >
-      {/* Status + Generate row */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 10,
-          padding: '10px 14px',
-          borderRadius: 8,
-          border: `2px solid ${C.border}`,
-          backgroundColor: C.surfaceBg,
-          boxShadow: '2px 2px 0 0 var(--theme-border-color, rgba(0,0,0,1))',
-        }}
-      >
-        {/* Status indicator */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+    <div className="seo-meta-field">
+      <div className="seo-meta-field__status">
+        <div className="seo-meta-field__status-text">
           <span
-            style={{
-              width: 20,
-              height: 20,
-              borderRadius: 4,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 12,
-              fontWeight: 900,
-              backgroundColor: hasImage ? 'rgba(34,197,94,0.15)' : 'rgba(255,138,0,0.15)',
-              color: hasImage ? '#16a34a' : '#d97706',
-              border: `1px solid ${hasImage ? C.green : C.orange}`,
-            }}
+            aria-hidden="true"
+            className={cx('seo-meta-field__status-icon', `seo-meta-field__status-icon--${hasImage ? 'success' : 'warning'}`)}
           >
-            {hasImage ? '\u2713' : '!'}
+            {hasImage ? <CheckIcon /> : <WarningIcon />}
           </span>
-          <div>
-            <div
-              style={{
-                fontSize: 12,
-                fontWeight: 700,
-                color: C.textPrimary,
-              }}
-            >
-              {t.metaImage.label}
-            </div>
-            <div
-              style={{
-                fontSize: 10,
-                color: C.textSecondary,
-                lineHeight: 1.4,
-              }}
-            >
-              {hasImage
-                ? t.metaImage.imageSet
-                : t.metaImage.noImage}
-            </div>
+          <div className="seo-stack seo-stack--tight">
+            <span className="seo-text seo-text--small seo-text--strong">{t.metaImage.label}</span>
+            <span className="seo-field__description">{hasImage ? t.metaImage.imageSet : t.metaImage.noImage}</span>
           </div>
         </div>
 
-        {/* Generate button */}
         {hasGenerateFn && (
-          <button
-            type="button"
-            onClick={handleGenerate}
+          <Button
+            buttonStyle="secondary"
             disabled={loading}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 5,
-              padding: '8px 14px',
-              borderRadius: 8,
-              border: `2px solid ${C.border}`,
-              backgroundColor: loading
-                ? C.surface50
-                : success
-                  ? C.green
-                  : C.cyan,
-              color: loading
-                ? C.textSecondary
-                : success
-                  ? C.white
-                  : C.black,
-              fontWeight: 800,
-              fontSize: 11,
-              textTransform: 'uppercase' as const,
-              letterSpacing: '0.04em',
-              cursor: loading ? 'wait' : 'pointer',
-              opacity: loading ? 0.7 : 1,
-              boxShadow: '2px 2px 0 0 var(--theme-border-color, rgba(0,0,0,1))',
-              whiteSpace: 'nowrap' as const,
-              flexShrink: 0,
-              transition: 'background-color 0.2s ease',
-            }}
+            icon={success ? <CheckIcon /> : undefined}
+            onClick={handleGenerate}
+            type="button"
           >
-            {loading ? t.common.generating : success ? `\u2713 ${t.metaImage.set}` : t.common.generate}
-          </button>
+            {loading ? t.common.generating : success ? t.metaImage.set : t.common.generate}
+          </Button>
         )}
       </div>
 
-      {/* Error message */}
-      {error && (
-        <div
-          style={{
-            marginTop: 6,
-            padding: '6px 10px',
-            borderRadius: 6,
-            fontSize: 11,
-            fontWeight: 600,
-            color: C.red,
-            backgroundColor: 'rgba(239,68,68,0.08)',
-            border: `1px solid ${C.red}`,
-          }}
-        >
-          {error}
-        </div>
-      )}
+      {error && <Banner type="danger">{error}</Banner>}
     </div>
   )
 }

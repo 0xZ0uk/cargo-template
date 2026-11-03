@@ -1,7 +1,9 @@
 'use client'
 
 import React, { useCallback, useEffect, useMemo, useState, useId } from 'react'
+import { Banner, Button, RefreshIcon, SortDownIcon, SortUpIcon, Tabs } from '@payloadcms/ui'
 import { useDashboardT, useSeoLocale } from '../hooks/useSeoLocale.js'
+import { Card, DataTable, EmptyState, Field, Grid, LoadingState, StatTile, ViewBody, ViewHeader, scoreTone, type Tone } from '../ui/index.js'
 import { CoreWebVitalsPanel } from './CoreWebVitalsPanel.js'
 import { HealthPanel } from './HealthPanel.js'
 import { IndexationHygienePanel } from './IndexationHygienePanel.js'
@@ -12,6 +14,7 @@ import { CtrOpportunitiesPanel } from './CtrOpportunitiesPanel.js'
 import { AlertsPanel } from './AlertsPanel.js'
 import { AltTextPanel } from './AltTextPanel.js'
 import { toCsv } from '../helpers/csv.js'
+import './PerformanceView.css'
 
 // NOTE: xlsx (SheetJS) is loaded dynamically on the client side only.
 // Known CVEs: CVE-2023-30533 (Prototype Pollution), CVE-2024-22363 (ReDoS).
@@ -20,23 +23,6 @@ import { toCsv } from '../helpers/csv.js'
 // to enable XLSX import functionality.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type XLSXModule = any
-
-// ---------------------------------------------------------------------------
-// Design tokens — uses Payload CSS variables for theme compatibility
-// ---------------------------------------------------------------------------
-const V = {
-  text: 'var(--theme-text, #1a1a1a)',
-  textSecondary: 'var(--theme-elevation-600, #6b7280)',
-  bg: 'var(--theme-elevation-0, #fff)',
-  bgCard: 'var(--theme-elevation-50, #f9fafb)',
-  border: 'var(--theme-elevation-200, #e5e7eb)',
-  green: '#22c55e',
-  yellow: '#f59e0b',
-  orange: '#f97316',
-  red: '#ef4444',
-  blue: '#3b82f6',
-  cyan: '#06b6d4',
-}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -76,48 +62,6 @@ interface ImportResult {
 }
 
 // ---------------------------------------------------------------------------
-// Shared styles
-// ---------------------------------------------------------------------------
-
-const btnBase: React.CSSProperties = {
-  padding: '6px 14px',
-  borderRadius: 6,
-  border: `1px solid ${V.border}`,
-  fontWeight: 600,
-  fontSize: 11,
-  cursor: 'pointer',
-  textTransform: 'uppercase',
-  letterSpacing: 0.3,
-}
-
-const cardStyle: React.CSSProperties = {
-  padding: '16px 20px',
-  borderRadius: 10,
-  border: `1px solid ${V.border}`,
-  backgroundColor: V.bgCard,
-  flex: '1 1 200px',
-}
-
-const thStyle: React.CSSProperties = {
-  padding: '8px 12px',
-  fontSize: 9,
-  fontWeight: 700,
-  textTransform: 'uppercase',
-  color: V.textSecondary,
-  letterSpacing: 0.5,
-  borderBottom: `2px solid ${V.border}`,
-  cursor: 'pointer',
-  userSelect: 'none',
-  whiteSpace: 'nowrap',
-}
-
-const tdStyle: React.CSSProperties = {
-  padding: '8px 12px',
-  fontSize: 12,
-  borderBottom: `1px solid ${V.border}`,
-}
-
-// ---------------------------------------------------------------------------
 // Helper: sort array by field
 // ---------------------------------------------------------------------------
 
@@ -130,43 +74,16 @@ function sortBy<T>(arr: T[], field: keyof T, dir: SortDir): T[] {
 }
 
 // ---------------------------------------------------------------------------
-// SummaryCard sub-component
+// Tones for table cells and summary tiles
 // ---------------------------------------------------------------------------
 
-function SummaryCard({
-  label,
-  value,
-  color,
-  suffix,
-}: {
-  label: string
-  value: string | number
-  color: string
-  suffix?: string
-}) {
-  return (
-    <div style={cardStyle}>
-      <div
-        style={{
-          fontSize: 10,
-          fontWeight: 700,
-          textTransform: 'uppercase',
-          color: V.textSecondary,
-          letterSpacing: 0.5,
-          marginBottom: 6,
-        }}
-      >
-        {label}
-      </div>
-      <div style={{ fontSize: 26, fontWeight: 800, color, lineHeight: 1.1 }}>
-        {value}
-        {suffix && (
-          <span style={{ fontSize: 14, fontWeight: 600, marginLeft: 2 }}>{suffix}</span>
-        )}
-      </div>
-    </div>
-  )
-}
+/** CTR (%) at or above 5 is good, at or above 2 is fair. */
+const ctrTone = (ctr: number): Tone => scoreTone(ctr, { good: 5, ok: 2 })
+
+/** Lower is better: top 10 is good, top 30 is fair. */
+const positionTone = (position: number): Tone => (position <= 10 ? 'success' : position <= 30 ? 'warning' : 'danger')
+
+const toneText = (tone: Tone) => `seo-text--${tone}`
 
 // ---------------------------------------------------------------------------
 // SortableTable header cell
@@ -178,14 +95,12 @@ function SortTh({
   currentSort,
   currentDir,
   onSort,
-  style,
 }: {
   label: string
   field: SortField
   currentSort: SortField
   currentDir: SortDir
   onSort: (f: SortField) => void
-  style?: React.CSSProperties
 }) {
   const isActive = currentSort === field
   return (
@@ -195,22 +110,15 @@ function SortTh({
     <th
       scope="col"
       aria-sort={isActive ? (currentDir === 'asc' ? 'ascending' : 'descending') : 'none'}
-      style={{ ...thStyle, ...style }}
+      className="seo-table__num"
     >
-      <button
-        type="button"
-        onClick={() => onSort(field)}
-        style={{
-          background: 'none',
-          border: 'none',
-          padding: 0,
-          font: 'inherit',
-          color: 'inherit',
-          textAlign: 'inherit',
-          cursor: 'pointer',
-        }}
-      >
-        {label} {isActive ? (currentDir === 'asc' ? '\u2191' : '\u2193') : ''}
+      <button type="button" onClick={() => onSort(field)}>
+        {label}
+        {isActive && (
+          <span aria-hidden="true" className="seo-perf__sort">
+            {currentDir === 'asc' ? <SortUpIcon /> : <SortDownIcon />}
+          </span>
+        )}
       </button>
     </th>
   )
@@ -484,398 +392,217 @@ export function PerformanceView() {
     '90d': t.performance.days90,
   }
 
+  const header = (actions?: React.ReactNode) => (
+    <ViewHeader actions={actions} description={t.performance.subtitle} title={t.performance.title} />
+  )
+
   // Loading state
   if (loading) {
     return (
-      <div
-        style={{
-          padding: 60,
-          textAlign: 'center',
-          color: V.textSecondary,
-          fontSize: 14,
-          fontFamily: 'var(--font-body, system-ui)',
-        }}
-      >
-        {t.performance.loading}
-      </div>
+      <>
+        {header()}
+        <ViewBody>
+          <LoadingState label={t.performance.loading} />
+        </ViewBody>
+      </>
     )
   }
 
   // Error state
   if (error) {
     return (
-      <div
-        style={{
-          padding: 60,
-          textAlign: 'center',
-          fontFamily: 'var(--font-body, system-ui)',
-        }}
-      >
-        <div style={{ color: V.red, fontWeight: 700, fontSize: 14, marginBottom: 8 }}>
-          {t.common.loadingError}
-        </div>
-        <div style={{ color: V.textSecondary, fontSize: 12, marginBottom: 16 }}>
-          {error}
-        </div>
-        <button type="button"
-          onClick={fetchData}
-          style={{ ...btnBase, backgroundColor: V.bgCard, color: V.text }}
-        >
-          {t.common.retry}
-        </button>
-      </div>
+      <>
+        {header()}
+        <ViewBody>
+          <div role="alert">
+            <Banner type="danger">
+              <div className="seo-row seo-row--between">
+                <div className="seo-stack seo-stack--tight">
+                  <strong>{t.common.loadingError}</strong>
+                  <span>{error}</span>
+                </div>
+                <Button buttonStyle="secondary" margin={false} onClick={fetchData} size="medium">
+                  {t.common.retry}
+                </Button>
+              </div>
+            </Banner>
+          </div>
+        </ViewBody>
+      </>
     )
   }
 
+  const canImport = !importing && Boolean(csvText.trim() || jsonText.trim())
+
   return (
-    <div
-      style={{
-        padding: '20px 24px',
-        maxWidth: 1200,
-        margin: '0 auto',
-        fontFamily: 'var(--font-body, system-ui)',
-      }}
-    >
-      {/* Header */}
-      <div
-        style={{
-          marginBottom: 24,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: 12,
-        }}
-      >
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0, color: V.text }}>
-            {t.performance.title}
-          </h1>
-          <p style={{ fontSize: 12, color: V.textSecondary, margin: '4px 0 0' }}>
-            {t.performance.subtitle}
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          {/* Period selector */}
-          {(['7d', '30d', '90d'] as Period[]).map((p) => (
-            <button type="button"
-              key={p}
-              onClick={() => setPeriod(p)}
-              style={{
-                ...btnBase,
-                backgroundColor: period === p ? V.cyan : V.bgCard,
-                color: period === p ? '#000' : V.text,
-                fontWeight: period === p ? 800 : 600,
-              }}
-            >
-              {periodLabels[p]}
-            </button>
-          ))}
-          <button type="button"
+    <>
+      {header(
+        <>
+          <Button
+            aria-expanded={showImport}
+            buttonStyle="secondary"
+            margin={false}
             onClick={() => setShowImport(!showImport)}
-            style={{
-              ...btnBase,
-              backgroundColor: showImport ? V.blue : V.bgCard,
-              color: showImport ? '#fff' : V.text,
-            }}
+            size="medium"
           >
             {showImport ? t.performance.closeImport : t.performance.import}
-          </button>
-          <button type="button"
-            onClick={fetchData}
-            style={{ ...btnBase, backgroundColor: V.bgCard, color: V.text }}
-          >
-            &#8635; {t.common.refresh}
-          </button>
+          </Button>
+          <Button buttonStyle="secondary" icon={<RefreshIcon />} margin={false} onClick={fetchData} size="medium">
+            {t.common.refresh}
+          </Button>
           {hasData && (
-            <button type="button"
-              onClick={handleExportCsv}
-              style={{ ...btnBase, backgroundColor: V.cyan, color: '#000' }}
-            >
+            <Button buttonStyle="secondary" margin={false} onClick={handleExportCsv} size="medium">
               {t.common.exportCsv}
-            </button>
+            </Button>
           )}
-        </div>
-      </div>
+        </>,
+      )}
 
-      {/* SEO 2026 — module health, Core Web Vitals (PageSpeed), Google Search Console, rank tracking */}
-      <HealthPanel locale={locale} />
-      <IndexationHygienePanel locale={locale} />
-      <CoreWebVitalsPanel locale={locale} />
-      <GscPanel locale={locale} />
-      <RankTrackingPanel locale={locale} />
-      <CtrOpportunitiesPanel locale={locale} />
-      <ContentGradePanel locale={locale} />
-      <AlertsPanel locale={locale} />
-      <AltTextPanel locale={locale} />
+      <ViewBody>
+        {/* Period selector */}
+        <Tabs<Period>
+          onChange={setPeriod}
+          tabs={(['7d', '30d', '90d'] as Period[]).map((p) => ({ label: periodLabels[p], value: p }))}
+          value={period}
+        />
 
-      {/* Import section */}
-      {showImport && (
-        <div
-          style={{
-            marginBottom: 24,
-            padding: 20,
-            border: `1px solid ${V.border}`,
-            borderRadius: 10,
-            backgroundColor: V.bgCard,
-          }}
-        >
-          <div style={{ fontSize: 14, fontWeight: 700, color: V.text, marginBottom: 12 }}>
-            {t.performance.importGscData}
-          </div>
-          <p style={{ fontSize: 11, color: V.textSecondary, marginTop: 0, marginBottom: 16 }}>
-            {t.performance.noDataDesc}
-          </p>
+        {/* SEO 2026 — module health, Core Web Vitals (PageSpeed), Google Search Console, rank tracking */}
+        <HealthPanel locale={locale} />
+        <IndexationHygienePanel locale={locale} />
+        <CoreWebVitalsPanel locale={locale} />
+        <GscPanel locale={locale} />
+        <RankTrackingPanel locale={locale} />
+        <CtrOpportunitiesPanel locale={locale} />
+        <ContentGradePanel locale={locale} />
+        <AlertsPanel locale={locale} />
+        <AltTextPanel locale={locale} />
 
-          {/* File picker (CSV or XLSX) */}
-          <div style={{ marginBottom: 12 }}>
-            <label
-              htmlFor={fileId}
-              style={{ fontSize: 11, fontWeight: 700, color: V.textSecondary, display: 'block', marginBottom: 4 }}
-            >
-              {t.performance.fileType}
-            </label>
-            <input
-              id={fileId}
-              type="file"
-              accept=".csv,.tsv,.txt,.xlsx,.xls"
-              onChange={handleFileUpload}
-              style={{ fontSize: 12, color: V.text }}
-            />
-          </div>
+        {/* Import section */}
+        {showImport && (
+          <Card title={t.performance.importGscData}>
+            <p className="seo-text seo-text--small seo-text--secondary">{t.performance.noDataDesc}</p>
 
-          {/* CSV textarea preview */}
-          {csvText && (
-            <div style={{ marginBottom: 12 }}>
-              <label
-                htmlFor={csvId}
-                style={{
-                  fontSize: 11,
-                  fontWeight: 700,
-                  color: V.textSecondary,
-                  display: 'block',
-                  marginBottom: 4,
-                }}
-              >
-                CSV ({csvText.split('\n').length} lines)
-              </label>
-              <textarea
-                id={csvId}
-                value={csvText}
-                onChange={(e) => setCsvText(e.target.value)}
-                rows={5}
-                style={{
-                  width: '100%',
-                  padding: 8,
-                  border: `1px solid ${V.border}`,
-                  borderRadius: 6,
-                  fontSize: 11,
-                  fontFamily: 'monospace',
-                  color: V.text,
-                  backgroundColor: V.bg,
-                  resize: 'vertical',
-                  boxSizing: 'border-box',
-                }}
+            {/* File picker (CSV or XLSX) */}
+            <Field label={t.performance.fileType}>
+              <input
+                id={fileId}
+                type="file"
+                accept=".csv,.tsv,.txt,.xlsx,.xls"
+                onChange={handleFileUpload}
+                className="seo-input"
               />
+            </Field>
+
+            {/* CSV textarea preview */}
+            {csvText && (
+              <Field label={`CSV (${csvText.split('\n').length} lines)`}>
+                <textarea
+                  id={csvId}
+                  value={csvText}
+                  onChange={(e) => setCsvText(e.target.value)}
+                  rows={5}
+                  className="seo-textarea seo-mono"
+                />
+              </Field>
+            )}
+
+            {/* XLSX parsed preview */}
+            {!csvText && jsonText && (() => {
+              try {
+                const parsed = JSON.parse(jsonText)
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                  const withUrl = parsed.filter((e: { url?: string }) => e.url && e.url !== '/')
+                  const withQuery = parsed.filter((e: { query?: string }) => e.query)
+                  return (
+                    <Banner type="success">
+                      <strong>{parsed.length}</strong> {t.performance.xlsxEntriesLoaded}
+                      {withUrl.length > 0 && <span> &mdash; {withUrl.length} {t.performance.pages}</span>}
+                      {withQuery.length > 0 && <span> &mdash; {withQuery.length} {t.performance.queries}</span>}
+                    </Banner>
+                  )
+                }
+              } catch { /* ignore */ }
+              return null
+            })()}
+
+            {/* JSON textarea (alternative) */}
+            {!csvText && !jsonText && (
+              <Field label={t.performance.pasteJsonHint}>
+                <textarea
+                  id={jsonId}
+                  value={jsonText}
+                  onChange={(e) => setJsonText(e.target.value)}
+                  placeholder={'[\n  { "url": "/page", "query": "mot clé", "clicks": 10, "impressions": 100, "ctr": 10, "position": 3.5, "date": "2025-01-15" }\n]'}
+                  rows={4}
+                  className="seo-textarea seo-mono"
+                />
+              </Field>
+            )}
+
+            {/* Import button */}
+            <div className="seo-row">
+              <Button buttonStyle="primary" disabled={!canImport} margin={false} onClick={handleImport} size="medium">
+                {importing ? t.performance.importing : t.performance.import}
+              </Button>
             </div>
-          )}
-
-          {/* XLSX parsed preview */}
-          {!csvText && jsonText && (() => {
-            try {
-              const parsed = JSON.parse(jsonText)
-              if (Array.isArray(parsed) && parsed.length > 0) {
-                const withUrl = parsed.filter((e: { url?: string }) => e.url && e.url !== '/')
-                const withQuery = parsed.filter((e: { query?: string }) => e.query)
-                return (
-                  <div style={{
-                    marginBottom: 12,
-                    padding: '10px 14px',
-                    borderRadius: 6,
-                    backgroundColor: 'rgba(34,197,94,0.1)',
-                    border: '1px solid rgba(34,197,94,0.3)',
-                    fontSize: 12,
-                    color: V.text,
-                  }}>
-                    <strong>{parsed.length}</strong> {t.performance.xlsxEntriesLoaded}
-                    {withUrl.length > 0 && <span> &mdash; {withUrl.length} {t.performance.pages}</span>}
-                    {withQuery.length > 0 && <span> &mdash; {withQuery.length} {t.performance.queries}</span>}
-                  </div>
-                )
-              }
-            } catch { /* ignore */ }
-            return null
-          })()}
-
-          {/* JSON textarea (alternative) */}
-          {!csvText && !jsonText && (
-            <div style={{ marginBottom: 12 }}>
-              <label
-                htmlFor={jsonId}
-                style={{
-                  fontSize: 11,
-                  fontWeight: 700,
-                  color: V.textSecondary,
-                  display: 'block',
-                  marginBottom: 4,
-                }}
-              >
-                {t.performance.pasteJsonHint}
-              </label>
-              <textarea
-                id={jsonId}
-                value={jsonText}
-                onChange={(e) => setJsonText(e.target.value)}
-                placeholder={'[\n  { "url": "/page", "query": "mot clé", "clicks": 10, "impressions": 100, "ctr": 10, "position": 3.5, "date": "2025-01-15" }\n]'}
-                rows={4}
-                style={{
-                  width: '100%',
-                  padding: 8,
-                  border: `1px solid ${V.border}`,
-                  borderRadius: 6,
-                  fontSize: 11,
-                  fontFamily: 'monospace',
-                  color: V.text,
-                  backgroundColor: V.bg,
-                  resize: 'vertical',
-                  boxSizing: 'border-box',
-                }}
-              />
-            </div>
-          )}
-
-          {/* Import button */}
-          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-            <button type="button"
-              onClick={handleImport}
-              disabled={importing || (!csvText.trim() && !jsonText.trim())}
-              style={{
-                ...btnBase,
-                backgroundColor:
-                  !importing && (csvText.trim() || jsonText.trim()) ? V.green : V.bgCard,
-                color: !importing && (csvText.trim() || jsonText.trim()) ? '#fff' : V.textSecondary,
-                opacity: !importing && (csvText.trim() || jsonText.trim()) ? 1 : 0.5,
-                cursor:
-                  !importing && (csvText.trim() || jsonText.trim()) ? 'pointer' : 'not-allowed',
-              }}
-            >
-              {importing ? t.performance.importing : t.performance.import}
-            </button>
 
             {/* Import result feedback */}
             {importResult && (
-              <span style={{ fontSize: 12, color: V.green, fontWeight: 700 }}>
-                {importResult.imported} {t.performance.importedCount}, {importResult.updated} {t.performance.updatedCount}
-                {importResult.errors > 0 && (
-                  <span style={{ color: V.red }}>, {importResult.errors} {t.sitemapAudit.errors}</span>
-                )}
-              </span>
+              <div role="status">
+                <Banner type={importResult.errors > 0 ? 'warning' : 'success'}>
+                  {importResult.imported} {t.performance.importedCount}, {importResult.updated} {t.performance.updatedCount}
+                  {importResult.errors > 0 && (
+                    <span>, {importResult.errors} {t.sitemapAudit.errors}</span>
+                  )}
+                </Banner>
+              </div>
             )}
             {importError && (
-              <span style={{ fontSize: 12, color: V.red, fontWeight: 700 }}>{importError}</span>
+              <div role="alert">
+                <Banner type="danger">{importError}</Banner>
+              </div>
             )}
-          </div>
-        </div>
-      )}
+          </Card>
+        )}
 
-      {/* No data empty state */}
-      {!hasData && !showImport && (
-        <div
-          style={{
-            padding: 50,
-            textAlign: 'center',
-            border: `1px solid ${V.border}`,
-            borderRadius: 10,
-            backgroundColor: V.bgCard,
-          }}
-        >
-          <div style={{ fontSize: 28, marginBottom: 10 }}>{'\uD83D\uDCCA'}</div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: V.text, marginBottom: 6 }}>
-            {t.performance.noData}
-          </div>
-          <p style={{ fontSize: 12, color: V.textSecondary, maxWidth: 500, margin: '0 auto 16px' }}>
-            {t.performance.noDataDesc}
-          </p>
-          <button type="button"
-            onClick={() => setShowImport(true)}
-            style={{ ...btnBase, backgroundColor: V.cyan, color: '#000' }}
-          >
-            {t.performance.importData}
-          </button>
-        </div>
-      )}
+        {/* No data empty state */}
+        {!hasData && !showImport && (
+          <Card>
+            <EmptyState
+              action={
+                <Button buttonStyle="primary" margin={false} onClick={() => setShowImport(true)} size="medium">
+                  {t.performance.importData}
+                </Button>
+              }
+              description={t.performance.noDataDesc}
+              title={t.performance.noData}
+            />
+          </Card>
+        )}
 
-      {/* Summary cards */}
-      {hasData && summary && (
-        <div
-          style={{
-            display: 'flex',
-            gap: 12,
-            marginBottom: 24,
-            flexWrap: 'wrap',
-          }}
-        >
-          <SummaryCard
-            label={t.performance.totalClicks}
-            value={summary.totalClicks.toLocaleString(locale)}
-            color={V.blue}
-          />
-          <SummaryCard
-            label={t.performance.totalImpressions}
-            value={summary.totalImpressions.toLocaleString(locale)}
-            color={V.cyan}
-          />
-          <SummaryCard
-            label={t.performance.averageCtr}
-            value={summary.avgCtr}
-            color={summary.avgCtr >= 5 ? V.green : summary.avgCtr >= 2 ? V.yellow : V.red}
-            suffix="%"
-          />
-          <SummaryCard
-            label={t.performance.averagePosition}
-            value={summary.avgPosition}
-            color={summary.avgPosition <= 10 ? V.green : summary.avgPosition <= 30 ? V.yellow : V.red}
-          />
-        </div>
-      )}
+        {/* Summary cards */}
+        {hasData && summary && (
+          <Grid>
+            <StatTile label={t.performance.totalClicks} value={summary.totalClicks.toLocaleString(locale)} />
+            <StatTile label={t.performance.totalImpressions} value={summary.totalImpressions.toLocaleString(locale)} />
+            <StatTile label={t.performance.averageCtr} tone={ctrTone(summary.avgCtr)} value={`${summary.avgCtr}%`} />
+            <StatTile label={t.performance.averagePosition} tone={positionTone(summary.avgPosition)} value={summary.avgPosition} />
+          </Grid>
+        )}
 
-      {/* Top pages table */}
-      {hasData && sortedPages.length > 0 && (
-        <div style={{ marginBottom: 24 }}>
-          <h2
-            style={{
-              fontSize: 15,
-              fontWeight: 800,
-              margin: '0 0 10px',
-              color: V.text,
-            }}
-          >
-            {t.performance.topPages} ({sortedPages.length})
-          </h2>
-          <div
-            style={{
-              border: `1px solid ${V.border}`,
-              borderRadius: 10,
-              overflow: 'hidden',
-            }}
-          >
-            <table
-              style={{
-                width: '100%',
-                borderCollapse: 'collapse',
-                fontSize: 12,
-              }}
-            >
+        {/* Top pages table */}
+        {hasData && sortedPages.length > 0 && (
+          <Card flush title={`${t.performance.topPages} (${sortedPages.length})`}>
+            <DataTable aria-label={t.performance.topPages} bare>
               <thead>
-                <tr style={{ backgroundColor: V.bgCard }}>
-                  <th style={{ ...thStyle, cursor: 'default', textAlign: 'left' }}>URL</th>
+                <tr>
+                  <th scope="col">URL</th>
                   <SortTh
                     label={t.performance.clicks}
                     field="clicks"
                     currentSort={pageSortField}
                     currentDir={pageSortDir}
                     onSort={handlePageSort}
-                    style={{ textAlign: 'right' }}
                   />
                   <SortTh
                     label={t.performance.impressions}
@@ -883,7 +610,6 @@ export function PerformanceView() {
                     currentSort={pageSortField}
                     currentDir={pageSortDir}
                     onSort={handlePageSort}
-                    style={{ textAlign: 'right' }}
                   />
                   <SortTh
                     label={t.performance.ctrPercent}
@@ -891,7 +617,6 @@ export function PerformanceView() {
                     currentSort={pageSortField}
                     currentDir={pageSortDir}
                     onSort={handlePageSort}
-                    style={{ textAlign: 'right' }}
                   />
                   <SortTh
                     label={t.performance.position}
@@ -899,105 +624,39 @@ export function PerformanceView() {
                     currentSort={pageSortField}
                     currentDir={pageSortDir}
                     onSort={handlePageSort}
-                    style={{ textAlign: 'right' }}
                   />
                 </tr>
               </thead>
               <tbody>
                 {sortedPages.map((page, idx) => (
                   <tr key={idx}>
-                    <td
-                      style={{
-                        ...tdStyle,
-                        fontWeight: 600,
-                        color: V.text,
-                        maxWidth: 400,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}
-                      title={page.url}
-                    >
+                    <td className="seo-perf__key seo-text--strong" title={page.url}>
                       {page.url}
                     </td>
-                    <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700 }}>
-                      {page.clicks.toLocaleString(locale)}
-                    </td>
-                    <td style={{ ...tdStyle, textAlign: 'right' }}>
-                      {page.impressions.toLocaleString(locale)}
-                    </td>
-                    <td
-                      style={{
-                        ...tdStyle,
-                        textAlign: 'right',
-                        color: page.ctr >= 5 ? V.green : page.ctr >= 2 ? V.yellow : V.red,
-                        fontWeight: 700,
-                      }}
-                    >
-                      {page.ctr}%
-                    </td>
-                    <td
-                      style={{
-                        ...tdStyle,
-                        textAlign: 'right',
-                        color:
-                          page.position <= 10
-                            ? V.green
-                            : page.position <= 30
-                              ? V.yellow
-                              : V.red,
-                        fontWeight: 700,
-                      }}
-                    >
-                      {page.position}
-                    </td>
+                    <td className="seo-table__num seo-text--strong">{page.clicks.toLocaleString(locale)}</td>
+                    <td className="seo-table__num">{page.impressions.toLocaleString(locale)}</td>
+                    <td className={`seo-table__num seo-text--strong ${toneText(ctrTone(page.ctr))}`}>{page.ctr}%</td>
+                    <td className={`seo-table__num seo-text--strong ${toneText(positionTone(page.position))}`}>{page.position}</td>
                   </tr>
                 ))}
               </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+            </DataTable>
+          </Card>
+        )}
 
-      {/* Top queries table */}
-      {hasData && sortedQueries.length > 0 && (
-        <div style={{ marginBottom: 24 }}>
-          <h2
-            style={{
-              fontSize: 15,
-              fontWeight: 800,
-              margin: '0 0 10px',
-              color: V.text,
-            }}
-          >
-            {t.performance.topQueries} ({sortedQueries.length})
-          </h2>
-          <div
-            style={{
-              border: `1px solid ${V.border}`,
-              borderRadius: 10,
-              overflow: 'hidden',
-            }}
-          >
-            <table
-              style={{
-                width: '100%',
-                borderCollapse: 'collapse',
-                fontSize: 12,
-              }}
-            >
+        {/* Top queries table */}
+        {hasData && sortedQueries.length > 0 && (
+          <Card flush title={`${t.performance.topQueries} (${sortedQueries.length})`}>
+            <DataTable aria-label={t.performance.topQueries} bare>
               <thead>
-                <tr style={{ backgroundColor: V.bgCard }}>
-                  <th style={{ ...thStyle, cursor: 'default', textAlign: 'left' }}>
-                    {t.performance.query}
-                  </th>
+                <tr>
+                  <th scope="col">{t.performance.query}</th>
                   <SortTh
                     label={t.performance.clicks}
                     field="clicks"
                     currentSort={querySortField}
                     currentDir={querySortDir}
                     onSort={handleQuerySort}
-                    style={{ textAlign: 'right' }}
                   />
                   <SortTh
                     label={t.performance.impressions}
@@ -1005,7 +664,6 @@ export function PerformanceView() {
                     currentSort={querySortField}
                     currentDir={querySortDir}
                     onSort={handleQuerySort}
-                    style={{ textAlign: 'right' }}
                   />
                   <SortTh
                     label={t.performance.ctrPercent}
@@ -1013,7 +671,6 @@ export function PerformanceView() {
                     currentSort={querySortField}
                     currentDir={querySortDir}
                     onSort={handleQuerySort}
-                    style={{ textAlign: 'right' }}
                   />
                   <SortTh
                     label={t.performance.position}
@@ -1021,65 +678,26 @@ export function PerformanceView() {
                     currentSort={querySortField}
                     currentDir={querySortDir}
                     onSort={handleQuerySort}
-                    style={{ textAlign: 'right' }}
                   />
                 </tr>
               </thead>
               <tbody>
                 {sortedQueries.map((q, idx) => (
                   <tr key={idx}>
-                    <td
-                      style={{
-                        ...tdStyle,
-                        fontWeight: 600,
-                        color: V.text,
-                        maxWidth: 400,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}
-                      title={q.query}
-                    >
+                    <td className="seo-perf__key seo-text--strong" title={q.query}>
                       {q.query}
                     </td>
-                    <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700 }}>
-                      {q.clicks.toLocaleString(locale)}
-                    </td>
-                    <td style={{ ...tdStyle, textAlign: 'right' }}>
-                      {q.impressions.toLocaleString(locale)}
-                    </td>
-                    <td
-                      style={{
-                        ...tdStyle,
-                        textAlign: 'right',
-                        color: q.ctr >= 5 ? V.green : q.ctr >= 2 ? V.yellow : V.red,
-                        fontWeight: 700,
-                      }}
-                    >
-                      {q.ctr}%
-                    </td>
-                    <td
-                      style={{
-                        ...tdStyle,
-                        textAlign: 'right',
-                        color:
-                          q.position <= 10
-                            ? V.green
-                            : q.position <= 30
-                              ? V.yellow
-                              : V.red,
-                        fontWeight: 700,
-                      }}
-                    >
-                      {q.position}
-                    </td>
+                    <td className="seo-table__num seo-text--strong">{q.clicks.toLocaleString(locale)}</td>
+                    <td className="seo-table__num">{q.impressions.toLocaleString(locale)}</td>
+                    <td className={`seo-table__num seo-text--strong ${toneText(ctrTone(q.ctr))}`}>{q.ctr}%</td>
+                    <td className={`seo-table__num seo-text--strong ${toneText(positionTone(q.position))}`}>{q.position}</td>
                   </tr>
                 ))}
               </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-    </div>
+            </DataTable>
+          </Card>
+        )}
+      </ViewBody>
+    </>
   )
 }

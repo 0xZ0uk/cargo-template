@@ -1,18 +1,10 @@
 'use client'
 
 import React, { useCallback, useEffect, useState } from 'react'
+import { Banner, Button, RefreshIcon } from '@payloadcms/ui'
 import { useSeoFeature } from '../hooks/useSeoLocale.js'
-
-const C = {
-  text: 'var(--theme-text, #1a1a1a)',
-  sub: 'var(--theme-elevation-600, #6b7280)',
-  card: 'var(--theme-elevation-50, #f9fafb)',
-  bg: 'var(--theme-elevation-0, #fff)',
-  border: 'var(--theme-elevation-200, #e5e7eb)',
-  green: '#22c55e',
-  red: '#ef4444',
-  blue: '#3b82f6',
-}
+import { Card, DataTable, EmptyState, LoadingState, TonePill } from '../ui/index.js'
+import './RankTrackingPanel.css'
 
 const S = {
   fr: {
@@ -31,6 +23,7 @@ const S = {
     stable: 'stable',
     newQ: 'nouveau',
     countLabel: 'requêtes suivies',
+    loading: 'Chargement…',
   },
   en: {
     title: 'Rank tracking',
@@ -48,6 +41,7 @@ const S = {
     stable: 'stable',
     newQ: 'new',
     countLabel: 'tracked queries',
+    loading: 'Loading…',
   },
 } as const
 
@@ -131,103 +125,100 @@ export function RankTrackingPanel({ locale }: { locale: 'fr' | 'en' }) {
     }
   }
 
-  const card: React.CSSProperties = {
-    padding: 16,
-    borderRadius: 12,
-    border: `1px solid ${C.border}`,
-    backgroundColor: C.card,
-    marginBottom: 20,
-  }
-
-  const btn: React.CSSProperties = {
-    padding: '8px 12px',
-    borderRadius: 8,
-    border: `1px solid ${C.blue}`,
-    backgroundColor: C.blue,
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: 700,
-    cursor: busy ? 'wait' : 'pointer',
-    opacity: busy ? 0.6 : 1,
-  }
-
   // delta > 0 = improved (moved up the SERP); < 0 = dropped.
   const renderDelta = (m: Mover) => {
     if (m.previousPosition === null) {
-      return <span style={{ color: C.sub, fontSize: 11 }}>{s.newQ}</span>
+      return <span className="seo-text seo-text--small seo-text--secondary">{s.newQ}</span>
     }
     if (Math.abs(m.delta) < 0.1) {
-      return <span style={{ color: C.sub, fontSize: 11 }}>— {s.stable}</span>
+      return <span className="seo-text seo-text--small seo-text--secondary">{s.stable}</span>
     }
     const up = m.delta > 0
     return (
-      <span style={{ color: up ? C.green : C.red, fontWeight: 700, fontSize: 12 }}>
-        {up ? '▲' : '▼'} {Math.abs(m.delta).toFixed(1)}
-      </span>
+      <TonePill tone={up ? 'success' : 'danger'}>
+        {up ? '+' : '−'}
+        {Math.abs(m.delta).toFixed(1)}
+      </TonePill>
     )
   }
 
   return (
-    <div style={card}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-        <div>
-          <div style={{ fontSize: 16, fontWeight: 800, color: C.text }}>{s.title}</div>
-          <div style={{ fontSize: 12, color: C.sub, marginTop: 2 }}>{s.subtitle}</div>
-        </div>
-        {!notConnected && (
-          <button type="button" onClick={snapshotNow} disabled={busy} style={btn}>
+    <Card
+      actions={
+        !notConnected ? (
+          <Button
+            buttonStyle="secondary"
+            disabled={busy}
+            icon={<RefreshIcon />}
+            margin={false}
+            onClick={snapshotNow}
+            size="medium"
+          >
             {busy ? s.snapshotting : s.snapshot}
-          </button>
-        )}
-      </div>
+          </Button>
+        ) : undefined
+      }
+      title={s.title}
+    >
+      <p className="seo-text seo-text--small seo-text--secondary">{s.subtitle}</p>
 
-      {error && <div role="alert" style={{ color: C.red, fontSize: 13, fontWeight: 600, marginTop: 10 }}>{error}</div>}
-
-      {notConnected && <div style={{ marginTop: 12, fontSize: 13, color: C.sub }}>{s.needGsc}</div>}
-
-      {!notConnected && (
-        <div style={{ marginTop: 12 }}>
-          {lastSnapshot && (
-            <div style={{ fontSize: 11, color: C.sub, marginBottom: 8 }}>
-              {s.lastSnapshot}: {new Date(lastSnapshot).toLocaleString(locale)}
-              {movers ? ` · ${movers.length} ${s.countLabel}` : ''}
-            </div>
-          )}
-
-          {loading && !movers && <div style={{ fontSize: 13, color: C.sub }}>…</div>}
-
-          {movers && movers.length === 0 && <div style={{ fontSize: 13, color: C.sub }}>{s.noData}</div>}
-
-          {movers && movers.length > 0 && (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                <thead>
-                  <tr style={{ textAlign: 'left', color: C.sub }}>
-                    <th style={{ padding: '6px 8px' }}>{s.query}</th>
-                    <th style={{ padding: '6px 8px', textAlign: 'right' }}>{s.position}</th>
-                    <th style={{ padding: '6px 8px', textAlign: 'right' }}>{s.change}</th>
-                    <th style={{ padding: '6px 8px', textAlign: 'right' }}>{s.clicks}</th>
-                    <th style={{ padding: '6px 8px', textAlign: 'right' }}>{s.impressions}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {movers.slice(0, 100).map((m, i) => (
-                    <tr key={i} style={{ borderTop: `1px solid ${C.border}`, color: C.text }}>
-                      <td style={{ padding: '6px 8px', maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {m.query}
-                      </td>
-                      <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700 }}>{m.position.toFixed(1)}</td>
-                      <td style={{ padding: '6px 8px', textAlign: 'right' }}>{renderDelta(m)}</td>
-                      <td style={{ padding: '6px 8px', textAlign: 'right' }}>{m.clicks}</td>
-                      <td style={{ padding: '6px 8px', textAlign: 'right' }}>{m.impressions}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+      {error && (
+        <div role="alert">
+          <Banner type="danger">{error}</Banner>
         </div>
       )}
-    </div>
+
+      {notConnected && <Banner type="default">{s.needGsc}</Banner>}
+
+      {!notConnected && (
+        <>
+          {lastSnapshot && (
+            <p className="seo-text seo-text--small seo-text--secondary">
+              {s.lastSnapshot}: {new Date(lastSnapshot).toLocaleString(locale)}
+              {movers ? ` · ${movers.length} ${s.countLabel}` : ''}
+            </p>
+          )}
+
+          {loading && !movers && <LoadingState label={s.loading} />}
+
+          {movers && movers.length === 0 && <EmptyState title={s.noData} />}
+
+          {movers && movers.length > 0 && (
+            <DataTable aria-label={s.title}>
+              <thead>
+                <tr>
+                  <th scope="col">{s.query}</th>
+                  <th className="seo-table__num" scope="col">
+                    {s.position}
+                  </th>
+                  <th className="seo-table__num" scope="col">
+                    {s.change}
+                  </th>
+                  <th className="seo-table__num" scope="col">
+                    {s.clicks}
+                  </th>
+                  <th className="seo-table__num" scope="col">
+                    {s.impressions}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {movers.slice(0, 100).map((m, i) => (
+                  <tr key={i}>
+                    <td className="seo-rank__query" title={m.query}>
+                      {m.query}
+                    </td>
+                    <td className="seo-table__num seo-text--strong">{m.position.toFixed(1)}</td>
+                    <td className="seo-table__num">{renderDelta(m)}</td>
+                    <td className="seo-table__num">{m.clicks}</td>
+                    <td className="seo-table__num">{m.impressions}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </DataTable>
+          )}
+        </>
+      )}
+    </Card>
   )
 }

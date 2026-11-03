@@ -1,0 +1,24 @@
+/* AI alt-text panel: one row per image. */
+.seo-alt__item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacer-3);
+}
+
+.seo-alt__thumb {
+  flex-shrink: 0;
+  width: var(--spacer-6);
+  height: var(--spacer-6);
+  object-fit: cover;
+  border: var(--stroke-width-small) solid var(--color-border);
+  border-radius: var(--radius-small);
+}
+
+.seo-alt__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.seo-alt__action {
+  flex-shrink: 0;
+}

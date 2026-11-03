@@ -1,26 +1,13 @@
 'use client'
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { Banner, Button, Collapsible, EditIcon, RefreshIcon, useConfig } from '@payloadcms/ui'
+import { formatAdminURL } from 'payload/shared'
 import { useDashboardT } from '../hooks/useSeoLocale.js'
 import type { DashboardTranslations } from '../dashboard-i18n.js'
 import { toCsv } from '../helpers/csv.js'
-
-// ---------------------------------------------------------------------------
-// Design tokens — uses Payload CSS variables for theme compatibility
-// ---------------------------------------------------------------------------
-const V = {
-  text: 'var(--theme-text, #1a1a1a)',
-  textSecondary: 'var(--theme-elevation-600, #6b7280)',
-  bg: 'var(--theme-elevation-0, #fff)',
-  bgCard: 'var(--theme-elevation-50, #f9fafb)',
-  border: 'var(--theme-elevation-200, #e5e7eb)',
-  green: '#22c55e',
-  yellow: '#f59e0b',
-  orange: '#f97316',
-  red: '#ef4444',
-  blue: '#3b82f6',
-  cyan: '#06b6d4',
-}
+import { DataTable, EmptyState, Grid, LoadingState, ScorePill, StatTile, TonePill, ViewBody, ViewHeader } from '../ui/index.js'
+import './CannibalizationView.css'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -44,244 +31,83 @@ interface Stats {
 }
 
 // ---------------------------------------------------------------------------
-// Shared styles
-// ---------------------------------------------------------------------------
-const btnBase: React.CSSProperties = {
-  padding: '6px 14px',
-  borderRadius: 6,
-  border: `1px solid ${V.border}`,
-  fontWeight: 600,
-  fontSize: 11,
-  cursor: 'pointer',
-  textTransform: 'uppercase',
-  letterSpacing: 0.3,
-}
-
-function getScoreColor(score: number): string {
-  if (score >= 80) return V.green
-  if (score >= 50) return V.yellow
-  return V.red
-}
-
-function getScoreBg(score: number): string {
-  if (score >= 80) return 'rgba(34,197,94,0.12)'
-  if (score >= 50) return 'rgba(245,158,11,0.12)'
-  return 'rgba(239,68,68,0.12)'
-}
-
-// ---------------------------------------------------------------------------
 // KeywordGroup sub-component
 // ---------------------------------------------------------------------------
 function KeywordGroup({ conflict, t }: { conflict: Conflict; t: DashboardTranslations }) {
-  const [open, setOpen] = useState(true)
+  const {
+    config: {
+      routes: { admin: adminRoute },
+    },
+  } = useConfig()
 
   const severity = conflict.pages.length >= 3 ? 'high' : 'medium'
-  const badgeColor = severity === 'high' ? V.red : V.orange
   const badgeLabel = severity === 'high' ? t.cannibalization.highRisk : t.cannibalization.warning
-  const badgeBg =
-    severity === 'high' ? 'rgba(239,68,68,0.12)' : 'rgba(249,115,22,0.12)'
 
   return (
-    <div
-      style={{
-        marginBottom: 8,
-        border: `1px solid ${V.border}`,
-        borderRadius: 8,
-        overflow: 'hidden',
-      }}
-    >
-      {/* Keyword header */}
-      {/* A real <button>, not a div+role+tabIndex: keyboard activation, focus
-          ring and the disclosure role come for free. */}
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        aria-expanded={open}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          width: '100%',
-          textAlign: 'left',
-          font: 'inherit',
-          border: 'none',
-          padding: '10px 14px',
-          cursor: 'pointer',
-          backgroundColor: badgeBg,
-          userSelect: 'none',
-        }}
-      >
-        {/* <span>, not <div>: a <button> only accepts phrasing content. */}
-        <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span
-            style={{
-              fontWeight: 800,
-              fontSize: 13,
-              color: V.text,
-            }}
-          >
-            &quot;{conflict.keyword}&quot;
-          </span>
-          <span
-            style={{
-              display: 'inline-block',
-              padding: '2px 8px',
-              borderRadius: 4,
-              fontSize: 9,
-              fontWeight: 900,
-              textTransform: 'uppercase',
-              letterSpacing: '0.04em',
-              backgroundColor: badgeColor,
-              color: '#fff',
-              border: `1px solid ${V.border}`,
-            }}
-          >
-            {badgeLabel}
-          </span>
-          <span
-            style={{
-              fontSize: 11,
-              color: V.textSecondary,
-              fontWeight: 600,
-            }}
-          >
+    <Collapsible
+      className="seo-cannibalization__group"
+      header={
+        <span className="seo-row seo-row--nowrap">
+          <span className="seo-text seo-text--strong">&quot;{conflict.keyword}&quot;</span>
+          <TonePill tone={severity === 'high' ? 'danger' : 'warning'}>{badgeLabel}</TonePill>
+          <span className="seo-text seo-text--small seo-text--secondary">
             {conflict.pages.length} {t.cannibalization.pages}
           </span>
         </span>
-        <span
-          style={{
-            fontSize: 10,
-            transition: 'transform 0.2s',
-            display: 'inline-block',
-            transform: open ? 'rotate(90deg)' : 'none',
-            color: V.textSecondary,
-          }}
-        >
-          {'\u25B6'}
-        </span>
-      </button>
-
-      {/* Pages table */}
-      {open && (
-        <div>
-          {/* Table header */}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 100px 80px 60px 50px',
-              padding: '6px 14px',
-              backgroundColor: V.bgCard,
-              borderBottom: `1px solid ${V.border}`,
-              fontSize: 9,
-              fontWeight: 700,
-              textTransform: 'uppercase',
-              color: V.textSecondary,
-              letterSpacing: 0.5,
-              gap: 8,
-            }}
-          >
-            <span>{t.common.page}</span>
-            <span>{t.seoView.collection}</span>
-            <span>{t.seoView.slug}</span>
-            <span style={{ textAlign: 'center' }}>{t.seoView.score}</span>
-            <span />
-          </div>
-
-          {/* Table rows */}
+      }
+    >
+      <DataTable aria-label={conflict.keyword} bare>
+        <thead>
+          <tr>
+            <th>{t.common.page}</th>
+            <th>{t.seoView.collection}</th>
+            <th>{t.seoView.slug}</th>
+            <th className="seo-table__num">{t.seoView.score}</th>
+            <th>
+              <span className="seo-cannibalization__sr-only">{t.common.edit}</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
           {conflict.pages.map((page) => (
-            <div
-              key={`${page.collection}-${page.id}`}
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 100px 80px 60px 50px',
-                padding: '8px 14px',
-                borderBottom: `1px solid ${V.border}`,
-                alignItems: 'center',
-                gap: 8,
-                fontSize: 12,
-              }}
-            >
-              <div
-                style={{
-                  fontWeight: 700,
-                  color: V.text,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {page.title}
-              </div>
-              <div style={{ fontSize: 11, color: V.textSecondary }}>
-                <span
-                  style={{
-                    padding: '0 4px',
-                    borderRadius: 3,
-                    fontSize: 9,
-                    fontWeight: 700,
-                    textTransform: 'uppercase',
-                    backgroundColor:
-                      page.collection === 'pages'
-                        ? 'rgba(37,99,235,0.15)'
-                        : 'rgba(217,119,6,0.2)',
-                  }}
-                >
+            <tr key={`${page.collection}-${page.id}`}>
+              <td>
+                <span className="seo-text seo-text--strong seo-truncate seo-cannibalization__title" title={page.title}>
+                  {page.title}
+                </span>
+              </td>
+              <td>
+                <TonePill tone={page.collection === 'pages' ? 'brand' : 'neutral'}>
                   {page.collection === 'pages' ? t.common.page : t.common.article}
+                </TonePill>
+              </td>
+              <td>
+                <span className="seo-mono seo-text--secondary" title={`/${page.slug}`}>
+                  /{page.slug}
                 </span>
-              </div>
-              <div
-                style={{
-                  fontSize: 10,
-                  color: V.textSecondary,
-                  fontFamily: 'monospace',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-                title={`/${page.slug}`}
-              >
-                /{page.slug}
-              </div>
-              <div style={{ textAlign: 'center' }}>
-                <span
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: '2px 8px',
-                    borderRadius: 6,
-                    fontWeight: 800,
-                    fontSize: 12,
-                    color: getScoreColor(page.score),
-                    backgroundColor: getScoreBg(page.score),
-                    minWidth: 36,
-                  }}
-                >
-                  {page.score}
-                </span>
-              </div>
-              <div style={{ textAlign: 'center' }}>
-                <a
-                  href={`/admin/collections/${page.collection}/${page.id}`}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 2,
-                    fontSize: 10,
-                    fontWeight: 700,
-                    color: V.cyan,
-                    textDecoration: 'none',
-                  }}
-                  title={t.common.edit}
-                >
-                  {'\u2192'}
-                </a>
-              </div>
-            </div>
+              </td>
+              <td className="seo-table__num">
+                <ScorePill score={page.score} />
+              </td>
+              <td className="seo-table__num">
+                <Button
+                  aria-label={`${t.common.edit} — ${page.title}`}
+                  buttonStyle="ghost"
+                  el="link"
+                  icon={<EditIcon />}
+                  margin={false}
+                  to={formatAdminURL({
+                    adminRoute,
+                    path: `/collections/${page.collection}/${page.id}`,
+                  })}
+                  tooltip={t.common.edit}
+                />
+              </td>
+            </tr>
           ))}
-        </div>
-      )}
-    </div>
+        </tbody>
+      </DataTable>
+    </Collapsible>
   )
 }
 
@@ -365,198 +191,96 @@ export function CannibalizationView() {
   // Loading state
   if (loading) {
     return (
-      <div
-        style={{
-          padding: 60,
-          textAlign: 'center',
-          color: V.textSecondary,
-          fontSize: 14,
-          fontFamily: 'var(--font-body, system-ui)',
-        }}
-      >
-        {t.cannibalization.loading}
-      </div>
+      <>
+        <ViewHeader description={t.cannibalization.subtitle} title={t.cannibalization.title} />
+        <ViewBody>
+          <LoadingState label={t.cannibalization.loading} />
+        </ViewBody>
+      </>
     )
   }
 
   // Error state
   if (error) {
     return (
-      <div
-        style={{
-          padding: 60,
-          textAlign: 'center',
-          fontFamily: 'var(--font-body, system-ui)',
-        }}
-      >
-        <div
-          style={{
-            color: V.red,
-            fontWeight: 700,
-            fontSize: 14,
-            marginBottom: 8,
-          }}
-        >
-          {t.common.loadingError}
-        </div>
-        <div style={{ color: V.textSecondary, fontSize: 12, marginBottom: 16 }}>
-          {error}
-        </div>
-        <button type="button"
-          onClick={fetchData}
-          style={{ ...btnBase, backgroundColor: V.bgCard, color: V.text }}
-        >
-          {t.common.retry}
-        </button>
-      </div>
+      <>
+        <ViewHeader description={t.cannibalization.subtitle} title={t.cannibalization.title} />
+        <ViewBody>
+          <Banner type="danger">
+            <div className="seo-stack seo-stack--tight">
+              <strong>{t.common.loadingError}</strong>
+              <span>{error}</span>
+            </div>
+          </Banner>
+          <div>
+            <Button buttonStyle="secondary" margin={false} onClick={fetchData}>
+              {t.common.retry}
+            </Button>
+          </div>
+        </ViewBody>
+      </>
     )
   }
 
   return (
-    <div
-      style={{
-        padding: '20px 24px',
-        maxWidth: 1200,
-        margin: '0 auto',
-        fontFamily: 'var(--font-body, system-ui)',
-      }}
-    >
-      {/* Header */}
-      <div
-        style={{
-          marginBottom: 24,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: 12,
-        }}
-      >
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0, color: V.text }}>
-            {t.cannibalization.title}
-          </h1>
-          <p style={{ fontSize: 12, color: V.textSecondary, margin: '4px 0 0' }}>
-            {t.cannibalization.subtitle}
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          {/* Stats badges */}
-          {stats && (
-            <div style={{ display: 'flex', gap: 8 }}>
-              <span
-                style={{
-                  padding: '4px 10px',
-                  borderRadius: 6,
-                  fontSize: 11,
-                  fontWeight: 700,
-                  backgroundColor: stats.totalConflicts > 0 ? 'rgba(239,68,68,0.12)' : 'rgba(34,197,94,0.12)',
-                  color: stats.totalConflicts > 0 ? V.red : V.green,
-                  border: `1px solid ${V.border}`,
-                }}
-              >
-                {stats.totalConflicts} {t.cannibalization.conflicts}
-              </span>
-              <span
-                style={{
-                  padding: '4px 10px',
-                  borderRadius: 6,
-                  fontSize: 11,
-                  fontWeight: 700,
-                  backgroundColor: 'rgba(249,115,22,0.12)',
-                  color: V.orange,
-                  border: `1px solid ${V.border}`,
-                }}
-              >
-                {stats.totalAffectedPages} {t.cannibalization.affectedPages}
-              </span>
-            </div>
-          )}
-          <button type="button"
-            onClick={fetchData}
-            style={{ ...btnBase, backgroundColor: V.bgCard, color: V.text }}
-          >
-            &#8635; {t.common.refresh}
-          </button>
-          <button type="button"
-            onClick={handleExportCsv}
-            disabled={filteredConflicts.length === 0}
-            style={{
-              ...btnBase,
-              backgroundColor: filteredConflicts.length > 0 ? V.cyan : V.bgCard,
-              color: filteredConflicts.length > 0 ? '#000' : V.textSecondary,
-              opacity: filteredConflicts.length > 0 ? 1 : 0.5,
-              cursor: filteredConflicts.length > 0 ? 'pointer' : 'not-allowed',
-            }}
-          >
-            {t.common.exportCsv}
-          </button>
-        </div>
-      </div>
+    <>
+      <ViewHeader
+        actions={
+          <>
+            <Button buttonStyle="secondary" icon={<RefreshIcon />} iconPosition="left" margin={false} onClick={fetchData}>
+              {t.common.refresh}
+            </Button>
+            <Button
+              buttonStyle="secondary"
+              disabled={filteredConflicts.length === 0}
+              margin={false}
+              onClick={handleExportCsv}
+            >
+              {t.common.exportCsv}
+            </Button>
+          </>
+        }
+        description={t.cannibalization.subtitle}
+        title={t.cannibalization.title}
+      />
+      <ViewBody>
+        {stats && (
+          <Grid>
+            <StatTile
+              label={t.cannibalization.conflicts}
+              tone={stats.totalConflicts > 0 ? 'danger' : 'success'}
+              value={stats.totalConflicts}
+            />
+            <StatTile label={t.cannibalization.affectedPages} tone="warning" value={stats.totalAffectedPages} />
+          </Grid>
+        )}
 
-      {/* Search */}
-      <div style={{ marginBottom: 16 }}>
         <input
-          type="text"
           aria-label={t.cannibalization.searchPlaceholder}
-          placeholder={t.cannibalization.searchPlaceholder}
-          value={search}
+          className="seo-input seo-cannibalization__search"
           onChange={(e) => setSearch(e.target.value)}
-          style={{
-            padding: '8px 14px',
-            borderRadius: 6,
-            border: `1px solid ${V.border}`,
-            fontSize: 12,
-            minWidth: 300,
-            color: V.text,
-            backgroundColor: V.bg,
-          }}
+          placeholder={t.cannibalization.searchPlaceholder}
+          type="text"
+          value={search}
         />
-      </div>
 
-      {/* No conflicts */}
-      {filteredConflicts.length === 0 && (
-        <div
-          style={{
-            padding: 40,
-            textAlign: 'center',
-            border: `1px solid ${V.border}`,
-            borderRadius: 10,
-            backgroundColor: V.bgCard,
-          }}
-        >
-          <div
-            style={{
-              fontSize: 28,
-              marginBottom: 8,
-            }}
-          >
-            {conflicts.length === 0 ? '\u2705' : '\uD83D\uDD0D'}
-          </div>
-          <div
-            style={{
-              fontSize: 14,
-              fontWeight: 700,
-              color: V.text,
-              marginBottom: 4,
-            }}
-          >
-            {conflicts.length === 0
-              ? t.cannibalization.noCannibalization
-              : t.common.noResults}
-          </div>
-          <div style={{ fontSize: 12, color: V.textSecondary }}>
-            {conflicts.length === 0
-              ? t.cannibalization.noCannibalizationDesc
-              : t.cannibalization.noMatchingConflicts}
-          </div>
-        </div>
-      )}
+        {filteredConflicts.length === 0 && (
+          <EmptyState
+            description={
+              conflicts.length === 0 ? t.cannibalization.noCannibalizationDesc : t.cannibalization.noMatchingConflicts
+            }
+            title={conflicts.length === 0 ? t.cannibalization.noCannibalization : t.common.noResults}
+          />
+        )}
 
-      {/* Conflict groups */}
-      {filteredConflicts.map((conflict) => (
-        <KeywordGroup key={conflict.keyword} conflict={conflict} t={t} />
-      ))}
-    </div>
+        {filteredConflicts.length > 0 && (
+          <div className="seo-stack">
+            {filteredConflicts.map((conflict) => (
+              <KeywordGroup conflict={conflict} key={conflict.keyword} t={t} />
+            ))}
+          </div>
+        )}
+      </ViewBody>
+    </>
   )
 }

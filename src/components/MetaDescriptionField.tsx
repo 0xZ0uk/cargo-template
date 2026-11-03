@@ -13,10 +13,12 @@
 'use client'
 
 import React, { useCallback, useState, useId } from 'react'
-import { useField, useDocumentInfo } from '@payloadcms/ui'
+import { Banner, Button, useField, useDocumentInfo } from '@payloadcms/ui'
+import { Meter, cx, rangeTone } from '../ui/index.js'
 import { useDashboardT } from '../hooks/useSeoLocale.js'
 import { withSeoErrorBoundary } from './withSeoErrorBoundary.js'
 import { resolveMetaFieldOptions, type MetaFieldOptionProps } from './metaFieldOptions.js'
+import './MetaField.css'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -27,53 +29,11 @@ interface MetaDescriptionFieldProps extends MetaFieldOptionProps {
 }
 
 // ---------------------------------------------------------------------------
-// Color palette (neubrutalist — matches SeoAnalyzer.tsx)
-// ---------------------------------------------------------------------------
-
-const C = {
-  cyan: '#00E5FF',
-  black: '#000',
-  white: '#fff',
-  green: '#22c55e',
-  yellow: '#FFD600',
-  orange: '#FF8A00',
-  red: '#ef4444',
-  textPrimary: 'var(--theme-text, #1a1a1a)',
-  textSecondary: 'var(--theme-elevation-600, #6b7280)',
-  border: 'var(--theme-border-color, #000)',
-  surfaceBg: 'var(--theme-elevation-0, #fff)',
-  surface50: 'var(--theme-elevation-50, #f9fafb)',
-}
-
-// ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 const DESC_MIN = 120
 const DESC_MAX = 160
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function getCharColor(len: number): string {
-  if (len === 0) return C.textSecondary
-  if (len >= DESC_MIN && len <= DESC_MAX) return C.green
-  if (len > 0 && len < DESC_MIN) return C.orange
-  return C.red
-}
-
-function getProgressPercent(len: number): number {
-  if (len === 0) return 0
-  return Math.min((len / DESC_MAX) * 100, 100)
-}
-
-function getProgressColor(len: number): string {
-  if (len === 0) return 'var(--theme-elevation-200, #e5e7eb)'
-  if (len >= DESC_MIN && len <= DESC_MAX) return C.green
-  if (len < DESC_MIN) return C.orange
-  return C.red
-}
 
 // ---------------------------------------------------------------------------
 // Component
@@ -94,9 +54,7 @@ function MetaDescriptionFieldInner(props: MetaDescriptionFieldProps) {
   const [error, setError] = useState<string | null>(null)
 
   const charCount = (value || '').length
-  const charColor = getCharColor(charCount)
-  const progressPercent = getProgressPercent(charCount)
-  const progressColor = getProgressColor(charCount)
+  const tone = rangeTone(charCount, DESC_MIN, DESC_MAX)
 
   const handleGenerate = useCallback(async () => {
     setLoading(true)
@@ -133,141 +91,40 @@ function MetaDescriptionFieldInner(props: MetaDescriptionFieldProps) {
   }, [basePath, collectionSlug, globalSlug, docId, setValue])
 
   return (
-    <div
-      style={{
-        fontFamily: 'var(--font-body, Inter, system-ui, sans-serif)',
-        marginBottom: 16,
-      }}
-    >
-      {/* Label */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: 6,
-        }}
-      >
-        <label
-          htmlFor={fieldId}
-          style={{
-            fontSize: 13,
-            fontWeight: 700,
-            color: C.textPrimary,
-          }}
-        >
+    <div className="seo-meta-field">
+      <div className="seo-meta-field__header">
+        <label className="seo-field__label" htmlFor={fieldId}>
           {t.metaDescription.label}
         </label>
-        <span
-          style={{
-            fontSize: 11,
-            fontWeight: 700,
-            fontVariantNumeric: 'tabular-nums',
-            color: charColor,
-          }}
-        >
+        <span className={cx('seo-meta-field__count', `seo-meta-field__count--${tone}`)}>
           {charCount} / {DESC_MAX} {t.metaDescription.characters}
         </span>
       </div>
 
-      {/* Textarea + Generate button row */}
-      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+      <div className="seo-meta-field__controls">
         <textarea
           id={fieldId}
+          className="seo-textarea"
           value={value || ''}
           onChange={(e) => setValue(e.target.value)}
           placeholder={t.metaDescription.placeholder}
           rows={3}
-          style={{
-            flex: 1,
-            padding: '10px 12px',
-            fontSize: 14,
-            fontFamily: 'inherit',
-            borderRadius: 8,
-            border: `2px solid ${C.border}`,
-            backgroundColor: C.surfaceBg,
-            color: C.textPrimary,
-            // No `outline: 'none'` here: this field renders on every page and post
-            // edit screen and nothing in this file draws a focus ring of its own,
-            // so suppressing the browser's would leave keyboard users with no
-            // indication of where they are (WCAG 2.4.7).
-            resize: 'vertical' as const,
-            lineHeight: 1.5,
-            boxShadow: '2px 2px 0 0 var(--theme-border-color, rgba(0,0,0,1))',
-          }}
         />
 
         {hasGenerateFn && (
-          <button
-            type="button"
-            onClick={handleGenerate}
-            disabled={loading}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 5,
-              padding: '8px 14px',
-              borderRadius: 8,
-              border: `2px solid ${C.border}`,
-              backgroundColor: loading ? C.surface50 : C.cyan,
-              color: loading ? C.textSecondary : C.black,
-              fontWeight: 800,
-              fontSize: 11,
-              textTransform: 'uppercase' as const,
-              letterSpacing: '0.04em',
-              cursor: loading ? 'wait' : 'pointer',
-              opacity: loading ? 0.7 : 1,
-              boxShadow: '2px 2px 0 0 var(--theme-border-color, rgba(0,0,0,1))',
-              whiteSpace: 'nowrap' as const,
-              flexShrink: 0,
-              marginTop: 2,
-            }}
-          >
+          <Button buttonStyle="secondary" disabled={loading} onClick={handleGenerate} type="button">
             {loading ? t.common.generating : t.common.generate}
-          </button>
+          </Button>
         )}
       </div>
 
-      {/* Progress bar */}
-      <div
-        style={{
-          marginTop: 6,
-          height: 4,
-          borderRadius: 2,
-          backgroundColor: 'var(--theme-elevation-200, #e5e7eb)',
-          overflow: 'hidden',
-        }}
-      >
-        <div
-          style={{
-            height: '100%',
-            width: `${progressPercent}%`,
-            backgroundColor: progressColor,
-            borderRadius: 2,
-            transition: 'width 0.2s ease, background-color 0.2s ease',
-          }}
-        />
-      </div>
+      <Meter aria-label={t.metaDescription.label} max={DESC_MAX} tone={tone} value={Math.min(charCount, DESC_MAX)} />
 
-      {/* Range hint */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          marginTop: 4,
-          fontSize: 10,
-          color: C.textSecondary,
-        }}
-      >
+      <div className="seo-meta-field__footer seo-field__description">
         <span>
           {t.metaDescription.optimal} {DESC_MIN}-{DESC_MAX} {t.metaDescription.characters}
         </span>
-        <span
-          style={{
-            fontWeight: 700,
-            color: charColor,
-          }}
-        >
+        <span className={cx('seo-meta-field__count', `seo-meta-field__count--${tone}`)}>
           {charCount < DESC_MIN
             ? `${DESC_MIN - charCount} ${t.metaDescription.charactersMissing}`
             : charCount > DESC_MAX
@@ -276,23 +133,7 @@ function MetaDescriptionFieldInner(props: MetaDescriptionFieldProps) {
         </span>
       </div>
 
-      {/* Error message */}
-      {error && (
-        <div
-          style={{
-            marginTop: 6,
-            padding: '6px 10px',
-            borderRadius: 6,
-            fontSize: 11,
-            fontWeight: 600,
-            color: C.red,
-            backgroundColor: 'rgba(239,68,68,0.08)',
-            border: `1px solid ${C.red}`,
-          }}
-        >
-          {error}
-        </div>
-      )}
+      {error && <Banner type="danger">{error}</Banner>}
     </div>
   )
 }

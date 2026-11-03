@@ -173,14 +173,12 @@ describe('a11y contract — buttons', () => {
         }
       }
     }
-    // Two documented exceptions remain, both pure mouse conveniences that
-    // duplicate a real control rather than being the only way in:
-    //  - the audit table row, whose expand/collapse is also on the title
-    //    <button> next to it (that button is what the keyboard uses);
-    //  - the bulk-preview modal overlay, where click-to-dismiss belongs to the
-    //    dialog work (focus trap, Escape) rather than to this pass.
+    // One documented exception remains, a pure mouse convenience: the
+    // bulk-preview modal overlay, where click-to-dismiss belongs to the dialog
+    // work (focus trap, Escape) rather than to this pass. (The audit table row's
+    // expand-on-click now lives on the <tr> itself and duplicates the title
+    // <button> the keyboard uses.)
     expect(offenders).toEqual([
-      'components/SeoView.tsx onClick={(e) => { const target = e.target as HTMLElement if (target.tagNa',
       'components/SeoView.tsx onClick={() => { if (!bulkApplying) setBulkPreview(null) }}',
     ])
   })

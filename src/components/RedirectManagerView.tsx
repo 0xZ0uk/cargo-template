@@ -1,25 +1,11 @@
 'use client'
 
 import React, { useEffect, useState, useMemo, useCallback, useRef, useId } from 'react'
+import { Banner, Button, CheckIcon, ChevronIcon, EditIcon, RefreshIcon, TrashIcon, XIcon } from '@payloadcms/ui'
 import { useDashboardT, useSeoLocale } from '../hooks/useSeoLocale.js'
 import { toCsv } from '../helpers/csv.js'
-
-// ---------------------------------------------------------------------------
-// Design tokens — uses Payload CSS variables for theme compatibility
-// ---------------------------------------------------------------------------
-const V = {
-  text: 'var(--theme-text, #1a1a1a)',
-  textSecondary: 'var(--theme-elevation-600, #6b7280)',
-  bg: 'var(--theme-elevation-0, #fff)',
-  bgCard: 'var(--theme-elevation-50, #f9fafb)',
-  border: 'var(--theme-elevation-200, #e5e7eb)',
-  green: '#22c55e',
-  yellow: '#f59e0b',
-  orange: '#f97316',
-  red: '#ef4444',
-  blue: '#3b82f6',
-  cyan: '#06b6d4',
-}
+import { Card, DataTable, EmptyState, Field, Grid, LoadingState, StatTile, TonePill, ViewBody, ViewHeader, type Tone } from '../ui/index.js'
+import './RedirectManagerView.css'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -44,40 +30,6 @@ interface PaginatedResponse {
 }
 
 // ---------------------------------------------------------------------------
-// Shared inline styles
-// ---------------------------------------------------------------------------
-const btnBase: React.CSSProperties = {
-  padding: '6px 14px',
-  borderRadius: 6,
-  border: `1px solid ${V.border}`,
-  fontWeight: 600,
-  fontSize: 11,
-  cursor: 'pointer',
-  textTransform: 'uppercase',
-  letterSpacing: 0.3,
-}
-
-const inputStyle: React.CSSProperties = {
-  padding: '6px 10px',
-  borderRadius: 6,
-  border: `1px solid ${V.border}`,
-  fontSize: 12,
-  color: V.text,
-  backgroundColor: V.bg,
-}
-
-const selectStyle: React.CSSProperties = {
-  padding: '6px 10px',
-  borderRadius: 6,
-  border: `1px solid ${V.border}`,
-  fontSize: 12,
-  color: V.text,
-  backgroundColor: V.bg,
-}
-
-const TABLE_COLS = '36px 1fr 1fr 70px 100px 80px'
-
-// ---------------------------------------------------------------------------
 // Toast sub-component
 // ---------------------------------------------------------------------------
 function Toast({
@@ -94,80 +46,23 @@ function Toast({
     return () => clearTimeout(t)
   }, [onClose])
 
-  const bgColor = type === 'success' ? V.green : type === 'error' ? V.red : V.blue
-
   return (
     // A toast that is only painted is invisible to a screen reader: the user
     // fires an import and never learns it finished. `alert` interrupts for a
     // failure, `status` waits for a pause for a success.
     <div
-      role={type === 'error' ? 'alert' : 'status'}
       aria-live={type === 'error' ? 'assertive' : 'polite'}
-      style={{
-        position: 'fixed',
-        bottom: 24,
-        right: 24,
-        padding: '12px 20px',
-        borderRadius: 8,
-        backgroundColor: bgColor,
-        color: '#fff',
-        fontWeight: 700,
-        fontSize: 13,
-        zIndex: 9999,
-        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-        maxWidth: 360,
-      }}
+      className="seo-redirects__toast"
+      role={type === 'error' ? 'alert' : 'status'}
     >
-      {message}
+      <Banner type={type === 'success' ? 'success' : type === 'error' ? 'danger' : 'default'}>{message}</Banner>
     </div>
   )
 }
 
-// ---------------------------------------------------------------------------
-// StatCard sub-component
-// ---------------------------------------------------------------------------
-function StatCard({
-  label,
-  value,
-  color,
-}: {
-  label: string
-  value: number
-  color: string
-}) {
-  return (
-    <div
-      style={{
-        padding: '14px 16px',
-        borderRadius: 10,
-        border: `1px solid ${V.border}`,
-        backgroundColor: V.bgCard,
-      }}
-    >
-      <div
-        style={{
-          fontSize: 24,
-          fontWeight: 800,
-          color,
-          lineHeight: 1,
-          marginBottom: 4,
-        }}
-      >
-        {value}
-      </div>
-      <div
-        style={{
-          fontSize: 10,
-          fontWeight: 600,
-          color: V.textSecondary,
-          textTransform: 'uppercase',
-          letterSpacing: 0.4,
-        }}
-      >
-        {label}
-      </div>
-    </div>
-  )
+/** Tone of the redirect status code pill. */
+function typeTone(type: string): Tone {
+  return type === '301' ? 'success' : type === '302' ? 'warning' : 'neutral'
 }
 
 // ---------------------------------------------------------------------------
@@ -521,715 +416,381 @@ export function RedirectManagerView() {
   // Loading state
   if (loading && redirects.length === 0) {
     return (
-      <div
-        style={{
-          padding: 60,
-          textAlign: 'center',
-          color: V.textSecondary,
-          fontSize: 14,
-          fontFamily: 'var(--font-body, system-ui)',
-        }}
-      >
-        {t.redirectManager.loading}
-      </div>
+      <>
+        <ViewHeader title={t.redirectManager.title} />
+        <ViewBody>
+          <LoadingState label={t.redirectManager.loading} />
+        </ViewBody>
+      </>
     )
   }
 
   // Error state
   if (error && redirects.length === 0) {
     return (
-      <div
-        style={{
-          padding: 60,
-          textAlign: 'center',
-          fontFamily: 'var(--font-body, system-ui)',
-        }}
-      >
-        <div style={{ color: V.red, fontWeight: 700, fontSize: 14, marginBottom: 8 }}>
-          {t.common.loadingError}
-        </div>
-        <div style={{ color: V.textSecondary, fontSize: 12, marginBottom: 16 }}>{error}</div>
-        <button type="button"
-          onClick={() => fetchRedirects(1)}
-          style={{ ...btnBase, backgroundColor: V.bgCard, color: V.text }}
-        >
-          {t.common.retry}
-        </button>
-      </div>
+      <>
+        <ViewHeader title={t.redirectManager.title} />
+        <ViewBody>
+          <Banner type="danger">
+            <div className="seo-stack seo-stack--tight">
+              <strong>{t.common.loadingError}</strong>
+              <span>{error}</span>
+            </div>
+          </Banner>
+          <div>
+            <Button buttonStyle="secondary" margin={false} onClick={() => fetchRedirects(1)}>
+              {t.common.retry}
+            </Button>
+          </div>
+        </ViewBody>
+      </>
     )
   }
 
+  const canAdd = !adding && newFrom.trim().length > 0 && newTo.trim().length > 0
+
   return (
-    <div
-      style={{
-        padding: '20px 24px',
-        maxWidth: 1200,
-        margin: '0 auto',
-        fontFamily: 'var(--font-body, system-ui)',
-        paddingBottom: selectedIds.size > 0 ? 70 : 20,
-      }}
-    >
-      {/* Header */}
-      <div
-        style={{
-          marginBottom: 24,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: 12,
-        }}
-      >
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0, color: V.text }}>
-            {t.redirectManager.title}
-          </h1>
-          <p style={{ fontSize: 12, color: V.textSecondary, margin: '4px 0 0' }}>
-            {totalDocs} {t.redirectManager.totalRedirects}
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button type="button"
-            onClick={() => fetchRedirects(currentPage)}
-            style={{ ...btnBase, backgroundColor: V.bgCard, color: V.text }}
-          >
-            &#8635; {t.common.refresh}
-          </button>
-          <button type="button"
-            onClick={handleExportCsv}
-            style={{ ...btnBase, backgroundColor: V.cyan, color: '#000' }}
-          >
-            {t.common.exportCsv}
-          </button>
-          <button type="button"
-            onClick={() => fileInputRef.current?.click()}
-            style={{ ...btnBase, backgroundColor: V.blue, color: '#fff' }}
-          >
-            {t.redirectManager.importCsv}
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            aria-label={t.redirectManager.importCsv}
-            accept=".csv"
-            onChange={handleCsvImport}
-            style={{ display: 'none' }}
-          />
-        </div>
-      </div>
-
-      {/* Stats */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-          gap: 12,
-          marginBottom: 20,
-        }}
-      >
-        <StatCard label={t.redirectManager.total} value={stats.total} color={V.blue} />
-        <StatCard label={t.redirectManager.permanent301} value={stats.count301} color={V.green} />
-        <StatCard label={t.redirectManager.temporary302} value={stats.count302} color={V.orange} />
-      </div>
-
-      {/* Add form */}
-      <div
-        style={{
-          border: `1px solid ${V.border}`,
-          borderRadius: 10,
-          backgroundColor: V.bgCard,
-          padding: '14px 18px',
-          marginBottom: 16,
-        }}
-      >
-        <div
-          style={{
-            fontSize: 12,
-            fontWeight: 700,
-            color: V.text,
-            marginBottom: 10,
-            textTransform: 'uppercase',
-            letterSpacing: 0.4,
-          }}
-        >
-          {t.redirectManager.addRedirect}
-        </div>
-        <div
-          style={{
-            display: 'flex',
-            gap: 8,
-            flexWrap: 'wrap',
-            alignItems: 'flex-end',
-          }}
-        >
-          <div style={{ flex: 1, minWidth: 180 }}>
-            <label
-              htmlFor={newFromId}
-              style={{
-                display: 'block',
-                fontSize: 10,
-                fontWeight: 600,
-                color: V.textSecondary,
-                marginBottom: 3,
-                textTransform: 'uppercase',
-              }}
+    <>
+      <ViewHeader
+        actions={
+          <>
+            <Button
+              buttonStyle="secondary"
+              icon={<RefreshIcon />}
+              iconPosition="left"
+              margin={false}
+              onClick={() => fetchRedirects(currentPage)}
             >
-              {t.redirectManager.sourceUrl}
-            </label>
+              {t.common.refresh}
+            </Button>
+            <Button buttonStyle="secondary" margin={false} onClick={handleExportCsv}>
+              {t.common.exportCsv}
+            </Button>
+            <Button buttonStyle="secondary" margin={false} onClick={() => fileInputRef.current?.click()}>
+              {t.redirectManager.importCsv}
+            </Button>
             <input
-              id={newFromId}
-              type="text"
-              value={newFrom}
-              onChange={(e) => setNewFrom(e.target.value)}
-              placeholder={t.redirectManager.sourceUrlPlaceholder}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleAdd()
-              }}
-              style={{ ...inputStyle, width: '100%' }}
+              accept=".csv"
+              aria-label={t.redirectManager.importCsv}
+              hidden
+              onChange={handleCsvImport}
+              ref={fileInputRef}
+              type="file"
             />
-          </div>
-          <div style={{ flex: 1, minWidth: 180 }}>
-            <label
-              htmlFor={newToId}
-              style={{
-                display: 'block',
-                fontSize: 10,
-                fontWeight: 600,
-                color: V.textSecondary,
-                marginBottom: 3,
-                textTransform: 'uppercase',
-              }}
-            >
-              {t.redirectManager.destinationUrl}
-            </label>
-            <input
-              id={newToId}
-              type="text"
-              value={newTo}
-              onChange={(e) => setNewTo(e.target.value)}
-              placeholder={t.redirectManager.destinationUrlPlaceholder}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleAdd()
-              }}
-              style={{ ...inputStyle, width: '100%' }}
-            />
-          </div>
-          <div style={{ minWidth: 80 }}>
-            <label
-              htmlFor={newTypeId}
-              style={{
-                display: 'block',
-                fontSize: 10,
-                fontWeight: 600,
-                color: V.textSecondary,
-                marginBottom: 3,
-                textTransform: 'uppercase',
-              }}
-            >
-              {t.redirectManager.type}
-            </label>
-            <select
-              id={newTypeId}
-              value={newType}
-              onChange={(e) => setNewType(e.target.value)}
-              style={selectStyle}
-            >
-              <option value="301">301</option>
-              <option value="302">302</option>
-            </select>
-          </div>
-          <button type="button"
-            onClick={handleAdd}
-            disabled={adding || !newFrom.trim() || !newTo.trim()}
-            style={{
-              ...btnBase,
-              backgroundColor: adding ? V.bgCard : V.green,
-              color: adding ? V.textSecondary : '#fff',
-              border: 'none',
-              opacity: adding || !newFrom.trim() || !newTo.trim() ? 0.6 : 1,
-              cursor: adding || !newFrom.trim() || !newTo.trim() ? 'not-allowed' : 'pointer',
-            }}
-          >
-            {adding ? t.redirectManager.adding : t.common.add}
-          </button>
-        </div>
-      </div>
+          </>
+        }
+        description={`${totalDocs} ${t.redirectManager.totalRedirects}`}
+        title={t.redirectManager.title}
+      />
+      <ViewBody>
+        <Grid>
+          <StatTile label={t.redirectManager.total} value={stats.total} />
+          <StatTile label={t.redirectManager.permanent301} tone="success" value={stats.count301} />
+          <StatTile label={t.redirectManager.temporary302} tone="warning" value={stats.count302} />
+        </Grid>
 
-      {/* Search + Test URL */}
-      <div
-        style={{
-          display: 'flex',
-          gap: 12,
-          marginBottom: 16,
-          flexWrap: 'wrap',
-          alignItems: 'flex-start',
-        }}
-      >
-        {/* Search */}
-        <input
-          type="text"
-          aria-label={t.redirectManager.searchPlaceholder}
-          placeholder={t.redirectManager.searchPlaceholder}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{
-            ...inputStyle,
-            minWidth: 280,
-            flex: 1,
-          }}
-        />
+        {/* Add form */}
+        <Card title={t.redirectManager.addRedirect}>
+          <div className="seo-redirects__form">
+            <Field label={t.redirectManager.sourceUrl}>
+              <input
+                className="seo-input"
+                id={newFromId}
+                onChange={(e) => setNewFrom(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleAdd()
+                }}
+                placeholder={t.redirectManager.sourceUrlPlaceholder}
+                type="text"
+                value={newFrom}
+              />
+            </Field>
+            <Field label={t.redirectManager.destinationUrl}>
+              <input
+                className="seo-input"
+                id={newToId}
+                onChange={(e) => setNewTo(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleAdd()
+                }}
+                placeholder={t.redirectManager.destinationUrlPlaceholder}
+                type="text"
+                value={newTo}
+              />
+            </Field>
+            <Field label={t.redirectManager.type}>
+              <select className="seo-select" id={newTypeId} onChange={(e) => setNewType(e.target.value)} value={newType}>
+                <option value="301">301</option>
+                <option value="302">302</option>
+              </select>
+            </Field>
+            <Button buttonStyle="primary" disabled={!canAdd} margin={false} onClick={handleAdd}>
+              {adding ? t.redirectManager.adding : t.common.add}
+            </Button>
+          </div>
+        </Card>
 
-        {/* Test URL */}
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        {/* Search + Test URL */}
+        <div className="seo-redirects__toolbar">
           <input
+            aria-label={t.redirectManager.searchPlaceholder}
+            className="seo-input seo-redirects__search"
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t.redirectManager.searchPlaceholder}
             type="text"
-            aria-label={`${t.redirectManager.test} — ${t.redirectManager.sourceUrl}`}
-            placeholder={t.redirectManager.urlToTestPlaceholder}
-            value={testUrl}
-            onChange={(e) => {
-              setTestUrl(e.target.value)
-              setTestResult(null)
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleTestUrl()
-            }}
-            style={{ ...inputStyle, minWidth: 180 }}
+            value={search}
           />
-          <button type="button"
-            onClick={handleTestUrl}
-            disabled={!testUrl.trim()}
-            style={{
-              ...btnBase,
-              backgroundColor: V.bgCard,
-              color: V.text,
-              opacity: !testUrl.trim() ? 0.5 : 1,
-            }}
-          >
-            {t.redirectManager.test}
-          </button>
-          {testResult && (
-            <span
-              style={{
-                fontSize: 11,
-                fontWeight: 700,
-                color: testResult.matched ? V.green : V.red,
-                padding: '4px 10px',
-                borderRadius: 6,
-                backgroundColor: testResult.matched
-                  ? 'rgba(34,197,94,0.1)'
-                  : 'rgba(239,68,68,0.1)',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {testResult.matched
-                ? `${testResult.redirect?.type} → ${testResult.redirect?.to}`
-                : t.redirectManager.noMatch}
-            </span>
-          )}
-        </div>
-      </div>
 
-      {/* Table */}
-      <div
-        style={{
-          border: `1px solid ${V.border}`,
-          borderRadius: 10,
-          overflow: 'hidden',
-        }}
-      >
-        {/* Table header */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: TABLE_COLS,
-            padding: '10px 14px',
-            backgroundColor: V.bgCard,
-            borderBottom: `1px solid ${V.border}`,
-            fontWeight: 700,
-            fontSize: 10,
-            textTransform: 'uppercase',
-            color: V.textSecondary,
-            letterSpacing: 0.5,
-            gap: 8,
-            alignItems: 'center',
-          }}
-        >
-          <div style={{ textAlign: 'center' }}>
+          <div className="seo-row seo-row--nowrap">
             <input
-              type="checkbox"
-              aria-label={allPageSelected ? t.common.deselectAll : t.sitemapAudit.selectAll}
-              checked={allPageSelected}
-              onChange={handleSelectAll}
-              style={{ cursor: 'pointer' }}
-            />
-          </div>
-          <span>{t.redirectManager.sourceFrom}</span>
-          <span>{t.redirectManager.destinationTo}</span>
-          <span style={{ textAlign: 'center' }}>{t.redirectManager.type}</span>
-          <span style={{ textAlign: 'right' }}>{t.redirectManager.date}</span>
-          <span style={{ textAlign: 'center' }}>{t.redirectManager.actions}</span>
-        </div>
-
-        {/* Table body */}
-        <div style={{ maxHeight: 'calc(100vh - 520px)', overflowY: 'auto' }}>
-          {redirects.length === 0 ? (
-            <div
-              style={{
-                padding: 40,
-                textAlign: 'center',
-                color: V.textSecondary,
-                fontSize: 12,
+              aria-label={`${t.redirectManager.test} — ${t.redirectManager.sourceUrl}`}
+              className="seo-input seo-redirects__test-input"
+              onChange={(e) => {
+                setTestUrl(e.target.value)
+                setTestResult(null)
               }}
-            >
-              {search
-                ? t.redirectManager.noMatchingRedirects
-                : t.redirectManager.noRedirects}
-            </div>
-          ) : (
-            redirects.map((r) => {
-              const isEditing = editId === r.id
-              const isSelected = selectedIds.has(r.id)
-
-              if (isEditing) {
-                // Inline edit row
-                return (
-                  <div
-                    key={r.id}
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: TABLE_COLS,
-                      padding: '8px 14px',
-                      borderBottom: `1px solid ${V.border}`,
-                      alignItems: 'center',
-                      gap: 8,
-                      fontSize: 12,
-                      backgroundColor: 'rgba(59,130,246,0.04)',
-                    }}
-                  >
-                    <div />
-                    <input
-                      type="text"
-                      aria-label={t.redirectManager.sourceFrom}
-                      value={editFrom}
-                      onChange={(e) => setEditFrom(e.target.value)}
-                      style={{ ...inputStyle, width: '100%' }}
-                    />
-                    <input
-                      type="text"
-                      aria-label={t.redirectManager.destinationTo}
-                      value={editTo}
-                      onChange={(e) => setEditTo(e.target.value)}
-                      style={{ ...inputStyle, width: '100%' }}
-                    />
-                    <select
-                      aria-label={t.redirectManager.type}
-                      value={editType}
-                      onChange={(e) => setEditType(e.target.value)}
-                      style={{ ...selectStyle, width: '100%' }}
-                    >
-                      <option value="301">301</option>
-                      <option value="302">302</option>
-                    </select>
-                    <div />
-                    <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
-                      <button type="button"
-                        onClick={handleEditSave}
-                        disabled={saving}
-                        style={{
-                          ...btnBase,
-                          padding: '4px 8px',
-                          fontSize: 10,
-                          backgroundColor: saving ? V.bgCard : V.green,
-                          color: saving ? V.textSecondary : '#fff',
-                          border: 'none',
-                        }}
-                      >
-                        {saving ? '...' : 'OK'}
-                      </button>
-                      <button type="button"
-                        onClick={() => setEditId(null)}
-                        style={{
-                          ...btnBase,
-                          padding: '4px 8px',
-                          fontSize: 10,
-                          backgroundColor: V.bgCard,
-                          color: V.text,
-                        }}
-                      >
-                        &#10005;
-                      </button>
-                    </div>
-                  </div>
-                )
-              }
-
-              // Normal row
-              return (
-                <div
-                  key={r.id}
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: TABLE_COLS,
-                    padding: '8px 14px',
-                    borderBottom: `1px solid ${V.border}`,
-                    alignItems: 'center',
-                    gap: 8,
-                    fontSize: 12,
-                    backgroundColor: isSelected ? 'rgba(59,130,246,0.04)' : 'transparent',
-                  }}
-                >
-                  {/* Checkbox */}
-                  <div style={{ textAlign: 'center' }}>
-                    <input
-                      type="checkbox"
-                      aria-label={`${t.redirectManager.sourceFrom}: ${r.from}`}
-                      checked={isSelected}
-                      onChange={() => {
-                        setSelectedIds((prev) => {
-                          const next = new Set(prev)
-                          if (next.has(r.id)) next.delete(r.id)
-                          else next.add(r.id)
-                          return next
-                        })
-                      }}
-                      style={{ cursor: 'pointer' }}
-                    />
-                  </div>
-
-                  {/* From */}
-                  <div
-                    style={{
-                      fontFamily: 'monospace',
-                      fontWeight: 600,
-                      color: V.text,
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    }}
-                    title={r.from}
-                  >
-                    {r.from}
-                  </div>
-
-                  {/* To */}
-                  <div
-                    style={{
-                      fontFamily: 'monospace',
-                      fontWeight: 600,
-                      color: V.blue,
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    }}
-                    title={r.to}
-                  >
-                    {r.to}
-                  </div>
-
-                  {/* Type badge */}
-                  <div style={{ textAlign: 'center' }}>
-                    <span
-                      style={{
-                        display: 'inline-block',
-                        padding: '2px 8px',
-                        borderRadius: 4,
-                        fontSize: 10,
-                        fontWeight: 800,
-                        color: r.type === '301' ? V.green : V.orange,
-                        backgroundColor:
-                          r.type === '301'
-                            ? 'rgba(34,197,94,0.12)'
-                            : 'rgba(249,115,22,0.12)',
-                      }}
-                    >
-                      {r.type}
-                    </span>
-                  </div>
-
-                  {/* Date */}
-                  <div
-                    style={{
-                      fontSize: 10,
-                      color: V.textSecondary,
-                      textAlign: 'right',
-                    }}
-                  >
-                    {r.createdAt
-                      ? new Date(r.createdAt).toLocaleDateString(locale === 'fr' ? 'fr-FR' : 'en-US')
-                      : '-'}
-                  </div>
-
-                  {/* Actions */}
-                  <div
-                    style={{
-                      display: 'flex',
-                      gap: 6,
-                      justifyContent: 'center',
-                    }}
-                  >
-                    {/* A real <button>: role+tabIndex+onKeyDown only ever
-                        emulated Enter, never Space, and never told assistive
-                        tech what the pencil glyph means. */}
-                    <button
-                      type="button"
-                      title={t.common.modify}
-                      aria-label={`${t.common.modify} — ${r.from}`}
-                      onClick={() => startEdit(r)}
-                      style={{
-                        cursor: 'pointer',
-                        background: 'none',
-                        border: 'none',
-                        padding: 0,
-                        fontSize: 14,
-                        color: V.textSecondary,
-                        userSelect: 'none',
-                      }}
-                    >
-                      &#9998;
-                    </button>
-                    <button
-                      type="button"
-                      title={t.common.delete}
-                      aria-label={`${t.common.delete} — ${r.from}`}
-                      onClick={() => handleDelete(r.id)}
-                      style={{
-                        cursor: 'pointer',
-                        background: 'none',
-                        border: 'none',
-                        padding: 0,
-                        fontSize: 14,
-                        color: V.red,
-                        userSelect: 'none',
-                      }}
-                    >
-                      &#10005;
-                    </button>
-                  </div>
-                </div>
-              )
-            })
-          )}
-        </div>
-      </div>
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 8,
-            marginTop: 16,
-            fontSize: 12,
-          }}
-        >
-          <button type="button"
-            onClick={() => setCurrentPage(1)}
-            disabled={currentPage === 1}
-            style={{
-              ...btnBase,
-              backgroundColor: V.bgCard,
-              color: currentPage === 1 ? V.textSecondary : V.text,
-              opacity: currentPage === 1 ? 0.5 : 1,
-            }}
-          >
-            &laquo;
-          </button>
-          <button type="button"
-            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-            disabled={currentPage === 1}
-            style={{
-              ...btnBase,
-              backgroundColor: V.bgCard,
-              color: currentPage === 1 ? V.textSecondary : V.text,
-              opacity: currentPage === 1 ? 0.5 : 1,
-            }}
-          >
-            &lsaquo; {t.common.previous}
-          </button>
-          <span
-            style={{
-              color: V.textSecondary,
-              fontWeight: 600,
-              padding: '0 8px',
-            }}
-          >
-            {t.common.page} {currentPage} / {totalPages}
-          </span>
-          <button type="button"
-            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-            disabled={currentPage === totalPages}
-            style={{
-              ...btnBase,
-              backgroundColor: V.bgCard,
-              color: currentPage === totalPages ? V.textSecondary : V.text,
-              opacity: currentPage === totalPages ? 0.5 : 1,
-            }}
-          >
-            {t.common.next} &rsaquo;
-          </button>
-          <button type="button"
-            onClick={() => setCurrentPage(totalPages)}
-            disabled={currentPage === totalPages}
-            style={{
-              ...btnBase,
-              backgroundColor: V.bgCard,
-              color: currentPage === totalPages ? V.textSecondary : V.text,
-              opacity: currentPage === totalPages ? 0.5 : 1,
-            }}
-          >
-            &raquo;
-          </button>
-        </div>
-      )}
-
-      {/* Bulk action bar */}
-      {selectedIds.size > 0 && (
-        <div
-          style={{
-            position: 'fixed',
-            bottom: 0,
-            left: 0,
-            right: 0,
-            padding: '12px 24px',
-            backgroundColor: V.bgCard,
-            borderTop: `2px solid ${V.border}`,
-            zIndex: 50,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            justifyContent: 'space-between',
-            fontFamily: 'var(--font-body, system-ui)',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ fontSize: 12, fontWeight: 700, color: V.text }}>
-              {selectedIds.size} {t.common.selected}{selectedIds.size > 1 ? 's' : ''}
-            </span>
-            <button type="button"
-              onClick={() => setSelectedIds(new Set())}
-              style={{ ...btnBase, backgroundColor: V.bg, color: V.textSecondary }}
-            >
-              {t.common.deselectAll}
-            </button>
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleTestUrl()
+              }}
+              placeholder={t.redirectManager.urlToTestPlaceholder}
+              type="text"
+              value={testUrl}
+            />
+            <Button buttonStyle="secondary" disabled={!testUrl.trim()} margin={false} onClick={handleTestUrl}>
+              {t.redirectManager.test}
+            </Button>
+            {testResult && (
+              <TonePill tone={testResult.matched ? 'success' : 'danger'}>
+                {testResult.matched
+                  ? `${testResult.redirect?.type} → ${testResult.redirect?.to}`
+                  : t.redirectManager.noMatch}
+              </TonePill>
+            )}
           </div>
-          <button type="button"
-            onClick={handleBulkDelete}
-            style={{
-              ...btnBase,
-              backgroundColor: V.red,
-              color: '#fff',
-              border: 'none',
-            }}
-          >
-            {t.common.delete} ({selectedIds.size})
-          </button>
         </div>
-      )}
 
-      {/* Toast notification */}
-      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
-    </div>
+        {/* Table */}
+        {redirects.length === 0 ? (
+          <Card>
+            <EmptyState title={search ? t.redirectManager.noMatchingRedirects : t.redirectManager.noRedirects} />
+          </Card>
+        ) : (
+          <DataTable aria-label={t.redirectManager.title} className="seo-redirects__table">
+            <thead>
+              <tr>
+                <th className="heading-_select">
+                  <span className="seo-checkbox">
+                    <input
+                      aria-label={allPageSelected ? t.common.deselectAll : t.sitemapAudit.selectAll}
+                      checked={allPageSelected}
+                      onChange={handleSelectAll}
+                      type="checkbox"
+                    />
+                  </span>
+                </th>
+                <th>{t.redirectManager.sourceFrom}</th>
+                <th>{t.redirectManager.destinationTo}</th>
+                <th>{t.redirectManager.type}</th>
+                <th className="seo-table__num">{t.redirectManager.date}</th>
+                <th className="seo-redirects__actions-col">{t.redirectManager.actions}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {redirects.map((r) => {
+                const isEditing = editId === r.id
+                const isSelected = selectedIds.has(r.id)
+
+                if (isEditing) {
+                  // Inline edit row
+                  return (
+                    <tr className="seo-redirects__row--editing" key={r.id}>
+                      <td className="cell-_select" />
+                      <td>
+                        <input
+                          aria-label={t.redirectManager.sourceFrom}
+                          className="seo-input"
+                          onChange={(e) => setEditFrom(e.target.value)}
+                          type="text"
+                          value={editFrom}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          aria-label={t.redirectManager.destinationTo}
+                          className="seo-input"
+                          onChange={(e) => setEditTo(e.target.value)}
+                          type="text"
+                          value={editTo}
+                        />
+                      </td>
+                      <td>
+                        <select
+                          aria-label={t.redirectManager.type}
+                          className="seo-select"
+                          onChange={(e) => setEditType(e.target.value)}
+                          value={editType}
+                        >
+                          <option value="301">301</option>
+                          <option value="302">302</option>
+                        </select>
+                      </td>
+                      <td />
+                      <td>
+                        <div className="seo-row seo-row--nowrap seo-redirects__actions">
+                          <Button
+                            aria-label={t.common.save}
+                            buttonStyle="primary"
+                            icon={<CheckIcon />}
+                            loading={saving}
+                            margin={false}
+                            onClick={handleEditSave}
+                            tooltip={t.common.save}
+                          />
+                          <Button
+                            aria-label={t.common.cancel}
+                            buttonStyle="secondary"
+                            icon={<XIcon />}
+                            margin={false}
+                            onClick={() => setEditId(null)}
+                            tooltip={t.common.cancel}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                }
+
+                // Normal row
+                return (
+                  <tr className={isSelected ? 'seo-redirects__row--selected' : undefined} key={r.id}>
+                    <td className="cell-_select">
+                      <span className="seo-checkbox">
+                        <input
+                          aria-label={`${t.redirectManager.sourceFrom}: ${r.from}`}
+                          checked={isSelected}
+                          onChange={() => {
+                            setSelectedIds((prev) => {
+                              const next = new Set(prev)
+                              if (next.has(r.id)) next.delete(r.id)
+                              else next.add(r.id)
+                              return next
+                            })
+                          }}
+                          type="checkbox"
+                        />
+                      </span>
+                    </td>
+                    <td>
+                      <span className="seo-mono seo-truncate seo-redirects__url" title={r.from}>
+                        {r.from}
+                      </span>
+                    </td>
+                    <td>
+                      <span className="seo-mono seo-truncate seo-redirects__url" title={r.to}>
+                        {r.to}
+                      </span>
+                    </td>
+                    <td>
+                      <TonePill tone={typeTone(r.type)}>{r.type}</TonePill>
+                    </td>
+                    <td className="seo-table__num seo-text--secondary">
+                      {r.createdAt
+                        ? new Date(r.createdAt).toLocaleDateString(locale === 'fr' ? 'fr-FR' : 'en-US')
+                        : '-'}
+                    </td>
+                    <td>
+                      <div className="seo-row seo-row--nowrap seo-redirects__actions">
+                        <Button
+                          aria-label={`${t.common.modify} — ${r.from}`}
+                          buttonStyle="ghost"
+                          icon={<EditIcon />}
+                          margin={false}
+                          onClick={() => startEdit(r)}
+                          tooltip={t.common.modify}
+                        />
+                        <Button
+                          aria-label={`${t.common.delete} — ${r.from}`}
+                          buttonStyle="ghost"
+                          icon={<TrashIcon />}
+                          margin={false}
+                          onClick={() => handleDelete(r.id)}
+                          tooltip={t.common.delete}
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </DataTable>
+        )}
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <nav aria-label={t.common.page} className="seo-row seo-redirects__pagination">
+            <Button
+              buttonStyle="secondary"
+              disabled={currentPage === 1}
+              margin={false}
+              onClick={() => setCurrentPage(1)}
+            >
+              &laquo;
+            </Button>
+            <Button
+              buttonStyle="secondary"
+              disabled={currentPage === 1}
+              icon={<ChevronIcon direction="left" />}
+              iconPosition="left"
+              margin={false}
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+            >
+              {t.common.previous}
+            </Button>
+            <span className="seo-text seo-text--secondary">
+              {t.common.page} {currentPage} / {totalPages}
+            </span>
+            <Button
+              buttonStyle="secondary"
+              disabled={currentPage === totalPages}
+              icon={<ChevronIcon direction="right" />}
+              iconPosition="right"
+              margin={false}
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+            >
+              {t.common.next}
+            </Button>
+            <Button
+              buttonStyle="secondary"
+              disabled={currentPage === totalPages}
+              margin={false}
+              onClick={() => setCurrentPage(totalPages)}
+            >
+              &raquo;
+            </Button>
+          </nav>
+        )}
+
+        {/* Bulk action bar */}
+        {selectedIds.size > 0 && (
+          <div className="seo-redirects__bulk">
+            <div className="seo-row">
+              <span className="seo-text seo-text--strong">
+                {selectedIds.size} {t.common.selected}
+                {selectedIds.size > 1 ? 's' : ''}
+              </span>
+              <Button buttonStyle="secondary" margin={false} onClick={() => setSelectedIds(new Set())}>
+                {t.common.deselectAll}
+              </Button>
+            </div>
+            <Button buttonStyle="destructive" margin={false} onClick={handleBulkDelete}>
+              {t.common.delete} ({selectedIds.size})
+            </Button>
+          </div>
+        )}
+
+        {/* Toast notification */}
+        {toast && <Toast message={toast.message} onClose={() => setToast(null)} type={toast.type} />}
+      </ViewBody>
+    </>
   )
 }

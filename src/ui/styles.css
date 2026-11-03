@@ -60,7 +60,7 @@
 .seo-grid {
   display: grid;
   gap: var(--spacer-3);
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 12rem), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 10rem), 1fr));
 }
 
 .seo-grid--wide {
@@ -506,7 +506,8 @@
 .seo-textarea {
   box-sizing: border-box;
   width: 100%;
-  min-height: var(--control-height, var(--spacer-5));
+  /* Same height as Payload's own text fields (--control-height is the smaller toolbar size). */
+  min-height: var(--spacer-5);
   padding: 0 var(--field-padding-inline, var(--spacer-2-5));
   color: var(--field-color-text);
   background: var(--field-color-bg);

@@ -1,26 +1,17 @@
 'use client'
 
 import React, { useCallback, useEffect, useState } from 'react'
+import { Banner, Button, NewTabIcon, RefreshIcon } from '@payloadcms/ui'
 import { useSeoFeature } from '../hooks/useSeoLocale.js'
-
-const C = {
-  text: 'var(--theme-text, #1a1a1a)',
-  sub: 'var(--theme-elevation-600, #6b7280)',
-  card: 'var(--theme-elevation-50, #f9fafb)',
-  bg: 'var(--theme-elevation-0, #fff)',
-  border: 'var(--theme-elevation-200, #e5e7eb)',
-  green: '#22c55e',
-  red: '#ef4444',
-  amber: '#f59e0b',
-  violet: '#7c3aed',
-}
+import { Card, DataTable, EmptyState, LoadingState, TonePill } from '../ui/index.js'
+import './CtrOpportunitiesPanel.css'
 
 const S = {
   fr: {
     title: 'Opportunités CTR (faible clic / bonne position)',
     subtitle: 'Pages bien positionnées mais peu cliquées (méta peu attractive). Données Google Search Console → réécriture méta ciblée.',
     needGsc: 'Connectez Google Search Console ci-dessus pour activer les opportunités CTR.',
-    none: 'Aucune opportunité détectée sur la période. 🎉',
+    none: 'Aucune opportunité détectée sur la période.',
     loading: 'Analyse des données GSC…',
     page: 'Page',
     pos: 'Pos.',
@@ -30,7 +21,7 @@ const S = {
     optimize: 'Optimiser',
     optimizing: '…',
     apply: 'Appliquer',
-    applied: 'Appliqué ✓',
+    applied: 'Appliqué',
     noKey: 'Clé API Claude requise (ANTHROPIC_API_KEY).',
     open: 'Ouvrir',
     refresh: 'Rafraîchir',
@@ -39,7 +30,7 @@ const S = {
     title: 'CTR opportunities (low clicks / good rank)',
     subtitle: 'Pages that rank well but get few clicks (weak meta). Google Search Console data → targeted meta rewrite.',
     needGsc: 'Connect Google Search Console above to enable CTR opportunities.',
-    none: 'No opportunities for the period. 🎉',
+    none: 'No opportunities for the period.',
     loading: 'Analyzing GSC data…',
     page: 'Page',
     pos: 'Pos.',
@@ -49,7 +40,7 @@ const S = {
     optimize: 'Optimize',
     optimizing: '…',
     apply: 'Apply',
-    applied: 'Applied ✓',
+    applied: 'Applied',
     noKey: 'Claude API key required (ANTHROPIC_API_KEY).',
     open: 'Open',
     refresh: 'Refresh',
@@ -163,84 +154,135 @@ export function CtrOpportunitiesPanel({ locale }: { locale: 'fr' | 'en' }) {
     }
   }
 
-  const card: React.CSSProperties = { padding: 16, borderRadius: 12, border: `1px solid ${C.border}`, backgroundColor: C.card, marginBottom: 20 }
-  const btn = (bg: string): React.CSSProperties => ({
-    padding: '5px 10px', borderRadius: 6, border: `1px solid ${bg}`, backgroundColor: bg, color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer',
-  })
-
   return (
-    <div style={card}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <div>
-          <div style={{ fontSize: 16, fontWeight: 800, color: C.text }}>{s.title}</div>
-          <div style={{ fontSize: 12, color: C.sub, marginTop: 2 }}>{s.subtitle}</div>
-        </div>
-        {!notConnected && <button type="button" onClick={() => void load()} style={btn(C.sub)}>{s.refresh}</button>}
-      </div>
+    <Card
+      actions={
+        !notConnected ? (
+          <Button
+            buttonStyle="secondary"
+            icon={<RefreshIcon />}
+            margin={false}
+            onClick={() => void load()}
+            size="medium"
+          >
+            {s.refresh}
+          </Button>
+        ) : undefined
+      }
+      title={s.title}
+    >
+      <p className="seo-text seo-text--small seo-text--secondary">{s.subtitle}</p>
 
-      {error && <div role="alert" style={{ color: C.red, fontSize: 13, fontWeight: 600, marginTop: 10 }}>{error}</div>}
-      {notConnected && <div style={{ marginTop: 12, fontSize: 13, color: C.sub }}>{s.needGsc}</div>}
-      {loading && !notConnected && <div style={{ marginTop: 12, fontSize: 13, color: C.sub }}>{s.loading}</div>}
-      {!loading && !notConnected && opps && opps.length === 0 && <div style={{ marginTop: 12, fontSize: 13, color: C.sub }}>{s.none}</div>}
-
-      {!notConnected && opps && opps.length > 0 && (
-        <div style={{ overflowX: 'auto', marginTop: 12 }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-            <thead>
-              <tr style={{ textAlign: 'left', color: C.sub }}>
-                <th style={{ padding: '6px 8px' }}>{s.page}</th>
-                <th style={{ padding: '6px 8px', textAlign: 'right' }}>{s.pos}</th>
-                <th style={{ padding: '6px 8px', textAlign: 'right' }}>{s.ctr}</th>
-                <th style={{ padding: '6px 8px', textAlign: 'right' }}>{s.potential}</th>
-                <th style={{ padding: '6px 8px' }}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {opps.slice(0, 50).map((o) => {
-                const rs = state[o.url] || {}
-                const path = (() => { try { return new URL(o.url).pathname } catch { return o.url } })()
-                return (
-                  <React.Fragment key={o.url}>
-                    <tr style={{ borderTop: `1px solid ${C.border}`, color: C.text }}>
-                      <td style={{ padding: '6px 8px', maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{path}</td>
-                      <td style={{ padding: '6px 8px', textAlign: 'right' }}>{o.position.toFixed(1)}</td>
-                      <td style={{ padding: '6px 8px', textAlign: 'right' }}>
-                        <span style={{ color: C.red }}>{(o.ctr * 100).toFixed(1)}%</span>
-                        <span style={{ color: C.sub }}> / {(o.expectedCtr * 100).toFixed(0)}% {s.expected}</span>
-                      </td>
-                      <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: C.amber }}>+{o.potentialClicks}</td>
-                      <td style={{ padding: '6px 8px', textAlign: 'right' }}>
-                        {rs.applied ? (
-                          <span style={{ fontSize: 11, fontWeight: 700, color: C.green }}>{s.applied}</span>
-                        ) : o.doc ? (
-                          rs.suggestion ? (
-                            <button type="button" onClick={() => void apply(o)} disabled={rs.busy} style={btn(C.green)}>{rs.busy ? s.optimizing : s.apply}</button>
-                          ) : (
-                            <button type="button" onClick={() => void optimize(o)} disabled={rs.busy} style={btn(C.violet)}>{rs.busy ? s.optimizing : `✨ ${s.optimize}`}</button>
-                          )
-                        ) : (
-                          <a href={o.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: C.sub }}>{s.open} ↗</a>
-                        )}
-                      </td>
-                    </tr>
-                    {rs.suggestion && !rs.applied && (
-                      <tr style={{ color: C.text }}>
-                        <td colSpan={5} style={{ padding: '0 8px 8px 8px' }}>
-                          <div style={{ fontSize: 11, color: C.green, fontWeight: 600 }}>{rs.suggestion.metaTitle}</div>
-                          <div style={{ fontSize: 11, color: C.sub }}>{rs.suggestion.metaDescription}</div>
-                        </td>
-                      </tr>
-                    )}
-                    {rs.error && (
-                      <tr><td colSpan={5} style={{ padding: '0 8px 6px 8px', fontSize: 11, color: C.red }}>{rs.error}</td></tr>
-                    )}
-                  </React.Fragment>
-                )
-              })}
-            </tbody>
-          </table>
+      {error && (
+        <div role="alert">
+          <Banner type="danger">{error}</Banner>
         </div>
       )}
-    </div>
+      {notConnected && <Banner type="default">{s.needGsc}</Banner>}
+      {loading && !notConnected && <LoadingState label={s.loading} />}
+      {!loading && !notConnected && opps && opps.length === 0 && <EmptyState title={s.none} />}
+
+      {!notConnected && opps && opps.length > 0 && (
+        <DataTable aria-label={s.title}>
+          <thead>
+            <tr>
+              <th scope="col">{s.page}</th>
+              <th className="seo-table__num" scope="col">
+                {s.pos}
+              </th>
+              <th className="seo-table__num" scope="col">
+                {s.ctr}
+              </th>
+              <th className="seo-table__num" scope="col">
+                {s.potential}
+              </th>
+              <th scope="col">
+                <span className="seo-ctr__sr-only">{s.optimize}</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {opps.slice(0, 50).map((o) => {
+              const rs = state[o.url] || {}
+              const path = (() => { try { return new URL(o.url).pathname } catch { return o.url } })()
+              return (
+                <React.Fragment key={o.url}>
+                  <tr>
+                    <td className="seo-ctr__page" title={o.url}>
+                      {path}
+                    </td>
+                    <td className="seo-table__num">{o.position.toFixed(1)}</td>
+                    <td className="seo-table__num">
+                      <span className="seo-text--danger">{(o.ctr * 100).toFixed(1)}%</span>
+                      <span className="seo-text--secondary"> / {(o.expectedCtr * 100).toFixed(0)}% {s.expected}</span>
+                    </td>
+                    <td className="seo-table__num seo-text--strong seo-text--warning">+{o.potentialClicks}</td>
+                    <td className="seo-table__num">
+                      {rs.applied ? (
+                        <TonePill tone="success">{s.applied}</TonePill>
+                      ) : o.doc ? (
+                        rs.suggestion ? (
+                          <Button
+                            buttonStyle="primary"
+                            disabled={rs.busy}
+                            margin={false}
+                            onClick={() => void apply(o)}
+                            size="medium"
+                          >
+                            {rs.busy ? s.optimizing : s.apply}
+                          </Button>
+                        ) : (
+                          <Button
+                            buttonStyle="secondary"
+                            disabled={rs.busy}
+                            margin={false}
+                            onClick={() => void optimize(o)}
+                            size="medium"
+                          >
+                            {rs.busy ? s.optimizing : s.optimize}
+                          </Button>
+                        )
+                      ) : (
+                        <Button
+                          buttonStyle="secondary"
+                          el="anchor"
+                          icon={<NewTabIcon />}
+                          iconPosition="right"
+                          margin={false}
+                          newTab
+                          size="medium"
+                          url={o.url}
+                        >
+                          {s.open}
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                  {rs.suggestion && !rs.applied && (
+                    <tr>
+                      <td colSpan={5}>
+                        <div className="seo-inset seo-stack seo-stack--tight">
+                          <span className="seo-text seo-text--small seo-text--strong seo-text--success">{rs.suggestion.metaTitle}</span>
+                          <span className="seo-text seo-text--small seo-text--secondary">{rs.suggestion.metaDescription}</span>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  {rs.error && (
+                    <tr>
+                      <td colSpan={5}>
+                        <span className="seo-text seo-text--small seo-text--danger" role="alert">
+                          {rs.error}
+                        </span>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              )
+            })}
+          </tbody>
+        </DataTable>
+      )}
+    </Card>
   )
 }

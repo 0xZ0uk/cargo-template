@@ -1,0 +1,86 @@
+.seo-redirects__form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 8rem) auto;
+  align-items: end;
+  gap: var(--spacer-3);
+}
+
+.seo-redirects__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacer-3);
+}
+
+.seo-redirects__search {
+  flex: 1;
+  width: auto;
+  min-width: 14rem;
+  max-width: 28rem;
+}
+
+.seo-redirects__test-input {
+  width: 14rem;
+}
+
+/* Payload's list table gives every cell a 150px minimum; the narrow columns opt out. */
+.seo-redirects__table th,
+.seo-redirects__table td {
+  min-width: 0;
+}
+
+.seo-redirects__url {
+  display: block;
+  max-width: 24rem;
+}
+
+.seo-redirects__actions-col {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.seo-redirects__actions {
+  justify-content: flex-end;
+}
+
+.seo-redirects__table tr.seo-redirects__row--selected td,
+.seo-redirects__table tr.seo-redirects__row--editing td {
+  background: var(--color-bg-brand-tertiary);
+}
+
+.seo-redirects__pagination {
+  justify-content: center;
+  gap: var(--spacer-2);
+}
+
+/* Sticks to the bottom of the view while rows are selected. */
+.seo-redirects__bulk {
+  position: sticky;
+  bottom: var(--spacer-3);
+  z-index: var(--z-status);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacer-3);
+  padding: var(--spacer-2) var(--spacer-3);
+  background: var(--color-bg);
+  border: var(--stroke-width-small) solid var(--color-border);
+  border-radius: var(--radius-medium);
+}
+
+.seo-redirects__toast {
+  position: fixed;
+  right: var(--spacer-4);
+  bottom: var(--spacer-4);
+  z-index: var(--z-status);
+  max-width: 24rem;
+}
+
+@media (max-width: 768px) {
+  .seo-redirects__form {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+}

@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useEffect, useState, useCallback, useRef, useMemo, useId } from 'react'
+import { Banner, Button, Pill, PlusIcon, RefreshIcon, TrashIcon, XIcon } from '@payloadcms/ui'
 import {
   TITLE_LENGTH_MIN,
   TITLE_LENGTH_MAX,
@@ -15,23 +16,8 @@ import {
 } from '../constants.js'
 import { useDashboardT } from '../hooks/useSeoLocale.js'
 import { type DashboardTranslations } from '../dashboard-i18n.js'
-
-// ---------------------------------------------------------------------------
-// Design tokens — uses Payload CSS variables for theme compatibility
-// ---------------------------------------------------------------------------
-const V = {
-  text: 'var(--theme-text, #1a1a1a)',
-  textSecondary: 'var(--theme-elevation-600, #6b7280)',
-  bg: 'var(--theme-elevation-0, #fff)',
-  bgCard: 'var(--theme-elevation-50, #f9fafb)',
-  border: 'var(--theme-elevation-200, #e5e7eb)',
-  borderDark: 'var(--theme-border-color, #000)',
-  green: '#22c55e',
-  red: '#ef4444',
-  cyan: '#00E5FF',
-  yellow: '#FFD600',
-  blue: '#3b82f6',
-}
+import { Card, cx, DataTable, Field, Grid, LoadingState, ViewBody, ViewHeader } from '../ui/index.js'
+import './SeoConfigView.css'
 
 // ---------------------------------------------------------------------------
 // Rule group definitions (16 engine groups + accessibility)
@@ -156,62 +142,6 @@ interface Settings {
 }
 
 // ---------------------------------------------------------------------------
-// Shared inline styles
-// ---------------------------------------------------------------------------
-const btnBase: React.CSSProperties = {
-  padding: '6px 14px',
-  borderRadius: 6,
-  border: `1px solid ${V.border}`,
-  fontWeight: 600,
-  fontSize: 11,
-  cursor: 'pointer',
-  textTransform: 'uppercase',
-  letterSpacing: 0.3,
-}
-
-const inputStyle: React.CSSProperties = {
-  padding: '8px 12px',
-  borderRadius: 6,
-  border: `1px solid ${V.border}`,
-  fontSize: 13,
-  color: V.text,
-  backgroundColor: V.bg,
-  width: '100%',
-  boxSizing: 'border-box',
-}
-
-const cardStyle: React.CSSProperties = {
-  border: `1px solid ${V.border}`,
-  borderRadius: 10,
-  backgroundColor: V.bgCard,
-  marginBottom: 20,
-  overflow: 'hidden',
-}
-
-const cardHeaderStyle: React.CSSProperties = {
-  padding: '14px 18px',
-  borderBottom: `1px solid ${V.border}`,
-  fontWeight: 700,
-  fontSize: 14,
-  color: V.text,
-  backgroundColor: V.bg,
-}
-
-const cardBodyStyle: React.CSSProperties = {
-  padding: '18px',
-}
-
-const labelStyle: React.CSSProperties = {
-  display: 'block',
-  fontSize: 11,
-  fontWeight: 600,
-  color: V.textSecondary,
-  marginBottom: 4,
-  textTransform: 'uppercase',
-  letterSpacing: 0.4,
-}
-
-// ---------------------------------------------------------------------------
 // Toast sub-component
 // ---------------------------------------------------------------------------
 function Toast({ message, type, onClose }: { message: string; type: 'success' | 'error'; onClose: () => void }) {
@@ -223,24 +153,30 @@ function Toast({ message, type, onClose }: { message: string; type: 'success' | 
   return (
     // Announced, not just painted — see RedirectManagerView's Toast.
     <div
+      className="seo-config__toast"
       role={type === 'error' ? 'alert' : 'status'}
       aria-live={type === 'error' ? 'assertive' : 'polite'}
-      style={{
-        position: 'fixed',
-        bottom: 24,
-        right: 24,
-        padding: '12px 20px',
-        borderRadius: 8,
-        backgroundColor: type === 'success' ? V.green : V.red,
-        color: '#fff',
-        fontWeight: 700,
-        fontSize: 13,
-        zIndex: 9999,
-        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-      }}
     >
-      {message}
+      <Banner type={type === 'success' ? 'success' : 'danger'}>{message}</Banner>
     </div>
+  )
+}
+
+/** Removable slug tag: the slug in mono text and a compact remove button. */
+function SlugChip({ slug, removeLabel, onRemove }: { slug: string; removeLabel: string; onRemove: () => void }) {
+  return (
+    <span className="seo-config__chip">
+      <span className="seo-mono">/{slug}</span>
+      <button
+        type="button"
+        aria-label={removeLabel}
+        className="seo-config__chip-remove"
+        onClick={onRemove}
+        title={removeLabel}
+      >
+        <XIcon size={16} />
+      </button>
+    </span>
   )
 }
 
@@ -518,125 +454,90 @@ export function SeoConfigView() {
   // Loading state
   if (loading) {
     return (
-      <div
-        style={{
-          padding: 60,
-          textAlign: 'center',
-          color: V.textSecondary,
-          fontSize: 14,
-          fontFamily: 'var(--font-body, system-ui)',
-        }}
-      >
-        {t.seoConfig.loading}
-      </div>
+      <>
+        <ViewHeader description={t.seoConfig.subtitle} title={t.seoConfig.title} />
+        <ViewBody>
+          <LoadingState label={t.seoConfig.loading} />
+        </ViewBody>
+      </>
     )
   }
 
   // Error state
   if (error) {
     return (
-      <div
-        style={{
-          padding: 60,
-          textAlign: 'center',
-          fontFamily: 'var(--font-body, system-ui)',
-        }}
-      >
-        <div style={{ color: V.red, fontWeight: 700, fontSize: 14, marginBottom: 8 }}>
-          {t.common.loadingError}
-        </div>
-        <div style={{ color: V.textSecondary, fontSize: 12, marginBottom: 16 }}>{error}</div>
-        <button type="button"
-          onClick={fetchSettings}
-          style={{ ...btnBase, backgroundColor: V.bgCard, color: V.text }}
-        >
-          {t.common.retry}
-        </button>
-      </div>
+      <>
+        <ViewHeader description={t.seoConfig.subtitle} title={t.seoConfig.title} />
+        <ViewBody>
+          <Banner type="danger">
+            <div className="seo-stack seo-stack--tight">
+              <strong>{t.common.loadingError}</strong>
+              <span>{error}</span>
+            </div>
+          </Banner>
+          <div>
+            <Button buttonStyle="secondary" margin={false} onClick={fetchSettings}>
+              {t.common.retry}
+            </Button>
+          </div>
+        </ViewBody>
+      </>
     )
   }
 
+  const changefreqOptions = (
+    <>
+      <option value="daily">{t.seoConfig.daily}</option>
+      <option value="weekly">{t.seoConfig.weekly}</option>
+      <option value="monthly">{t.seoConfig.monthly}</option>
+      <option value="yearly">{t.seoConfig.yearly}</option>
+    </>
+  )
+
+  const saveLabel = saving ? t.common.saving : t.common.save
+
   return (
-    <div
-      style={{
-        padding: '20px 24px',
-        maxWidth: 900,
-        margin: '0 auto',
-        fontFamily: 'var(--font-body, system-ui)',
-      }}
-    >
-      {/* Header */}
-      <div
-        style={{
-          marginBottom: 24,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: 12,
-        }}
-      >
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0, color: V.text }}>
-            <span style={{ marginRight: 8 }}>&#9881;</span>
-            {t.seoConfig.title}
-          </h1>
-          <p style={{ fontSize: 12, color: V.textSecondary, margin: '4px 0 0' }}>
-            {t.seoConfig.subtitle}
-          </p>
-        </div>
-        <button type="button"
-          onClick={handleSave}
-          disabled={saving}
-          style={{
-            ...btnBase,
-            backgroundColor: saving ? V.textSecondary : V.green,
-            color: '#fff',
-            border: 'none',
-            padding: '8px 20px',
-            fontSize: 12,
-            opacity: saving ? 0.7 : 1,
-          }}
-        >
-          {saving ? t.common.saving : t.common.save}
-        </button>
-      </div>
+    <>
+      <ViewHeader
+        actions={
+          <Button buttonStyle="primary" disabled={saving} margin={false} onClick={handleSave}>
+            {saveLabel}
+          </Button>
+        }
+        description={t.seoConfig.subtitle}
+        title={t.seoConfig.title}
+      />
+      <ViewBody className="seo-config">
+        {/* Toast notification */}
+        {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
-      {/* Section 1: General */}
-      <div style={cardStyle}>
-        <div style={cardHeaderStyle}>General</div>
-        <div style={cardBodyStyle}>
-          <label style={labelStyle} htmlFor={siteNameId}>{t.seoConfig.siteName}</label>
-          <input
-            id={siteNameId}
-            type="text"
-            value={settings.siteName || ''}
-            onChange={(e) => setSettings((prev) => ({ ...prev, siteName: e.target.value }))}
-            placeholder="Ex: My Website"
-            style={inputStyle}
-          />
-          <div style={{ fontSize: 10, color: V.textSecondary, marginTop: 4 }}>
-            {t.seoConfig.siteNameDesc}
-          </div>
-        </div>
-      </div>
+        {/* Section 1: General */}
+        <Card title="General">
+          <Field description={t.seoConfig.siteNameDesc} label={t.seoConfig.siteName}>
+            <input
+              id={siteNameId}
+              type="text"
+              className="seo-input"
+              value={settings.siteName || ''}
+              onChange={(e) => setSettings((prev) => ({ ...prev, siteName: e.target.value }))}
+              placeholder="Ex: My Website"
+            />
+          </Field>
+        </Card>
 
-      {/* Section 2: Pages ignorees */}
-      <div style={{ ...cardStyle, overflow: 'visible' }}>
-        <div style={cardHeaderStyle}>{t.seoConfig.ignoredPages}</div>
-        <div style={cardBodyStyle}>
-          <div style={{ fontSize: 11, color: V.textSecondary, marginBottom: 12 }}>
-            {t.seoConfig.ignoredPagesDesc}
-          </div>
+        {/* Section 2: Pages ignorees */}
+        <Card title={t.seoConfig.ignoredPages}>
+          <p className="seo-text seo-text--small seo-text--secondary">{t.seoConfig.ignoredPagesDesc}</p>
 
           {/* Add slug input with autocomplete */}
-          <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-            <div style={{ flex: 1, position: 'relative' }}>
+          <div className="seo-config__add-row">
+            <div className="seo-config__autocomplete-anchor">
               <input
                 ref={slugInputRef}
                 id={ignoredSlugId}
                 aria-label={t.seoConfig.ignoredPages}
                 type="text"
+                className="seo-input"
                 value={newSlug}
                 onChange={(e) => {
                   setNewSlug(e.target.value)
@@ -654,29 +555,13 @@ export function SeoConfigView() {
                   }
                 }}
                 placeholder={t.seoConfig.pageSlugPlaceholder}
-                style={inputStyle}
               />
               {showAutocomplete && filteredSlugs.length > 0 && (
-                <div
-                  ref={autocompleteRef}
-                  style={{
-                    position: 'absolute',
-                    top: '100%',
-                    left: 0,
-                    right: 0,
-                    marginTop: 4,
-                    backgroundColor: V.bg,
-                    border: `1px solid ${V.border}`,
-                    borderRadius: 8,
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                    zIndex: 100,
-                    maxHeight: 240,
-                    overflowY: 'auto',
-                  }}
-                >
+                <div ref={autocompleteRef} className="seo-config__autocomplete">
                   {filteredSlugs.map((item) => (
                     <button
                       type="button"
+                      className="seo-config__option"
                       key={`${item.collection}-${item.slug}`}
                       onClick={() => {
                         setNewSlug(item.slug)
@@ -691,221 +576,105 @@ export function SeoConfigView() {
                         }
                         setNewSlug('')
                       }}
-                      style={{
-                        display: 'block',
-                        width: '100%',
-                        boxSizing: 'border-box',
-                        textAlign: 'left',
-                        fontFamily: 'inherit',
-                        background: 'none',
-                        border: 'none',
-                        padding: '8px 12px',
-                        cursor: 'pointer',
-                        borderBottom: `1px solid ${V.border}`,
-                        fontSize: 12,
-                        transition: 'background-color 0.1s',
-                      }}
-                      onMouseEnter={(e) => {
-                        ;(e.currentTarget as HTMLButtonElement).style.backgroundColor = 'rgba(59,130,246,0.06)'
-                      }}
-                      onMouseLeave={(e) => {
-                        ;(e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent'
-                      }}
                     >
                       {/* <span>, not <div>: a <button> only accepts phrasing content. */}
-                      <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <span style={{ fontFamily: 'monospace', fontWeight: 600, color: V.blue }}>
-                          /{item.slug}
-                        </span>
-                        <span
-                          style={{
-                            fontSize: 9,
-                            fontWeight: 700,
-                            padding: '1px 6px',
-                            borderRadius: 4,
-                            backgroundColor: item.collection === 'pages' ? 'rgba(59,130,246,0.1)' : 'rgba(34,197,94,0.1)',
-                            color: item.collection === 'pages' ? V.blue : V.green,
-                            textTransform: 'uppercase',
-                          }}
-                        >
-                          {item.collection}
-                        </span>
+                      <span className="seo-row seo-row--between seo-row--nowrap">
+                        <span className="seo-mono seo-text--brand">/{item.slug}</span>
+                        <span className="seo-config__option-tag">{item.collection}</span>
                       </span>
                       {item.title && (
-                        <span style={{ display: 'block', fontSize: 11, color: V.textSecondary, marginTop: 2 }}>
-                          {item.title}
-                        </span>
+                        <span className="seo-config__option-title seo-text--secondary">{item.title}</span>
                       )}
                     </button>
                   ))}
                 </div>
               )}
             </div>
-            <button type="button"
+            <Button
+              buttonStyle="secondary"
+              icon={<PlusIcon />}
+              iconPosition="left"
+              margin={false}
               onClick={() => {
                 addSlug()
                 setShowAutocomplete(false)
               }}
-              style={{
-                ...btnBase,
-                backgroundColor: V.blue,
-                color: '#fff',
-                border: 'none',
-                whiteSpace: 'nowrap',
-              }}
             >
               {t.common.add}
-            </button>
+            </Button>
           </div>
 
           {/* Slug chips */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          <div className="seo-config__chips">
             {(settings.ignoredSlugs || []).length === 0 && (
-              <div style={{ fontSize: 11, color: V.textSecondary, fontStyle: 'italic' }}>
-                {t.seoConfig.noIgnoredSlugs}
-              </div>
+              <p className="seo-text seo-text--small seo-text--secondary">{t.seoConfig.noIgnoredSlugs}</p>
             )}
             {(settings.ignoredSlugs || []).map((item) => (
-              <span
+              <SlugChip
                 key={item.slug}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '4px 10px',
-                  borderRadius: 6,
-                  backgroundColor: 'rgba(59,130,246,0.1)',
-                  color: V.blue,
-                  fontSize: 12,
-                  fontWeight: 600,
-                  fontFamily: 'monospace',
-                }}
-              >
-                /{item.slug}
-                <button
-                  type="button"
-                  onClick={() => removeSlug(item.slug)}
-                  style={{
-                    cursor: 'pointer',
-                    background: 'none',
-                    border: 'none',
-                    padding: 0,
-                    fontSize: 14,
-                    fontWeight: 800,
-                    color: V.red,
-                    lineHeight: 1,
-                    fontFamily: 'system-ui',
-                  }}
-                  title={t.common.delete}
-                  aria-label={`${t.common.delete} /${item.slug}`}
-                >
-                  &times;
-                </button>
-              </span>
+                onRemove={() => removeSlug(item.slug)}
+                removeLabel={`${t.common.delete} /${item.slug}`}
+                slug={item.slug}
+              />
             ))}
           </div>
-        </div>
-      </div>
+        </Card>
 
-      {/* Section 3: Regles desactivees */}
-      <div style={cardStyle}>
-        <div style={cardHeaderStyle}>{t.seoConfig.disabledRules}</div>
-        <div style={cardBodyStyle}>
-          <div style={{ fontSize: 11, color: V.textSecondary, marginBottom: 14 }}>
-            {t.seoConfig.disabledRulesDesc}
-          </div>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
-              gap: 8,
-            }}
-          >
+        {/* Section 3: Regles desactivees */}
+        <Card title={t.seoConfig.disabledRules}>
+          <p className="seo-text seo-text--small seo-text--secondary">{t.seoConfig.disabledRulesDesc}</p>
+          <Grid>
             {RULE_GROUPS.map((group) => {
               const isDisabled = (settings.disabledRules || []).includes(group.value)
               return (
                 <label
+                  className={cx('seo-checkbox seo-config__rule', isDisabled && 'seo-config__rule--disabled')}
                   key={group.value}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    padding: '8px 12px',
-                    borderRadius: 6,
-                    border: `1px solid ${isDisabled ? V.red : V.border}`,
-                    backgroundColor: isDisabled ? 'rgba(239,68,68,0.06)' : V.bg,
-                    cursor: 'pointer',
-                    fontSize: 12,
-                    fontWeight: isDisabled ? 700 : 500,
-                    color: isDisabled ? V.red : V.text,
-                    transition: 'all 0.15s',
-                  }}
                 >
-                  <input
-                    type="checkbox"
-                    checked={isDisabled}
-                    onChange={() => toggleRule(group.value)}
-                    style={{ accentColor: V.red }}
-                  />
+                  <input type="checkbox" checked={isDisabled} onChange={() => toggleRule(group.value)} />
                   {group.label}
                 </label>
               )
             })}
-          </div>
-        </div>
-      </div>
+          </Grid>
+        </Card>
 
-      {/* Section 4: Seuils personnalises */}
-      <div style={cardStyle}>
-        <div style={cardHeaderStyle}>{t.seoConfig.customThresholds}</div>
-        <div style={cardBodyStyle}>
-          <div style={{ fontSize: 11, color: V.textSecondary, marginBottom: 14 }}>
-            {t.seoConfig.customThresholdsDesc}
-          </div>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-              gap: 14,
-            }}
-          >
+        {/* Section 4: Seuils personnalises */}
+        <Card title={t.seoConfig.customThresholds}>
+          <p className="seo-text seo-text--small seo-text--secondary">{t.seoConfig.customThresholdsDesc}</p>
+          <Grid wide>
             {THRESHOLD_FIELDS.map((field) => {
               const currentValue = settings.thresholds?.[field.name]
               return (
-                <div key={field.name}>
-                  <label style={labelStyle} htmlFor={`${uid}-threshold-${field.name}`}>
-                    {field.label}
-                  </label>
+                <Field key={field.name} label={field.label}>
                   <input
                     id={`${uid}-threshold-${field.name}`}
                     type="number"
+                    className="seo-input"
                     value={currentValue != null ? String(currentValue) : ''}
                     onChange={(e) => updateThreshold(field.name, e.target.value)}
                     placeholder={`${t.seoConfig.defaultLabel} ${field.defaultValue}`}
                     step={field.name.includes('Density') ? '0.1' : '1'}
-                    style={inputStyle}
                   />
-                </div>
+                </Field>
               )
             })}
-          </div>
-        </div>
-      </div>
+          </Grid>
+        </Card>
 
-      {/* Section 5: Configuration Sitemap */}
-      <div style={cardStyle}>
-        <div style={cardHeaderStyle}>{t.seoConfig.sitemapConfig}</div>
-        <div style={cardBodyStyle}>
+        {/* Section 5: Configuration Sitemap */}
+        <Card title={t.seoConfig.sitemapConfig}>
           {/* Slugs exclus du sitemap */}
-          <div style={{ marginBottom: 20 }}>
-            <label style={labelStyle} htmlFor={excludedSlugId}>{t.seoConfig.sitemapExcludedSlugs}</label>
-            <div style={{ fontSize: 10, color: V.textSecondary, marginBottom: 8 }}>
-              {t.seoConfig.ignoredPagesDesc}
-            </div>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+          <div className="seo-field">
+            <label className="seo-field__label" htmlFor={excludedSlugId}>
+              {t.seoConfig.sitemapExcludedSlugs}
+            </label>
+            <span className="seo-field__description">{t.seoConfig.ignoredPagesDesc}</span>
+            <div className="seo-config__add-row">
               <input
                 id={excludedSlugId}
                 type="text"
+                className="seo-input"
                 value={newSitemapSlug}
                 onChange={(e) => setNewSitemapSlug(e.target.value)}
                 onKeyDown={(e) => {
@@ -915,96 +684,49 @@ export function SeoConfigView() {
                   }
                 }}
                 placeholder={t.seoConfig.slugToExcludePlaceholder}
-                style={inputStyle}
               />
-              <button type="button"
+              <Button
+                buttonStyle="secondary"
+                icon={<PlusIcon />}
+                iconPosition="left"
+                margin={false}
                 onClick={addSitemapSlug}
-                style={{
-                  ...btnBase,
-                  backgroundColor: V.blue,
-                  color: '#fff',
-                  border: 'none',
-                  whiteSpace: 'nowrap',
-                }}
               >
                 {t.common.add}
-              </button>
+              </Button>
             </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            <div className="seo-config__chips">
               {(settings.sitemap?.excludedSlugs || []).length === 0 && (
-                <div style={{ fontSize: 11, color: V.textSecondary, fontStyle: 'italic' }}>
-                  {t.seoConfig.noExcludedSlugs}
-                </div>
+                <p className="seo-text seo-text--small seo-text--secondary">{t.seoConfig.noExcludedSlugs}</p>
               )}
               {(settings.sitemap?.excludedSlugs || []).map((item) => (
-                <span
+                <SlugChip
                   key={item.slug}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    padding: '4px 10px',
-                    borderRadius: 6,
-                    backgroundColor: 'rgba(59,130,246,0.1)',
-                    color: V.blue,
-                    fontSize: 12,
-                    fontWeight: 600,
-                    fontFamily: 'monospace',
-                  }}
-                >
-                  /{item.slug}
-                  <button
-                    type="button"
-                    onClick={() => removeSitemapSlug(item.slug)}
-                    style={{
-                      cursor: 'pointer',
-                      background: 'none',
-                      border: 'none',
-                      padding: 0,
-                      fontSize: 14,
-                      fontWeight: 800,
-                      color: V.red,
-                      lineHeight: 1,
-                      fontFamily: 'system-ui',
-                    }}
-                    title={t.common.delete}
-                    aria-label={`${t.common.delete} /${item.slug}`}
-                  >
-                    &times;
-                  </button>
-                </span>
+                  onRemove={() => removeSitemapSlug(item.slug)}
+                  removeLabel={`${t.common.delete} /${item.slug}`}
+                  slug={item.slug}
+                />
               ))}
             </div>
           </div>
 
           {/* Frequence par defaut + Priorite par defaut */}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: 16,
-              marginBottom: 20,
-            }}
-          >
-            <div>
-              <label style={labelStyle} htmlFor={changefreqId}>{t.seoConfig.defaultChangeFrequency}</label>
+          <Grid wide>
+            <Field label={t.seoConfig.defaultChangeFrequency}>
               <select
                 id={changefreqId}
+                className="seo-select"
                 value={settings.sitemap?.defaultChangefreq || 'weekly'}
                 onChange={(e) => updateSitemapField('defaultChangefreq', e.target.value)}
-                style={inputStyle}
               >
-                <option value="daily">{t.seoConfig.daily}</option>
-                <option value="weekly">{t.seoConfig.weekly}</option>
-                <option value="monthly">{t.seoConfig.monthly}</option>
-                <option value="yearly">{t.seoConfig.yearly}</option>
+                {changefreqOptions}
               </select>
-            </div>
-            <div>
-              <label style={labelStyle} htmlFor={priorityId}>{t.seoConfig.defaultPriority}</label>
+            </Field>
+            <Field description={t.seoConfig.defaultPriorityDesc} label={t.seoConfig.defaultPriority}>
               <input
                 id={priorityId}
                 type="number"
+                className="seo-input"
                 value={settings.sitemap?.defaultPriority != null ? String(settings.sitemap.defaultPriority) : ''}
                 onChange={(e) =>
                   updateSitemapField(
@@ -1016,42 +738,29 @@ export function SeoConfigView() {
                 min={0}
                 max={1}
                 step={0.1}
-                style={inputStyle}
               />
-              <div style={{ fontSize: 10, color: V.textSecondary, marginTop: 2 }}>
-                {t.seoConfig.defaultPriorityDesc}
-              </div>
-            </div>
-          </div>
+            </Field>
+          </Grid>
 
           {/* Overrides de priorite */}
-          <div style={{ marginBottom: 20 }}>
-            <label style={labelStyle}>{t.seoConfig.priorityOverrides}</label>
-            <div style={{ fontSize: 10, color: V.textSecondary, marginBottom: 8 }}>
-              {t.seoConfig.priorityOverridesDesc}
-            </div>
+          <div className="seo-field">
+            <span className="seo-field__label">{t.seoConfig.priorityOverrides}</span>
+            <span className="seo-field__description">{t.seoConfig.priorityOverridesDesc}</span>
 
             {(settings.sitemap?.priorityOverrides || []).map((override, idx) => (
-              <div
-                key={`override-${idx}`}
-                style={{
-                  display: 'flex',
-                  gap: 8,
-                  marginBottom: 8,
-                  alignItems: 'center',
-                }}
-              >
+              <div className="seo-config__override" key={`override-${idx}`}>
                 <input
                   aria-label={`${t.seoConfig.priorityOverrides} ${idx + 1} — ${t.seoConfig.patternPlaceholder}`}
                   type="text"
+                  className="seo-input"
                   value={override.slugPattern}
                   onChange={(e) => updatePriorityOverride(idx, 'slugPattern', e.target.value)}
                   placeholder={t.seoConfig.patternPlaceholder}
-                  style={{ ...inputStyle, flex: 2 }}
                 />
                 <input
                   aria-label={`${t.seoConfig.priorityOverrides} ${idx + 1} — ${t.seoConfig.priority}`}
                   type="number"
+                  className="seo-input"
                   value={String(override.priority)}
                   onChange={(e) =>
                     updatePriorityOverride(idx, 'priority', Number(e.target.value))
@@ -1060,10 +769,10 @@ export function SeoConfigView() {
                   max={1}
                   step={0.1}
                   placeholder={t.seoConfig.priority}
-                  style={{ ...inputStyle, flex: 1 }}
                 />
                 <select
                   aria-label={`${t.seoConfig.priorityOverrides} ${idx + 1} — ${t.seoConfig.defaultChangeFrequency}`}
+                  className="seo-select"
                   value={override.changefreq || ''}
                   onChange={(e) =>
                     updatePriorityOverride(
@@ -1072,336 +781,177 @@ export function SeoConfigView() {
                       e.target.value || undefined,
                     )
                   }
-                  style={{ ...inputStyle, flex: 1 }}
                 >
                   <option value="">{t.seoConfig.defaultShort}</option>
-                  <option value="daily">{t.seoConfig.daily}</option>
-                  <option value="weekly">{t.seoConfig.weekly}</option>
-                  <option value="monthly">{t.seoConfig.monthly}</option>
-                  <option value="yearly">{t.seoConfig.yearly}</option>
+                  {changefreqOptions}
                 </select>
-                <button type="button"
+                <Button
+                  aria-label={t.common.delete}
+                  buttonStyle="ghost"
+                  icon={<TrashIcon />}
+                  margin={false}
                   onClick={() => removePriorityOverride(idx)}
-                  style={{
-                    ...btnBase,
-                    padding: '6px 10px',
-                    backgroundColor: 'rgba(239,68,68,0.1)',
-                    color: V.red,
-                    border: `1px solid rgba(239,68,68,0.2)`,
-                    flexShrink: 0,
-                  }}
-                  title={t.common.delete}
-                >
-                  &times;
-                </button>
+                  tooltip={t.common.delete}
+                />
               </div>
             ))}
 
-            <button type="button"
-              onClick={addPriorityOverride}
-              style={{
-                ...btnBase,
-                backgroundColor: V.bgCard,
-                color: V.blue,
-                border: `1px dashed ${V.border}`,
-                width: '100%',
-                textAlign: 'center',
-                marginTop: 4,
-              }}
-            >
-              {t.seoConfig.addOverride}
-            </button>
+            <div>
+              <Button
+                buttonStyle="secondary"
+                icon={<PlusIcon />}
+                iconPosition="left"
+                margin={false}
+                onClick={addPriorityOverride}
+              >
+                {t.seoConfig.addOverride}
+              </Button>
+            </div>
           </div>
 
           {/* Preview du sitemap */}
-          <div>
-            <label style={labelStyle}>{t.seoConfig.sitemapPreview}</label>
-            <button type="button"
-              onClick={fetchSitemapPreview}
-              disabled={loadingPreview}
-              style={{
-                ...btnBase,
-                backgroundColor: V.bgCard,
-                color: V.text,
-                opacity: loadingPreview ? 0.6 : 1,
-              }}
-            >
-              {loadingPreview ? t.common.loading : showPreview ? t.seoConfig.refreshPreview : t.seoConfig.viewPreview}
-            </button>
+          <div className="seo-field">
+            <span className="seo-field__label">{t.seoConfig.sitemapPreview}</span>
+            <div>
+              <Button
+                buttonStyle="secondary"
+                disabled={loadingPreview}
+                icon={showPreview ? <RefreshIcon /> : undefined}
+                iconPosition="left"
+                margin={false}
+                onClick={fetchSitemapPreview}
+              >
+                {loadingPreview ? t.common.loading : showPreview ? t.seoConfig.refreshPreview : t.seoConfig.viewPreview}
+              </Button>
+            </div>
 
             {showPreview && sitemapPreview && (
-              <div style={{ marginTop: 12 }}>
+              <>
                 {/* Preview stats */}
-                <div
-                  style={{
-                    display: 'flex',
-                    gap: 12,
-                    marginBottom: 10,
-                    fontSize: 11,
-                    fontWeight: 600,
-                  }}
-                >
-                  <span style={{ color: V.text }}>
+                <div className="seo-row">
+                  <Pill size="small">
                     {sitemapPreview.stats.totalPages} {t.seoConfig.pages}
-                  </span>
-                  <span style={{ color: V.green }}>
+                  </Pill>
+                  <Pill pillStyle="success" size="small">
                     {sitemapPreview.stats.includedCount} {t.seoConfig.included}
-                  </span>
-                  <span style={{ color: V.red }}>
+                  </Pill>
+                  <Pill pillStyle="error" size="small">
                     {sitemapPreview.stats.excludedCount} {t.seoConfig.excluded}
-                  </span>
+                  </Pill>
                 </div>
 
                 {/* Preview table */}
-                <div
-                  style={{
-                    border: `1px solid ${V.border}`,
-                    borderRadius: 8,
-                    overflow: 'hidden',
-                    maxHeight: 400,
-                    overflowY: 'auto',
-                  }}
-                >
-                  {/* Header */}
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '2fr 1fr 80px 80px 120px',
-                      gap: 8,
-                      padding: '8px 12px',
-                      backgroundColor: V.bgCard,
-                      borderBottom: `1px solid ${V.border}`,
-                      fontSize: 10,
-                      fontWeight: 700,
-                      color: V.textSecondary,
-                      textTransform: 'uppercase',
-                      letterSpacing: 0.3,
-                      position: 'sticky',
-                      top: 0,
-                    }}
-                  >
-                    <span>{t.seoConfig.url}</span>
-                    <span>Collection</span>
-                    <span>{t.seoConfig.priority}</span>
-                    <span>{t.seoConfig.frequency}</span>
-                    <span>{t.seoConfig.lastModified}</span>
-                  </div>
-                  {sitemapPreview.preview.map((entry, idx) => (
-                    <div
-                      key={`preview-${idx}`}
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: '2fr 1fr 80px 80px 120px',
-                        gap: 8,
-                        padding: '6px 12px',
-                        borderBottom: `1px solid ${V.border}`,
-                        fontSize: 11,
-                        alignItems: 'center',
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontFamily: 'monospace',
-                          fontWeight: 600,
-                          color: V.text,
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                        }}
-                        title={entry.url}
-                      >
-                        {entry.url}
-                      </span>
-                      <span>
-                        <span
-                          style={{
-                            fontSize: 9,
-                            fontWeight: 700,
-                            padding: '1px 6px',
-                            borderRadius: 4,
-                            backgroundColor:
-                              entry.collection === 'pages'
-                                ? 'rgba(59,130,246,0.1)'
-                                : 'rgba(34,197,94,0.1)',
-                            color: entry.collection === 'pages' ? V.blue : V.green,
-                            textTransform: 'uppercase',
-                          }}
-                        >
-                          {entry.collection}
-                        </span>
-                      </span>
-                      <span style={{ fontWeight: 700, color: V.text }}>{entry.priority}</span>
-                      <span style={{ fontSize: 10, color: V.textSecondary }}>
-                        {entry.changefreq}
-                      </span>
-                      <span style={{ fontSize: 10, color: V.textSecondary }}>
-                        {entry.lastmod ? new Date(entry.lastmod).toLocaleDateString('fr-FR') : '-'}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+                <DataTable aria-label={t.seoConfig.sitemapPreview} className="seo-config__preview">
+                  <thead>
+                    <tr>
+                      <th>{t.seoConfig.url}</th>
+                      <th>Collection</th>
+                      <th className="seo-table__num">{t.seoConfig.priority}</th>
+                      <th>{t.seoConfig.frequency}</th>
+                      <th>{t.seoConfig.lastModified}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sitemapPreview.preview.map((entry, idx) => (
+                      <tr key={`preview-${idx}`}>
+                        <td>
+                          <span className="seo-mono seo-truncate seo-config__preview-url" title={entry.url}>
+                            {entry.url}
+                          </span>
+                        </td>
+                        <td>
+                          <Pill pillStyle={entry.collection === 'pages' ? 'light' : 'light-gray'} size="small">
+                            {entry.collection}
+                          </Pill>
+                        </td>
+                        <td className="seo-table__num">{entry.priority}</td>
+                        <td className="seo-text--secondary">{entry.changefreq}</td>
+                        <td className="seo-text--secondary">
+                          {entry.lastmod ? new Date(entry.lastmod).toLocaleDateString('fr-FR') : '-'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </DataTable>
+              </>
             )}
           </div>
-        </div>
-      </div>
+        </Card>
 
-      {/* Section 6: Configuration Breadcrumb */}
-      <div style={cardStyle}>
-        <div style={cardHeaderStyle}>{t.seoConfig.breadcrumbConfig}</div>
-        <div style={cardBodyStyle}>
-          <div style={{ fontSize: 11, color: V.textSecondary, marginBottom: 14 }}>
-            {t.seoConfig.breadcrumbConfigDesc}
-          </div>
+        {/* Section 6: Configuration Breadcrumb */}
+        <Card title={t.seoConfig.breadcrumbConfig}>
+          <p className="seo-text seo-text--small seo-text--secondary">{t.seoConfig.breadcrumbConfigDesc}</p>
 
           {/* Enabled checkbox */}
-          <div style={{ marginBottom: 16 }}>
-            <label
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                padding: '8px 12px',
-                borderRadius: 6,
-                border: `1px solid ${settings.breadcrumb?.enabled !== false ? V.green : V.border}`,
-                backgroundColor: settings.breadcrumb?.enabled !== false ? 'rgba(34,197,94,0.06)' : V.bg,
-                cursor: 'pointer',
-                fontSize: 12,
-                fontWeight: 600,
-                color: settings.breadcrumb?.enabled !== false ? V.green : V.text,
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={settings.breadcrumb?.enabled !== false}
-                onChange={(e) => updateBreadcrumbField('enabled', e.target.checked)}
-                style={{ accentColor: V.green }}
-              />
-              {t.seoConfig.enableBreadcrumbs}
-            </label>
-          </div>
+          <label className="seo-checkbox">
+            <input
+              type="checkbox"
+              checked={settings.breadcrumb?.enabled !== false}
+              onChange={(e) => updateBreadcrumbField('enabled', e.target.checked)}
+            />
+            {t.seoConfig.enableBreadcrumbs}
+          </label>
 
           {/* Home label + Separator */}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: 16,
-              marginBottom: 16,
-            }}
-          >
-            <div>
-              <label style={labelStyle} htmlFor={homeLabelId}>{t.seoConfig.homePageLabel}</label>
+          <Grid wide>
+            <Field description={t.seoConfig.homePageLabel} label={t.seoConfig.homePageLabel}>
               <input
                 id={homeLabelId}
                 type="text"
+                className="seo-input"
                 value={settings.breadcrumb?.homeLabel || 'Accueil'}
                 onChange={(e) => updateBreadcrumbField('homeLabel', e.target.value)}
                 placeholder="Accueil"
-                style={inputStyle}
               />
-              <div style={{ fontSize: 10, color: V.textSecondary, marginTop: 2 }}>
-                {t.seoConfig.homePageLabel}
-              </div>
-            </div>
-            <div>
-              <label style={labelStyle} htmlFor={separatorId}>{t.seoConfig.separator}</label>
+            </Field>
+            <Field description={t.seoConfig.separatorDesc} label={t.seoConfig.separator}>
               <select
                 id={separatorId}
+                className="seo-select"
                 value={settings.breadcrumb?.separator || '>'}
                 onChange={(e) => updateBreadcrumbField('separator', e.target.value)}
-                style={inputStyle}
               >
                 <option value=">">&gt;</option>
                 <option value="/">/</option>
-                <option value={'\u00BB'}>{'\u00BB'}</option>
-                <option value={'\u2192'}>{'\u2192'}</option>
+                <option value={'»'}>{'»'}</option>
+                <option value={'→'}>{'→'}</option>
               </select>
-              <div style={{ fontSize: 10, color: V.textSecondary, marginTop: 2 }}>
-                {t.seoConfig.separatorDesc}
-              </div>
-            </div>
-          </div>
+            </Field>
+          </Grid>
 
           {/* Show on home checkbox */}
-          <div>
-            <label
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                padding: '8px 12px',
-                borderRadius: 6,
-                border: `1px solid ${settings.breadcrumb?.showOnHome ? V.blue : V.border}`,
-                backgroundColor: settings.breadcrumb?.showOnHome ? 'rgba(59,130,246,0.06)' : V.bg,
-                cursor: 'pointer',
-                fontSize: 12,
-                fontWeight: 500,
-                color: settings.breadcrumb?.showOnHome ? V.blue : V.text,
-              }}
-            >
+          <div className="seo-field">
+            <label className="seo-checkbox">
               <input
                 type="checkbox"
                 checked={settings.breadcrumb?.showOnHome || false}
                 onChange={(e) => updateBreadcrumbField('showOnHome', e.target.checked)}
-                style={{ accentColor: V.blue }}
               />
               {t.seoConfig.showOnHomePage}
             </label>
-            <div style={{ fontSize: 10, color: V.textSecondary, marginTop: 4, marginLeft: 30 }}>
-              {t.seoConfig.showOnHomePageDesc}
-            </div>
+            <span className="seo-field__description">{t.seoConfig.showOnHomePageDesc}</span>
           </div>
 
           {/* Live preview */}
-          <div
-            style={{
-              marginTop: 16,
-              padding: '12px 16px',
-              borderRadius: 8,
-              backgroundColor: 'rgba(59,130,246,0.04)',
-              border: `1px solid rgba(59,130,246,0.12)`,
-            }}
-          >
-            <div style={{ fontSize: 10, fontWeight: 700, color: V.textSecondary, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 }}>
-              {t.seoConfig.preview}
-            </div>
-            <div style={{ fontSize: 13, color: V.text, fontWeight: 500 }}>
+          <div className="seo-inset seo-stack seo-stack--tight">
+            <span className="seo-field__label">{t.seoConfig.preview}</span>
+            <p className="seo-text">
               {settings.breadcrumb?.homeLabel || 'Accueil'}
-              <span style={{ margin: '0 6px', color: V.textSecondary }}>
-                {settings.breadcrumb?.separator || '>'}
-              </span>
+              <span className="seo-config__separator seo-text--secondary">{settings.breadcrumb?.separator || '>'}</span>
               Services
-              <span style={{ margin: '0 6px', color: V.textSecondary }}>
-                {settings.breadcrumb?.separator || '>'}
-              </span>
-              <span style={{ fontWeight: 700 }}>{t.seoConfig.websiteCreation}</span>
-            </div>
+              <span className="seo-config__separator seo-text--secondary">{settings.breadcrumb?.separator || '>'}</span>
+              <span className="seo-text--strong">{t.seoConfig.websiteCreation}</span>
+            </p>
           </div>
+        </Card>
+
+        {/* Bottom save button */}
+        <div className="seo-config__save">
+          <Button buttonStyle="primary" disabled={saving} margin={false} onClick={handleSave}>
+            {saveLabel}
+          </Button>
         </div>
-      </div>
-
-      {/* Bottom save button */}
-      <div style={{ textAlign: 'right', paddingBottom: 40 }}>
-        <button type="button"
-          onClick={handleSave}
-          disabled={saving}
-          style={{
-            ...btnBase,
-            backgroundColor: saving ? V.textSecondary : V.green,
-            color: '#fff',
-            border: 'none',
-            padding: '10px 28px',
-            fontSize: 13,
-            opacity: saving ? 0.7 : 1,
-          }}
-        >
-          {saving ? t.common.saving : t.common.save}
-        </button>
-      </div>
-
-      {/* Toast notification */}
-      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
-    </div>
+      </ViewBody>
+    </>
   )
 }

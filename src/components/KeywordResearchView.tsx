@@ -1,26 +1,23 @@
 'use client'
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { Banner, Button, RefreshIcon } from '@payloadcms/ui'
 import { useDashboardT, useSeoLocale } from '../hooks/useSeoLocale.js'
 import { ContentBriefPanel } from './ContentBriefPanel.js'
 import { toCsv } from '../helpers/csv.js'
-
-// ---------------------------------------------------------------------------
-// Design tokens — uses Payload CSS variables for theme compatibility
-// ---------------------------------------------------------------------------
-const V = {
-  text: 'var(--theme-text, #1a1a1a)',
-  textSecondary: 'var(--theme-elevation-600, #6b7280)',
-  bg: 'var(--theme-elevation-0, #fff)',
-  bgCard: 'var(--theme-elevation-50, #f9fafb)',
-  border: 'var(--theme-elevation-200, #e5e7eb)',
-  green: '#22c55e',
-  yellow: '#f59e0b',
-  orange: '#f97316',
-  red: '#ef4444',
-  blue: '#3b82f6',
-  cyan: '#06b6d4',
-}
+import {
+  DataTable,
+  EmptyState,
+  Grid,
+  LoadingState,
+  Meter,
+  StatTile,
+  TonePill,
+  ViewBody,
+  ViewHeader,
+  type Tone,
+} from '../ui/index.js'
+import './KeywordResearchView.css'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -44,58 +41,18 @@ interface Stats {
   suggestionsCount: number
 }
 
-// ---------------------------------------------------------------------------
-// Shared styles
-// ---------------------------------------------------------------------------
-
-const btnBase: React.CSSProperties = {
-  padding: '6px 14px',
-  borderRadius: 6,
-  border: `1px solid ${V.border}`,
-  fontWeight: 600,
-  fontSize: 11,
-  cursor: 'pointer',
-  textTransform: 'uppercase',
-  letterSpacing: 0.3,
-}
-
 // typeConfig and filterTabs are now created inside the component to support i18n
 
 // ---------------------------------------------------------------------------
 // ScoreBar sub-component
 // ---------------------------------------------------------------------------
 
-function ScoreBar({ score }: { score: number }) {
-  const color = score >= 70 ? V.green : score >= 40 ? V.yellow : V.red
+function ScoreBar({ score, label }: { score: number; label: string }) {
+  const tone: Tone = score >= 70 ? 'success' : score >= 40 ? 'warning' : 'danger'
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 6,
-      }}
-    >
-      <div
-        style={{
-          width: 60,
-          height: 6,
-          borderRadius: 3,
-          backgroundColor: 'rgba(0,0,0,0.08)',
-          overflow: 'hidden',
-          flexShrink: 0,
-        }}
-      >
-        <div
-          style={{
-            width: `${Math.min(100, score)}%`,
-            height: '100%',
-            borderRadius: 3,
-            backgroundColor: color,
-            transition: 'width 0.3s ease',
-          }}
-        />
-      </div>
-      <span style={{ fontSize: 11, fontWeight: 700, color, minWidth: 24 }}>{score}</span>
+    <div className="seo-row seo-row--nowrap">
+      <Meter aria-label={label} className="seo-keywords__meter" tone={tone} value={score} />
+      <span className="seo-text seo-text--small seo-text--strong seo-keywords__score">{score}</span>
     </div>
   )
 }
@@ -108,47 +65,22 @@ function ExpandableList({ items, label, seeLessLabel }: { items: string[]; label
   const [expanded, setExpanded] = useState(false)
 
   if (items.length === 0) {
-    return <span style={{ fontSize: 10, color: V.textSecondary, fontStyle: 'italic' }}>--</span>
+    return <span className="seo-text seo-text--small seo-text--tertiary">--</span>
   }
 
   const displayed = expanded ? items : items.slice(0, 2)
   const hasMore = items.length > 2
 
   return (
-    <div>
+    <div className="seo-stack seo-stack--tight seo-keywords__list">
       {displayed.map((item, idx) => (
-        <div
-          key={idx}
-          style={{
-            fontSize: 10,
-            color: V.text,
-            lineHeight: 1.5,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            maxWidth: 200,
-          }}
-          title={item}
-        >
+        <div className="seo-text seo-text--small seo-truncate" key={idx} title={item}>
           {item}
         </div>
       ))}
       {hasMore && (
-        <button type="button"
-          onClick={() => setExpanded(!expanded)}
-          style={{
-            background: 'none',
-            border: 'none',
-            padding: 0,
-            fontSize: 9,
-            color: V.cyan,
-            cursor: 'pointer',
-            fontWeight: 700,
-          }}
-        >
-          {expanded
-            ? seeLessLabel
-            : `+${items.length - 2} ${label}`}
+        <button className="seo-keywords__more" onClick={() => setExpanded(!expanded)} type="button">
+          {expanded ? seeLessLabel : `+${items.length - 2} ${label}`}
         </button>
       )}
     </div>
@@ -171,11 +103,11 @@ export function KeywordResearchView() {
   const [activeTab, setActiveTab] = useState<FilterTab>('all')
 
   // i18n-aware type badge config
-  const typeConfig: Record<SuggestionType, { label: string; color: string; bg: string }> = useMemo(() => ({
-    unused: { label: t.keywordResearch.unused, color: V.blue, bg: 'rgba(59,130,246,0.12)' },
-    related: { label: t.keywordResearch.associated, color: V.orange, bg: 'rgba(249,115,22,0.12)' },
-    trending: { label: t.keywordResearch.trending, color: V.cyan, bg: 'rgba(6,182,212,0.12)' },
-    'long-tail': { label: t.keywordResearch.longTail, color: V.green, bg: 'rgba(34,197,94,0.12)' },
+  const typeConfig: Record<SuggestionType, { label: string; tone: Tone }> = useMemo(() => ({
+    unused: { label: t.keywordResearch.unused, tone: 'brand' },
+    related: { label: t.keywordResearch.associated, tone: 'warning' },
+    trending: { label: t.keywordResearch.trending, tone: 'neutral' },
+    'long-tail': { label: t.keywordResearch.longTail, tone: 'success' },
   }), [t])
 
   // i18n-aware filter tabs
@@ -283,337 +215,160 @@ export function KeywordResearchView() {
   // Loading state
   if (loading) {
     return (
-      <div
-        style={{
-          padding: 60,
-          textAlign: 'center',
-          color: V.textSecondary,
-          fontSize: 14,
-          fontFamily: 'var(--font-body, system-ui)',
-        }}
-      >
-        {t.keywordResearch.loading}
-      </div>
+      <>
+        <ViewHeader description={t.keywordResearch.subtitle} title={t.keywordResearch.title} />
+        <ViewBody>
+          <LoadingState label={t.keywordResearch.loading} />
+        </ViewBody>
+      </>
     )
   }
 
   // Error state
   if (error) {
     return (
-      <div
-        style={{
-          padding: 60,
-          textAlign: 'center',
-          fontFamily: 'var(--font-body, system-ui)',
-        }}
-      >
-        <div style={{ color: V.red, fontWeight: 700, fontSize: 14, marginBottom: 8 }}>
-          {t.common.loadingError}
-        </div>
-        <div style={{ color: V.textSecondary, fontSize: 12, marginBottom: 16 }}>
-          {error}
-        </div>
-        <button type="button"
-          onClick={fetchData}
-          style={{ ...btnBase, backgroundColor: V.bgCard, color: V.text }}
-        >
-          {t.common.retry}
-        </button>
-      </div>
+      <>
+        <ViewHeader description={t.keywordResearch.subtitle} title={t.keywordResearch.title} />
+        <ViewBody>
+          <Banner type="danger">
+            <div className="seo-stack seo-stack--tight">
+              <strong>{t.common.loadingError}</strong>
+              <span>{error}</span>
+            </div>
+          </Banner>
+          <div>
+            <Button buttonStyle="secondary" margin={false} onClick={fetchData}>
+              {t.common.retry}
+            </Button>
+          </div>
+        </ViewBody>
+      </>
     )
   }
 
   return (
-    <div
-      style={{
-        padding: '20px 24px',
-        maxWidth: 1200,
-        margin: '0 auto',
-        fontFamily: 'var(--font-body, system-ui)',
-      }}
-    >
-      {/* Header */}
-      <div
-        style={{
-          marginBottom: 24,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: 12,
-        }}
-      >
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0, color: V.text }}>
-            {t.keywordResearch.title}
-          </h1>
-          <p style={{ fontSize: 12, color: V.textSecondary, margin: '4px 0 0' }}>
-            {t.keywordResearch.subtitle}
-          </p>
+    <>
+      <ViewHeader
+        actions={
+          <>
+            <Button buttonStyle="secondary" icon={<RefreshIcon />} iconPosition="left" margin={false} onClick={fetchData}>
+              {t.common.refresh}
+            </Button>
+            <Button
+              buttonStyle="secondary"
+              disabled={filteredSuggestions.length === 0}
+              margin={false}
+              onClick={handleExportCsv}
+            >
+              {t.common.exportCsv}
+            </Button>
+          </>
+        }
+        description={t.keywordResearch.subtitle}
+        title={t.keywordResearch.title}
+      />
+      <ViewBody>
+        {stats && (
+          <Grid>
+            <StatTile label={t.keywordResearch.activeKeywords} value={stats.totalKeywordsAnalyzed} />
+            <StatTile label={t.keywordResearch.uniqueTerms} value={stats.uniqueTerms} />
+            <StatTile label={t.keywordResearch.suggestions} tone="success" value={stats.suggestionsCount} />
+          </Grid>
+        )}
+
+        {/* AI content brief (SEO 2026) */}
+        <ContentBriefPanel locale={locale} />
+
+        <div className="seo-row">
+          {filterTabs.map((tab) => (
+            // aria-pressed, not role="tab": these buttons FILTER one table, they
+            // do not swap panels. Declaring a tablist with no tabpanel would
+            // announce a structure that does not exist.
+            <Button
+              aria-pressed={activeTab === tab.key}
+              buttonStyle="pill"
+              key={tab.key}
+              margin={false}
+              onClick={() => setActiveTab(tab.key)}
+              selected={activeTab === tab.key}
+            >
+              {tab.label} ({tabCounts[tab.key]})
+            </Button>
+          ))}
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          {/* Stats badges */}
-          {stats && (
-            <div style={{ display: 'flex', gap: 8 }}>
-              <span
-                style={{
-                  padding: '4px 10px',
-                  borderRadius: 6,
-                  fontSize: 11,
-                  fontWeight: 700,
-                  backgroundColor: 'rgba(59,130,246,0.12)',
-                  color: V.blue,
-                  border: `1px solid ${V.border}`,
-                }}
-              >
-                {stats.totalKeywordsAnalyzed} {t.keywordResearch.activeKeywords}
-              </span>
-              <span
-                style={{
-                  padding: '4px 10px',
-                  borderRadius: 6,
-                  fontSize: 11,
-                  fontWeight: 700,
-                  backgroundColor: 'rgba(6,182,212,0.12)',
-                  color: V.cyan,
-                  border: `1px solid ${V.border}`,
-                }}
-              >
-                {stats.uniqueTerms} {t.keywordResearch.uniqueTerms}
-              </span>
-              <span
-                style={{
-                  padding: '4px 10px',
-                  borderRadius: 6,
-                  fontSize: 11,
-                  fontWeight: 700,
-                  backgroundColor: 'rgba(34,197,94,0.12)',
-                  color: V.green,
-                  border: `1px solid ${V.border}`,
-                }}
-              >
-                {stats.suggestionsCount} {t.keywordResearch.suggestions}
-              </span>
-            </div>
-          )}
-          <button type="button"
-            onClick={fetchData}
-            style={{ ...btnBase, backgroundColor: V.bgCard, color: V.text }}
-          >
-            &#8635; {t.common.refresh}
-          </button>
-          <button type="button"
-            onClick={handleExportCsv}
-            disabled={filteredSuggestions.length === 0}
-            style={{
-              ...btnBase,
-              backgroundColor: filteredSuggestions.length > 0 ? V.cyan : V.bgCard,
-              color: filteredSuggestions.length > 0 ? '#000' : V.textSecondary,
-              opacity: filteredSuggestions.length > 0 ? 1 : 0.5,
-              cursor: filteredSuggestions.length > 0 ? 'pointer' : 'not-allowed',
-            }}
-          >
-            {t.common.exportCsv}
-          </button>
-        </div>
-      </div>
 
-      {/* AI content brief (SEO 2026) */}
-      <ContentBriefPanel locale={locale} />
-
-      {/* Filter tabs */}
-      <div
-        style={{
-          display: 'flex',
-          gap: 4,
-          marginBottom: 16,
-          flexWrap: 'wrap',
-        }}
-      >
-        {filterTabs.map((tab) => (
-          // aria-pressed, not role="tab": these buttons FILTER one table, they
-          // do not swap panels. Declaring a tablist with no tabpanel would
-          // announce a structure that does not exist.
-          <button type="button"
-            key={tab.key}
-            aria-pressed={activeTab === tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            style={{
-              ...btnBase,
-              backgroundColor:
-                activeTab === tab.key ? V.cyan : V.bgCard,
-              color: activeTab === tab.key ? '#000' : V.text,
-              fontWeight: activeTab === tab.key ? 800 : 600,
-              fontSize: 10,
-              padding: '5px 12px',
-            }}
-          >
-            {tab.label} ({tabCounts[tab.key]})
-          </button>
-        ))}
-      </div>
-
-      {/* Search bar */}
-      <div style={{ marginBottom: 16 }}>
         <input
-          type="text"
           aria-label={t.keywordResearch.searchPlaceholder}
-          placeholder={t.keywordResearch.searchPlaceholder}
-          value={search}
+          className="seo-input seo-keywords__search"
           onChange={(e) => setSearch(e.target.value)}
-          style={{
-            padding: '8px 14px',
-            borderRadius: 6,
-            border: `1px solid ${V.border}`,
-            fontSize: 12,
-            minWidth: 300,
-            color: V.text,
-            backgroundColor: V.bg,
-          }}
+          placeholder={t.keywordResearch.searchPlaceholder}
+          type="text"
+          value={search}
         />
-      </div>
 
-      {/* No suggestions */}
-      {filteredSuggestions.length === 0 && (
-        <div
-          style={{
-            padding: 40,
-            textAlign: 'center',
-            border: `1px solid ${V.border}`,
-            borderRadius: 10,
-            backgroundColor: V.bgCard,
-          }}
-        >
-          <div style={{ fontSize: 28, marginBottom: 8 }}>
-            {suggestions.length === 0 ? '\uD83D\uDD0D' : '\uD83D\uDCDD'}
-          </div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: V.text, marginBottom: 4 }}>
-            {suggestions.length === 0
-              ? t.keywordResearch.noSuggestions
-              : t.common.noResults}
-          </div>
-          <div style={{ fontSize: 12, color: V.textSecondary }}>
-            {suggestions.length === 0
-              ? t.keywordResearch.noSuggestionsDesc
-              : t.keywordResearch.noMatchingSuggestions}
-          </div>
-        </div>
-      )}
+        {filteredSuggestions.length === 0 && (
+          <EmptyState
+            description={
+              suggestions.length === 0 ? t.keywordResearch.noSuggestionsDesc : t.keywordResearch.noMatchingSuggestions
+            }
+            title={suggestions.length === 0 ? t.keywordResearch.noSuggestions : t.common.noResults}
+          />
+        )}
 
-      {/* Suggestions table */}
-      {filteredSuggestions.length > 0 && (
-        <div
-          style={{
-            border: `1px solid ${V.border}`,
-            borderRadius: 10,
-            overflow: 'hidden',
-          }}
-        >
-          {/* Table header */}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 100px 70px 60px 180px 180px',
-              padding: '8px 14px',
-              backgroundColor: V.bgCard,
-              borderBottom: `2px solid ${V.border}`,
-              fontSize: 9,
-              fontWeight: 700,
-              textTransform: 'uppercase',
-              color: V.textSecondary,
-              letterSpacing: 0.5,
-              gap: 8,
-            }}
-          >
-            <span>{t.keywordResearch.keyword}</span>
-            <span>{t.keywordResearch.type}</span>
-            <span>{t.keywordResearch.score}</span>
-            <span style={{ textAlign: 'center' }}>{t.keywordResearch.freq}</span>
-            <span>{t.keywordResearch.usedBy}</span>
-            <span>{t.keywordResearch.suggestedFor}</span>
-          </div>
+        {filteredSuggestions.length > 0 && (
+          <DataTable aria-label={t.keywordResearch.title}>
+            <thead>
+              <tr>
+                <th>{t.keywordResearch.keyword}</th>
+                <th>{t.keywordResearch.type}</th>
+                <th>{t.keywordResearch.score}</th>
+                <th className="seo-table__num">{t.keywordResearch.freq}</th>
+                <th>{t.keywordResearch.usedBy}</th>
+                <th>{t.keywordResearch.suggestedFor}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredSuggestions.map((suggestion, idx) => {
+                const tc = typeConfig[suggestion.type]
 
-          {/* Table rows */}
-          {filteredSuggestions.map((suggestion, idx) => {
-            const tc = typeConfig[suggestion.type]
-
-            return (
-              <div
-                key={idx}
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 100px 70px 60px 180px 180px',
-                  padding: '10px 14px',
-                  borderBottom: `1px solid ${V.border}`,
-                  alignItems: 'center',
-                  gap: 8,
-                }}
-              >
-                {/* Keyword */}
-                <div
-                  style={{
-                    fontWeight: 700,
-                    fontSize: 13,
-                    color: V.text,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                  title={suggestion.keyword}
-                >
-                  {suggestion.keyword}
-                </div>
-
-                {/* Type badge */}
-                <div>
-                  <span
-                    style={{
-                      display: 'inline-block',
-                      padding: '2px 8px',
-                      borderRadius: 4,
-                      fontSize: 9,
-                      fontWeight: 800,
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.03em',
-                      backgroundColor: tc.bg,
-                      color: tc.color,
-                    }}
-                  >
-                    {tc.label}
-                  </span>
-                </div>
-
-                {/* Score bar */}
-                <div>
-                  <ScoreBar score={suggestion.score} />
-                </div>
-
-                {/* Frequency */}
-                <div
-                  style={{
-                    textAlign: 'center',
-                    fontSize: 12,
-                    fontWeight: 700,
-                    color: V.text,
-                  }}
-                >
-                  {suggestion.frequency}
-                </div>
-
-                {/* Currently used by */}
-                <div>
-                  <ExpandableList items={suggestion.currentlyUsedBy} label="page(s)" seeLessLabel={t.keywordResearch.seeLess} />
-                </div>
-
-                {/* Suggested for */}
-                <div>
-                  <ExpandableList items={suggestion.suggestedFor} label="page(s)" seeLessLabel={t.keywordResearch.seeLess} />
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
-    </div>
+                return (
+                  <tr key={idx}>
+                    <td>
+                      <span
+                        className="seo-text seo-text--strong seo-truncate seo-keywords__keyword"
+                        title={suggestion.keyword}
+                      >
+                        {suggestion.keyword}
+                      </span>
+                    </td>
+                    <td>
+                      <TonePill tone={tc.tone}>{tc.label}</TonePill>
+                    </td>
+                    <td>
+                      <ScoreBar label={t.keywordResearch.score} score={suggestion.score} />
+                    </td>
+                    <td className="seo-table__num">{suggestion.frequency}</td>
+                    <td>
+                      <ExpandableList
+                        items={suggestion.currentlyUsedBy}
+                        label="page(s)"
+                        seeLessLabel={t.keywordResearch.seeLess}
+                      />
+                    </td>
+                    <td>
+                      <ExpandableList
+                        items={suggestion.suggestedFor}
+                        label="page(s)"
+                        seeLessLabel={t.keywordResearch.seeLess}
+                      />
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </DataTable>
+        )}
+      </ViewBody>
+    </>
   )
 }

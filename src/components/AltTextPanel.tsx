@@ -1,30 +1,22 @@
 'use client'
 
 import React, { useCallback, useEffect, useState } from 'react'
-
-const C = {
-  text: 'var(--theme-text, #1a1a1a)',
-  sub: 'var(--theme-elevation-600, #6b7280)',
-  card: 'var(--theme-elevation-50, #f9fafb)',
-  bg: 'var(--theme-elevation-0, #fff)',
-  border: 'var(--theme-elevation-200, #e5e7eb)',
-  green: '#22c55e',
-  red: '#ef4444',
-  violet: '#7c3aed',
-}
+import { Banner, Button, RefreshIcon } from '@payloadcms/ui'
+import { Card, EmptyState, LoadingState, TonePill } from '../ui/index.js'
+import './AltTextPanel.css'
 
 const S = {
   fr: {
     title: 'Alt-text IA des images',
     subtitle: "Génère l'attribut alt des images qui n'en ont pas (Claude vision), pour l'accessibilité et le SEO.",
-    none: 'Toutes les images ont un alt. 🎉',
+    none: 'Toutes les images ont un alt.',
     forbidden: 'Réservé aux administrateurs.',
     disabled: 'Fonction IA désactivée (features.aiFeatures).',
     missing: 'image(s) sans alt',
     generate: 'Générer',
     generating: '…',
     apply: 'Appliquer',
-    applied: 'Appliqué ✓',
+    applied: 'Appliqué',
     noKey: 'Clé API Claude requise (ANTHROPIC_API_KEY).',
     loading: 'Chargement…',
     refresh: 'Rafraîchir',
@@ -33,14 +25,14 @@ const S = {
   en: {
     title: 'AI image alt-text',
     subtitle: 'Generate alt text for images that lack one (Claude vision), for accessibility and SEO.',
-    none: 'All images have alt text. 🎉',
+    none: 'All images have alt text.',
     forbidden: 'Admins only.',
     disabled: 'AI feature disabled (features.aiFeatures).',
     missing: 'image(s) without alt',
     generate: 'Generate',
     generating: '…',
     apply: 'Apply',
-    applied: 'Applied ✓',
+    applied: 'Applied',
     noKey: 'Claude API key required (ANTHROPIC_API_KEY).',
     loading: 'Loading…',
     refresh: 'Refresh',
@@ -144,110 +136,81 @@ export function AltTextPanel({ locale }: { locale: 'fr' | 'en' }) {
     }
   }
 
-  const card: React.CSSProperties = {
-    padding: 16,
-    borderRadius: 12,
-    border: `1px solid ${C.border}`,
-    backgroundColor: C.card,
-    marginBottom: 20,
-  }
-  const btn = (bg: string): React.CSSProperties => ({
-    padding: '6px 10px',
-    borderRadius: 6,
-    border: `1px solid ${bg}`,
-    backgroundColor: bg,
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: 700,
-    cursor: 'pointer',
-  })
-
   return (
-    <div style={card}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-        <div>
-          <div style={{ fontSize: 16, fontWeight: 800, color: C.text }}>{s.title}</div>
-          <div style={{ fontSize: 12, color: C.sub, marginTop: 2 }}>{s.subtitle}</div>
-        </div>
-        {status === 'ok' && (
-          <button type="button" onClick={() => void load()} style={btn(C.sub)}>
+    <Card
+      actions={
+        status === 'ok' ? (
+          <Button buttonStyle="secondary" icon={<RefreshIcon />} margin={false} onClick={() => void load()} size="medium">
             {s.refresh}
-          </button>
-        )}
-      </div>
+          </Button>
+        ) : undefined
+      }
+      title={s.title}
+    >
+      <p className="seo-text seo-text--small seo-text--secondary">{s.subtitle}</p>
 
-      {status === 'forbidden' && <div style={{ marginTop: 12, fontSize: 13, color: C.sub }}>{s.forbidden}</div>}
-      {status === 'disabled' && <div style={{ marginTop: 12, fontSize: 13, color: C.sub }}>{s.disabled}</div>}
+      {status === 'forbidden' && <Banner type="default">{s.forbidden}</Banner>}
+      {status === 'disabled' && <Banner type="default">{s.disabled}</Banner>}
 
       {status === 'ok' && (
-        <div style={{ marginTop: 12 }}>
-          {loading && <div style={{ fontSize: 13, color: C.sub }}>{s.loading}</div>}
-          {!loading && items && items.length === 0 && <div style={{ fontSize: 13, color: C.sub }}>{s.none}</div>}
+        <>
+          {loading && <LoadingState label={s.loading} />}
+          {!loading && items && items.length === 0 && <EmptyState title={s.none} />}
           {!loading && items && items.length > 0 && (
             <>
-              <div style={{ fontSize: 12, color: C.sub, marginBottom: 10 }}>
+              <p className="seo-text seo-text--small seo-text--secondary">
                 {missingCount} {s.missing}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              </p>
+              <div className="seo-stack seo-stack--tight">
                 {items.map((item) => {
                   const rs = state[item.id] || {}
                   return (
-                    <div
-                      key={item.id}
-                      style={{
-                        display: 'flex',
-                        gap: 12,
-                        alignItems: 'center',
-                        padding: 8,
-                        borderRadius: 8,
-                        border: `1px solid ${C.border}`,
-                        backgroundColor: C.bg,
-                      }}
-                    >
+                    <div className="seo-inset seo-alt__item" key={item.id}>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={item.url}
-                        alt=""
-                        style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 6, flexShrink: 0, border: `1px solid ${C.border}` }}
-                      />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 11, color: C.sub, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {item.filename}
-                        </div>
+                      <img alt="" className="seo-alt__thumb" src={item.url} />
+                      <div className="seo-alt__body seo-stack seo-stack--tight">
+                        <span className="seo-text seo-text--small seo-text--secondary seo-truncate">{item.filename}</span>
                         {rs.alt !== undefined ? (
                           <input
                             aria-label={`${s.altLabel} — ${item.filename}`}
-                            value={rs.alt}
-                            onChange={(e) => setRow(item.id, { alt: e.target.value })}
+                            className="seo-input"
                             disabled={rs.applied}
                             maxLength={125}
-                            style={{
-                              width: '100%',
-                              marginTop: 4,
-                              padding: '4px 8px',
-                              fontSize: 12,
-                              borderRadius: 6,
-                              border: `1px solid ${C.border}`,
-                              backgroundColor: C.bg,
-                              color: C.text,
-                            }}
+                            onChange={(e) => setRow(item.id, { alt: e.target.value })}
+                            value={rs.alt}
                           />
                         ) : (
-                          <div style={{ fontSize: 12, color: C.sub, marginTop: 4, fontStyle: 'italic' }}>—</div>
+                          <span className="seo-text seo-text--secondary">—</span>
                         )}
-                        {rs.error && <div style={{ fontSize: 11, color: C.red, marginTop: 2 }}>{rs.error}</div>}
+                        {rs.error && (
+                          <span className="seo-text seo-text--small seo-text--danger" role="alert">
+                            {rs.error}
+                          </span>
+                        )}
                       </div>
-                      <div style={{ flexShrink: 0 }}>
+                      <div className="seo-alt__action">
                         {rs.applied ? (
-                          <span style={{ fontSize: 11, fontWeight: 700, color: C.green }}>{s.applied}</span>
+                          <TonePill tone="success">{s.applied}</TonePill>
                         ) : rs.alt !== undefined ? (
-                          <button type="button" onClick={() => void apply(item)} disabled={rs.busy} style={btn(C.green)}>
+                          <Button
+                            buttonStyle="primary"
+                            disabled={rs.busy}
+                            margin={false}
+                            onClick={() => void apply(item)}
+                            size="medium"
+                          >
                             {rs.busy ? s.generating : s.apply}
-                          </button>
+                          </Button>
                         ) : (
-                          <button type="button" onClick={() => void generate(item)} disabled={rs.busy} style={btn(C.violet)}>
+                          <Button
+                            buttonStyle="secondary"
+                            disabled={rs.busy}
+                            margin={false}
+                            onClick={() => void generate(item)}
+                            size="medium"
+                          >
                             {rs.busy ? s.generating : s.generate}
-                          </button>
+                          </Button>
                         )}
                       </div>
                     </div>
@@ -256,8 +219,8 @@ export function AltTextPanel({ locale }: { locale: 'fr' | 'en' }) {
               </div>
             </>
           )}
-        </div>
+        </>
       )}
-    </div>
+    </Card>
   )
 }
