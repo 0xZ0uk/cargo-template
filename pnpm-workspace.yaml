@@ -45,3 +45,5 @@ minimumReleaseAgeExclude:
   - '@payloadcms/plugin-seo@4.0.0-beta.6'
   - '@payloadcms/live-preview@4.0.0-beta.6'
   - '@payloadcms/live-preview-react@4.0.0-beta.6'
+patchedDependencies:
+  payload@4.0.0-beta.6: patches/payload@4.0.0-beta.6.patch

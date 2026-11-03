@@ -138,6 +138,7 @@ In development you can skip auth with `http://localhost:3000/api/mcp?overrideAcc
 ### Current limitations
 
 - No image resizing or cropping on Workers (no `sharp`).
+- Payload is patched (`patches/` at the repo root) to hash passwords with 100,000 PBKDF2 iterations instead of 600,000, because deployed Workers reject anything higher. Without the patch, every admin login fails as "incorrect password" on a deployed Worker, even though it works in `pnpm dev` and `pnpm preview`. A hash made by unpatched Payload only verifies under Node. To fix one, set that password again through the Local API in a `pnpm web payload run` script with `PAYLOAD_MIGRATE_REMOTE=true`, which writes a new 100k hash to the remote database.
 - GraphQL on Workers isn't guaranteed to work yet; the REST and Local APIs are.
 
 ## Questions
