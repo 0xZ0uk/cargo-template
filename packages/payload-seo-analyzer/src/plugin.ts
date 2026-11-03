@@ -311,7 +311,6 @@ export const seoAnalyzerPlugin =
       hasGenerateTitle: !!pluginConfig.generateTitle,
       hasGenerateDescription: !!pluginConfig.generateDescription,
       hasGenerateImage: !!pluginConfig.generateImage,
-      basePath: `/api${basePath}`,
     }
 
     // Build meta fields with optional user override
@@ -939,6 +938,9 @@ export const seoAnalyzerPlugin =
       seoAnalyzer: {
         ...((adminCustom.seoAnalyzer as Record<string, unknown> | undefined) ?? {}),
         features,
+        // Where the endpoints are mounted, so the UI builds URLs from the real
+        // `routes.api` + this path (hooks/useSeoApi.ts) instead of '/api/seo-plugin'.
+        endpointBasePath: basePath,
         ...(pluginConfig.customTranslations && { customTranslations: pluginConfig.customTranslations }),
       },
     }

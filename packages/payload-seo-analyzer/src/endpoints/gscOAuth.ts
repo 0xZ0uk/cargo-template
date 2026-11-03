@@ -35,6 +35,7 @@ import {
   queryGscSearchAnalytics,
 } from '../helpers/gscClient.js'
 import { isSeoPanelUser } from '../helpers/isAdmin.js'
+import { payloadApiRoute } from '../helpers/seoApiUrl.js'
 
 // ---------------------------------------------------------------------------
 // GET /gsc/status
@@ -43,7 +44,7 @@ export function createGscStatusHandler(basePath: string, seoConfig?: SeoConfig):
   return async (req) => {
     try {
       if (!isSeoPanelUser(req)) return Response.json({ error: 'Unauthorized' }, { status: 401 })
-      const cfg = getOAuthConfig(basePath, seoConfig)
+      const cfg = getOAuthConfig(basePath, seoConfig, payloadApiRoute(req.payload))
       const doc = await getOrCreateAuthDoc(req.payload)
       return Response.json(
         {
@@ -71,7 +72,7 @@ export function createGscAuthStartHandler(basePath: string, seoConfig?: SeoConfi
   return async (req) => {
     try {
       if (!isAdmin(req)) return Response.json({ error: 'Forbidden' }, { status: 403 })
-      const cfg = getOAuthConfig(basePath, seoConfig)
+      const cfg = getOAuthConfig(basePath, seoConfig, payloadApiRoute(req.payload))
       if (!cfg) {
         return Response.json(
           { error: 'GSC OAuth not configured. Set GSC_OAUTH_CLIENT_ID, GSC_OAUTH_CLIENT_SECRET and siteUrl.' },
@@ -116,9 +117,10 @@ export function createGscCallbackHandler(basePath: string, seoConfig?: SeoConfig
     // and would otherwise be a reflected XSS running with the admin's session.
     // The CSP is a second line of defence — nothing may execute on this page;
     // `style-src 'unsafe-inline'` only keeps the inline `style=` attributes.
+    const adminRoute = req.payload.config?.routes?.admin ?? '/admin'
     const htmlPage = (title: string, body: string) =>
       new Response(
-        `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title></head><body style="font-family:system-ui;padding:2rem;max-width:40rem;margin:auto"><h1>${escapeHtml(title)}</h1><p>${escapeHtml(body)}</p><p><a href="/admin/performance">← Back to the SEO dashboard</a></p></body></html>`,
+        `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title></head><body style="font-family:system-ui;padding:2rem;max-width:40rem;margin:auto"><h1>${escapeHtml(title)}</h1><p>${escapeHtml(body)}</p><p><a href="${escapeHtml(adminRoute)}/performance">← Back to the SEO dashboard</a></p></body></html>`,
         {
           status: 200,
           headers: {
@@ -135,7 +137,7 @@ export function createGscCallbackHandler(basePath: string, seoConfig?: SeoConfig
       if (!isAdmin(req)) {
         return htmlPage('Connection failed', 'You must be signed in as an admin to connect Google Search Console.')
       }
-      const cfg = getOAuthConfig(basePath, seoConfig)
+      const cfg = getOAuthConfig(basePath, seoConfig, payloadApiRoute(req.payload))
       if (!cfg) return htmlPage('Connection failed', 'GSC OAuth is not configured on the server.')
 
       const url = new URL(req.url as string)
@@ -210,7 +212,7 @@ export function createGscDataHandler(basePath: string, seoConfig?: SeoConfig): P
   return async (req) => {
     try {
       if (!isAdmin(req)) return Response.json({ error: 'Forbidden' }, { status: 403 })
-      const cfg = getOAuthConfig(basePath, seoConfig)
+      const cfg = getOAuthConfig(basePath, seoConfig, payloadApiRoute(req.payload))
       if (!cfg) return Response.json({ error: 'GSC OAuth not configured.' }, { status: 400 })
 
       const doc = await getOrCreateAuthDoc(req.payload)

@@ -13,6 +13,7 @@ import {
   scoreTone,
   type Tone,
 } from '../ui/index.js'
+import { useSeoApi } from '../hooks/useSeoApi.js'
 import './ScoreHistoryChart.css'
 
 // ---------------------------------------------------------------------------
@@ -220,6 +221,7 @@ function Sparkline({
 // ---------------------------------------------------------------------------
 
 const ScoreHistoryChart: React.FC<ScoreHistoryChartProps> = ({ documentId, collection }) => {
+  const seoApi = useSeoApi()
   const t = useDashboardT()
   const [data, setData] = useState<HistoryResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -244,7 +246,7 @@ const ScoreHistoryChart: React.FC<ScoreHistoryChartProps> = ({ documentId, colle
           limit: '30',
         })
 
-        const res = await fetch(`/api/seo-plugin/history?${params.toString()}`, {
+        const res = await fetch(seoApi(`/history?${params.toString()}`), {
           credentials: 'include',
           cache: 'no-store',
         })

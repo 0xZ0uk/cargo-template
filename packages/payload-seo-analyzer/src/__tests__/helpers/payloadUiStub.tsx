@@ -5,7 +5,7 @@
  * Usage, merged with the hooks a test controls:
  *   vi.mock('@payloadcms/ui', async () => ({
  *     ...(await import('./helpers/payloadUiStub.js')).payloadUiStub,
- *     useConfig: () => undefined,
+ *     useConfig: () => undefined, // optional: the stub already provides a default
  *   }))
  *
  * Stubs keep the semantics tests assert on (real <button>, aria attributes, text) and
@@ -22,7 +22,19 @@ const passthrough = (tag: keyof React.JSX.IntrinsicElements, className: string) 
 
 const Icon = () => <svg aria-hidden="true" />
 
+/**
+ * Default `useConfig()`: what the admin provides. A test that needs other values
+ * (a custom `routes.api`, feature flags, no provider) overrides `useConfig` after the spread.
+ */
+export const stubConfig = {
+  config: {
+    routes: { api: '/api', admin: '/admin' },
+    admin: { custom: { seoAnalyzer: { endpointBasePath: '/seo-plugin' } } },
+  },
+}
+
 export const payloadUiStub = {
+  useConfig: () => stubConfig,
   Banner: ({ children, type = 'default', className }: AnyProps) => (
     <div className={['banner', `banner--type-${type}`, className].filter(Boolean).join(' ')}>{children}</div>
   ),

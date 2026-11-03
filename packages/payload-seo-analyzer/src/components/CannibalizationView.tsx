@@ -7,6 +7,7 @@ import { useDashboardT } from '../hooks/useSeoLocale.js'
 import type { DashboardTranslations } from '../dashboard-i18n.js'
 import { toCsv } from '../helpers/csv.js'
 import { DataTable, EmptyState, Grid, LoadingState, ScorePill, StatTile, TonePill, ViewBody, ViewHeader } from '../ui/index.js'
+import { useSeoApi } from '../hooks/useSeoApi.js'
 import './CannibalizationView.css'
 
 // ---------------------------------------------------------------------------
@@ -115,6 +116,7 @@ function KeywordGroup({ conflict, t }: { conflict: Conflict; t: DashboardTransla
 // Main CannibalizationView component
 // ---------------------------------------------------------------------------
 export function CannibalizationView() {
+  const seoApi = useSeoApi()
   const t = useDashboardT()
 
   const [conflicts, setConflicts] = useState<Conflict[]>([])
@@ -127,7 +129,7 @@ export function CannibalizationView() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch('/api/seo-plugin/cannibalization', {
+      const res = await fetch(seoApi('/cannibalization'), {
         credentials: 'include',
         cache: 'no-store',
       })

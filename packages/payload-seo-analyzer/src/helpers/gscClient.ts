@@ -38,12 +38,20 @@ export interface GscOAuthConfig {
   siteUrl: string
 }
 
-export function getGscOAuthConfig(basePath: string, seoConfig?: SeoConfig): GscOAuthConfig | null {
+/**
+ * `apiRoute` is Payload's `routes.api` (`payload.config.routes.api`); it defaults
+ * to `/api` for callers that have no Payload instance at hand.
+ */
+export function getGscOAuthConfig(
+  basePath: string,
+  seoConfig?: SeoConfig,
+  apiRoute: string = '/api',
+): GscOAuthConfig | null {
   const clientId = process.env.GSC_OAUTH_CLIENT_ID || ''
   const clientSecret = process.env.GSC_OAUTH_CLIENT_SECRET || ''
   const siteUrl = resolveGscSiteUrl(seoConfig)
   if (!clientId || !clientSecret || !siteUrl) return null
-  return { clientId, clientSecret, siteUrl, redirectUri: `${siteUrl}/api${basePath}/gsc/callback` }
+  return { clientId, clientSecret, siteUrl, redirectUri: `${siteUrl}${apiRoute}${basePath}/gsc/callback` }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

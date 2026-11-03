@@ -14,6 +14,7 @@ import { CtrOpportunitiesPanel } from './CtrOpportunitiesPanel.js'
 import { AlertsPanel } from './AlertsPanel.js'
 import { AltTextPanel } from './AltTextPanel.js'
 import { toCsv } from '../helpers/csv.js'
+import { useSeoApi } from '../hooks/useSeoApi.js'
 import './PerformanceView.css'
 
 // NOTE: xlsx (SheetJS) is loaded dynamically on the client side only.
@@ -129,6 +130,7 @@ function SortTh({
 // ---------------------------------------------------------------------------
 
 export function PerformanceView() {
+  const seoApi = useSeoApi()
   const locale = useSeoLocale()
   const t = useDashboardT()
   const uid = useId()
@@ -161,7 +163,7 @@ export function PerformanceView() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch(`/api/seo-plugin/performance?period=${period}`, {
+      const res = await fetch(seoApi(`/performance?period=${period}`), {
         credentials: 'include',
         cache: 'no-store',
       })
@@ -304,7 +306,7 @@ export function PerformanceView() {
         return
       }
 
-      const res = await fetch('/api/seo-plugin/performance', {
+      const res = await fetch(seoApi('/performance'), {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },

@@ -18,10 +18,11 @@ export interface MetaFieldOptionProps {
   basePath?: string
 }
 
-export function resolveMetaFieldOptions(props: MetaFieldOptionProps): Required<MetaFieldCustom> {
+/** `basePath` stays undefined unless a host set it: the field then uses `useSeoApi()`. */
+export function resolveMetaFieldOptions(props: MetaFieldOptionProps): MetaFieldCustom & { hasGenerateFn: boolean } {
   const custom = props.field?.admin?.custom
   return {
     hasGenerateFn: props.hasGenerateFn ?? custom?.hasGenerateFn ?? false,
-    basePath: props.basePath ?? custom?.basePath ?? '/api/seo-plugin',
+    basePath: props.basePath ?? custom?.basePath,
   }
 }
