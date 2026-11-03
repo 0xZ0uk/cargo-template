@@ -1,6 +1,6 @@
 # SEO analyzer: port status and plan
 
-Handoff for whoever continues porting `@cargo/payload-seo-analyzer`. Last updated 2026-11-03 (after P0 + P1 and their leftovers).
+Handoff for whoever continues porting `@cargo/payload-seo-analyzer`. Last updated 2026-11-03 (after P0 + P1, their leftovers, and P2 item 9).
 
 ## TL;DR
 
@@ -12,7 +12,8 @@ Handoff for whoever continues porting `@cargo/payload-seo-analyzer`. Last update
   - The admin UI has no hard-coded paths, and no `NEXT_*` env vars are left.
 - **Verified on a deployed Worker** (2026-11-03, `cargo-template.pedrsntana.workers.dev`, 1,500 seeded pages): every enabled feature works. See "Deployed Worker check" below.
   - Admin login on Workers needed a Payload patch (`patches/payload@4.0.0-beta.6.patch`): Payload 4 hashes passwords with 600,000 PBKDF2 iterations, and deployed Workers reject anything above 100,000 (local workerd doesn't, so `pnpm web preview` hides it).
-- Everything that grows D1, needs background timers, or calls third-party APIs is **turned off** in `apps/web` and only partly ported (P2).
+- **Background work runs as Payload jobs on a Cron Trigger** (P2 item 9, verified on the deployed Worker). The dashboard audit builds in steps, so big sites no longer need to fit one request.
+- Everything that grows D1 or calls third-party APIs is still **turned off** in `apps/web` and only partly ported (P2 items 10–13).
 
 ## Where things are
 
@@ -39,6 +40,7 @@ After that, in this repo:
 - `feat/seo-analyzer-workers`: P0 + P1 (see "Done on 2026-11-03" below)
 - `fix/seo-analyzer-deployed-worker`: deployed Worker check, PBKDF2 patch
 - `fix/seo-analyzer-p1-leftovers`: the P0/P1 leftovers (see "Done on 2026-11-03 (P0/P1 leftovers)")
+- `feat/seo-analyzer-p2` (PR #10): P2 item 9, background jobs and chunked audit builds
 
 ## Working on it
 
@@ -75,6 +77,9 @@ Gotchas:
   - The build writes the secret to `dist/server/.dev.vars`. It's gitignored, but it's on disk.
   - `/cdn-cgi/local/explorer/api` lists R2 objects and request traces. It shows no CPU time.
 - **Env vars on Workers:** varlock only passes variables declared in `apps/web/.env.schema` to workerd. A plugin `SEO_*` variable does nothing there until it's declared (today: `SEO_LLMS_TXT`, `SEO_AUDIT_MAX_DOCS`, `SEO_AUDIT_STEP_DOCS`, `SEO_FETCH_MAX_DOCS`).
+  - To override a declared variable for one deploy, set it in the shell: `SEO_AUDIT_STEP_DOCS=1 varlock-wrangler deploy`. `--var SEO_AUDIT_STEP_DOCS:1` is silently replaced by the schema's value (empty here). An undeclared variable does pass through `--var`.
+- **Cron Triggers after a deploy:** a new or changed schedule can take a few minutes to start firing. On 2026-11-03 the first tick after deploying came at 23:05; the 23:00 tick never fired. Ticks land a few seconds after the minute (`:52` there).
+- **Live tests of chunked builds:** the dashboard's "force refresh" (`?nocache=1`) is refused for 5 minutes after the last build (`SEO_AUDIT_MIN_REFRESH_MS`) and returns the cached audit. To make a small site pause between steps, deploy with `SEO_AUDIT_STEP_DOCS=1` and `SEO_AUDIT_BATCH_SIZE=1`. Steps stop between DB pages, so a page holding every doc never pauses.
 
 ### Visual check (what was used for the UI rebuild)
 
@@ -101,7 +106,7 @@ Results are in "Done on 2026-11-03".
 | Feature flag | What it is | In `apps/web` | Port status | Verified (Node) | Workers concerns |
 |---|---|---|---|---|---|
 | `analyzer` (always on) | Score sidebar on Pages, 50+ rules, Lexical parsing | on | done | yes, live editing and `POST /validate` | none known |
-| `dashboard` | `/admin/seo` site audit, filters, bulk actions, CSV/PDF export | on | done | yes | **local workerd: pass.** Persisted in R2 and built via `waitUntil` in steps of 800 docs (P2 item 9); capped at 5000 docs |
+| `dashboard` | `/admin/seo` site audit, filters, bulk actions, CSV/PDF export | on | done | yes | **deployed: pass.** Persisted in R2 and built via `waitUntil` in steps of 800 docs, with the Cron Trigger finishing paused builds (P2 item 9); capped at 5000 docs |
 | `redirects` | `seo-redirects` collection, `/admin/redirects`, auto-redirect on slug change, CSV import/export | on | done | yes | **local workerd: pass**, including the frontend 301/302 |
 | `sitemapAudit` | `/admin/sitemap-audit`: orphans, weak pages, hubs, broken links (the 404 and External tabs follow `seoLogs` / `externalLinks`) | on | done | yes | **local workerd: pass.** ~0.4 ms per doc uncached, persisted in R2 |
 | `settings` | `seo-settings` collection, `/admin/seo-config` | on | done | yes | **local workerd: pass**, including saving |
@@ -116,18 +121,18 @@ Results are in "Done on 2026-11-03".
 | `performance` | `seo-performance` collection, GSC CSV/JSON/XLSX import, `/admin/performance` + 9 panels (CWV, indexation, content grade, CTR, alt text, health…), `/indexation-audit` | off | UI done | renders with empty data | grows D1. XLSX import only works if the host maps `xlsx`. `/indexation-audit` is cached and capped |
 | `scoreHistory` | `seo-score-history` collection + hook on every save + chart | off | compiles, chart UI done | no | **grows D1 on every save** (P2) |
 | `seoLogs` | `seo-logs` collection, 404 logging endpoint | off | compiles | no | **logs in the main D1 break AGENTS.md** (P2) |
-| `gscApi` | Google Search Console OAuth, rank tracker (`seo-gsc-auth`, `seo-rank-history`) | off | compiles | no | token crypto uses `scryptSync` (`node:crypto`, unverified in workerd); daily snapshots need a scheduler (P2) |
-| `alerts` | digest via webhook/email | off | compiles | no | needs a scheduler (P2) |
+| `gscApi` | Google Search Console OAuth, rank tracker (`seo-gsc-auth`, `seo-rank-history`) | off | compiles | no | token crypto uses `scryptSync` (`node:crypto`, unverified in workerd, P2 item 12); daily snapshots run as the `seoRankSnapshot` job (untested on Workers) |
+| `alerts` | digest via webhook/email | off | compiles | no | the digest runs as the `seoAlertsDigest` job (untested on Workers) |
 | `indexNow` | ping search engines on publish | off | compiles | no | needs `SEO_INDEXNOW_KEY` |
 | `warmCache` | pre-builds the audit on startup | off | **skipped on Workers by design** | n/a | not meaningful on Workers |
-| `retentionDays` (option) | daily purge of time-series collections | not set | compiles | no | scheduler skipped on Workers (P2) |
+| `retentionDays` (option) | daily purge of time-series collections | not set | compiles | no | runs as the daily `seoRetentionPurge` job (untested on Workers); targets move to the SEO database in P2 item 10 |
 | meta fields (`autoCreateMetaFields`) | the plugin's own meta title/description/image/overview/SERP preview fields | not used (`@payloadcms/plugin-seo` owns the SEO tab) | UI done | jsdom tests only | none |
 
 ## Missing compared to the original plugin
 
 Upstream behaviour that doesn't work, or has no equivalent, in this fork today:
 
-1. **Background schedulers.** Upstream starts `setInterval` jobs in `onInit`: cache warm-up, rank tracker, alerts digest, retention purge. They're skipped on Workers (`isServerlessIsolate()` in `plugin.ts`) and have no replacement yet. They still run under Node.
+1. *(done, P2 item 9)* **Background schedulers.** Upstream starts `setInterval` jobs in `onInit`: cache warm-up, rank tracker, alerts digest, retention purge. With the `jobs` option they run as scheduled Payload jobs instead (a host Cron Trigger calls `runSeoJobs`). Without it they still run as timers under Node and are skipped on Workers. Cache warm-up has no job, since it isn't meaningful on Workers.
 2. **Next.js frontend helpers.** `buildSeoMetadata()` still returns a Next.js `Metadata` object. `apps/web` builds its meta tags from `@payloadcms/plugin-seo` and its JSON-LD in `src/utilities/pageJsonLd.ts` (with `buildJsonLd` / `serializeJsonLd`). There's no generic TanStack `head()` adapter in the package.
 3. **404 logging.** Redirects are applied in `apps/web` (`_frontend/$slug.tsx`, `_frontend/$.tsx`, `redirects.functions.ts`). Nothing posts 404s anywhere, because `seoLogs` is off (P2).
 4. *(done)* Root sitemap/robots/llms.txt: `apps/web/src/app/{sitemap[.]xml,robots[.]txt,llms[.]txt}.ts` hand the request to Payload's API handler in-process (`servePluginFile.ts`).
@@ -221,14 +226,27 @@ Branch `fix/seo-analyzer-p1-leftovers`. Checked in local workerd (`vite preview`
 
 ### P2: before enabling the off-by-default features
 
-9. **Schedulers → Payload jobs + Cron Triggers. Done (branch `feat/seo-analyzer-p2`).**
+Order agreed on 2026-11-03: foundations first, one PR per item: 9 (done) → 10 → 12 → 13 → 11.
+
+9. **Schedulers → Payload jobs + Cron Triggers. Done (PR #10, merged as `dfc8165`).**
    - New `jobs` plugin option (`src/jobs.ts`). It registers Payload tasks with schedules on the `seo` queue: `seoAuditContinue` (every 5 min), plus `seoRankSnapshot`, `seoAlertsDigest` and `seoRetentionPurge` (daily, only when their feature is on). With `jobs`, `onInit` starts no timers; without it, the Node `setInterval` path is unchanged. `runSeoJobs(payload)` queues the due tasks and runs the queue without access checks.
    - **Chunked audit builds:** with `waitUntil`, a build step stops after `SEO_AUDIT_STEP_DOCS` docs (800) or `SEO_AUDIT_STEP_MS` (20 s), checked between DB pages. It then saves its cursor and partial results at `progress/<key>` in the cache store and marks the build paused (`pausedAt`, `processed`). A paused build counts as building, so each dashboard poll (and each `noBuild=1` peek) runs the next step, and the 202 says how many docs are done. `seoAuditContinue` only resumes paused builds and never starts one. A pause with no new step for 1 h (`SEO_AUDIT_PAUSED_STALE_MS`) is abandoned. Pages are read with `sort: 'id'` so they line up across steps. Without `waitUntil` (Node) a build is one step, as before.
    - Caps: the dashboard audit's `SEO_AUDIT_MAX_DOCS` default went from 1500 to 5000. `/indexation-audit` still scans in one request, so it got its own `SEO_INDEXATION_MAX_DOCS` (default 1500).
    - `apps/web`: `src/server.ts` is the Worker entry (`main` in `wrangler.jsonc`). It wraps TanStack Start's `fetch` and adds `scheduled`, which calls `runSeoJobs`. Pointing `main` at `@tanstack/react-start/server-entry` bypasses `src/server.ts`. Cron Trigger `*/5 * * * *`. Migration `20261103_201707_seo_jobs` adds `payload_jobs`, `payload_jobs_log` and `payload_jobs_stats`. `deleteJobOnComplete` keeps them near-empty.
-   - Payload queues a scheduled task for the cron's next run time, so the first job runs one tick after the first call. After that, each tick runs one step.
-   - Known limit: a save during a multi-step build makes the finished audit stale (same generation rule as before), so on a site edited every few minutes a big audit may keep rebuilding. Serving the stale audit while rebuilding would fix that.
-   - Verified in local workerd (620 pages, `SEO_AUDIT_STEP_DOCS=200`): dashboard polls went 200 → 400 → 600 → 620 done. With no requests, one Cron tick (`/cdn-cgi/handler/scheduled`) ran `seoAuditContinue` and moved a paused build from 400 to 600 docs, and the finished job was deleted. Not yet checked on the deployed Worker.
+   - Payload queues a scheduled task for the cron's next run time (counted from `lastScheduledRun` in `payload_jobs_stats`). So the first tick only queues, the second runs, and from then on each tick queues and runs in one go.
+   - Known limit: a save during a multi-step build makes the finished audit stale (same generation rule as before), so on a site edited every few minutes a big audit may keep rebuilding. See P3 item 21.
+   - Verified in local workerd (620 pages, `SEO_AUDIT_STEP_DOCS=200`): dashboard polls went 200 → 400 → 600 → 620 done. With no requests, one Cron tick (`/cdn-cgi/handler/scheduled`) ran `seoAuditContinue` and moved a paused build from 400 to 600 docs, and the finished job was deleted.
+   - **Verified on the deployed Worker** (2026-11-03, master `dfc8165`, versions `2304ec72` and `f7b34497`): the remote migration added the three jobs tables, and the deploy registered `schedule: */5 * * * *`. From the `wrangler tail` logs:
+
+     | Tick (UTC) | Log | CPU | Wall |
+     |---|---|---|---|
+     | 23:00 | none: the new schedule wasn't firing yet | – | – |
+     | 23:05 | `queued 1, ran 0` | 58 ms | 2.4 s |
+     | 23:10 | `queued 0, ran 1` | 158 ms | 3.5 s |
+     | 23:15 | `queued 1, ran 1` | 147 ms | 8.5 s |
+     | 23:20 | `queued 1, ran 1` (finished the paused build below) | 173 ms | 7.1 s |
+
+     No exceptions. Wall time is mostly Payload start-up. Paused build: the site has 2 pages, so a temporary deploy set `SEO_AUDIT_STEP_DOCS=1` and `SEO_AUDIT_BATCH_SIZE=1`. One `?nocache=1` request returned 202, and the step stopped after 1 doc (`pausedAt`, `processed: 1`, progress at page 2 in R2). No requests followed. The 23:20 tick finished it: the marker kept only `lastBuildAt`, `progress/` was deleted, and a `noBuild=1` peek returned both pages (200). The master build was then redeployed without the test variables.
 10. **Keep D1 small (see AGENTS.md).** Decided 2026-11-03: a second D1 database (`SEO_D1` binding) with a small plugin-owned store (plain SQL, no Payload collections), pruned by the retention job.
     - `seoLogs`: send 404 events to Workers Analytics Engine or R2, or at least a separate D1 database. Never the main one.
     - `scoreHistory`, `performance`, rank history: require `retentionDays` once retention runs as a job, cap rows, or move them to Analytics Engine / R2.
@@ -255,13 +273,14 @@ Branch `fix/seo-analyzer-p1-leftovers`. Checked in local workerd (`vite preview`
     - Revisit these when Payload 4 leaves beta.
 19. **Breadcrumb names** (`endpoints/breadcrumb.ts`): items prefer `meta.title` over `title`, so names carry the meta title's suffix ("Coffee brewing basics | Cargo Template"). Prefer `title`, or strip a configured site-name suffix.
 20. **Upstream sync:** `git subtree pull --prefix=packages/payload-seo-analyzer https://github.com/pOwn3d/payload-seo-analyzer.git main`. Expect conflicts in `components/*` (rewritten), `views/*`, `plugin.ts`, `rateLimiter.ts` and the collections. The old fork `0xZ0uk/payload-seo-analyzer` is archived; don't push there.
+21. **Serve the stale audit while rebuilding.** A save bumps the audit's generation, so the dashboard shows "building" until a full rebuild finishes. A save during a multi-step build also makes that build's result stale on arrival. On a big site edited every few minutes, the audit can keep rebuilding without ever being served. Keep the last finished audit, serve it (marked stale) while the next build runs, and let a finished build count even if a save landed meanwhile.
 
 ## Definition of done for "fully ported"
 
-- Every feature flag is either verified in a deployed Worker or explicitly marked unsupported on Workers in this file and in `README.md`. *(Enabled features: done on 2026-11-03; the leftovers branch still needs a redeploy check.)*
+- Every feature flag is either verified in a deployed Worker or explicitly marked unsupported on Workers in this file and in `README.md`. *(Enabled features: done on 2026-11-03, including the leftovers and P2 item 9.)*
 - No unpersisted background work and no module-level caches the UI depends on. *(Done for the enabled features.)*
 - No time-series data in the main D1.
 - No hard-coded `/api/seo-plugin` or `/admin` paths. *(Done.)*
 - No `NEXT_*` environment variables. *(Done in code; `README.md` and `e2e/` still mention them.)*
 - Redirects, `sitemap.xml` and `robots.txt` work on the live site. *(Done on the deployed Worker.)*
-- Unit tests, typecheck, lint and an e2e pass over the SEO views run in CI from the repo root.
+- Unit tests, typecheck, lint and an e2e pass over the SEO views run in CI from the repo root. *(No CI workflow exists yet: `.github/workflows` is absent.)*
