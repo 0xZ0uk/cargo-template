@@ -1,0 +1,129 @@
+{
+  "name": "@cargo/payload-seo-analyzer",
+  "version": "5.0.0-beta.0",
+  "description": "Payload CMS 4 SEO plugin for Cargo (fork of @consilioweb/payload-seo-analyzer): 50+ checks, dashboard, Lexical JSON support, readability, i18n",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./client": {
+      "import": {
+        "types": "./dist/client.d.ts",
+        "default": "./dist/client.js"
+      },
+      "require": {
+        "types": "./dist/client.d.cts",
+        "default": "./dist/client.cjs"
+      }
+    },
+    "./client.css": "./dist/client.css",
+    "./views": {
+      "import": {
+        "types": "./dist/views.d.ts",
+        "default": "./dist/views.js"
+      },
+      "require": {
+        "types": "./dist/views.d.cts",
+        "default": "./dist/views.cjs"
+      }
+    }
+  },
+  "bin": {
+    "seo-analyzer-uninstall": "./scripts/uninstall.mjs"
+  },
+  "files": [
+    "dist",
+    "scripts",
+    "!scripts/__tests__",
+    "!scripts/verify-dist-imports.mjs",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": [
+    "./dist/client.js",
+    "./dist/client.cjs",
+    "./dist/client.css",
+    "*.css"
+  ],
+  "scripts": {
+    "build": "tsup && node scripts/verify-dist-imports.mjs",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "seo",
+    "seo-analyzer",
+    "seo-plugin",
+    "seo-audit",
+    "on-page-seo",
+    "payload",
+    "payload-cms",
+    "payload-cms-plugin",
+    "payload-plugin",
+    "cms-seo",
+    "meta-tags",
+    "content-analysis",
+    "readability",
+    "readability-score",
+    "flesch",
+    "lexical",
+    "i18n",
+    "french",
+    "english",
+    "structured-data",
+    "json-ld",
+    "sitemap",
+    "seo-dashboard",
+    "redirects",
+    "typescript",
+    "payload-4",
+    "cloudflare-workers"
+  ],
+  "author": "ConsilioWEB <contact@consilioweb.fr> (https://consilioweb.fr)",
+  "license": "MIT",
+  "peerDependencies": {
+    "@payloadcms/ui": ">=4.0.0-beta.6 <5.0.0",
+    "payload": ">=4.0.0-beta.6 <5.0.0",
+    "react": "^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@payloadcms/ui": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "devDependencies": {
+    "@payloadcms/ui": "catalog:",
+    "@testing-library/react": "^16.3.3",
+    "@types/react": "catalog:",
+    "jsdom": "^29.1.1",
+    "payload": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "tsup": "^8.5.1",
+    "typescript": "catalog:",
+    "vitest": "^4.1.11"
+  },
+  "contributors": [
+    "ConsilioWEB <contact@consilioweb.fr> (https://consilioweb.fr) \u2014 original author"
+  ],
+  "private": true
+}

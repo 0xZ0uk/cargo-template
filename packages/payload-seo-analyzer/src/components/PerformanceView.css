@@ -1,0 +1,19 @@
+/* Performance view. */
+
+/* URL / query cell truncates instead of widening the table. */
+.seo-perf__key {
+  max-width: 25rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Sort direction icon next to a sortable column label. */
+.seo-perf__sort {
+  display: inline-flex;
+}
+
+.seo-perf__sort svg {
+  width: 1em;
+  height: 1em;
+}

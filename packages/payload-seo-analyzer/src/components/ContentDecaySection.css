@@ -1,0 +1,40 @@
+/* "Stale content" section: a Payload Collapsible holding a compact table. */
+
+.seo-content-decay__scroll {
+  max-height: 25rem;
+  overflow-y: auto;
+  border: var(--stroke-width-small) solid var(--color-border);
+  border-radius: var(--radius-medium);
+}
+
+/* The scroll box already draws the border. */
+.seo-content-decay__table.seo-table {
+  border: 0;
+  border-radius: 0;
+}
+
+.seo-content-decay__table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--color-bg);
+}
+
+.seo-content-decay__table th:first-child,
+.seo-content-decay__table td:first-child {
+  width: var(--spacer-4);
+  padding-inline-start: var(--spacer-3);
+  padding-inline-end: 0;
+}
+
+.seo-content-decay__dot {
+  vertical-align: middle;
+}
+
+.seo-content-decay__table td:nth-child(2) {
+  max-width: 24rem;
+}
+
+.seo-content-decay__legend {
+  column-gap: var(--spacer-3);
+}

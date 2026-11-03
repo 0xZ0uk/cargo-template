@@ -1,0 +1,17 @@
+/* Core Web Vitals panel. */
+.seo-cwv__form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--spacer-3);
+}
+
+.seo-cwv__url {
+  flex: 1;
+  min-width: 14rem;
+}
+
+.seo-cwv__note {
+  display: block;
+  margin-top: var(--spacer-1);
+}

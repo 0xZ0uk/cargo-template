@@ -1,0 +1,50 @@
+/* Schema builder view: form / preview split, JSON sample and toast. */
+
+.seo-schema__layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacer-4);
+  align-items: start;
+}
+
+.seo-schema__preview {
+  position: sticky;
+  top: var(--spacer-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacer-3);
+  min-width: 0;
+}
+
+.seo-schema__code {
+  max-height: 30rem;
+  overflow: auto;
+  white-space: pre;
+}
+
+.seo-schema__code-line {
+  min-height: 1.3em;
+}
+
+.seo-schema__add {
+  width: 100%;
+}
+
+.seo-schema__toast {
+  position: fixed;
+  right: var(--spacer-4);
+  bottom: var(--spacer-4);
+  z-index: var(--z-status);
+  max-width: 24rem;
+  box-shadow: var(--elevation-300-tooltip);
+}
+
+@media (max-width: 1024px) {
+  .seo-schema__layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .seo-schema__preview {
+    position: static;
+  }
+}

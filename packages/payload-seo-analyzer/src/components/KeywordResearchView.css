@@ -1,0 +1,43 @@
+.seo-keywords__search {
+  max-width: 24rem;
+}
+
+.seo-keywords__keyword {
+  display: block;
+  max-width: 24rem;
+}
+
+.seo-meter.seo-keywords__meter {
+  width: calc(var(--spacer-6) * 2);
+  min-width: 0;
+}
+
+.seo-keywords__score {
+  min-width: var(--spacer-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.seo-keywords__list {
+  max-width: 16rem;
+}
+
+.seo-keywords__more {
+  align-self: flex-start;
+  padding: 0;
+  color: var(--color-text-brand);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-body-small-font-size);
+  font-weight: var(--text-body-medium-bold-font-weight);
+}
+
+.seo-keywords__more:hover {
+  text-decoration: underline;
+}
+
+.seo-keywords__more:focus-visible {
+  outline: var(--stroke-width-medium) solid var(--color-border-selected);
+  outline-offset: 2px;
+}

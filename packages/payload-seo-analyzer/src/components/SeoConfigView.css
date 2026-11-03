@@ -1,0 +1,173 @@
+/* Settings view: form layout details on top of the shared primitives (src/ui/styles.css). */
+
+.seo-config {
+  max-width: 64rem;
+}
+
+/* Save / error feedback stays visible while the long form is scrolled. */
+.seo-config__toast {
+  position: sticky;
+  top: var(--spacer-2);
+  z-index: var(--z-status);
+}
+
+.seo-config__add-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacer-2);
+}
+
+.seo-config__autocomplete-anchor {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.seo-config__autocomplete {
+  position: absolute;
+  top: 100%;
+  inset-inline: 0;
+  z-index: var(--z-popup);
+  max-height: 15rem;
+  margin-top: var(--spacer-1);
+  overflow-y: auto;
+  background: var(--color-bg-menu);
+  border: var(--stroke-width-small) solid var(--color-border);
+  border-radius: var(--radius-medium);
+  box-shadow: var(--elevation-400-menu-panel);
+}
+
+.seo-config__option {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  padding: var(--spacer-2) var(--spacer-3);
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--text-body-small-font-size);
+  line-height: var(--text-body-small-line-height);
+  text-align: start;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.seo-config__option + .seo-config__option {
+  border-top: var(--stroke-width-small) solid var(--color-border);
+}
+
+.seo-config__option:hover,
+.seo-config__option:focus-visible {
+  background: var(--color-bg-hover);
+}
+
+.seo-config__option-tag {
+  padding: 0 var(--spacer-1-5);
+  color: var(--color-text-secondary);
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-chip);
+}
+
+.seo-config__option-title {
+  display: block;
+  margin-top: var(--spacer-1);
+}
+
+.seo-config__chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacer-2);
+}
+
+.seo-config__chips p {
+  margin: 0;
+}
+
+.seo-config__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacer-1);
+  padding: var(--spacer-1) var(--spacer-1) var(--spacer-1) var(--spacer-2);
+  color: var(--color-text);
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-chip);
+}
+
+.seo-config__chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: var(--color-icon-secondary);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+}
+
+.seo-config__chip-remove:hover {
+  color: var(--color-text-danger);
+  background: var(--color-bg-danger-tertiary);
+}
+
+.seo-config__chip-remove:focus-visible {
+  outline: var(--stroke-width-medium) solid var(--color-border-selected);
+  outline-offset: 1px;
+}
+
+/* A rule group toggle: the tile turns danger-toned when the rule is disabled. */
+.seo-config__rule {
+  padding: var(--spacer-2) var(--spacer-3);
+  border: var(--stroke-width-small) solid var(--color-border);
+  border-radius: var(--radius-small);
+}
+
+.seo-config__rule--disabled {
+  color: var(--color-text-danger);
+  background: var(--color-bg-danger-tertiary);
+  border-color: var(--color-border-danger);
+}
+
+.seo-config__rule input {
+  accent-color: var(--color-bg-danger);
+}
+
+/* One priority override: pattern, priority, frequency, remove. */
+.seo-config__override {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr auto;
+  align-items: center;
+  gap: var(--spacer-2);
+}
+
+.seo-config__preview {
+  max-height: 25rem;
+  overflow-y: auto;
+}
+
+.seo-config__preview thead th {
+  position: sticky;
+  top: 0;
+  background: var(--color-bg-secondary);
+}
+
+.seo-config__preview-url {
+  display: block;
+  max-width: 28rem;
+}
+
+.seo-config__separator {
+  margin-inline: var(--spacer-1-5);
+}
+
+.seo-config__save {
+  display: flex;
+  justify-content: flex-end;
+}
+
+@media (max-width: 768px) {
+  .seo-config__override {
+    grid-template-columns: 1fr 1fr;
+  }
+}

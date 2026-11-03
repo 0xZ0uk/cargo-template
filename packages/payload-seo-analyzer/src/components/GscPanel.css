@@ -1,0 +1,7 @@
+/* Search Console panel: key cell (query or URL) truncates instead of widening the table. */
+.seo-gsc__key {
+  max-width: 20rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -1,0 +1,111 @@
+/* Link graph view: toolbar, legend, SVG canvas and node tooltip. */
+
+.seo-link-graph__controls {
+  align-items: flex-end;
+  gap: var(--spacer-3);
+}
+
+.seo-link-graph__legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacer-3);
+  margin: 0 0 0 auto;
+  padding: 0;
+  list-style: none;
+}
+
+.seo-link-graph__page {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.seo-link-graph__canvas {
+  position: relative;
+  overflow: hidden;
+  background: var(--color-bg);
+  border: var(--stroke-width-small) solid var(--color-border);
+  border-radius: var(--radius-medium);
+}
+
+.seo-link-graph__svg {
+  display: block;
+  cursor: grab;
+}
+
+.seo-link-graph__svg--panning {
+  cursor: grabbing;
+}
+
+.seo-link-graph__svg .seo-chart__axis-label {
+  fill: var(--color-text-secondary);
+  font-size: 10px;
+  user-select: none;
+}
+
+.seo-link-graph__edge {
+  stroke: var(--color-border-strong, var(--color-border));
+  stroke-width: 0.75;
+  stroke-opacity: 0.6;
+}
+
+.seo-link-graph__edge--active {
+  stroke: var(--color-icon-brand);
+  stroke-width: 1.5;
+  stroke-opacity: 1;
+}
+
+.seo-link-graph__edge--dimmed {
+  stroke-opacity: 0.1;
+}
+
+.seo-link-graph__node {
+  cursor: pointer;
+  stroke: none;
+  transition:
+    r 150ms,
+    fill-opacity 150ms;
+}
+
+.seo-link-graph__node--hub {
+  stroke: var(--color-text);
+  stroke-width: 1.5;
+}
+
+.seo-link-graph__node--hovered {
+  stroke: var(--color-text);
+  stroke-width: 2.5;
+}
+
+.seo-link-graph__node:focus-visible {
+  outline: var(--stroke-width-medium) solid var(--color-border-selected);
+  outline-offset: 2px;
+}
+
+.seo-link-graph__tooltip {
+  position: absolute;
+  z-index: var(--z-portal-element);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacer-1);
+  max-width: 280px;
+  padding: var(--spacer-2) var(--spacer-2-5);
+  color: var(--color-text-ontooltip);
+  background: var(--color-bg-tooltip);
+  border-radius: var(--radius-medium);
+  box-shadow: var(--elevation-300-tooltip);
+  font-size: var(--text-body-small-font-size);
+  line-height: var(--text-body-small-line-height);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.seo-link-graph__tooltip-title {
+  font-weight: var(--text-body-medium-bold-font-weight);
+}
+
+.seo-link-graph__tooltip-muted {
+  opacity: 0.7;
+}

@@ -1,0 +1,134 @@
+/* Layout of the Google result mock-up. Colors come from `.seo-serp` in ui/styles.css
+   (Google's own palette, intentionally theme-independent); marks here derive from
+   currentColor so no color is hard-coded. */
+
+.seo-serp-preview__header {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacer-1-5);
+}
+
+.seo-serp-preview__header svg {
+  width: var(--spacer-3);
+  height: var(--spacer-3);
+}
+
+.seo-serp-preview__counters {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacer-1);
+}
+
+.seo-serp-preview {
+  overflow: hidden;
+}
+
+.seo-serp-preview--desktop {
+  max-width: 650px;
+}
+
+.seo-serp-preview--mobile {
+  max-width: 380px;
+  padding: var(--spacer-2-5);
+}
+
+.seo-serp-preview__top {
+  display: flex;
+  align-items: center;
+  gap: var(--spacer-2-5);
+  margin-bottom: var(--spacer-1);
+}
+
+.seo-serp-preview__favicon {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  overflow: hidden;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  border-radius: var(--radius-full);
+}
+
+.seo-serp-preview__favicon img {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
+.seo-serp-preview__favicon-placeholder {
+  width: 16px;
+  height: 16px;
+  background: color-mix(in srgb, currentColor 30%, transparent);
+  border-radius: var(--radius-full);
+}
+
+.seo-serp-preview__site {
+  flex: 1;
+  min-width: 0;
+}
+
+.seo-serp-preview__site > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.seo-serp-preview__menu {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: 2px;
+  padding: 0 2px;
+}
+
+.seo-serp-preview__menu span {
+  width: 3px;
+  height: 3px;
+  background: color-mix(in srgb, currentColor 60%, transparent);
+  border-radius: var(--radius-full);
+}
+
+.seo-serp-preview .seo-serp__title {
+  margin-top: var(--spacer-1-5);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.seo-serp-preview--desktop .seo-serp__title,
+.seo-serp-preview--desktop .seo-serp__description {
+  max-width: 580px;
+}
+
+.seo-serp-preview--mobile .seo-serp__title {
+  max-width: 320px;
+  font-size: 16px;
+  line-height: 22px;
+}
+
+.seo-serp-preview--mobile .seo-serp__description {
+  max-width: 320px;
+  font-size: 13px;
+}
+
+.seo-serp-preview .seo-serp__description {
+  display: -webkit-box;
+  margin-top: var(--spacer-1);
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  line-clamp: 3;
+  -webkit-line-clamp: 3;
+  word-break: break-word;
+}
+
+.seo-serp-preview--mobile .seo-serp__description {
+  line-clamp: 2;
+  -webkit-line-clamp: 2;
+}
+
+.seo-serp-preview__placeholder {
+  font-style: italic;
+  opacity: 0.6;
+}

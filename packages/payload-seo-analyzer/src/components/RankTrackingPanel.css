@@ -1,0 +1,7 @@
+/* Rank tracking panel: query cell truncates instead of widening the table. */
+.seo-rank__query {
+  max-width: 20rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

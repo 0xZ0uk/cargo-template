@@ -1,0 +1,89 @@
+{
+  "name": "@cargo/web",
+  "version": "1.0.0",
+  "description": "Payload CMS + TanStack Start on Cloudflare Workers with D1 and R2",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "cross-env NODE_OPTIONS=\"--no-deprecation --import=tsx/esm --max-old-space-size=8000\" payload build",
+    "cf-typegen": "varlock-wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
+    "deploy": "pnpm run deploy:database && pnpm run deploy:app",
+    "deploy:app": "cross-env APP_ENV=production pnpm run build && cross-env APP_ENV=production varlock-wrangler deploy",
+    "deploy:database": "pnpm run migrate:remote && wrangler d1 execute D1 --remote --command 'PRAGMA optimize'",
+    "dev": "cross-env NODE_OPTIONS=\"--no-deprecation --import=tsx/esm\" varlock run -- vite dev",
+    "devsafe": "rm -rf dist && cross-env NODE_OPTIONS=\"--no-deprecation --import=tsx/esm\" varlock run -- vite dev",
+    "generate:importmap": "cross-env NODE_OPTIONS=--no-deprecation varlock run -- payload generate:importmap",
+    "generate:types": "pnpm run cf-typegen && cross-env NODE_OPTIONS=--no-deprecation varlock run -- payload generate:types",
+    "lint": "cross-env NODE_OPTIONS=--no-deprecation eslint .",
+    "migrate": "cross-env NODE_OPTIONS=--no-deprecation PAYLOAD_SECRET=migration-only varlock run -- payload migrate",
+    "migrate:create": "cross-env NODE_OPTIONS=--no-deprecation PAYLOAD_SECRET=migration-only varlock run -- payload migrate:create",
+    "migrate:remote": "cross-env NODE_OPTIONS=--no-deprecation APP_ENV=production NODE_ENV=production PAYLOAD_SECRET=migration-only PAYLOAD_MIGRATE_REMOTE=true varlock run -- payload migrate",
+    "payload": "cross-env NODE_OPTIONS=--no-deprecation varlock run -- payload",
+    "preview": "pnpm run build && cross-env NODE_OPTIONS=\"--no-deprecation --import=tsx/esm\" CLOUDFLARE_RUNTIME=true vite preview",
+    "test": "pnpm run test:int && pnpm run test:e2e",
+    "test:e2e": "cross-env NODE_OPTIONS=\"--no-deprecation --import=tsx/esm\" playwright test --config=playwright.config.ts",
+    "test:int": "cross-env NODE_OPTIONS=--no-deprecation vitest run --config ./vitest.config.mts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@cargo/payload-seo-analyzer": "workspace:*",
+    "@payloadcms/db-d1-sqlite": "catalog:",
+    "@payloadcms/graphql": "catalog:",
+    "@payloadcms/live-preview-react": "catalog:",
+    "@payloadcms/plugin-mcp": "catalog:",
+    "@payloadcms/plugin-seo": "catalog:",
+    "@payloadcms/richtext-lexical": "catalog:",
+    "@payloadcms/storage-r2": "catalog:",
+    "@payloadcms/tanstack-start": "catalog:",
+    "@payloadcms/ui": "catalog:",
+    "@radix-ui/react-slot": "^1.5.0",
+    "@tanstack/react-router": "^1.170.44",
+    "@tanstack/react-start": "^1.169.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "cross-env": "10.1.0",
+    "graphql": "^16.8.1",
+    "payload": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "tailwind-merge": "^3.7.0",
+    "varlock": "^1.24.0",
+    "vite": "8.3.0"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "1.66.0",
+    "@eslint/js": "9.39.2",
+    "@playwright/test": "1.63.0",
+    "@tailwindcss/typography": "^0.5.20",
+    "@tailwindcss/vite": "^4.3.3",
+    "@testing-library/react": "16.3.0",
+    "@types/node": "24.12.3",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@varlock/cloudflare-integration": "^1.6.3",
+    "@vitejs/plugin-react": "6.0.3",
+    "@vitejs/plugin-rsc": "^0.5.21",
+    "eslint": "^9.16.0",
+    "jsdom": "28.0.0",
+    "oxfmt": "^0.73.0",
+    "tailwindcss": "^4.3.3",
+    "tsx": "4.23.15",
+    "typescript": "catalog:",
+    "typescript-eslint": "8.26.1",
+    "vite-tsconfig-paths": "6.0.5",
+    "vitest": "5.0.1",
+    "wrangler": "4.156.0"
+  },
+  "engines": {
+    "node": ">=24.22.1",
+    "pnpm": "^9 || ^10 || ^11"
+  },
+  "cloudflare": {
+    "bindings": {
+      "PAYLOAD_SECRET": {
+        "description": "Generate a random string using `openssl rand -hex 32`"
+      }
+    }
+  },
+  "private": true
+}
