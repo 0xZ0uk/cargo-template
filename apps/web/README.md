@@ -38,7 +38,7 @@ pnpm wrangler r2 bucket create cargo-template-media
 Put the production secret in `.env.production.local` (`PAYLOAD_SECRET=...`), or set `PAYLOAD_SECRET` in your CI environment. If you're migrating an existing Worker, reuse its current value; a new value logs every user out.
 
 > [!IMPORTANT]
-> [`wrangler.jsonc`](./wrangler.jsonc) ships with the `database_id` of the template's own D1 database, which your account can't reach. **Replace it with the `database_id` printed by `d1 create`** before you run `pnpm deploy`, or the migrations and the deploy fail.
+> [`wrangler.jsonc`](./wrangler.jsonc) ships with the `database_id` of the template's own D1 database, which your account can't reach. **Replace it with the `database_id` printed by `d1 create`** before you run `pnpm run deploy`, or the migrations and the deploy fail.
 
 Then add the bucket's lifecycle rule. It expires the SEO analyzer's cache objects under `seo-analyzer/cache/` after 7 days, so keys left behind by an old config or locale don't pile up. Cache entries live 15 minutes anyway; if a key that's still in use expires (an invalidation marker on a site with no edits for a week), the next request just rebuilds.
 
@@ -46,7 +46,7 @@ Then add the bucket's lifecycle rule. It expires the SEO analyzer's cache object
 pnpm r2:lifecycle
 ```
 
-If you rename the Worker, database or bucket, update the names in `wrangler.jsonc` (and in the `r2:lifecycle` script) too, then run `pnpm cf-typegen`. The `ratelimits` bindings in `wrangler.jsonc` use account-wide `namespace_id`s: give each Worker on the account its own ids, or they share counters.
+If you rename the Worker, database or bucket, update the names in `wrangler.jsonc` (and in the `r2:lifecycle` script) too, then run `pnpm cf-typegen`. The `ratelimits` bindings in `wrangler.jsonc` use account-wide `namespace_id`s: give each Worker on the account its own ids, or they share counters. Workers Rate Limiting is approximate (counts sync between machines eventually), so a burst can get past the limit.
 
 Wrangler stores the local D1 database under `.wrangler/state` by `database_id`, so changing the id gives `pnpm dev` a new, empty local database. To keep your local data, change the id before you start developing. Otherwise, copy the old `.sqlite` file in `.wrangler/state/v3/d1/miniflare-D1DatabaseObject/` to the new file name.
 
@@ -59,10 +59,12 @@ pnpm migrate:create
 Then deploy:
 
 ```bash
-pnpm deploy
+pnpm run deploy
 ```
 
-`pnpm deploy` applies migrations to the remote D1 database, runs `PRAGMA optimize`, builds the Worker with `APP_ENV=production` and deploys it with `varlock-wrangler`. Non-sensitive values become Worker vars and sensitive ones become secrets. `varlock-wrangler deploy` replaces the Worker's vars and secrets with the schema's, so define any new ones in `.env.schema` rather than the dashboard. The build fails if `PAYLOAD_SECRET` doesn't resolve for production. If you add a named Wrangler environment, set `CLOUDFLARE_ENV` so the migration commands use the same bindings.
+The Worker's entry is [`src/server.ts`](./src/server.ts): TanStack Start's `fetch` plus a `scheduled` handler. A Cron Trigger (`triggers.crons` in `wrangler.jsonc`, every 5 minutes) runs the due Payload jobs through it. Today that's the SEO analyzer's `seo` queue, which finishes dashboard audits too big for one request. To run a tick locally against `pnpm preview`, open `/cdn-cgi/handler/scheduled?cron=*/5+*+*+*+*`.
+
+`pnpm run deploy` (not `pnpm deploy`, which is pnpm's own command) applies migrations to the remote D1 database, runs `PRAGMA optimize`, builds the Worker with `APP_ENV=production` and deploys it with `varlock-wrangler`. Non-sensitive values become Worker vars and sensitive ones become secrets. `varlock-wrangler deploy` replaces the Worker's vars and secrets with the schema's, so define any new ones in `.env.schema` rather than the dashboard. The build fails if `PAYLOAD_SECRET` doesn't resolve for production. If you add a named Wrangler environment, set `CLOUDFLARE_ENV` so the migration commands use the same bindings.
 
 ## Staying under D1's 10 GB limit
 
@@ -90,7 +92,7 @@ Run these inside `apps/web`, or from the repo root as `pnpm web <command>` (e.g.
 | `pnpm dev`            | Node dev server with local D1 and local-disk media              |
 | `pnpm build`          | Build the Worker and static assets                              |
 | `pnpm preview`        | Build and run in local workerd (local D1 + R2)                  |
-| `pnpm deploy`         | Migrate remote D1, build and deploy                             |
+| `pnpm run deploy`     | Migrate remote D1, build and deploy                             |
 | `pnpm r2:lifecycle`   | Add the R2 rule that expires stale SEO cache objects            |
 | `pnpm generate:types` | Regenerate Cloudflare (`cloudflare-env.d.ts`) and Payload types |
 | `pnpm migrate:create` | Create a migration in `src/db/migrations`                       |
