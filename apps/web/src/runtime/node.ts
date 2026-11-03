@@ -12,3 +12,6 @@ const proxy = await getPlatformProxy<RuntimeCloudflareEnv>({
 export const cloudflareEnv = proxy.env
 
 export const isWorkersRuntime = false
+
+// Long-lived Node process: background promises survive the response on their own.
+export const waitUntil: ((promise: Promise<unknown>) => void) | undefined = undefined

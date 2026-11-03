@@ -92,7 +92,10 @@ export type { SchemaType, BuildJsonLdOptions } from './helpers/buildSchema.js'
 export { createHistoryHandler } from './endpoints/history.js'
 export { createSitemapAuditHandler } from './endpoints/sitemap-audit.js'
 // Build-time audit cache: generate the site-wide audit JSON at CI time, hydrate it in prod.
+// Node/filesystem only: ignored (with a warning) when `cacheStore` is set or on Workers.
 export { buildAuditToFile } from './endpoints/audit.js'
+// Pluggable persistent cache (`cacheStore` / `waitUntil` plugin options).
+export type { SeoCacheStore, SeoWaitUntil } from './cache.js'
 
 // Re-export collection + hook for advanced consumers
 export { createSeoScoreHistoryCollection } from './collections/SeoScoreHistory.js'
