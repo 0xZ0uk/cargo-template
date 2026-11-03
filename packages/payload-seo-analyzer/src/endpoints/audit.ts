@@ -16,7 +16,7 @@ import {
   calculateFleschFR,
   countWords,
 } from '../helpers.js'
-import { seoCache } from '../cache.js'
+import { defaultSeoSharedCache, hashConfig, seoCache, type SeoSharedCache } from '../cache.js'
 import { loadMergedConfig } from '../helpers/loadMergedConfig.js'
 import { extractDocContent } from '../helpers/extractDocContent.js'
 import { isSeoAdminRequest, isSeoPanelUser } from '../helpers/isAdmin.js'
@@ -116,24 +116,18 @@ interface AuditStats {
 type EnrichedResult = ReturnType<typeof analyzeDoc> & { previousScore: number | null }
 type CachedAudit = { enrichedResults: EnrichedResult[]; stats: AuditStats; capped: boolean }
 
-/**
- * Single-flight guard. The site-wide audit is the heaviest operation in the plugin
- * (it runs analyzeSeo on every page/post). Without this guard, a slow first load on a
- * low-memory host (e.g. Infomaniak) lets the admin reload the page, firing 2-3 FULL
- * builds concurrently — multiplying peak memory until the process is OOM-killed and
- * restarts into an EADDRINUSE loop. With the guard, only ONE build ever runs at a time;
- * concurrent requests get a 202 "building" and the UI polls until the cache is ready.
- * Keyed by locale so a multi-locale site builds (and serves) one audit per locale.
+/*
+ * Single-flight + refresh throttle. The site-wide audit is the heaviest operation in the
+ * plugin (it runs analyzeSeo on every page/post). Without a single-flight guard, a slow
+ * first load on a low-memory host lets the admin reload the page, firing 2-3 FULL builds
+ * concurrently until the process is OOM-killed. With it, concurrent requests get a 202
+ * "building" and the UI polls until the cache is ready. The throttle bounds manual
+ * `?nocache=1` refreshes: without it a loop of refreshes kept the rebuild running forever.
+ *
+ * Both live in the cache layer (`SeoSharedCache.tryStartBuild/buildStatus`): in-memory per
+ * process without a `cacheStore`, persisted (`build/<key>` marker with a staleness timeout,
+ * best-effort across isolates) with one. Keyed by locale (+ config hash when persisted).
  */
-const auditBuildsInFlight = new Set<string>()
-
-/**
- * Last completed full build per cache key. Backs the manual-refresh throttle:
- * the single-flight guard above only bounds CONCURRENT builds, so a loop of
- * `?nocache=1` (one every time the previous build finishes) kept the site-wide
- * rebuild running permanently — the exact load that OOM-kills constrained hosts.
- */
-const lastAuditBuildAt = new Map<string, number>()
 
 /** Minimum delay between two manual (nocache=1) full rebuilds, per locale key. */
 function minRefreshIntervalMs(): number {
@@ -153,6 +147,7 @@ async function buildAuditCache(
   globals: string[],
   seoConfig?: SeoConfig,
   reqLocale?: string,
+  opts: { unthrottled?: boolean } = {},
 ): Promise<CachedAudit> {
   // Load merged config from DB settings + plugin config (locale-aware so the audit scores
   // each locale with its own language rules)
@@ -163,19 +158,25 @@ async function buildAuditCache(
   // CPU usage and gives V8 time to reclaim the previous batch before loading the next, so the
   // site stays responsive during the (background) build instead of being saturated for minutes.
   // All three knobs are env-tunable — lower batch / raise delay on the tiniest hosts.
-  const BATCH_SIZE = Math.min(100, Math.max(1, parseInt(process.env.SEO_AUDIT_BATCH_SIZE || '10', 10) || 10))
+  //
+  // `unthrottled` (set when the host provides `waitUntil`, i.e. Workers): background work
+  // there gets ~30 s of wall time after the response and runs in its own isolate, so the
+  // cooperative pauses only make the build overrun that budget. Defaults drop to zero
+  // pauses and bigger batches; the env vars still override.
+  const fast = opts.unthrottled === true
+  const BATCH_SIZE = Math.min(100, Math.max(1, parseInt(process.env.SEO_AUDIT_BATCH_SIZE || (fast ? '50' : '10'), 10) || 10))
   const MAX_DOCS = Math.max(1, parseInt(process.env.SEO_AUDIT_MAX_DOCS || '1500', 10) || 1500)
-  const BATCH_DELAY_MS = Math.min(5000, Math.max(0, parseInt(process.env.SEO_AUDIT_BATCH_DELAY_MS || '100', 10) || 0))
+  const BATCH_DELAY_MS = Math.min(5000, Math.max(0, parseInt(process.env.SEO_AUDIT_BATCH_DELAY_MS || (fast ? '0' : '100'), 10) || 0))
   // Per-document throttle: a REAL pause (not just setImmediate) after each doc gives the event
   // loop idle time so the site stays responsive while the (background) build runs. Trades a
   // longer build for a much gentler CPU profile. Default 10ms; set 0 for the fastest build,
   // raise it (e.g. 25–50) on rich-content / constrained sites.
-  const DOC_DELAY_MS = Math.min(1000, Math.max(0, parseInt(process.env.SEO_AUDIT_DOC_DELAY_MS || '10', 10) || 0))
+  const DOC_DELAY_MS = Math.min(1000, Math.max(0, parseInt(process.env.SEO_AUDIT_DOC_DELAY_MS || (fast ? '0' : '10'), 10) || 0))
   // The dominant cost is analyzeDoc() — synchronous and un-interruptible (one rich doc can block
   // the single Node event loop for 100-300ms). After each doc we pause for ~THROTTLE_RATIO × the
   // time it just took, so the event loop stays free ≈ ratio/(1+ratio) of the time and the admin/
   // site remains responsive regardless of content size. DOC_DELAY_MS is the floor; capped per doc.
-  const THROTTLE_RATIO = Math.min(10, Math.max(0, parseFloat(process.env.SEO_AUDIT_THROTTLE_RATIO || '2') || 0))
+  const THROTTLE_RATIO = Math.min(10, Math.max(0, parseFloat(process.env.SEO_AUDIT_THROTTLE_RATIO || (fast ? '0' : '2')) || 0))
   const MAX_DOC_PAUSE_MS = 750
   // depth:1 populates uploads/relations (heavier). Default 1 keeps scores identical to the
   // sidebar; set SEO_AUDIT_DEPTH=0 on the tiniest hosts to cut memory/CPU (image-dimension
@@ -229,7 +230,7 @@ async function buildAuditCache(
           if (pause > 0) {
             await new Promise((resolve) => setTimeout(resolve, pause))
           } else {
-            await new Promise((resolve) => setImmediate(resolve))
+            await yieldToEventLoop()
           }
         }
         hasMore = result.hasNextPage
@@ -336,30 +337,45 @@ async function buildAuditCache(
   return { enrichedResults, stats, capped }
 }
 
-/** Kick off a background build if one isn't already running for this locale (single-flight). */
-function ensureAuditBuild(
+/** Yield once to the event loop (setImmediate where available, else a 0 ms timer). */
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof setImmediate === 'function') setImmediate(resolve)
+    else setTimeout(resolve, 0)
+  })
+}
+
+/**
+ * Kick off a background build if one isn't already running for this key (single-flight).
+ * The build runs after the response: through the host's `waitUntil` when configured
+ * (Workers cancel un-awaited work otherwise), else fire-and-forget (long-lived Node).
+ */
+async function ensureAuditBuild(
+  cache: SeoSharedCache,
   payload: Payload,
   collections: string[],
   globals: string[],
   seoConfig: SeoConfig | undefined,
   cacheKey: string,
   reqLocale?: string,
-): void {
-  if (auditBuildsInFlight.has(cacheKey)) return
-  auditBuildsInFlight.add(cacheKey)
-  // Fire-and-forget: NOT awaited by the request handler. Infomaniak (and any persistent
-  // Node host) keeps this promise alive after the 202 response is sent.
-  void buildAuditCache(payload, collections, globals, seoConfig, reqLocale)
-    .then((result) => {
-      seoCache.set(cacheKey, result)
-    })
-    .catch((e) => {
+): Promise<void> {
+  if (!(await cache.tryStartBuild(cacheKey))) return
+  const task = (async () => {
+    try {
+      // Read the generation BEFORE building: a save during the build bumps it, so the
+      // result is stored already stale instead of hiding that save.
+      const gen = await cache.generation(CACHE_KEY)
+      const result = await buildAuditCache(payload, collections, globals, seoConfig, reqLocale, {
+        unthrottled: cache.hasWaitUntil,
+      })
+      await cache.set(CACHE_KEY, cacheKey, result, gen)
+    } catch (e) {
       payload.logger.error(`[seo] audit build failed: ${e instanceof Error ? e.message : 'unknown'}`)
-    })
-    .finally(() => {
-      auditBuildsInFlight.delete(cacheKey)
-      lastAuditBuildAt.set(cacheKey, Date.now())
-    })
+    } finally {
+      await cache.finishBuild(cacheKey)
+    }
+  })()
+  cache.runInBackground(task)
 }
 
 /** Shape of the build-time audit cache file (one CachedAudit per locale-scoped key). */
@@ -377,6 +393,10 @@ interface AuditCacheFile {
  *
  * Pass `locales: [undefined]` (default) for a single-locale site, or the list of locale
  * codes to pre-build one audit per locale.
+ *
+ * Node-only (writes the filesystem). The resulting file is read through the plugin's
+ * `auditCacheFile` option, which is ignored when a `cacheStore` is configured (the store
+ * already persists the audit) and on Workers (no filesystem).
  */
 export async function buildAuditToFile(
   payload: Payload,
@@ -453,7 +473,15 @@ export function createAuditHandler(
   seoConfig?: SeoConfig,
   globals: string[] = [],
   auditCacheFile?: string,
+  cache: SeoSharedCache = defaultSeoSharedCache,
 ): PayloadHandler {
+  // Persisted entries outlive deploys, so their key includes a hash of the config that
+  // shapes the audit: a deploy that changes collections/rules starts from a clean slate.
+  const configHash = hashConfig({ v: 1, collections, globals, seoConfig: seoConfig ?? null })
+  // The build-time file cache is a filesystem feature for long-lived Node hosts. With a
+  // persistent store the audit already survives restarts, so the file is ignored there
+  // (the plugin warns at init).
+  const fileCache = cache.persistent ? undefined : auditCacheFile
   return async (req) => {
     try {
       if (!isSeoPanelUser(req)) {
@@ -472,7 +500,8 @@ export function createAuditHandler(
       // gave the caller an unbounded key space — every value a guaranteed cache miss,
       // hence a fresh site-wide build past both the admin gate and the refresh throttle.
       const reqLocale = safeCacheLocale(req)
-      const cacheKey = reqLocale ? `${CACHE_KEY}:${reqLocale}` : CACHE_KEY
+      const localeKey = reqLocale ? `${CACHE_KEY}:${reqLocale}` : CACHE_KEY
+      const cacheKey = cache.persistent ? `${localeKey}:${configHash}` : localeKey
 
       // Manual refresh — drop the stale cache so the next poll waits for the fresh build.
       // (Skip if a build is already running: it will repopulate the cache shortly anyway.)
@@ -486,18 +515,18 @@ export function createAuditHandler(
       // A refused refresh is NOT an error: the caller gets the cached audit with
       // `refreshThrottled: true` so the UI can say "showing cached results".
       let refreshThrottled = false
-      if (noCache && !auditBuildsInFlight.has(cacheKey)) {
-        const last = lastAuditBuildAt.get(cacheKey) ?? 0
+      const build = await cache.buildStatus(cacheKey)
+      if (noCache && !build.building) {
         if (!isSeoAdminRequest(req)) {
           refreshThrottled = true
-        } else if (Date.now() - last < minRefreshIntervalMs()) {
+        } else if (Date.now() - build.lastBuildAt < minRefreshIntervalMs()) {
           refreshThrottled = true
         } else {
-          seoCache.invalidateKey(cacheKey)
+          await cache.invalidateKey(CACHE_KEY, cacheKey)
         }
       }
 
-      let cached = seoCache.get<CachedAudit>(cacheKey)
+      let cached = await cache.get<CachedAudit>(CACHE_KEY, cacheKey)
       // Peek mode: opening the dashboard must NOT auto-trigger the (heavy) build on a big/rich
       // site. With `noBuild=1` we return cached results if present, or "not built" otherwise —
       // the build starts only when the user explicitly requests it (a poll WITHOUT noBuild).
@@ -518,15 +547,15 @@ export function createAuditHandler(
       const fichierFaitFoi = process.env.SEO_AUDIT_TRUST_FILE === '1'
       if (
         !cached &&
-        auditCacheFile &&
+        fileCache &&
         !fileCacheOff &&
-        (await tryHydrateAuditFromFile(auditCacheFile, !fichierFaitFoi))
+        (await tryHydrateAuditFromFile(fileCache, !fichierFaitFoi))
       ) {
         cached = seoCache.get<CachedAudit>(cacheKey)
       }
 
       if (!cached) {
-        if (noBuild && !auditBuildsInFlight.has(cacheKey)) {
+        if (noBuild && !build.building) {
           return Response.json(
             { building: false, notBuilt: true, results: [], stats: null },
             { status: 200, headers: { 'Cache-Control': 'no-store' } },
@@ -535,7 +564,7 @@ export function createAuditHandler(
         // Cache miss — never build synchronously on the request path (that's what OOM-killed
         // the process on low-memory hosts). Start a single-flight background build and tell
         // the client to poll. The 202 response is tiny and returns immediately.
-        ensureAuditBuild(req.payload, collections, globals, seoConfig, cacheKey, reqLocale)
+        await ensureAuditBuild(cache, req.payload, collections, globals, seoConfig, cacheKey, reqLocale)
         return Response.json(
           { building: true, results: [], stats: null },
           { status: 202, headers: { 'Cache-Control': 'no-store' } },

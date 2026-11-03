@@ -100,6 +100,14 @@ import { createGenerateHandler } from './endpoints/generate.js'
 import { seoTranslations } from './translations.js'
 import { registerDashboardTranslations } from './dashboard-i18n.js'
 import { createRateLimiter, rateLimitKey } from './rateLimiter.js'
+import {
+  CONTENT_CACHE_BASES,
+  REDIRECT_CACHE_BASES,
+  SeoSharedCache,
+  type SeoCacheStore,
+  type SeoWaitUntil,
+} from './cache.js'
+import { createInvalidateCachesHook } from './hooks/invalidateSeoCaches.js'
 
 /** Arguments passed to generate functions (generateTitle, generateDescription, etc.) */
 export interface GenerateFnArgs {
@@ -176,6 +184,24 @@ export interface SeoPluginConfig {
    * takes over). Runtime kill-switch: set env `SEO_AUDIT_FILE_CACHE=0` to ignore the file.
    */
   auditCacheFile?: string
+  /**
+   * Persistent key/value store for the caches the admin UI depends on across requests
+   * (dashboard audit, sitemap audit, redirect chains), plus their invalidation markers.
+   * Needed on multi-isolate/serverless hosts (Cloudflare Workers: every isolate has its
+   * own memory, so an in-memory cache built in one is invisible to the next poll). Any
+   * KV-like backend fits (R2, KV, Redis…): `get` returns `null` for a missing key.
+   * Omitted: in-memory, per-process caches (fine on a single long-lived Node process).
+   * When set, `auditCacheFile` is ignored.
+   */
+  cacheStore?: SeoCacheStore
+  /**
+   * Keeps background work alive after the response (the dashboard audit build). Pass
+   * Workers' `waitUntil` (`import { waitUntil } from 'cloudflare:workers'`); it resolves the
+   * current request on each call. Omitted: the build is fire-and-forget, which only works
+   * on long-lived processes. When set, the audit build also drops its cooperative pauses
+   * (see `SEO_AUDIT_*` env vars) to fit the host's post-response budget.
+   */
+  waitUntil?: SeoWaitUntil
   /** Granular feature flags — all default to true. Disable features you don't need
    *  to reduce collections, endpoints, and admin views loaded by the plugin.
    *  The core analyzer sidebar, validate endpoint, and meta fields are always active. */
@@ -258,6 +284,18 @@ export const seoAnalyzerPlugin =
     const basePath = pluginConfig.endpointBasePath ?? '/seo-plugin'
     const seoConfig = buildSeoConfig(pluginConfig)
     const analyzerLocaleOptions = { locale: pluginConfig.locale, localeMapping: pluginConfig.localeMapping }
+    // Cache layer shared by the endpoints and invalidation hooks below. Without a store it
+    // wraps the in-memory `seoCache` (per process), as before.
+    const sharedCache = new SeoSharedCache({
+      store: pluginConfig.cacheStore,
+      waitUntil: pluginConfig.waitUntil,
+    })
+    const invalidateContentHook = createInvalidateCachesHook(CONTENT_CACHE_BASES, sharedCache)
+    if (pluginConfig.auditCacheFile && pluginConfig.cacheStore) {
+      console.warn(
+        '[seo-analyzer] `auditCacheFile` is ignored because `cacheStore` is set: the store already persists the audit across isolates and restarts.',
+      )
+    }
 
     // Resolve feature flags — all default to true
     const features: Required<SeoFeatures> = {
@@ -411,6 +449,22 @@ export const seoAnalyzerPlugin =
               ],
             }
           }
+          // Invalidate the content caches on every save/delete (independent of score history)
+          {
+            const existingAfterChange = updated.hooks?.afterChange || []
+            const existingAfterDelete = updated.hooks?.afterDelete || []
+            updated.hooks = {
+              ...updated.hooks,
+              afterChange: [
+                ...(Array.isArray(existingAfterChange) ? existingAfterChange : [existingAfterChange]),
+                invalidateContentHook,
+              ],
+              afterDelete: [
+                ...(Array.isArray(existingAfterDelete) ? existingAfterDelete : [existingAfterDelete]),
+                invalidateContentHook,
+              ],
+            }
+          }
           // Add score tracking hook
           if (trackHistory) {
             const existingHooks = updated.hooks?.afterChange || []
@@ -459,6 +513,18 @@ export const seoAnalyzerPlugin =
           fields: assembleFields(existingFields as Field[], fieldsToAdd, { label }),
         }
 
+        // Invalidate the content caches on every save
+        {
+          const existingAfterChange = updated.hooks?.afterChange || []
+          updated.hooks = {
+            ...updated.hooks,
+            afterChange: [
+              ...(Array.isArray(existingAfterChange) ? existingAfterChange : [existingAfterChange]),
+              invalidateContentHook,
+            ],
+          }
+        }
+
         // Add score tracking hook for globals (no auto-redirect — globals have no slug)
         if (trackHistory) {
           const existingHooks = updated.hooks?.afterChange || []
@@ -491,7 +557,41 @@ export const seoAnalyzerPlugin =
       ...pluginCollections,
     ]
 
+    // Invalidation for the plugin's own data: redirects feed the sitemap audit, link graph
+    // and chain detection; settings (ignored slugs, thresholds, sitemap config) feed every
+    // content cache. Covers REST/admin CRUD as well as the plugin endpoints. Also applied
+    // to a host-supplied redirects collection.
+    const invalidateRedirectsHook = createInvalidateCachesHook(REDIRECT_CACHE_BASES, sharedCache)
+    config.collections = config.collections.map((collection) => {
+      const hook =
+        features.redirects && collection.slug === redirectsSlug
+          ? invalidateRedirectsHook
+          : features.settings && collection.slug === 'seo-settings'
+            ? invalidateContentHook
+            : undefined
+      if (!hook) return collection
+      const existingAfterChange = collection.hooks?.afterChange || []
+      const existingAfterDelete = collection.hooks?.afterDelete || []
+      return {
+        ...collection,
+        hooks: {
+          ...collection.hooks,
+          afterChange: [
+            ...(Array.isArray(existingAfterChange) ? existingAfterChange : [existingAfterChange]),
+            hook,
+          ],
+          afterDelete: [
+            ...(Array.isArray(existingAfterDelete) ? existingAfterDelete : [existingAfterDelete]),
+            hook,
+          ],
+        },
+      }
+    })
+
     // Rate limiter for expensive POST endpoints (LLM calls, heavy crawls): 10 req / 60s per IP.
+    // NOTE: these limiters are in-memory, so on Workers each isolate counts separately
+    // (a weak bound there). `cacheStore` deliberately does not back them; Workers' Rate
+    // Limiting binding is the proper fix (see PLAN.md).
     const expensiveEndpointLimiter = createRateLimiter(10, 60_000)
     // Separate, poll-friendly limiter for the background-built audits. These GET endpoints are
     // POLLED by the dashboard every 3s while the (single-flight) build runs — a build on a large
@@ -569,7 +669,7 @@ export const seoAnalyzerPlugin =
         path: `${basePath}/audit`,
         method: 'get',
         // Poll-friendly limiter: the dashboard polls this every 3s while the background build runs.
-        handler: withRateLimit(createAuditHandler(targetCollections, seoConfig, targetGlobals, pluginConfig.auditCacheFile), auditPollLimiter),
+        handler: withRateLimit(createAuditHandler(targetCollections, seoConfig, targetGlobals, pluginConfig.auditCacheFile, sharedCache), auditPollLimiter),
       })
       // Indexation hygiene audit — cross-page noindex / canonical problems in one place
       pluginEndpoints.push({
@@ -594,7 +694,7 @@ export const seoAnalyzerPlugin =
         {
           path: `${basePath}/sitemap-audit`,
           method: 'get',
-          handler: withRateLimit(createSitemapAuditHandler(targetCollections, redirectsSlug, pluginConfig.knownRoutes || [])),
+          handler: withRateLimit(createSitemapAuditHandler(targetCollections, redirectsSlug, pluginConfig.knownRoutes || [], sharedCache)),
         },
         {
           path: `${basePath}/sitemap-config`,
@@ -634,12 +734,12 @@ export const seoAnalyzerPlugin =
     if (features.redirects) {
       const rSlug = pluginConfig.redirectsCollection ?? 'seo-redirects'
       pluginEndpoints.push(
-        { path: `${basePath}/create-redirect`, method: 'post', handler: createRedirectHandler(rSlug, allowExternalRedirects) },
+        { path: `${basePath}/create-redirect`, method: 'post', handler: createRedirectHandler(rSlug, allowExternalRedirects, sharedCache) },
         { path: `${basePath}/redirects`, method: 'get', handler: createRedirectsHandler(rSlug, allowExternalRedirects) },
         { path: `${basePath}/redirects`, method: 'post', handler: createRedirectsHandler(rSlug, allowExternalRedirects) },
         { path: `${basePath}/redirects`, method: 'patch', handler: createRedirectsHandler(rSlug, allowExternalRedirects) },
         { path: `${basePath}/redirects`, method: 'delete', handler: createRedirectsHandler(rSlug, allowExternalRedirects) },
-        { path: `${basePath}/redirect-chains`, method: 'get', handler: withRateLimit(createRedirectChainsHandler(rSlug)) },
+        { path: `${basePath}/redirect-chains`, method: 'get', handler: withRateLimit(createRedirectChainsHandler(rSlug, sharedCache)) },
       )
     }
 
@@ -953,6 +1053,16 @@ export const seoAnalyzerPlugin =
       // background schedulers there; use the on-demand endpoints (or Payload jobs on a
       // cron trigger) instead.
       if (isServerlessIsolate()) {
+        if (features.dashboard && (!pluginConfig.cacheStore || !pluginConfig.waitUntil)) {
+          payload.logger.warn(
+            '[seo-analyzer] On serverless isolates the dashboard audit needs both `cacheStore` (shared cache) and `waitUntil` (background build); without them it may never finish building.',
+          )
+        }
+        if (pluginConfig.auditCacheFile && !pluginConfig.cacheStore) {
+          payload.logger.warn(
+            '[seo-analyzer] `auditCacheFile` needs a filesystem and is ignored on serverless isolates; set `cacheStore` instead.',
+          )
+        }
         if (features.gscApi || features.alerts || pluginConfig.retentionDays) {
           payload.logger.warn(
             '[seo-analyzer] Background schedulers (rank tracking, alerts, retention purge) do not run on serverless isolates; trigger them from a cron instead.',
