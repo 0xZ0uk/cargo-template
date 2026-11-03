@@ -901,9 +901,9 @@ export function SeoConfigView() {
                 id={homeLabelId}
                 type="text"
                 className="seo-input"
-                value={settings.breadcrumb?.homeLabel || 'Accueil'}
+                value={settings.breadcrumb?.homeLabel ?? ''}
                 onChange={(e) => updateBreadcrumbField('homeLabel', e.target.value)}
-                placeholder="Accueil"
+                placeholder={t.seoConfig.homeLabelDefault}
               />
             </Field>
             <Field description={t.seoConfig.separatorDesc} label={t.seoConfig.separator}>
@@ -938,7 +938,7 @@ export function SeoConfigView() {
           <div className="seo-inset seo-stack seo-stack--tight">
             <span className="seo-field__label">{t.seoConfig.preview}</span>
             <p className="seo-text">
-              {settings.breadcrumb?.homeLabel || 'Accueil'}
+              {settings.breadcrumb?.homeLabel || t.seoConfig.homeLabelDefault}
               <span className="seo-config__separator seo-text--secondary">{settings.breadcrumb?.separator || '>'}</span>
               Services
               <span className="seo-config__separator seo-text--secondary">{settings.breadcrumb?.separator || '>'}</span>

@@ -213,7 +213,9 @@ export function createSeoSettingsCollection(): CollectionConfig {
             name: 'homeLabel',
             type: 'text',
             label: { en: 'Home page label', fr: "Label page d'accueil" },
-            defaultValue: 'Accueil',
+            // No default: empty means "Home" / "Accueil" from the analysis locale (see the
+            // /breadcrumb endpoint and buildJsonLd). A stored default pinned French labels
+            // on every site.
           },
           {
             name: 'separator',

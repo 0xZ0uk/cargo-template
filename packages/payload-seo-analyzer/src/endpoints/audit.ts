@@ -13,10 +13,11 @@ import { analyzeSeo } from '../index.js'
 import type { SeoConfig } from '../types.js'
 import { buildSeoInputFromDoc } from './validate.js'
 import {
-  calculateFleschFR,
+  calculateFlesch,
   countWords,
 } from '../helpers.js'
 import { defaultSeoSharedCache, hashConfig, seoCache, type SeoSharedCache } from '../cache.js'
+import { auditMaxDocs } from '../helpers/auditLimits.js'
 import { loadMergedConfig } from '../helpers/loadMergedConfig.js'
 import { extractDocContent } from '../helpers/extractDocContent.js'
 import { isSeoAdminRequest, isSeoPanelUser } from '../helpers/isAdmin.js'
@@ -50,7 +51,10 @@ function analyzeDoc(doc: any, collection: string, seoConfig?: SeoConfig) {
   const wordCount = countWords(fullText)
   // Use the block-aware text so list items / paragraphs are counted as separate
   // sentences (otherwise scannable, list-heavy content is wrongly scored unreadable).
-  const readabilityScore = wordCount > 30 ? calculateFleschFR(extracted.readabilityText || fullText) : 0
+  // Same formula as the sidebar's readability rule: Kandel-Moles for French, Flesch for
+  // English, picked from the analysis locale (`analyzeSeo` defaults to 'fr' too).
+  const readabilityScore =
+    wordCount > 30 ? calculateFlesch(extracted.readabilityText || fullText, seoConfig?.locale ?? 'fr') : 0
 
   const internalLinks = allLinks.filter(
     (l) => l.url.startsWith('/') || l.url.startsWith('#') || !l.url.startsWith('http'),
@@ -165,7 +169,7 @@ async function buildAuditCache(
   // pauses and bigger batches; the env vars still override.
   const fast = opts.unthrottled === true
   const BATCH_SIZE = Math.min(100, Math.max(1, parseInt(process.env.SEO_AUDIT_BATCH_SIZE || (fast ? '50' : '10'), 10) || 10))
-  const MAX_DOCS = Math.max(1, parseInt(process.env.SEO_AUDIT_MAX_DOCS || '1500', 10) || 1500)
+  const MAX_DOCS = auditMaxDocs()
   const BATCH_DELAY_MS = Math.min(5000, Math.max(0, parseInt(process.env.SEO_AUDIT_BATCH_DELAY_MS || (fast ? '0' : '100'), 10) || 0))
   // Per-document throttle: a REAL pause (not just setImmediate) after each doc gives the event
   // loop idle time so the site stays responsive while the (background) build runs. Trades a
@@ -477,7 +481,8 @@ export function createAuditHandler(
 ): PayloadHandler {
   // Persisted entries outlive deploys, so their key includes a hash of the config that
   // shapes the audit: a deploy that changes collections/rules starts from a clean slate.
-  const configHash = hashConfig({ v: 1, collections, globals, seoConfig: seoConfig ?? null })
+  // v2: readability uses the locale-appropriate Flesch formula (was always French).
+  const configHash = hashConfig({ v: 2, collections, globals, seoConfig: seoConfig ?? null })
   // The build-time file cache is a filesystem feature for long-lived Node hosts. With a
   // persistent store the audit already survives restarts, so the file is ignored there
   // (the plugin warns at init).

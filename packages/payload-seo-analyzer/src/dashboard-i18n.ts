@@ -265,6 +265,8 @@ export interface DashboardTranslations {
     breadcrumbConfigDesc: string
     enableBreadcrumbs: string
     homePageLabel: string
+    /** Breadcrumb home label used when the setting is empty (follows the analysis locale). */
+    homeLabelDefault: string
     separator: string
     separatorDesc: string
     showOnHomePage: string
@@ -881,6 +883,7 @@ const fr: DashboardTranslations = {
     breadcrumbConfigDesc: 'Configuration des fils d\'Ariane (breadcrumbs) et du schéma JSON-LD BreadcrumbList.',
     enableBreadcrumbs: 'Activer les breadcrumbs',
     homePageLabel: 'Label page d\'accueil',
+    homeLabelDefault: 'Accueil',
     separator: 'Séparateur',
     separatorDesc: 'Caractère utilisé entre les éléments du breadcrumb',
     showOnHomePage: 'Afficher sur la page d\'accueil',
@@ -1497,6 +1500,7 @@ const en: DashboardTranslations = {
     breadcrumbConfigDesc: 'Configuration of breadcrumbs and JSON-LD BreadcrumbList schema.',
     enableBreadcrumbs: 'Enable breadcrumbs',
     homePageLabel: 'Home page label',
+    homeLabelDefault: 'Home',
     separator: 'Separator',
     separatorDesc: 'Character used between breadcrumb elements',
     showOnHomePage: 'Show on home page',

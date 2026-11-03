@@ -285,9 +285,15 @@ function CategorySection({
 // ---------------------------------------------------------------------------
 // Keyword duplicate check hook
 // ---------------------------------------------------------------------------
+/** Admin edit path of a page that uses the keyword: collections by id, globals by slug. */
+export function keywordUsageEditPath(page: { id?: string | number; collection: string }): `/${string}` {
+  if (page.collection.startsWith('global:')) return `/globals/${page.collection.slice('global:'.length)}`
+  return `/collections/${page.collection}/${encodeURIComponent(String(page.id ?? ''))}`
+}
+
 interface KeywordUsage {
   used: boolean
-  pages: Array<{ title: string; slug: string; collection: string }>
+  pages: Array<{ id?: string | number; title: string; slug: string; collection: string }>
 }
 
 function useKeywordDuplicateCheck(
@@ -1281,7 +1287,7 @@ const SeoAnalyzerInner: React.FC<SeoAnalyzerFieldProps> = ({ field }) => {
                       margin={false}
                       newTab
                       size="medium"
-                      url={formatAdminURL({ adminRoute, path: `/collections/${page.collection}/${page.slug}` })}
+                      url={formatAdminURL({ adminRoute, path: keywordUsageEditPath(page) })}
                     >
                       {t.common.edit}
                     </Button>

@@ -63,6 +63,69 @@ export function createRateLimiter(maxRequests: number, windowMs: number): RateLi
   }
 }
 
+/** The plugin's rate-limit buckets. Each one is counted separately per caller. */
+export type SeoRateLimitBucket = 'expensive' | 'audit-poll' | 'ai-interactive' | 'seo-logs'
+
+/**
+ * Limits of each bucket, per caller (`rateLimitKey`), over a 60 s window. Exported so a host
+ * backing the `rateLimit` option (e.g. Workers Rate Limiting bindings) can mirror them.
+ */
+export const SEO_RATE_LIMITS: Record<SeoRateLimitBucket, { limit: number; periodSeconds: 60 }> = {
+  // LLM calls and whole-site scans.
+  expensive: { limit: 10, periodSeconds: 60 },
+  // The dashboard polls the background-built audit every 3 s while it builds.
+  'audit-poll': { limit: 120, periodSeconds: 60 },
+  // Per-document LLM endpoints driven by a human click.
+  'ai-interactive': { limit: 30, periodSeconds: 60 },
+  // Visitor-relayed 404 logging (POST /seo-logs).
+  'seo-logs': { limit: 30, periodSeconds: 60 },
+}
+
+/**
+ * Host-provided rate limiter (`rateLimit` plugin option). Return `true` to allow the
+ * request, `false` to reject it with a 429, or `undefined` to fall back to the plugin's
+ * in-memory limiter for that bucket. A thrown error also falls back.
+ *
+ * The in-memory limiter is per process, so on Workers every isolate counts on its own;
+ * backing this with Workers Rate Limiting bindings gives one count per Cloudflare location.
+ */
+export type SeoRateLimit = (args: {
+  bucket: SeoRateLimitBucket
+  key: string
+}) => boolean | undefined | Promise<boolean | undefined>
+
+export interface BucketRateLimiter {
+  /** Resolves true when the request is allowed. */
+  check(key: string): Promise<boolean>
+}
+
+/** A bucket's limiter: the host's `rateLimit` when it answers, the in-memory one otherwise. */
+export function createBucketRateLimiter(bucket: SeoRateLimitBucket, host?: SeoRateLimit): BucketRateLimiter {
+  const { limit, periodSeconds } = SEO_RATE_LIMITS[bucket]
+  const local = createRateLimiter(limit, periodSeconds * 1000)
+  let warnedHostFailure = false
+  return {
+    async check(key) {
+      if (host) {
+        try {
+          const allowed = await host({ bucket, key })
+          if (typeof allowed === 'boolean') return allowed
+        } catch (e) {
+          // Fall through to the in-memory limiter: a broken binding must not open the gate.
+          // Say so once per bucket, or a misconfigured binding would go unnoticed.
+          if (!warnedHostFailure) {
+            warnedHostFailure = true
+            console.warn(
+              `[seo-analyzer] rateLimit failed for bucket "${bucket}", using the in-memory limiter: ${e instanceof Error ? e.message : String(e)}`,
+            )
+          }
+        }
+      }
+      return local.check(key)
+    },
+  }
+}
+
 /**
  * Extract client IP from a Payload request.
  * Prefers Cloudflare's `cf-connecting-ip` (set by the edge, not spoofable by the

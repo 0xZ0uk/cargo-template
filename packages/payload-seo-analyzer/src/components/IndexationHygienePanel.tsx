@@ -25,7 +25,7 @@ interface DuplicatedBlock {
   groups: Array<{ canonical: string; count: number; docs: DocRef[] }>
 }
 interface HygieneResponse {
-  summary?: { totalDocs?: number; totalFlagged?: number; overallSeverity?: Severity }
+  summary?: { totalDocs?: number; totalFlagged?: number; overallSeverity?: Severity; capped?: boolean; maxDocs?: number }
   hygiene?: {
     totalDocs: number
     overallSeverity: Severity
@@ -47,6 +47,7 @@ const S = {
     clean: 'Indexation saine — aucun problème détecté.',
     refresh: 'Rafraîchir',
     docs: 'documents analysés',
+    capped: (n: number) => `limité aux ${n} premiers documents (SEO_AUDIT_MAX_DOCS)`,
     noindex: 'En noindex',
     massNoindex: 'noindex de masse',
     dupCanonical: 'Canonical dupliqués',
@@ -65,6 +66,7 @@ const S = {
     clean: 'Healthy indexation — no issues found.',
     refresh: 'Refresh',
     docs: 'documents analyzed',
+    capped: (n: number) => `capped at the first ${n} documents (SEO_AUDIT_MAX_DOCS)`,
     noindex: 'Noindexed',
     massNoindex: 'mass noindex',
     dupCanonical: 'Duplicated canonicals',
@@ -91,11 +93,15 @@ export function IndexationHygienePanel({ locale }: { locale: 'fr' | 'en' }) {
   const [unavailable, setUnavailable] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
+  // The endpoint caches the scan; Refresh asks for a rescan (honoured for SEO admins only).
+  const load = useCallback(async (force = false) => {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch(seoApi('/indexation-audit'), { credentials: 'include', cache: 'no-store' })
+      const res = await fetch(seoApi(force ? '/indexation-audit?nocache=1' : '/indexation-audit'), {
+        credentials: 'include',
+        cache: 'no-store',
+      })
       if (res.status === 404 || res.status === 403) {
         setUnavailable(true)
         return
@@ -154,7 +160,7 @@ export function IndexationHygienePanel({ locale }: { locale: 'fr' | 'en' }) {
         <>
           {h && <TonePill tone={sevTone(h.overallSeverity)}>{sevLabel(h.overallSeverity)}</TonePill>}
           {!unavailable && (
-            <Button buttonStyle="secondary" icon={<RefreshIcon />} margin={false} onClick={() => void load()} size="medium">
+            <Button buttonStyle="secondary" icon={<RefreshIcon />} margin={false} onClick={() => void load(true)} size="medium">
               {s.refresh}
             </Button>
           )}
@@ -182,6 +188,7 @@ export function IndexationHygienePanel({ locale }: { locale: 'fr' | 'en' }) {
           </Grid>
           <p className="seo-text seo-text--small seo-text--secondary">
             {h.totalDocs} {s.docs}
+            {data?.summary?.capped ? ` · ${s.capped(data.summary.maxDocs ?? h.totalDocs)}` : ''}
             {h.noindex?.massNoindex ? ` · ${s.massNoindex} (${Math.round((h.noindex.pct ?? 0) * 100)}%)` : ''}
           </p>
 
