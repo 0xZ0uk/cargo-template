@@ -11,8 +11,8 @@
     {
       "binding": "D1",
       "database_name": "cargo-template",
-      // Replace with the id printed by `wrangler d1 create cargo-template`
-      "database_id": "DATABASE_ID",
+      // The template's own database. Replace it with yours (see README > Deployment).
+      "database_id": "29e40af9-e230-4c28-a622-c337ca02fbf4",
       // Lets `pnpm migrate:remote` reach the real database. Local dev and `pnpm preview`
       // opt out of remote bindings, so they keep using the local D1 in `.wrangler/state`.
       "remote": true,

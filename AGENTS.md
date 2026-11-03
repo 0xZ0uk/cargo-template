@@ -9,6 +9,7 @@ pnpm + Turborepo workspace. Run commands from the repo root.
 - `apps/web` (`@cargo/web`): the Payload + TanStack Start app on Cloudflare Workers. App scripts run as `pnpm web <script>` from the root.
 - `packages/*` (`@cargo/*`): in-house Payload plugins, built with tsup and consumed by the app as `workspace:*`. The SEO analyzer's admin UI must follow `packages/payload-seo-analyzer/src/ui/README.md`.
 - `payload`, `@payloadcms/*`, React and TypeScript versions come from the catalog in `pnpm-workspace.yaml` (`"catalog:"`). Change them there, never per package: two copies of `payload` / `@payloadcms/ui` break the admin.
+- `payload` is patched (`patches/`, `patchedDependencies` in `pnpm-workspace.yaml`) so password hashes use at most 100,000 PBKDF2 iterations, the Workers limit; upstream uses 600,000 and admin login fails on a deployed Worker. When bumping `payload`, port the patch to the new version (`pnpm patch payload@<version>`) unless upstream has fixed it.
 
 ## Cloudflare D1 / R2
 

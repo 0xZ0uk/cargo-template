@@ -37,7 +37,12 @@ pnpm wrangler r2 bucket create cargo-template-media
 
 Put the production secret in `.env.production.local` (`PAYLOAD_SECRET=...`), or set `PAYLOAD_SECRET` in your CI environment. If you're migrating an existing Worker, reuse its current value; a new value logs every user out.
 
-Copy the `database_id` printed by `d1 create` into [`wrangler.jsonc`](./wrangler.jsonc). If you rename the Worker, database or bucket, update the names there too, then run `pnpm cf-typegen`.
+> [!IMPORTANT]
+> [`wrangler.jsonc`](./wrangler.jsonc) ships with the `database_id` of the template's own D1 database, which your account can't reach. **Replace it with the `database_id` printed by `d1 create`** before you run `pnpm deploy`, or the migrations and the deploy fail.
+
+If you rename the Worker, database or bucket, update the names in `wrangler.jsonc` too, then run `pnpm cf-typegen`.
+
+Wrangler stores the local D1 database under `.wrangler/state` by `database_id`, so changing the id gives `pnpm dev` a new, empty local database. To keep your local data, change the id before you start developing. Otherwise, copy the old `.sqlite` file in `.wrangler/state/v3/d1/miniflare-D1DatabaseObject/` to the new file name.
 
 Whenever the Payload schema changes, create a migration and commit it:
 
@@ -138,6 +143,7 @@ In development you can skip auth with `http://localhost:3000/api/mcp?overrideAcc
 ### Current limitations
 
 - No image resizing or cropping on Workers (no `sharp`).
+- Payload is patched (`patches/` at the repo root) to hash passwords with 100,000 PBKDF2 iterations instead of 600,000, because deployed Workers reject anything higher. Without the patch, every admin login fails as "incorrect password" on a deployed Worker, even though it works in `pnpm dev` and `pnpm preview`. A hash made by unpatched Payload only verifies under Node. To fix one, set that password again through the Local API in a `pnpm web payload run` script with `PAYLOAD_MIGRATE_REMOTE=true`, which writes a new 100k hash to the remote database.
 - GraphQL on Workers isn't guaranteed to work yet; the REST and Local APIs are.
 
 ## Questions
