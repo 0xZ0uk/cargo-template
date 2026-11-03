@@ -1,3 +1,4 @@
+import { seoAnalyzerPlugin } from '@cargo/payload-seo-analyzer'
 import { sqliteD1Adapter } from '@payloadcms/db-d1-sqlite'
 import { mcpPlugin } from '@payloadcms/plugin-mcp'
 import { seoPlugin } from '@payloadcms/plugin-seo'
@@ -140,6 +141,36 @@ export default buildConfig({
     seoPlugin({
       generateTitle,
       generateURL,
+    }),
+    // Content analysis on top of the plugin-seo fields: a score sidebar on Pages, a
+    // site-wide dashboard at /admin/seo, redirects, and sitemap/robots endpoints under
+    // /api/seo-plugin. Features that keep growing tables in D1 (404 logs, score/rank
+    // history, performance imports) or need background timers stay off; whole-site
+    // scans (link graph, keywords, cannibalization…) stay off until they're tested
+    // against Workers CPU limits.
+    seoAnalyzerPlugin({
+      collections: ['pages'],
+      collectionRoutes: { pages: '' },
+      locale: 'en',
+      siteName,
+      siteUrl: process.env.SITE_URL || cloudflare.SITE_URL || undefined,
+      uploadsCollection: 'media',
+      features: {
+        aiFeatures: false,
+        alerts: false,
+        cannibalization: false,
+        duplicateContent: false,
+        externalLinks: false,
+        gscApi: false,
+        indexNow: false,
+        keywords: false,
+        linkGraph: false,
+        performance: false,
+        schemaBuilder: false,
+        scoreHistory: false,
+        seoLogs: false,
+        warmCache: false,
+      },
     }),
     limitVersions({ max: 20 }),
   ],

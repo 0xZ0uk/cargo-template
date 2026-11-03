@@ -31,13 +31,22 @@ export type CoercedEnvSchema = {
    */
   PAYLOAD_LOG_LEVEL?: "fatal" | "error" | "warn" | "info" | "debug" | "trace";
   
+  /**
+   * **SITE_URL**  
+   * Public origin of the site, without a trailing slash (e.g. https://example.com). The SEO  
+   * analyzer uses it for sitemap.xml, robots.txt, canonical and JSON-LD URLs. Leave empty in  
+   * dev; set it in `.env.production`.  
+   * ![icon](data:image/svg+xml;utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2220%22%20height%3D%2220%22%20viewBox%3D%220%200%2032%2032%22%3E%3Cpath%20fill%3D%22%23808080%22%20d%3D%22M24%2021V9h-2v14h8v-2zm-4-6v-4c0-1.103-.897-2-2-2h-6v14h2v-6h1.48l2.335%206h2.145l-2.333-6H18c1.103%200%202-.897%202-2m-6-4h4v4h-4zM8%2023H4c-1.103%200-2-.897-2-2V9h2v12h4V9h2v12c0%201.103-.897%202-2%202%22%2F%3E%3C%2Fsvg%3E)   
+   */
+  SITE_URL?: string;
+  
 };
 
-type _CoercedEnvSchema_f40456c3 = CoercedEnvSchema;
+type _CoercedEnvSchema_c7127ded = CoercedEnvSchema;
 
 declare module 'varlock/env' {
-  export interface TypedEnvSchema extends Readonly<_CoercedEnvSchema_f40456c3> {}
-  export interface PublicTypedEnvSchema extends Readonly<Pick<_CoercedEnvSchema_f40456c3, 'APP_ENV' | 'PAYLOAD_LOG_LEVEL'>> {}
+  export interface TypedEnvSchema extends Readonly<_CoercedEnvSchema_c7127ded> {}
+  export interface PublicTypedEnvSchema extends Readonly<Pick<_CoercedEnvSchema_c7127ded, 'APP_ENV' | 'PAYLOAD_LOG_LEVEL' | 'SITE_URL'>> {}
 }
 
 
@@ -47,11 +56,11 @@ export type EnvSchemaAsStrings = {
       : (NonNullable<CoercedEnvSchema[Property]> extends boolean ? ('true' | 'false') : string)
 };
 
-type _EnvSchemaAsStrings_f40456c3 = EnvSchemaAsStrings;
+type _EnvSchemaAsStrings_c7127ded = EnvSchemaAsStrings;
 declare global {
 
   // add types for global import.meta.env
-  interface ImportMetaEnv extends _EnvSchemaAsStrings_f40456c3 {}
+  interface ImportMetaEnv extends _EnvSchemaAsStrings_c7127ded {}
   interface ImportMeta {
     readonly env: ImportMetaEnv;
   }

@@ -119,6 +119,8 @@ export interface Config {
     media: Media;
     folders: Folder;
     tags: Tag;
+    'seo-settings': SeoSetting;
+    'seo-redirects': SeoRedirect;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -132,6 +134,8 @@ export interface Config {
     media: MediaSelect<false> | MediaSelect<true>;
     folders: FoldersSelect<false> | FoldersSelect<true>;
     tags: TagsSelect<false> | TagsSelect<true>;
+    'seo-settings': SeoSettingsSelect<false> | SeoSettingsSelect<true>;
+    'seo-redirects': SeoRedirectsSelect<false> | SeoRedirectsSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -224,6 +228,23 @@ export interface Page {
   };
   publishedAt?: string | null;
   slug: string;
+  /**
+   * Cornerstone content is the most important content on your site and should be well linked.
+   */
+  isCornerstone?: boolean | null;
+  /**
+   * Target keyword for SEO analysis
+   */
+  focusKeyword?: string | null;
+  /**
+   * Secondary keywords (in addition to the primary keyword)
+   */
+  focusKeywords?:
+    | {
+        keyword: string;
+        id?: string | null;
+      }[]
+    | null;
   createdBy?: {
     relationTo: 'users';
     value: number | User;
@@ -427,6 +448,165 @@ export interface MediaBlock {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "seo-settings".
+ */
+export interface SeoSetting {
+  id: number;
+  /**
+   * Used for the brand check in titles
+   */
+  siteName?: string | null;
+  /**
+   * Pages excluded from the SEO audit (e.g. legal-notice, terms)
+   */
+  ignoredSlugs?:
+    | {
+        slug: string;
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * Rule groups to ignore during analysis
+   */
+  disabledRules?:
+    | (
+        | 'title'
+        | 'meta-description'
+        | 'url'
+        | 'headings'
+        | 'content'
+        | 'images'
+        | 'linking'
+        | 'social'
+        | 'schema'
+        | 'readability'
+        | 'quality'
+        | 'secondary-keywords'
+        | 'cornerstone'
+        | 'freshness'
+        | 'technical'
+        | 'accessibility'
+        | 'ecommerce'
+      )[]
+    | null;
+  /**
+   * Leave empty to use the default values
+   */
+  thresholds?: {
+    /**
+     * Default: 30
+     */
+    titleLengthMin?: number | null;
+    /**
+     * Default: 60
+     */
+    titleLengthMax?: number | null;
+    /**
+     * Default: 120
+     */
+    metaDescLengthMin?: number | null;
+    /**
+     * Default: 160
+     */
+    metaDescLengthMax?: number | null;
+    /**
+     * Default: 300
+     */
+    minWordsGeneric?: number | null;
+    /**
+     * Default: 800
+     */
+    minWordsPost?: number | null;
+    /**
+     * Default: 0.5
+     */
+    keywordDensityMin?: number | null;
+    /**
+     * Default: 3
+     */
+    keywordDensityMax?: number | null;
+    /**
+     * Default: 40
+     */
+    fleschScorePass?: number | null;
+    /**
+     * Default: 75
+     */
+    slugMaxLength?: number | null;
+  };
+  sitemap?: {
+    /**
+     * Pages to exclude from sitemap generation
+     */
+    excludedSlugs?:
+      | {
+          slug: string;
+          id?: string | null;
+        }[]
+      | null;
+    defaultChangefreq?: ('daily' | 'weekly' | 'monthly' | 'yearly') | null;
+    /**
+     * Value between 0 and 1 (default: 0.5)
+     */
+    defaultPriority?: number | null;
+    /**
+     * Set the priority for specific slug patterns
+     */
+    priorityOverrides?:
+      | {
+          /**
+           * Pattern (e.g. home, blog/*, services/*)
+           */
+          slugPattern: string;
+          priority: number;
+          changefreq?: ('daily' | 'weekly' | 'monthly' | 'yearly') | null;
+          id?: string | null;
+        }[]
+      | null;
+  };
+  /**
+   * Additional rules to include in robots.txt (one per line). Example: Disallow: /private/
+   */
+  robotsCustomRules?: string | null;
+  breadcrumb?: {
+    enabled?: boolean | null;
+    homeLabel?: string | null;
+    separator?: ('>' | '/' | '»' | '→') | null;
+    showOnHome?: boolean | null;
+  };
+  createdBy?: {
+    relationTo: 'users';
+    value: number | User;
+  } | null;
+  updatedBy?: {
+    relationTo: 'users';
+    value: number | User;
+  } | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "seo-redirects".
+ */
+export interface SeoRedirect {
+  id: number;
+  from: string;
+  to: string;
+  type?: ('301' | '302') | null;
+  createdBy?: {
+    relationTo: 'users';
+    value: number | User;
+  } | null;
+  updatedBy?: {
+    relationTo: 'users';
+    value: number | User;
+  } | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
@@ -468,6 +648,14 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'tags';
         value: number | Tag;
+      } | null)
+    | ({
+        relationTo: 'seo-settings';
+        value: number | SeoSetting;
+      } | null)
+    | ({
+        relationTo: 'seo-redirects';
+        value: number | SeoRedirect;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -577,6 +765,14 @@ export interface PagesSelect<T extends boolean = true> {
       };
   publishedAt?: T;
   slug?: T;
+  isCornerstone?: T;
+  focusKeyword?: T;
+  focusKeywords?:
+    | T
+    | {
+        keyword?: T;
+        id?: T;
+      };
   createdBy?: T;
   updatedBy?: T;
   updatedAt?: T;
@@ -732,6 +928,80 @@ export interface TagsSelect<T extends boolean = true> {
   createdAt?: T;
   _h_slugPath?: T;
   _h_titlePath?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "seo-settings_select".
+ */
+export interface SeoSettingsSelect<T extends boolean = true> {
+  siteName?: T;
+  ignoredSlugs?:
+    | T
+    | {
+        slug?: T;
+        id?: T;
+      };
+  disabledRules?: T;
+  thresholds?:
+    | T
+    | {
+        titleLengthMin?: T;
+        titleLengthMax?: T;
+        metaDescLengthMin?: T;
+        metaDescLengthMax?: T;
+        minWordsGeneric?: T;
+        minWordsPost?: T;
+        keywordDensityMin?: T;
+        keywordDensityMax?: T;
+        fleschScorePass?: T;
+        slugMaxLength?: T;
+      };
+  sitemap?:
+    | T
+    | {
+        excludedSlugs?:
+          | T
+          | {
+              slug?: T;
+              id?: T;
+            };
+        defaultChangefreq?: T;
+        defaultPriority?: T;
+        priorityOverrides?:
+          | T
+          | {
+              slugPattern?: T;
+              priority?: T;
+              changefreq?: T;
+              id?: T;
+            };
+      };
+  robotsCustomRules?: T;
+  breadcrumb?:
+    | T
+    | {
+        enabled?: T;
+        homeLabel?: T;
+        separator?: T;
+        showOnHome?: T;
+      };
+  createdBy?: T;
+  updatedBy?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "seo-redirects_select".
+ */
+export interface SeoRedirectsSelect<T extends boolean = true> {
+  from?: T;
+  to?: T;
+  type?: T;
+  createdBy?: T;
+  updatedBy?: T;
+  updatedAt?: T;
+  createdAt?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -930,7 +1200,7 @@ export interface CollectionsWidget {
 export interface CollectionQueryWidget {
   data?: {
     title?: string | null;
-    relatedCollection: 'pages' | 'users' | 'media' | 'folders' | 'tags';
+    relatedCollection: 'pages' | 'users' | 'media' | 'folders' | 'tags' | 'seo-settings' | 'seo-redirects';
     where?:
       | {
           [k: string]: unknown;
@@ -952,7 +1222,8 @@ export interface CollectionQueryWidget {
  */
 export interface ActivityWidget {
   data?: {
-    excludedCollections?: ('pages' | 'users' | 'media' | 'folders' | 'tags')[] | null;
+    excludedCollections?:
+      ('pages' | 'users' | 'media' | 'folders' | 'tags' | 'seo-settings' | 'seo-redirects')[] | null;
   };
   width: 'small' | 'medium' | 'large' | 'x-large' | 'full';
 }
