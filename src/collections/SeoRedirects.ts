@@ -20,6 +20,8 @@ export function createSeoRedirectsCollection(
     versions: false,
     admin: {
       custom: { navHidden: true },
+      // Managed through the plugin's own views; Payload 4 keeps the routes and API.
+      group: false,
     },
     // `read` stays open to any authenticated user: the admin views and the
     // plugin endpoints both surface this data to editors. Writes are restricted

@@ -6,7 +6,8 @@ import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 // @payloadcms/ui is a peer dependency whose entry point imports CSS, which the
 // node/jsdom loader cannot parse. The meta fields only need a field value, the
 // document they belong to, and the two i18n hooks behind useDashboardT.
-vi.mock('@payloadcms/ui', () => ({
+vi.mock('@payloadcms/ui', async () => ({
+  ...(await import('./helpers/payloadUiStub.js')).payloadUiStub,
   useField: () => ({ value: '', setValue: () => {} }),
   useDocumentInfo: () => ({ collectionSlug: 'pages', id: '1' }),
   useTranslation: () => ({ i18n: { language: 'en' } }),

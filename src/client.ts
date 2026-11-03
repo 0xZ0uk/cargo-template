@@ -1,5 +1,9 @@
 // Client-side exports — React components for Payload admin UI
 // "use client" is prepended by tsup onSuccess (see tsup.config.ts)
+
+// Admin styles (Payload 4 tokens only). esbuild extracts this into dist/client.css;
+// tsup's onSuccess re-adds the import so host bundlers load it with the components.
+import './ui/styles.css'
 // Error boundary — exported so the server `views` entry can mount it across the
 // RSC boundary (see views/ErrorBoundaryClient.tsx)
 export { SeoErrorBoundary } from './components/ErrorBoundary.js'

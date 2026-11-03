@@ -11,7 +11,8 @@ let uiLanguage: string | undefined
 // useConfig() has no default context: undefined outside the admin provider tree.
 let configContext: { config: { admin?: { custom?: Record<string, unknown> } } } | undefined
 
-vi.mock('@payloadcms/ui', () => ({
+vi.mock('@payloadcms/ui', async () => ({
+  ...(await import('./helpers/payloadUiStub.js')).payloadUiStub,
   useLocale: () => contentLocale,
   useTranslation: () => ({ i18n: { language: uiLanguage } }),
   useConfig: () => configContext,

@@ -21,6 +21,8 @@ export function createSeoScoreHistoryCollection(): CollectionConfig {
     versions: false,
     admin: {
       custom: { navHidden: true },
+      // Managed through the plugin's own views; Payload 4 keeps the routes and API.
+      group: false,
     },
     access: {
       // See SeoPerformance: `!!req.user` also accepted sessions from other auth

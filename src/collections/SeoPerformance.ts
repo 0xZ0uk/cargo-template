@@ -22,6 +22,8 @@ export function createSeoPerformanceCollection(): CollectionConfig {
     versions: false,
     admin: {
       custom: { navHidden: true },
+      // Managed through the plugin's own views; Payload 4 keeps the routes and API.
+      group: false,
     },
     access: {
       // `read` stays open to any admin-panel user (the SEO views surface this

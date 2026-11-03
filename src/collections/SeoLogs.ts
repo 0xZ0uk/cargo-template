@@ -20,7 +20,8 @@ export function createSeoLogsCollection(): CollectionConfig {
     },
     admin: {
       custom: { navHidden: true },
-      group: 'SEO',
+      // Managed through the plugin's own views; Payload 4 keeps the routes and API.
+      group: false,
     },
     access: {
       // `read` stays open to any admin-panel user (the SEO views surface 404 logs

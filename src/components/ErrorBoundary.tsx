@@ -20,6 +20,7 @@
  */
 
 import React from 'react'
+import { Banner, Button } from '@payloadcms/ui'
 
 export interface SeoErrorBoundaryLabels {
   /** Heading shown in the default notice. */
@@ -70,29 +71,6 @@ function signature(keys: unknown[] | undefined): string {
   return out
 }
 
-const noticeStyle: React.CSSProperties = {
-  padding: '16px 20px',
-  borderRadius: 6,
-  border: '1px solid var(--theme-elevation-150)',
-  backgroundColor: 'var(--theme-elevation-50)',
-  color: 'var(--theme-elevation-800)',
-  fontFamily: 'var(--font-body, inherit)',
-  fontSize: 13,
-  lineHeight: 1.5,
-}
-
-const retryStyle: React.CSSProperties = {
-  marginTop: 12,
-  padding: '6px 16px',
-  borderRadius: 4,
-  border: '1px solid var(--theme-elevation-250)',
-  backgroundColor: 'var(--theme-elevation-100)',
-  color: 'var(--theme-elevation-800)',
-  font: 'inherit',
-  fontWeight: 600,
-  cursor: 'pointer',
-}
-
 export class SeoErrorBoundary extends React.Component<
   SeoErrorBoundaryProps,
   SeoErrorBoundaryState
@@ -137,13 +115,15 @@ export class SeoErrorBoundary extends React.Component<
 
       const { title, retry } = this.props.labels || {}
       return (
-        <div role="alert" style={noticeStyle}>
-          <strong>{title || 'Something went wrong'}</strong>
-          <div>
-            <button type="button" onClick={this.handleRetry} style={retryStyle}>
-              {retry || 'Retry'}
-            </button>
-          </div>
+        <div role="alert">
+          <Banner type="danger">
+            <div className="seo-row seo-row--between">
+              <strong>{title || 'Something went wrong'}</strong>
+              <Button buttonStyle="secondary" margin={false} onClick={this.handleRetry} size="medium">
+                {retry || 'Retry'}
+              </Button>
+            </div>
+          </Banner>
         </div>
       )
     }

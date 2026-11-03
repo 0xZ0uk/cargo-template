@@ -7,7 +7,8 @@ import { render, screen, cleanup } from '@testing-library/react'
 // undefined here, as for a component mounted outside the plugin, they probe the
 // endpoint and treat a 404 as "feature off".
 let features: Record<string, boolean> | undefined
-vi.mock('@payloadcms/ui', () => ({
+vi.mock('@payloadcms/ui', async () => ({
+  ...(await import('./helpers/payloadUiStub.js')).payloadUiStub,
   useConfig: () => ({ config: { admin: { custom: { seoAnalyzer: { features } } } } }),
   useLocale: () => ({}),
   useTranslation: () => ({ i18n: { language: 'fr' } }),

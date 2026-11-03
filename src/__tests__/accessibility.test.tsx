@@ -8,7 +8,8 @@ import { render, screen, cleanup, fireEvent, act } from '@testing-library/react'
 // reached from here (through useDashboardT): the first has a default `i18n`,
 // the second no default context at all — so these stubs match their behaviour
 // outside a provider rather than replacing it.
-vi.mock('@payloadcms/ui', () => ({
+vi.mock('@payloadcms/ui', async () => ({
+  ...(await import('./helpers/payloadUiStub.js')).payloadUiStub,
   useTranslation: () => ({ i18n: { language: 'fr' } }),
   useConfig: () => undefined,
 }))

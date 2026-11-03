@@ -2,6 +2,15 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import React from 'react'
 import { render, screen, cleanup, fireEvent } from '@testing-library/react'
+
+// The notice renders Payload's Banner and Button; the real package imports CSS that
+// jsdom cannot parse.
+vi.mock('@payloadcms/ui', async () => ({
+  ...(await import('./helpers/payloadUiStub.js')).payloadUiStub,
+  useTranslation: () => ({ i18n: { language: 'en' } }),
+  useConfig: () => undefined,
+}))
+
 import { SeoErrorBoundary } from '../components/ErrorBoundary.js'
 
 // Every test here renders a component that throws on purpose. React logs the
@@ -195,14 +204,15 @@ describe('SeoErrorBoundary — the notice itself', () => {
     expect(button.getAttribute('type')).toBe('button')
   })
 
-  it('styles itself from --theme-* tokens, not hard-coded hex', () => {
+  it('renders through Payload UI (danger Banner + Button), not hard-coded colors', () => {
     const { container } = render(
       <SeoErrorBoundary viewName="Test">
         <Boom />
       </SeoErrorBoundary>,
     )
     const html = container.innerHTML
-    expect(html).toContain('--theme-elevation')
-    expect(html).not.toMatch(/#dc2626|#2563eb|#6b7280/)
+    expect(container.querySelector('.banner--type-danger')).toBeTruthy()
+    expect(container.querySelector('button.btn')).toBeTruthy()
+    expect(html).not.toMatch(/#[0-9a-f]{6}\b|#[0-9a-f]{3}\b|--theme-elevation/i)
   })
 })

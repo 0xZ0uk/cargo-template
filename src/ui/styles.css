@@ -1,0 +1,675 @@
+/*
+ * SEO analyzer admin styles.
+ *
+ * Built only on Payload 4's design tokens (--color-*, --text-*, --spacer-*, --radius-*,
+ * --field-*), so every surface follows the admin theme (light/dark) and Payload's own
+ * updates. No hex colors here: if a token is missing, add a semantic one below rather
+ * than hard-coding a value.
+ *
+ * Class names are BEM with a `seo-` prefix. Unlayered on purpose: Payload's styles live
+ * in `@layer payload-default`, so these win only on the plugin's own classes.
+ */
+
+/* ---------- Layout ------------------------------------------------------- */
+
+.seo-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacer-4);
+  padding-inline: var(--gutter-h);
+  padding-bottom: var(--spacing-view-bottom, var(--spacer-6));
+}
+
+/* A view header reuses Payload's list-header markup (see ViewHeader); the plugin only
+   adds a description line under the title. */
+.seo-view-header__description {
+  margin: var(--spacer-1) 0 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-body-medium-font-size);
+  line-height: var(--text-body-medium-line-height);
+}
+
+.seo-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacer-3);
+}
+
+.seo-stack--tight {
+  gap: var(--spacer-2);
+}
+
+.seo-stack--loose {
+  gap: var(--spacer-4);
+}
+
+.seo-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacer-2);
+}
+
+.seo-row--between {
+  justify-content: space-between;
+}
+
+.seo-row--nowrap {
+  flex-wrap: nowrap;
+}
+
+.seo-grid {
+  display: grid;
+  gap: var(--spacer-3);
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 12rem), 1fr));
+}
+
+.seo-grid--wide {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
+}
+
+.seo-spacer {
+  flex: 1;
+}
+
+/* ---------- Typography ---------------------------------------------------- */
+
+.seo-heading {
+  margin: 0;
+  color: var(--color-text);
+  font-family: var(--text-heading-small-font-family);
+  font-size: var(--text-heading-small-font-size);
+  font-weight: var(--text-heading-small-font-weight);
+  line-height: var(--text-heading-small-line-height);
+  letter-spacing: var(--text-heading-small-letter-spacing);
+}
+
+.seo-heading--medium {
+  font-family: var(--text-heading-medium-font-family);
+  font-size: var(--text-heading-medium-font-size);
+  font-weight: var(--text-heading-medium-font-weight);
+  line-height: var(--text-heading-medium-line-height);
+  letter-spacing: var(--text-heading-medium-letter-spacing);
+}
+
+.seo-text {
+  margin: 0;
+  color: var(--color-text);
+  font-size: var(--text-body-medium-font-size);
+  font-weight: var(--text-body-medium-font-weight);
+  line-height: var(--text-body-medium-line-height);
+}
+
+.seo-text--small {
+  font-size: var(--text-body-small-font-size);
+  line-height: var(--text-body-small-line-height);
+}
+
+.seo-text--strong {
+  font-weight: var(--text-body-medium-strong-font-weight);
+}
+
+.seo-text--secondary {
+  color: var(--color-text-secondary);
+}
+
+.seo-text--tertiary {
+  color: var(--color-text-tertiary);
+}
+
+.seo-text--success {
+  color: var(--color-text-success);
+}
+
+.seo-text--warning {
+  color: var(--color-text-warning);
+}
+
+.seo-text--danger {
+  color: var(--color-text-danger);
+}
+
+.seo-text--brand {
+  color: var(--color-text-brand);
+}
+
+.seo-mono {
+  font-family: var(--text-mono-family);
+  font-size: var(--text-mono-small-font-size);
+  line-height: var(--text-mono-small-line-height);
+  letter-spacing: var(--text-mono-small-letter-spacing);
+}
+
+.seo-truncate {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.seo-link {
+  color: inherit;
+  font-weight: var(--text-body-medium-bold-font-weight);
+  text-decoration: underline;
+  text-decoration-color: var(--color-border);
+  text-underline-offset: 2px;
+}
+
+.seo-link:hover {
+  text-decoration-color: var(--color-text);
+}
+
+/* ---------- Surfaces ------------------------------------------------------ */
+
+.seo-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--color-bg);
+  border: var(--stroke-width-small) solid var(--color-border);
+  border-radius: var(--radius-medium);
+}
+
+.seo-card--muted {
+  background: var(--color-bg-secondary);
+}
+
+.seo-card__header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacer-2);
+  min-height: calc(var(--spacer-6) + var(--spacer-1));
+  padding: var(--spacer-2) var(--spacer-3);
+  border-bottom: var(--stroke-width-small) solid var(--color-border);
+}
+
+.seo-card__title {
+  flex: 1;
+  margin: 0;
+  color: var(--color-text);
+  font-size: var(--text-body-medium-bold-font-size);
+  font-weight: var(--text-body-medium-bold-font-weight);
+  line-height: var(--text-body-medium-bold-line-height);
+}
+
+.seo-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacer-3);
+  padding: var(--spacer-3);
+}
+
+.seo-card__body--flush {
+  padding: 0;
+}
+
+.seo-card__footer {
+  display: flex;
+  align-items: center;
+  gap: var(--spacer-2);
+  padding: var(--spacer-2) var(--spacer-3);
+  border-top: var(--stroke-width-small) solid var(--color-border);
+}
+
+/* Stat tile: a small labelled number. Tone colors only the value. */
+.seo-stat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacer-1);
+  padding: var(--spacer-3);
+  background: var(--color-bg);
+  border: var(--stroke-width-small) solid var(--color-border);
+  border-radius: var(--radius-medium);
+}
+
+.seo-stat__label {
+  color: var(--color-text-secondary);
+  font-size: var(--text-body-small-font-size);
+  line-height: var(--text-body-small-line-height);
+}
+
+.seo-stat__value {
+  color: var(--color-text);
+  font-family: var(--text-heading-medium-font-family);
+  font-size: var(--text-heading-medium-font-size);
+  font-weight: var(--text-heading-medium-font-weight);
+  line-height: var(--text-heading-medium-line-height);
+  font-variant-numeric: tabular-nums;
+}
+
+.seo-stat__hint {
+  color: var(--color-text-tertiary);
+  font-size: var(--text-body-small-font-size);
+  line-height: var(--text-body-small-line-height);
+}
+
+.seo-stat--success .seo-stat__value {
+  color: var(--color-text-success);
+}
+
+.seo-stat--warning .seo-stat__value {
+  color: var(--color-text-warning);
+}
+
+.seo-stat--danger .seo-stat__value {
+  color: var(--color-text-danger);
+}
+
+.seo-stat--brand .seo-stat__value {
+  color: var(--color-text-brand);
+}
+
+/* Inset callout inside a card (tips, code samples, previews). */
+.seo-inset {
+  padding: var(--spacer-2) var(--spacer-3);
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-small);
+}
+
+.seo-divider {
+  height: 0;
+  margin: 0;
+  border: 0;
+  border-top: var(--stroke-width-small) solid var(--color-border);
+}
+
+/* ---------- Data display -------------------------------------------------- */
+
+/* Plain <table> inside Payload's `.table` wrapper picks up the list-view table styles.
+   The modifier adds the condensed border used for tables that sit inside a view. */
+.seo-table {
+  border: var(--stroke-width-small) solid var(--color-border);
+  border-radius: var(--radius-medium);
+}
+
+.seo-table--bare {
+  border: 0;
+  border-radius: 0;
+}
+
+.seo-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.seo-table tbody tr + tr td {
+  border-top: var(--stroke-width-small) solid var(--color-border);
+}
+
+.seo-table th,
+.seo-table td {
+  min-width: 0;
+}
+
+.seo-table th.seo-table__num,
+.seo-table td.seo-table__num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.seo-table th button {
+  all: unset;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacer-1);
+}
+
+.seo-table th button:focus-visible {
+  outline: var(--stroke-width-medium) solid var(--color-border-selected);
+  outline-offset: 2px;
+}
+
+/* Horizontal meter (scores, ratios, coverage). */
+.seo-meter {
+  position: relative;
+  height: var(--spacer-1-5);
+  min-width: var(--spacer-6);
+  overflow: hidden;
+  background: var(--color-bg-tertiary);
+  border-radius: var(--radius-full);
+}
+
+.seo-meter__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--color-icon-secondary);
+  border-radius: inherit;
+}
+
+.seo-meter--success .seo-meter__fill {
+  background: var(--color-icon-success);
+}
+
+.seo-meter--warning .seo-meter__fill {
+  background: var(--color-icon-warning);
+}
+
+.seo-meter--danger .seo-meter__fill {
+  background: var(--color-icon-danger);
+}
+
+.seo-meter--brand .seo-meter__fill {
+  background: var(--color-icon-brand);
+}
+
+/* Circular score. Stroke colors come from tone classes. */
+.seo-score-ring {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.seo-score-ring svg {
+  transform: rotate(-90deg);
+}
+
+.seo-score-ring__track {
+  stroke: var(--color-bg-tertiary);
+}
+
+.seo-score-ring__value {
+  stroke: var(--color-icon-secondary);
+  transition: stroke-dashoffset 300ms ease;
+}
+
+.seo-score-ring--success .seo-score-ring__value {
+  stroke: var(--color-icon-success);
+}
+
+.seo-score-ring--warning .seo-score-ring__value {
+  stroke: var(--color-icon-warning);
+}
+
+.seo-score-ring--danger .seo-score-ring__value {
+  stroke: var(--color-icon-danger);
+}
+
+.seo-score-ring__label {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--color-text);
+  font-size: var(--text-body-large-bold-font-size, var(--text-body-medium-bold-font-size));
+  font-weight: var(--text-body-medium-bold-font-weight);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Check / suggestion list (analyzer results, audits). */
+.seo-checklist {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.seo-checklist__item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacer-2);
+  padding: var(--spacer-2) 0;
+  color: var(--color-text);
+  font-size: var(--text-body-small-font-size);
+  line-height: var(--text-body-small-line-height);
+}
+
+.seo-checklist__item + .seo-checklist__item {
+  border-top: var(--stroke-width-small) solid var(--color-border);
+}
+
+.seo-checklist__icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  width: var(--spacer-3);
+  height: var(--spacer-3);
+  margin-top: 1px;
+  color: var(--color-icon-secondary);
+}
+
+.seo-checklist__icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.seo-checklist__item--success .seo-checklist__icon {
+  color: var(--color-icon-success);
+}
+
+.seo-checklist__item--warning .seo-checklist__icon {
+  color: var(--color-icon-warning);
+}
+
+.seo-checklist__item--danger .seo-checklist__icon {
+  color: var(--color-icon-danger);
+}
+
+.seo-dot {
+  display: inline-block;
+  flex-shrink: 0;
+  width: var(--spacer-2);
+  height: var(--spacer-2);
+  background: var(--color-icon-secondary);
+  border-radius: var(--radius-full);
+}
+
+.seo-dot--success {
+  background: var(--color-icon-success);
+}
+
+.seo-dot--warning {
+  background: var(--color-icon-warning);
+}
+
+.seo-dot--danger {
+  background: var(--color-icon-danger);
+}
+
+.seo-dot--brand {
+  background: var(--color-icon-brand);
+}
+
+/* Empty / loading states. */
+.seo-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacer-2);
+  padding: var(--spacer-6) var(--spacer-3);
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+.seo-empty__title {
+  margin: 0;
+  color: var(--color-text);
+  font-size: var(--text-body-medium-bold-font-size);
+  font-weight: var(--text-body-medium-bold-font-weight);
+}
+
+.seo-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacer-2);
+  padding: var(--spacer-5) var(--spacer-3);
+  color: var(--color-text-secondary);
+}
+
+/* ---------- Form controls ------------------------------------------------- */
+/* For plain inputs that are not Payload form fields (filters, search, modal forms).
+   Mirrors Payload's field tokens so they sit next to Payload buttons and fields. */
+
+.seo-input,
+.seo-select,
+.seo-textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: var(--control-height, var(--spacer-5));
+  padding: 0 var(--field-padding-inline, var(--spacer-2-5));
+  color: var(--field-color-text);
+  background: var(--field-color-bg);
+  border: var(--stroke-width-small) solid var(--field-color-border);
+  border-radius: var(--field-border-radius, var(--radius-small));
+  font: inherit;
+  font-size: var(--text-body-medium-font-size);
+  line-height: var(--text-body-medium-line-height);
+  outline: none;
+  color-scheme: inherit;
+}
+
+.seo-textarea {
+  min-height: calc(var(--spacer-6) * 2);
+  padding-block: var(--spacer-2);
+  resize: vertical;
+}
+
+.seo-select {
+  appearance: auto;
+  padding-inline-end: var(--spacer-2);
+}
+
+.seo-input::placeholder,
+.seo-textarea::placeholder {
+  color: var(--field-color-placeholder);
+}
+
+.seo-input:hover:not(:focus, :disabled),
+.seo-select:hover:not(:focus, :disabled),
+.seo-textarea:hover:not(:focus, :disabled) {
+  border-color: var(--field-color-border-hover);
+}
+
+.seo-input:focus,
+.seo-select:focus,
+.seo-textarea:focus {
+  border-color: var(--field-color-border-focus);
+}
+
+.seo-input:disabled,
+.seo-select:disabled,
+.seo-textarea:disabled {
+  color: var(--field-color-text-disabled);
+  background: var(--field-color-bg-disabled);
+  border-color: var(--field-color-border-disabled);
+}
+
+.seo-input--inline,
+.seo-select--inline {
+  width: auto;
+}
+
+.seo-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacer-1);
+  min-width: 0;
+}
+
+.seo-field__control {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacer-1);
+  min-width: 0;
+}
+
+.seo-field__label {
+  color: var(--field-color-label);
+  font-size: var(--text-body-small-strong-font-size, var(--text-body-small-font-size));
+  font-weight: var(--text-body-small-strong-font-weight, var(--text-body-medium-bold-font-weight));
+  letter-spacing: var(--field-label-letter-spacing, normal);
+}
+
+.seo-field__description {
+  color: var(--field-color-description);
+  font-size: var(--text-body-small-font-size);
+  line-height: var(--text-body-small-line-height);
+}
+
+.seo-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacer-2);
+  color: var(--color-text);
+  font-size: var(--text-body-medium-font-size);
+  cursor: pointer;
+}
+
+.seo-checkbox input {
+  accent-color: var(--color-bg-brand);
+}
+
+/* ---------- Charts -------------------------------------------------------- */
+/* SVG charts color their marks with these classes (or the CHART_COLORS tokens) so lines,
+   grids and labels follow the theme. */
+
+.seo-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.seo-chart__grid {
+  stroke: var(--color-border);
+  stroke-width: 1;
+}
+
+.seo-chart__axis-label {
+  fill: var(--color-text-tertiary);
+  font-size: var(--text-body-small-font-size);
+}
+
+/* ---------- Editor sidebar ------------------------------------------------ */
+
+/* Sidebar fields stack with Payload's field spacing. */
+.seo-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacer-3);
+  margin-bottom: var(--spacing-field, var(--spacer-4));
+}
+
+/* Google result mock-up. Intentionally keeps Google's own light colors: it previews
+   what searchers see, not the admin theme. */
+.seo-serp {
+  padding: var(--spacer-3);
+  color: #202124;
+  background: #fff;
+  border: var(--stroke-width-small) solid var(--color-border);
+  border-radius: var(--radius-medium);
+  font-family: Arial, sans-serif;
+}
+
+.seo-serp__site {
+  color: #202124;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.seo-serp__url {
+  color: #4d5156;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.seo-serp__title {
+  margin: 2px 0 3px;
+  color: #1a0dab;
+  font-size: 20px;
+  line-height: 26px;
+}
+
+.seo-serp__description {
+  color: #4d5156;
+  font-size: 14px;
+  line-height: 22px;
+}
+
+@media (max-width: 768px) {
+  .seo-grid {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 9rem), 1fr));
+  }
+}

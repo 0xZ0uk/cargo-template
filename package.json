@@ -1,7 +1,7 @@
 {
   "name": "@0xz0uk/payload-seo-analyzer",
   "version": "5.0.0-beta.0",
-  "description": "Payload CMS 4 SEO plugin (fork of @consilioweb/payload-seo-analyzer) — 50+ checks, dashboard, Lexical JSON support, readability, i18n",
+  "description": "Payload CMS 4 SEO plugin (fork of @consilioweb/payload-seo-analyzer) \u2014 50+ checks, dashboard, Lexical JSON support, readability, i18n",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -27,6 +27,7 @@
         "default": "./dist/client.cjs"
       }
     },
+    "./client.css": "./dist/client.css",
     "./views": {
       "import": {
         "types": "./dist/views.d.ts",
@@ -51,7 +52,9 @@
   ],
   "sideEffects": [
     "./dist/client.js",
-    "./dist/client.cjs"
+    "./dist/client.cjs",
+    "./dist/client.css",
+    "*.css"
   ],
   "scripts": {
     "build": "tsup && node scripts/verify-dist-imports.mjs",
@@ -134,6 +137,6 @@
     "access": "public"
   },
   "contributors": [
-    "ConsilioWEB <contact@consilioweb.fr> (https://consilioweb.fr) — original author"
+    "ConsilioWEB <contact@consilioweb.fr> (https://consilioweb.fr) \u2014 original author"
   ]
 }
