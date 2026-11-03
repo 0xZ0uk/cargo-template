@@ -857,7 +857,7 @@ export const seoAnalyzerPlugin =
       pluginEndpoints.push({
         path: `${basePath}/schema-generator`,
         method: 'get',
-        handler: createSchemaGeneratorHandler(targetCollections),
+        handler: createSchemaGeneratorHandler(targetCollections, seoConfig),
       })
     }
 

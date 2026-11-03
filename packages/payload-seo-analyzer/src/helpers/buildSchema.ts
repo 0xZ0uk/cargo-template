@@ -238,7 +238,11 @@ function buildLocalBusinessSchema(doc: Record<string, unknown>, siteUrl: string,
   return { '@context': 'https://schema.org', ...buildLocationNode(base, doc, siteUrl, docUrl) }
 }
 
-function buildBreadcrumbSchema(doc: Record<string, unknown>, siteUrl: string): Record<string, unknown> {
+function buildBreadcrumbSchema(
+  doc: Record<string, unknown>,
+  siteUrl: string,
+  homeLabel: string,
+): Record<string, unknown> {
   const slug = (doc.slug as string) || ''
   const parts = slug.split('/').filter(Boolean)
 
@@ -246,7 +250,7 @@ function buildBreadcrumbSchema(doc: Record<string, unknown>, siteUrl: string): R
     {
       '@type': 'ListItem',
       position: 1,
-      name: 'Accueil',
+      name: homeLabel,
       item: siteUrl,
     },
   ]
@@ -463,6 +467,10 @@ export interface BuildJsonLdOptions {
    * 404s. Pass `{ posts: '' }` if your posts are served flat.
    */
   collectionRoutes?: CollectionRoutes
+  /** Analysis locale; picks the default breadcrumb home label (`Home` / `Accueil`). */
+  locale?: 'fr' | 'en'
+  /** Name of the first BreadcrumbList item. Defaults to `Home` (`Accueil` for `fr`). */
+  homeLabel?: string
 }
 
 /**
@@ -488,7 +496,7 @@ export function buildJsonLd(
       jsonLd = buildLocalBusinessSchema(doc, siteUrl, docUrl)
       break
     case 'BreadcrumbList':
-      jsonLd = buildBreadcrumbSchema(doc, siteUrl)
+      jsonLd = buildBreadcrumbSchema(doc, siteUrl, options.homeLabel ?? (options.locale === 'fr' ? 'Accueil' : 'Home'))
       break
     case 'FAQPage':
       jsonLd = buildFAQSchema(doc)

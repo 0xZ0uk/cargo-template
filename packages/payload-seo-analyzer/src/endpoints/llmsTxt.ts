@@ -15,7 +15,7 @@ import type { PayloadHandler } from 'payload'
 import { buildDocPath } from '../helpers/docUrl.js'
 import type { SeoConfig } from '../types.js'
 import { fetchAllDocs } from '../helpers/fetchAllDocs.js'
-import { resolveSiteUrl } from '../helpers/siteUrl.js'
+import { requestOrigin, resolveSiteUrl } from '../helpers/siteUrl.js'
 
 /** Recommended max size for llms.txt (~8 KB per llmstxt.org guidance). */
 const MAX_BYTES = 8 * 1024
@@ -102,7 +102,7 @@ export function createLlmsTxtHandler(
     }
 
     try {
-      const siteUrl = resolveSiteUrl(seoConfig?.siteUrl)
+      const siteUrl = resolveSiteUrl(seoConfig?.siteUrl, requestOrigin(req))
       const siteName = resolveSiteName(seoConfig, siteUrl)
       const siteDescription = (seoConfig as { siteDescription?: string } | undefined)?.siteDescription
 

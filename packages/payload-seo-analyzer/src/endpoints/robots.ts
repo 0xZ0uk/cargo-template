@@ -6,7 +6,7 @@
 
 import type { PayloadHandler } from 'payload'
 import type { SeoConfig } from '../types.js'
-import { resolveSiteUrl } from '../helpers/siteUrl.js'
+import { requestOrigin, resolveSiteUrl } from '../helpers/siteUrl.js'
 import { parseJsonBody } from '../helpers/parseBody.js'
 import { sanitizeRobotsRules } from '../helpers/robotsSafety.js'
 
@@ -27,7 +27,9 @@ export function createRobotsHandler(targetCollections: string[], seoConfig?: Seo
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const config = settings.docs[0] as Record<string, any> | undefined
 
-      const serverUrl = resolveSiteUrl(seoConfig?.siteUrl)
+      // Without a configured site URL, fall back to the request's origin: a relative
+      // `Sitemap:` line is invalid.
+      const serverUrl = resolveSiteUrl(seoConfig?.siteUrl, requestOrigin(req))
 
       let content = `User-agent: *\n`
       content += `Allow: /\n`

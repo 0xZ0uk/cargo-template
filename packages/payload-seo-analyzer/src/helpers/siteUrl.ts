@@ -25,3 +25,18 @@ function clean(value: string | undefined): string {
 export function resolveSiteUrl(configured?: string, fallback?: string): string {
   return clean(configured) || clean(readSiteUrlEnv()) || clean(fallback)
 }
+
+/**
+ * Origin of the incoming request (`https://example.com`), or undefined when the
+ * request has no parseable URL. Only for URLs the plugin prints (robots.txt,
+ * sitemap.xml, llms.txt) when no site URL is configured: never as an SSRF
+ * allowlist, since the client controls the Host header.
+ */
+export function requestOrigin(req: { url?: string | null }): string | undefined {
+  if (!req.url) return undefined
+  try {
+    return new URL(req.url).origin
+  } catch {
+    return undefined
+  }
+}

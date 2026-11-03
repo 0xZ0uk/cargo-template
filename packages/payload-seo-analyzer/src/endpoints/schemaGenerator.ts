@@ -10,11 +10,15 @@
  */
 
 import type { PayloadHandler } from 'payload'
+import type { SeoConfig } from '../types.js'
 import { readAccessOpts } from '../helpers/readAccess.js'
 import { buildJsonLd, SCHEMA_TYPES, type SchemaType } from '../helpers/buildSchema.js'
 import { isSeoPanelUser } from '../helpers/isAdmin.js'
 
-export function createSchemaGeneratorHandler(targetCollections?: string[]): PayloadHandler {
+export function createSchemaGeneratorHandler(
+  targetCollections?: string[],
+  seoConfig?: SeoConfig,
+): PayloadHandler {
   return async (req) => {
     try {
       if (!isSeoPanelUser(req)) {
@@ -53,7 +57,7 @@ export function createSchemaGeneratorHandler(targetCollections?: string[]): Payl
         return Response.json({ error: `Document not found: ${collection}/${id}` }, { status: 404 })
       }
 
-      const { type, jsonLd } = buildJsonLd(doc, { collection, type: typeOverride })
+      const { type, jsonLd } = buildJsonLd(doc, { collection, type: typeOverride, siteUrl: seoConfig?.siteUrl, locale: seoConfig?.locale })
 
       return Response.json({
         type,
