@@ -69,4 +69,20 @@ describe('SitemapAuditView — optional tabs follow the feature flags', () => {
     expect(screen.getByRole('tab', { name: /external/i })).toBeTruthy()
     expect(requested(fetch).some((u) => u.includes('/api/seo-plugin/seo-logs'))).toBe(true)
   })
+
+  it('labels the bulk 301 buttons in the admin language', async () => {
+    const fetch = mockFetch()
+    const broken = { sourceId: 1, sourceTitle: 'A', sourceSlug: 'a', targetUrl: '/gone', targetSlug: 'gone', collection: 'pages', suggestedSlug: 'b' }
+    auditBody.brokenLinks = [broken] as never[]
+    auditBody.stats = { ...auditBody.stats, brokenCount: 1 }
+    try {
+      render(<SitemapAuditView />)
+      expect(await screen.findByRole('button', { name: '301 all (1)' })).toBeTruthy()
+      expect(screen.queryByText(/301 tout/)).toBeNull()
+      expect(fetch).toHaveBeenCalled()
+    } finally {
+      auditBody.brokenLinks = []
+      auditBody.stats = { ...auditBody.stats, brokenCount: 0 }
+    }
+  })
 })

@@ -188,6 +188,9 @@ export interface DashboardTranslations {
     analyzingInternal: string
     brokenLinkTo: string
     linkFrom: string
+    /** Bulk 301 buttons on the broken-links tab (followed by the count). */
+    redirectSelected: string
+    redirectAll: string
   }
   seoConfig: {
     loading: string
@@ -802,6 +805,8 @@ const fr: DashboardTranslations = {
     analyzingInternal: 'Analyse du maillage interne en cours...',
     brokenLinkTo: 'lien cassé vers',
     linkFrom: 'lien depuis',
+    redirectSelected: '301 sélection',
+    redirectAll: '301 tout',
   },
   seoConfig: {
     loading: 'Chargement de la configuration...',
@@ -1416,6 +1421,8 @@ const en: DashboardTranslations = {
     analyzingInternal: 'Analyzing internal linking structure...',
     brokenLinkTo: 'broken link to',
     linkFrom: 'link from',
+    redirectSelected: '301 selected',
+    redirectAll: '301 all',
   },
   seoConfig: {
     loading: 'Loading configuration...',

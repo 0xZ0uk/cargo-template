@@ -616,7 +616,7 @@ function BrokenTab({ links, onRefresh }: { links: BrokenLink[]; onRefresh: () =>
               margin={false}
               onClick={handleBulkCreate}
             >
-              {bulkLoading ? '...' : `301 selection (${selectedWithSuggestion})`}
+              {bulkLoading ? '...' : `${t.sitemapAudit.redirectSelected} (${selectedWithSuggestion})`}
             </Button>
           )}
           <Button
@@ -625,7 +625,7 @@ function BrokenTab({ links, onRefresh }: { links: BrokenLink[]; onRefresh: () =>
             margin={false}
             onClick={handleBulkCreateAll}
           >
-            {bulkLoading ? '...' : `301 tout (${withSuggestionCount})`}
+            {bulkLoading ? '...' : `${t.sitemapAudit.redirectAll} (${withSuggestionCount})`}
           </Button>
         </div>
       </div>
