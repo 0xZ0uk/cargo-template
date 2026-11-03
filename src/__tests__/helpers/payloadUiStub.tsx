@@ -82,6 +82,61 @@ export const payloadUiStub = {
       </a>
     )
   },
+  Drawer: ({ children, title, slug }: AnyProps) => (
+    <div className="drawer" data-slug={slug} role="dialog">
+      {title ? <h2>{title}</h2> : null}
+      {children}
+    </div>
+  ),
+  DrawerToggler: ({ children, slug, className, ...rest }: AnyProps) => {
+    const aria = Object.fromEntries(Object.entries(rest).filter(([k]) => k.startsWith('aria-')))
+    return (
+      <button className={className} data-slug={slug} type="button" {...aria}>
+        {children}
+      </button>
+    )
+  },
+  Modal: ({ children, slug, className }: AnyProps) => (
+    <div className={className} data-slug={slug} role="dialog">
+      {children}
+    </div>
+  ),
+  ConfirmationModal: ({ heading, body, onConfirm, confirmLabel = 'Confirm', cancelLabel = 'Cancel', modalSlug }: AnyProps) => (
+    <div data-slug={modalSlug} role="dialog">
+      <h2>{heading}</h2>
+      <div>{body}</div>
+      <button onClick={() => onConfirm?.()} type="button">
+        {confirmLabel}
+      </button>
+      <button type="button">{cancelLabel}</button>
+    </div>
+  ),
+  Popup: ({ children, button, render }: AnyProps) => (
+    <div className="popup">
+      {button}
+      {typeof render === 'function' ? render({ close: () => {} }) : children}
+    </div>
+  ),
+  PopupList: {
+    ButtonGroup: passthrough('div', 'popup-button-list'),
+    Button: ({ children, onClick, ...rest }: AnyProps) => {
+      const aria = Object.fromEntries(Object.entries(rest).filter(([k]) => k.startsWith('aria-')))
+      return (
+        <button onClick={onClick} type="button" {...aria}>
+          {children}
+        </button>
+      )
+    },
+    Divider: () => <hr />,
+  },
+  ShimmerEffect: () => <div aria-hidden="true" className="shimmer-effect" />,
+  LoadingOverlay: ({ loadingText }: AnyProps) => <div role="status">{loadingText ?? 'Loading...'}</div>,
+  CopyToClipboard: ({ value }: AnyProps) => (
+    <button aria-label="Copy" data-value={value} type="button">
+      Copy
+    </button>
+  ),
+  Chip: passthrough('span', 'chip'),
   CheckIcon: Icon,
   ChevronIcon: Icon,
   EditIcon: Icon,
@@ -100,6 +155,18 @@ export const payloadUiStub = {
   CopyIcon: Icon,
   EyeIcon: Icon,
   MoreIcon: Icon,
+  ArrowIcon: Icon,
+  CalendarIcon: Icon,
+  ClipboardIcon: Icon,
+  ClockIcon: Icon,
+  CircledXIcon: Icon,
+  DocumentIcon: Icon,
+  FilterIcon: Icon,
+  GearIcon: Icon,
+  SortDownIcon: Icon,
+  SortUpIcon: Icon,
+  ThreeDotsIcon: Icon,
+  WriteIcon: Icon,
   useModal: () => ({ openModal: () => {}, closeModal: () => {}, isModalOpen: () => false, toggleModal: () => {} }),
   toast: Object.assign(() => {}, { success: () => {}, error: () => {}, info: () => {}, warning: () => {} }),
   usePathname: () => '/admin',
