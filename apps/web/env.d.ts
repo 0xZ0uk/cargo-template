@@ -50,12 +50,18 @@ export type CoercedEnvSchema = {
   /**
    * **SEO_AUDIT_MAX_DOCS**  
    * SEO analyzer caps on whole-site scans. Leave empty for the plugin defaults: the dashboard  
-   * audit stops at 1500 docs, other scans (sitemap audit, sitemap.xml…) at 5000. The audit runs  
-   * in the background via `waitUntil` (about 30 s on Workers); measured at ~3.5 ms CPU per doc  
-   * locally, so raise SEO_AUDIT_MAX_DOCS with care. See packages/payload-seo-analyzer/PLAN.md.  
+   * audit stops at 5000 docs, other scans (sitemap audit, sitemap.xml…) at 5000 too. The audit  
+   * builds in steps of 800 docs (SEO_AUDIT_STEP_DOCS, ~8 s CPU each on a deployed Worker): the  
+   * dashboard's polls and the Cron Trigger run the steps. See packages/payload-seo-analyzer/PLAN.md.  
    * ![icon](data:image/svg+xml;utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2220%22%20height%3D%2220%22%20viewBox%3D%220%200%2032%2032%22%3E%3Cpath%20fill%3D%22%23808080%22%20d%3D%22M26%2012h-4v2h4v2h-3v2h3v2h-4v2h4a2.003%202.003%200%200%200%202-2v-6a2%202%200%200%200-2-2m-7%2010h-6v-4a2%202%200%200%201%202-2h2v-2h-4v-2h4a2%202%200%200%201%202%202v2a2%202%200%200%201-2%202h-2v2h4ZM8%2020v-8H6v1H4v2h2v5H4v2h6v-2z%22%2F%3E%3C%2Fsvg%3E)   
    */
   SEO_AUDIT_MAX_DOCS?: number;
+  
+  /**
+   * **SEO_AUDIT_STEP_DOCS**  
+   * ![icon](data:image/svg+xml;utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2220%22%20height%3D%2220%22%20viewBox%3D%220%200%2032%2032%22%3E%3Cpath%20fill%3D%22%23808080%22%20d%3D%22M26%2012h-4v2h4v2h-3v2h3v2h-4v2h4a2.003%202.003%200%200%200%202-2v-6a2%202%200%200%200-2-2m-7%2010h-6v-4a2%202%200%200%201%202-2h2v-2h-4v-2h4a2%202%200%200%201%202%202v2a2%202%200%200%201-2%202h-2v2h4ZM8%2020v-8H6v1H4v2h2v5H4v2h6v-2z%22%2F%3E%3C%2Fsvg%3E)   
+   */
+  SEO_AUDIT_STEP_DOCS?: number;
   
   /**
    * **SEO_FETCH_MAX_DOCS**  
@@ -65,11 +71,11 @@ export type CoercedEnvSchema = {
   
 };
 
-type _CoercedEnvSchema_f5f66d11 = CoercedEnvSchema;
+type _CoercedEnvSchema_b10f07c0 = CoercedEnvSchema;
 
 declare module 'varlock/env' {
-  export interface TypedEnvSchema extends Readonly<_CoercedEnvSchema_f5f66d11> {}
-  export interface PublicTypedEnvSchema extends Readonly<Pick<_CoercedEnvSchema_f5f66d11, 'APP_ENV' | 'PAYLOAD_LOG_LEVEL' | 'SITE_URL' | 'SEO_LLMS_TXT' | 'SEO_AUDIT_MAX_DOCS' | 'SEO_FETCH_MAX_DOCS'>> {}
+  export interface TypedEnvSchema extends Readonly<_CoercedEnvSchema_b10f07c0> {}
+  export interface PublicTypedEnvSchema extends Readonly<Pick<_CoercedEnvSchema_b10f07c0, 'APP_ENV' | 'PAYLOAD_LOG_LEVEL' | 'SITE_URL' | 'SEO_LLMS_TXT' | 'SEO_AUDIT_MAX_DOCS' | 'SEO_AUDIT_STEP_DOCS' | 'SEO_FETCH_MAX_DOCS'>> {}
 }
 
 
@@ -79,11 +85,11 @@ export type EnvSchemaAsStrings = {
       : (NonNullable<CoercedEnvSchema[Property]> extends boolean ? ('true' | 'false') : string)
 };
 
-type _EnvSchemaAsStrings_f5f66d11 = EnvSchemaAsStrings;
+type _EnvSchemaAsStrings_b10f07c0 = EnvSchemaAsStrings;
 declare global {
 
   // add types for global import.meta.env
-  interface ImportMetaEnv extends _EnvSchemaAsStrings_f5f66d11 {}
+  interface ImportMetaEnv extends _EnvSchemaAsStrings_b10f07c0 {}
   interface ImportMeta {
     readonly env: ImportMetaEnv;
   }

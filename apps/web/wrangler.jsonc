@@ -1,11 +1,18 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "cargo-template",
-  "main": "@tanstack/react-start/server-entry",
+  // Custom server entry: TanStack Start's `fetch` plus a `scheduled` handler for the cron below.
+  "main": "src/server.ts",
   "compatibility_date": "2026-10-23",
   "compatibility_flags": ["nodejs_compat"],
   "observability": {
     "enabled": true,
+  },
+  // Runs the scheduled Payload jobs (`scheduled` in src/server.ts). Every 5 minutes matches
+  // the SEO analyzer's `auditCron`, which continues dashboard audits that paused between
+  // steps; the other tasks have their own schedules on top of it.
+  "triggers": {
+    "crons": ["*/5 * * * *"],
   },
   "d1_databases": [
     {
