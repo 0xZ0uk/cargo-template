@@ -20,7 +20,8 @@ const STARTUP_DELAY = 5 * 60 * 1000 // 5 minutes after init
 let intervalId: ReturnType<typeof setInterval> | null = null
 let listenersAttached = false
 
-async function runPurge(payload: Payload, retention: RetentionConfig): Promise<void> {
+/** One retention purge, logged (also run by the `seoRetentionPurge` job). Never throws. */
+export async function runRetentionPurge(payload: Payload, retention: RetentionConfig): Promise<void> {
   try {
     const result = await purgeRetention(payload, retention)
     if (!result.ran) return
@@ -50,11 +51,11 @@ export function startRetentionPurge(payload: Payload, retention: RetentionConfig
   if (targets.length === 0) return
 
   setTimeout(() => {
-    void runPurge(payload, retention as RetentionConfig)
+    void runRetentionPurge(payload, retention as RetentionConfig)
   }, STARTUP_DELAY)
 
   intervalId = setInterval(() => {
-    void runPurge(payload, retention as RetentionConfig)
+    void runRetentionPurge(payload, retention as RetentionConfig)
   }, PURGE_INTERVAL)
 
   if (!listenersAttached) {

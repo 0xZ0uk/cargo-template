@@ -14,7 +14,8 @@ const STARTUP_DELAY = 60 * 1000 // 1 min after init
 let intervalId: ReturnType<typeof setInterval> | null = null
 let listenersAttached = false
 
-async function runDigest(payload: Payload, siteUrl?: string): Promise<void> {
+/** Build and deliver one alerts digest (also run by the `seoAlertsDigest` job). Never throws. */
+export async function runAlertsDigest(payload: Payload, siteUrl?: string): Promise<void> {
   try {
     const cfg = getAlertConfig()
     if (!cfg.webhookUrl && cfg.emails.length === 0) {
@@ -41,11 +42,11 @@ export function startAlertsScheduler(payload: Payload, siteUrl?: string): void {
   const intervalMs = intervalHours * 60 * 60 * 1000
 
   setTimeout(() => {
-    void runDigest(payload, siteUrl)
+    void runAlertsDigest(payload, siteUrl)
   }, STARTUP_DELAY)
 
   intervalId = setInterval(() => {
-    void runDigest(payload, siteUrl)
+    void runAlertsDigest(payload, siteUrl)
   }, intervalMs)
 
   if (!listenersAttached) {

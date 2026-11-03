@@ -1,0 +1,30 @@
+import { runSeoJobs } from '@cargo/payload-seo-analyzer'
+import { createServerEntry, createStartHandler, defaultStreamHandler } from '@tanstack/react-start/server'
+
+// Worker entry. TanStack Start uses `src/server.ts` as its server entry when it exists, so
+// this replaces the default one: same `fetch`, plus a `scheduled` handler for the Cron
+// Trigger in `wrangler.jsonc`.
+const entry = createServerEntry({ fetch: createStartHandler(defaultStreamHandler) })
+
+/**
+ * Cron Trigger: queues the due scheduled Payload jobs and runs them. Today that's the SEO
+ * analyzer's queue (continuing a dashboard audit that paused between steps). Each run gets
+ * its own CPU budget.
+ */
+async function runScheduledJobs(cron: string): Promise<void> {
+  const { getPayload } = await import('payload')
+  const payload = await getPayload({ config: (await import('@payload-config')).default })
+  try {
+    const { queued, ran } = await runSeoJobs(payload)
+    if (queued || ran) payload.logger.info(`[cron ${cron}] seo jobs: queued ${queued}, ran ${ran}`)
+  } catch (error) {
+    payload.logger.error({ err: error, msg: `[cron ${cron}] seo jobs failed` })
+  }
+}
+
+export default {
+  ...entry,
+  scheduled(controller: ScheduledController, _env: unknown, ctx: ExecutionContext) {
+    ctx.waitUntil(runScheduledJobs(controller.cron))
+  },
+}

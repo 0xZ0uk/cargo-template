@@ -26,7 +26,7 @@ pnpm dev
 | `pnpm typecheck` / `pnpm lint` | Across all packages |
 | `pnpm test` | Plugin unit tests + the app's integration and e2e tests |
 | `pnpm test:int` | The app's Local API integration tests |
-| `pnpm web <script>` | Any app script, e.g. `pnpm web migrate:create`, `pnpm web deploy`, `pnpm web generate:importmap` |
+| `pnpm web <script>` | Any app script, e.g. `pnpm web migrate:create`, `pnpm web run deploy` (`run` is needed: `deploy` is also a pnpm command), `pnpm web generate:importmap` |
 | `pnpm --filter @cargo/payload-seo-analyzer <script>` | Any plugin script |
 
 Turbo caches `build`, `typecheck` and `lint`; anything that depends on a plugin builds it first (`dependsOn: ["^build"]`).

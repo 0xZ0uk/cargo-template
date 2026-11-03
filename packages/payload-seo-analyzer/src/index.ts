@@ -99,6 +99,8 @@ export { buildAuditToFile } from './endpoints/audit.js'
 export type { SeoCacheStore, SeoWaitUntil } from './cache.js'
 export { SEO_RATE_LIMITS } from './rateLimiter.js'
 export type { SeoRateLimit, SeoRateLimitBucket } from './rateLimiter.js'
+export { runSeoJobs, SEO_JOBS_QUEUE, SEO_TASK_SLUGS } from './jobs.js'
+export type { SeoJobsOptions } from './jobs.js'
 
 // Re-export collection + hook for advanced consumers
 export { createSeoScoreHistoryCollection } from './collections/SeoScoreHistory.js'

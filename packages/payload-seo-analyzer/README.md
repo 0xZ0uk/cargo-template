@@ -186,6 +186,10 @@ Every field of `SeoPluginConfig`. All are optional.
 | `interfaceName` | `string` | — | TypeScript interface name generated for the `meta` group. |
 | `customTranslations` | `Record<string, Partial<DashboardTranslations>>` | — | Dashboard strings for locales beyond FR/EN; missing keys fall back to English. |
 | `retentionDays` | `Partial<Record<'seo-rank-history' \| 'seo-score-history' \| 'seo-performance' \| 'seo-logs', number>>` | — | Days of history to keep, per time-series collection. Opt-in: without it nothing is ever deleted. See [Retention](#retention). |
+| `cacheStore` | `SeoCacheStore` | — | Async key/value store (`get`/`put`/`delete` of strings) for the caches the admin polls: dashboard audit, indexation audit, sitemap audit, redirect chains. Needed wherever processes don't share memory (Workers isolates); back it with R2 or KV. |
+| `waitUntil` | `(promise) => void` | — | Keeps background work alive after the response (Workers' `waitUntil`). With it, the dashboard audit builds in steps that fit a Worker's CPU limit. |
+| `rateLimit` | `SeoRateLimit` | — | Shared rate limiter for the limited endpoints (`SEO_RATE_LIMITS` lists the buckets). Return `true` / `false`, or `undefined` for the in-memory limiter. |
+| `jobs` | `boolean \| SeoJobsOptions` | — | Run background work as Payload jobs on a cron instead of in-process timers. See [Background jobs](#background-jobs). |
 
 `thresholds` accepts `titleLengthMin`, `titleLengthMax`, `metaDescLengthMin`, `metaDescLengthMax`,
 `minWordsGeneric`, `minWordsPost`, `keywordDensityMin`, `keywordDensityMax`, `fleschScorePass` and
@@ -225,7 +229,8 @@ seoAnalyzerPlugin({
 
 Naming at least one collection:
 
-- schedules a purge 5 minutes after boot and every 24 hours, deleting rows older than the window;
+- schedules a purge 5 minutes after boot and every 24 hours, deleting rows older than the window
+  (with [`jobs`](#background-jobs), the `seoRetentionPurge` task runs it instead);
 - registers `GET /api/seo-plugin/retention` (dry run — reports the cutoffs, deletes nothing) and
   `POST /api/seo-plugin/retention` (run now), both **SEO-admin only**.
 
@@ -242,6 +247,43 @@ Details worth knowing:
   its own retention.
 - `purgeRetention`, `describeRetention` and `resolveRetention` are exported from the package root if
   you would rather run the trim from your own cron.
+
+### Background jobs
+
+On a long-lived Node server, the plugin runs its background work on timers: the GSC rank snapshot,
+the alerts digest and the retention purge. Serverless hosts (Cloudflare Workers) have no
+long-lived process, so set `jobs` and run the work from a cron instead:
+
+```ts
+seoAnalyzerPlugin({
+  jobs: true, // or { queue: 'seo', auditCron: '*/5 * * * *', dailyCron: '0 4 * * *' }
+})
+```
+
+The plugin then registers Payload tasks with schedules on the `seo` queue, and starts no timers:
+
+| Task | Registered when | Schedule | Does |
+|---|---|---|---|
+| `seoAuditContinue` | `dashboard` | `auditCron` | Runs the next step of a dashboard audit that paused between steps. Never starts a build. |
+| `seoRankSnapshot` | `gscApi` | `dailyCron` | GSC position snapshot. |
+| `seoAlertsDigest` | `alerts` | `dailyCron` | Builds and sends the alerts digest. |
+| `seoRetentionPurge` | `retentionDays` | `dailyCron` | Retention purge. |
+
+The host runs the queue. On Workers, call `runSeoJobs(payload)` from a `scheduled` handler (Cron
+Trigger) as often as `auditCron`; it queues the due tasks and runs them. Elsewhere, Payload's
+`jobs.autoRun` works too. Registering tasks adds Payload's `payload-jobs` collection and
+`payload-jobs-stats` global, so run `payload migrate:create` afterwards. Set
+`jobs.deleteJobOnComplete` (Payload's default) so finished jobs don't pile up.
+
+A scheduled task is queued for the cron's *next* run time, so the first one runs one tick after
+the first call; after that, every tick runs one.
+
+**Chunked audit builds.** With `waitUntil`, the dashboard audit builds in steps of
+`SEO_AUDIT_STEP_DOCS` docs (800 by default, about 8 s of CPU on a Worker). A step that runs out of
+budget saves its cursor and partial results in the `cacheStore` and pauses. While the dashboard is
+open, each of its polls runs the next step; `seoAuditContinue` finishes builds nobody is watching.
+A save during the build bumps the cache generation as before, so the finished audit is stored
+stale and the next request rebuilds.
 
 ### Feature flags
 
@@ -283,7 +325,11 @@ analyzer sidebar, the `validate` endpoint and the meta fields are always active.
 | `SEO_AUDIT_MIN_REFRESH_MS` | `300000` | Minimum delay between two manual (`?nocache=1`) rebuilds of the site-wide audit. |
 | `SEO_STRICT_READ_ACCESS` | — | `1` makes single-document reads honour the caller's collection and field-level ACL. |
 | `SEO_FETCH_MAX_DOCS` | `5000` | Cap on documents loaded by site-wide helpers. |
-| `SEO_AUDIT_MAX_DOCS` | `1500` | Cap on documents included in one site-wide audit. |
+| `SEO_AUDIT_MAX_DOCS` | `5000` | Cap on documents included in the dashboard audit. |
+| `SEO_INDEXATION_MAX_DOCS` | `1500` | Cap on documents scanned by `/indexation-audit` (one request; ~10 ms CPU per doc on Workers). |
+| `SEO_AUDIT_STEP_DOCS` | `800` | With `waitUntil` (Workers): docs analyzed per build step before the audit saves its progress and pauses. |
+| `SEO_AUDIT_STEP_MS` | `20000` | With `waitUntil`: wall-time budget of one build step. |
+| `SEO_AUDIT_PAUSED_STALE_MS` | `3600000` | A paused build with no new step for this long is abandoned and the next one starts over. |
 | `SEO_AUDIT_BATCH_SIZE` | `10` | Documents analysed per audit batch (capped at 100). |
 | `SEO_AUDIT_BATCH_DELAY_MS` | `100` | Pause between audit batches (capped at 5000). |
 | `SEO_AUDIT_DOC_DELAY_MS` | `10` | Pause after each document; `0` is fastest, raise it on rich content. |

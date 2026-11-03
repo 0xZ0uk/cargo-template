@@ -164,6 +164,9 @@ export default buildConfig({
       waitUntil,
       // Rate limits shared across isolates (Workers Rate Limiting bindings).
       rateLimit: workersSeoRateLimit(cloudflare),
+      // Background work as Payload jobs, run by the Cron Trigger (`scheduled` in src/server.ts).
+      // With the features below, that's continuing a dashboard audit that paused between steps.
+      jobs: true,
       features: {
         aiFeatures: false,
         alerts: false,

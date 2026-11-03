@@ -162,10 +162,18 @@ interface StoredEntry<T> {
 }
 
 interface BuildRecord {
-  /** Epoch ms when the current build started (absent when idle). */
+  /** Epoch ms when the current build step started (absent when idle). */
   buildingSince?: number
   /** Epoch ms when the last build finished (success or failure). */
   lastBuildAt?: number
+  /**
+   * Epoch ms when a chunked build last paused with work left (absent when there is none).
+   * The build counts as running until it finishes, or until it has made no progress for
+   * `pendingStaleMs` (then it's abandoned and the next build starts over).
+   */
+  pausedAt?: number
+  /** Docs processed so far by a paused build (shown while it runs). */
+  processed?: number
 }
 
 export interface CacheLookup<T> {
@@ -177,6 +185,10 @@ export interface CacheLookup<T> {
 export interface BuildStatus {
   building: boolean
   lastBuildAt: number
+  /** A chunked build paused between steps (also counted in `building`). */
+  paused: boolean
+  /** Docs processed so far by a paused build. */
+  processed?: number
 }
 
 export interface SeoSharedCacheOptions {
@@ -191,6 +203,11 @@ export interface SeoSharedCacheOptions {
    * 15 min without. Env override: `SEO_AUDIT_BUILD_STALE_MS`.
    */
   buildStaleMs?: number
+  /**
+   * A paused chunked build with no new step for this long is abandoned (default 1 h).
+   * Env override: `SEO_AUDIT_PAUSED_STALE_MS`.
+   */
+  pendingStaleMs?: number
   /** In-memory cache used for non-persistent bases and when no store is set. */
   memory?: SeoCache
 }
@@ -235,10 +252,13 @@ export function hashConfig(value: unknown): string {
  *   overlaps a save is stored already stale instead of masking the save.
  * - There is deliberately no in-memory L1 for these bases: one parallel pair of store
  *   reads per request keeps every isolate consistent, and these are admin-only endpoints.
- * - Build coordination (audit): `build/<key>` holds `{ buildingSince, lastBuildAt }`.
+ * - Build coordination (audit): `build/<key>` holds `{ buildingSince, lastBuildAt, pausedAt }`.
  *   It is a best-effort cross-isolate single-flight (two isolates can race between the
  *   read and the write and both build — harmless, just duplicate work), with a staleness
  *   timeout so a build killed mid-way doesn't block forever.
+ * - Chunked builds (audit on Workers): a step that runs out of budget saves its cursor and
+ *   partial results at `progress/<key>` and pauses (`pausedAt`). The next step, from a poll
+ *   or a scheduled job, claims the build again and resumes from there.
  */
 export class SeoSharedCache {
   readonly persistent: boolean
@@ -248,10 +268,14 @@ export class SeoSharedCache {
   private readonly memory: SeoCache
   private readonly ttlMs: number
   private readonly buildStaleMs: number
+  private readonly pendingStaleMs: number
   /** Builds started by THIS isolate/process (cheap first-line single-flight). */
   private readonly localBuilds = new Set<string>()
   /** In-memory mode only: last finished build per key (manual refresh throttle). */
   private readonly localLastBuild = new Map<string, number>()
+  /** In-memory mode only: paused builds and their saved progress. */
+  private readonly localPaused = new Map<string, { pausedAt: number; processed: number }>()
+  private readonly localProgress = new Map<string, unknown>()
 
   constructor(opts: SeoSharedCacheOptions = {}) {
     this.store = opts.store
@@ -268,6 +292,9 @@ export class SeoSharedCache {
         : opts.waitUntil
           ? 2 * 60_000
           : 15 * 60_000)
+    const envPending = Number(process.env.SEO_AUDIT_PAUSED_STALE_MS)
+    this.pendingStaleMs =
+      opts.pendingStaleMs ?? (Number.isFinite(envPending) && envPending > 0 ? envPending : 60 * 60_000)
   }
 
   private storeFor(base: string): SeoCacheStore | undefined {
@@ -351,14 +378,105 @@ export class SeoSharedCache {
     return typeof rec.buildingSince === 'number' && Date.now() - rec.buildingSince < this.buildStaleMs
   }
 
+  private isFreshPause(pausedAt: number | undefined): boolean {
+    return typeof pausedAt === 'number' && Date.now() - pausedAt < this.pendingStaleMs
+  }
+
   async buildStatus(key: string): Promise<BuildStatus> {
     if (!this.store) {
-      return { building: this.localBuilds.has(key), lastBuildAt: this.localLastBuild.get(key) ?? 0 }
+      const pause = this.localPaused.get(key)
+      const paused = this.isFreshPause(pause?.pausedAt)
+      return {
+        building: this.localBuilds.has(key) || paused,
+        lastBuildAt: this.localLastBuild.get(key) ?? 0,
+        paused,
+        ...(paused ? { processed: pause!.processed } : {}),
+      }
     }
     const rec = await this.readBuild(key)
+    const paused = this.isFreshPause(rec.pausedAt)
     return {
-      building: this.localBuilds.has(key) || this.isFreshBuild(rec),
+      building: this.localBuilds.has(key) || this.isFreshBuild(rec) || paused,
       lastBuildAt: rec.lastBuildAt ?? 0,
+      paused,
+      ...(paused && typeof rec.processed === 'number' ? { processed: rec.processed } : {}),
+    }
+  }
+
+  /**
+   * Claim the next step of a build. Unlike `tryStartBuild`, a paused build doesn't block
+   * the claim (resuming it is the point); only a step that is running right now does.
+   * Returns the pause it resumes (`resumed: true`) so the caller knows whether saved
+   * progress is still valid.
+   */
+  async tryStartBuildStep(key: string): Promise<{ claimed: boolean; resumed: boolean }> {
+    if (this.localBuilds.has(key)) return { claimed: false, resumed: false }
+    this.localBuilds.add(key)
+    if (!this.store) {
+      return { claimed: true, resumed: this.isFreshPause(this.localPaused.get(key)?.pausedAt) }
+    }
+    try {
+      const rec = await this.readBuild(key)
+      if (this.isFreshBuild(rec)) {
+        this.localBuilds.delete(key)
+        return { claimed: false, resumed: false }
+      }
+      const resumed = this.isFreshPause(rec.pausedAt)
+      await this.store.put(
+        `build/${key}`,
+        JSON.stringify({
+          buildingSince: Date.now(),
+          lastBuildAt: rec.lastBuildAt,
+          ...(resumed ? { pausedAt: rec.pausedAt, processed: rec.processed } : {}),
+        } satisfies BuildRecord),
+      )
+      return { claimed: true, resumed }
+    } catch (e) {
+      this.localBuilds.delete(key)
+      throw e
+    }
+  }
+
+  /** Release a step's claim and mark the build paused with work left. Never throws. */
+  async pauseBuild(key: string, processed: number): Promise<void> {
+    this.localBuilds.delete(key)
+    const now = Date.now()
+    if (!this.store) {
+      this.localPaused.set(key, { pausedAt: now, processed })
+      return
+    }
+    try {
+      const rec = await this.readBuild(key)
+      await this.store.put(
+        `build/${key}`,
+        JSON.stringify({ lastBuildAt: rec.lastBuildAt, pausedAt: now, processed } satisfies BuildRecord),
+      )
+    } catch {
+      // Without the pause marker the next request starts the build over.
+    }
+  }
+
+  /** Saved progress of a paused build (any JSON value), or null. */
+  async readProgress<T>(key: string): Promise<T | null> {
+    if (!this.store) return (this.localProgress.get(key) as T | undefined) ?? null
+    return parseJson<T>(await this.store.get(`progress/${key}`))
+  }
+
+  async writeProgress<T>(key: string, data: T): Promise<void> {
+    if (!this.store) {
+      this.localProgress.set(key, data)
+      return
+    }
+    await this.store.put(`progress/${key}`, JSON.stringify(data))
+  }
+
+  /** Drop saved progress. Never throws. */
+  async clearProgress(key: string): Promise<void> {
+    this.localProgress.delete(key)
+    try {
+      await this.store?.delete(`progress/${key}`)
+    } catch {
+      // A leftover progress object is ignored once its build isn't paused any more.
     }
   }
 
@@ -389,6 +507,7 @@ export class SeoSharedCache {
     this.localBuilds.delete(key)
     const now = Date.now()
     if (!this.store) {
+      this.localPaused.delete(key)
       this.localLastBuild.set(key, now)
       return
     }

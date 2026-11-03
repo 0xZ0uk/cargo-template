@@ -92,6 +92,7 @@ import { startCacheWarmUp } from './warmCache.js'
 import { startRankTracker } from './rankTracker.js'
 import { startAlertsScheduler } from './alertsScheduler.js'
 import { startRetentionPurge } from './retentionScheduler.js'
+import { resolveSeoJobsOptions, seoJobTasks, type SeoJobsOptions } from './jobs.js'
 import { resolveRetention, type RetentionConfig } from './retention.js'
 import { createRetentionPurgeHandler, createRetentionStatusHandler } from './endpoints/retention.js'
 import { createAlertsDigestHandler, createAlertsRunHandler } from './endpoints/alerts.js'
@@ -210,6 +211,15 @@ export interface SeoPluginConfig {
    * with a Rate Limiting binding of the same limit.
    */
   rateLimit?: SeoRateLimit
+  /**
+   * Run background work as Payload jobs instead of in-process timers: continuing a
+   * dashboard audit that paused between steps, the GSC rank snapshot, the alerts digest and
+   * the retention purge. The plugin registers those tasks with schedules on one queue
+   * (`'seo'` by default); the host runs that queue from a cron (`runSeoJobs(payload)` in a
+   * Workers `scheduled` handler, or Payload's `jobs.autoRun`). Needed on Workers, where
+   * timers don't survive the request. Adds Payload's jobs collection, so run a migration.
+   */
+  jobs?: boolean | SeoJobsOptions
   /** Granular feature flags — all default to true. Disable features you don't need
    *  to reduce collections, endpoints, and admin views loaded by the plugin.
    *  The core analyzer sidebar, validate endpoint, and meta fields are always active. */
@@ -1050,7 +1060,26 @@ export const seoAnalyzerPlugin =
       },
     }
 
-    // 5. Add cache warm-up on server init
+    // 5. Background work as Payload jobs (`jobs` option)
+    const jobsOptions = resolveSeoJobsOptions(pluginConfig.jobs)
+    if (jobsOptions) {
+      const tasks = seoJobTasks({
+        jobs: jobsOptions,
+        features,
+        collections: targetCollections,
+        globals: targetGlobals,
+        seoConfig,
+        basePath,
+        gscSiteUrl: resolveGscSiteUrl(seoConfig),
+        retentionDays: pluginConfig.retentionDays,
+        cache: sharedCache,
+      })
+      if (tasks.length > 0) {
+        config.jobs = { ...config.jobs, tasks: [...(config.jobs?.tasks ?? []), ...tasks] }
+      }
+    }
+
+    // 6. Add cache warm-up on server init
     const existingOnInit = config.onInit
     config.onInit = async (payload) => {
       if (existingOnInit) await existingOnInit(payload)
@@ -1070,9 +1099,9 @@ export const seoAnalyzerPlugin =
             '[seo-analyzer] `auditCacheFile` needs a filesystem and is ignored on serverless isolates; set `cacheStore` instead.',
           )
         }
-        if (features.gscApi || features.alerts || pluginConfig.retentionDays) {
+        if (!jobsOptions && (features.gscApi || features.alerts || pluginConfig.retentionDays)) {
           payload.logger.warn(
-            '[seo-analyzer] Background schedulers (rank tracking, alerts, retention purge) do not run on serverless isolates; trigger them from a cron instead.',
+            '[seo-analyzer] Background schedulers (rank tracking, alerts, retention purge) do not run on serverless isolates; set the `jobs` option and run them from a cron.',
           )
         }
         return
@@ -1081,6 +1110,8 @@ export const seoAnalyzerPlugin =
       if (features.warmCache) {
         startCacheWarmUp(payload, basePath, targetGlobals, targetCollections)
       }
+      // With `jobs`, the host's job runner does the scheduled work below.
+      if (jobsOptions) return
       // Daily GSC rank snapshots (only when Search Console is enabled)
       if (features.gscApi) {
         startRankTracker(payload, basePath, seoConfig)

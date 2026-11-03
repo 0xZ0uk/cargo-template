@@ -16,7 +16,8 @@ const STARTUP_DELAY = 30 * 1000 // 30 seconds after init
 let intervalId: ReturnType<typeof setInterval> | null = null
 let listenersAttached = false
 
-async function doSnapshot(payload: Payload, basePath: string, seoConfig?: SeoConfig): Promise<void> {
+/** One rank snapshot, logged (also run by the `seoRankSnapshot` job). Never throws. */
+export async function runRankSnapshotLogged(payload: Payload, basePath: string, seoConfig?: SeoConfig): Promise<void> {
   try {
     const result = await runRankSnapshot(payload, basePath, seoConfig)
     if (result.ok) {
@@ -35,11 +36,11 @@ export function startRankTracker(payload: Payload, basePath: string, seoConfig?:
   stopRankTracker()
 
   setTimeout(() => {
-    void doSnapshot(payload, basePath, seoConfig)
+    void runRankSnapshotLogged(payload, basePath, seoConfig)
   }, STARTUP_DELAY)
 
   intervalId = setInterval(() => {
-    void doSnapshot(payload, basePath, seoConfig)
+    void runRankSnapshotLogged(payload, basePath, seoConfig)
   }, SNAPSHOT_INTERVAL)
 
   if (!listenersAttached) {
