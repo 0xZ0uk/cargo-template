@@ -1,0 +1,142 @@
+{
+  "name": "@0xz0uk/payload-seo-analyzer",
+  "version": "5.0.0-beta.0",
+  "description": "Payload CMS 4 SEO plugin (fork of @consilioweb/payload-seo-analyzer) \u2014 50+ checks, dashboard, Lexical JSON support, readability, i18n",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./client": {
+      "import": {
+        "types": "./dist/client.d.ts",
+        "default": "./dist/client.js"
+      },
+      "require": {
+        "types": "./dist/client.d.cts",
+        "default": "./dist/client.cjs"
+      }
+    },
+    "./client.css": "./dist/client.css",
+    "./views": {
+      "import": {
+        "types": "./dist/views.d.ts",
+        "default": "./dist/views.js"
+      },
+      "require": {
+        "types": "./dist/views.d.cts",
+        "default": "./dist/views.cjs"
+      }
+    }
+  },
+  "bin": {
+    "seo-analyzer-uninstall": "./scripts/uninstall.mjs"
+  },
+  "files": [
+    "dist",
+    "scripts",
+    "!scripts/__tests__",
+    "!scripts/verify-dist-imports.mjs",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": [
+    "./dist/client.js",
+    "./dist/client.cjs",
+    "./dist/client.css",
+    "*.css"
+  ],
+  "scripts": {
+    "build": "tsup && node scripts/verify-dist-imports.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e:ui:setup": "cd e2e/ui && npm run pack:plugin && npx playwright install chromium",
+    "test:e2e:ui": "cd e2e/ui && npm run test:e2e",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run typecheck && npm run test && npm run build"
+  },
+  "keywords": [
+    "seo",
+    "seo-analyzer",
+    "seo-plugin",
+    "seo-audit",
+    "on-page-seo",
+    "payload",
+    "payload-cms",
+    "payload-cms-plugin",
+    "payload-plugin",
+    "cms-seo",
+    "meta-tags",
+    "content-analysis",
+    "readability",
+    "readability-score",
+    "flesch",
+    "lexical",
+    "i18n",
+    "french",
+    "english",
+    "structured-data",
+    "json-ld",
+    "sitemap",
+    "seo-dashboard",
+    "redirects",
+    "typescript",
+    "payload-4",
+    "cloudflare-workers"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/0xZ0uk/payload-seo-analyzer.git"
+  },
+  "homepage": "https://github.com/0xZ0uk/payload-seo-analyzer#readme",
+  "bugs": {
+    "url": "https://github.com/0xZ0uk/payload-seo-analyzer/issues"
+  },
+  "author": "ConsilioWEB <contact@consilioweb.fr> (https://consilioweb.fr)",
+  "license": "MIT",
+  "packageManager": "pnpm@11.25.0",
+  "peerDependencies": {
+    "@payloadcms/ui": ">=4.0.0-beta.6 <5.0.0",
+    "payload": ">=4.0.0-beta.6 <5.0.0",
+    "react": "^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@payloadcms/ui": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "devDependencies": {
+    "@payloadcms/ui": "4.0.0-beta.6",
+    "@testing-library/react": "^16.3.3",
+    "@types/react": "^19.2.18",
+    "jsdom": "^29.1.1",
+    "payload": "4.0.0-beta.6",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.11"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "contributors": [
+    "ConsilioWEB <contact@consilioweb.fr> (https://consilioweb.fr) \u2014 original author"
+  ]
+}

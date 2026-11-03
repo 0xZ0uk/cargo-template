@@ -1,0 +1,19 @@
+/* Score history card (editor sidebar). Marks are colored by tone tokens from the
+   component; grid lines come from the shared `seo-chart__grid` class. */
+
+.seo-score-history {
+  margin-bottom: var(--spacer-3);
+}
+
+.seo-score-history .seo-card__body {
+  gap: var(--spacer-1);
+}
+
+/* Hollow data points: filled with the card background, stroked with the line color. */
+.seo-score-history__point {
+  fill: var(--color-bg);
+}
+
+.seo-score-history__footer {
+  flex: 1;
+}

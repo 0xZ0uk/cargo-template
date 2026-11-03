@@ -1,0 +1,119 @@
+/* Meta title / description / image fields and the completeness overview.
+   They render inside the Payload document form, so spacing follows Payload's field rhythm. */
+
+.seo-meta-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacer-1);
+  min-width: 0;
+  margin-bottom: var(--spacing-field, var(--spacer-4));
+}
+
+.seo-meta-field__header,
+.seo-meta-field__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacer-2);
+}
+
+.seo-meta-field__controls {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacer-2);
+}
+
+.seo-meta-field__controls .seo-input,
+.seo-meta-field__controls .seo-textarea {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+}
+
+.seo-meta-field__count {
+  color: var(--color-text-secondary);
+  font-size: var(--text-body-small-font-size);
+  line-height: var(--text-body-small-line-height);
+  font-variant-numeric: tabular-nums;
+}
+
+.seo-meta-field__count--success {
+  color: var(--color-text-success);
+}
+
+.seo-meta-field__count--warning {
+  color: var(--color-text-warning);
+}
+
+.seo-meta-field__count--danger {
+  color: var(--color-text-danger);
+}
+
+/* Image field: status line + generate button in one bordered row. */
+.seo-meta-field__status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacer-3);
+  padding: var(--spacer-2) var(--spacer-3);
+  border: var(--stroke-width-small) solid var(--color-border);
+  border-radius: var(--radius-medium);
+}
+
+.seo-meta-field__status-text {
+  display: flex;
+  align-items: center;
+  gap: var(--spacer-2);
+  min-width: 0;
+}
+
+.seo-meta-field__status-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  width: var(--spacer-3);
+  height: var(--spacer-3);
+  color: var(--color-icon-secondary);
+}
+
+.seo-meta-field__status-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.seo-meta-field__status-icon--success {
+  color: var(--color-icon-success);
+}
+
+.seo-meta-field__status-icon--warning {
+  color: var(--color-icon-warning);
+}
+
+/* Overview card: completeness meter and one row per meta field. */
+.seo-overview {
+  margin-bottom: var(--spacing-field, var(--spacer-4));
+}
+
+.seo-overview__rows {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.seo-overview__row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacer-2);
+  padding: var(--spacer-1-5) 0;
+  font-size: var(--text-body-small-font-size);
+  line-height: var(--text-body-small-line-height);
+}
+
+.seo-overview__row + .seo-overview__row {
+  border-top: var(--stroke-width-small) solid var(--color-border);
+}
+
+.seo-overview__row-state {
+  margin-inline-start: auto;
+}

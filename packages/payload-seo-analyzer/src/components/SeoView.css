@@ -1,0 +1,274 @@
+/*
+ * SEO audit dashboard (/admin/seo). Page chrome (header, stat tiles, cards, form
+ * controls) comes from the shared `seo-*` classes; this file only adds what is specific
+ * to the audit table, toolbar, bulk bar and the bulk-preview dialog. Payload tokens only.
+ */
+
+/* ---------- Empty / banner helpers ---------------------------------------- */
+
+.seo-audit__intro {
+  max-width: 32rem;
+}
+
+.seo-audit__banner {
+  flex: 1;
+  justify-content: space-between;
+}
+
+/* ---------- Toolbar -------------------------------------------------------- */
+
+.seo-audit__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacer-2);
+}
+
+.seo-audit__search {
+  position: relative;
+  flex: 0 1 20rem;
+  min-width: 14rem;
+}
+
+.seo-audit__search .seo-input {
+  padding-inline-start: calc(var(--spacer-2) + var(--spacer-3) + var(--spacer-1));
+}
+
+.seo-audit__search-icon {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: var(--spacer-2);
+  width: var(--spacer-3);
+  height: 100%;
+  color: var(--color-icon-secondary);
+  pointer-events: none;
+}
+
+/* ---------- Table ---------------------------------------------------------- */
+
+/* Scrolls inside the view and keeps its header visible. */
+.seo-audit__table {
+  max-height: calc(100vh - 24rem);
+  min-height: var(--spacer-6);
+}
+
+.seo-audit__table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--color-bg);
+  white-space: nowrap;
+}
+
+.seo-audit__table th:first-child,
+.seo-audit__table td:first-child {
+  width: var(--spacer-5);
+  padding-inline: var(--spacer-2);
+}
+
+.seo-audit__sort {
+  white-space: nowrap;
+}
+
+.seo-table th .seo-audit__sort--active {
+  color: var(--color-text);
+}
+
+.seo-audit__sort svg {
+  width: var(--spacer-2);
+  height: var(--spacer-2);
+}
+
+.seo-audit__row {
+  cursor: pointer;
+}
+
+.seo-audit__row--expanded,
+.seo-audit__edit-row {
+  background: var(--color-bg-secondary);
+}
+
+.seo-audit__edit-row:hover {
+  background: var(--color-bg-secondary);
+}
+
+.seo-audit__check {
+  margin: 0;
+  accent-color: var(--color-bg-brand);
+  cursor: pointer;
+}
+
+.seo-audit__page {
+  min-width: 14rem;
+  max-width: 26rem;
+}
+
+.seo-audit__title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacer-1-5);
+  min-width: 0;
+}
+
+/* The title is a real button (keyboard access to expand/collapse) that looks like
+   Payload's linked first cell. */
+.seo-audit__title {
+  min-width: 0;
+  overflow: hidden;
+  padding: 0;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: var(--text-body-medium-bold-font-weight);
+  text-align: start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.seo-audit__title:focus-visible {
+  outline: var(--accessibility-outline);
+  outline-offset: var(--accessibility-outline-offset);
+  border-radius: var(--radius-small);
+}
+
+.seo-audit__missing {
+  gap: var(--spacer-1);
+  margin-top: var(--spacer-1);
+}
+
+.seo-audit__keyword {
+  max-width: 12rem;
+}
+
+.seo-audit__nowrap {
+  white-space: nowrap;
+}
+
+.seo-audit__table td:last-child {
+  text-align: end;
+}
+
+.seo-audit__edit {
+  display: inline-flex;
+  align-items: center;
+  color: var(--color-icon-secondary);
+}
+
+.seo-audit__edit:hover {
+  color: var(--color-icon);
+}
+
+.seo-audit__edit svg {
+  width: var(--spacer-3);
+  height: var(--spacer-3);
+}
+
+.seo-audit__table td svg {
+  vertical-align: middle;
+}
+
+/* ---------- Inline edit row ------------------------------------------------ */
+
+.seo-audit__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacer-2);
+}
+
+.seo-input.seo-audit__input--invalid,
+.seo-textarea.seo-audit__input--invalid,
+.seo-input.seo-audit__input--invalid:hover:not(:focus),
+.seo-textarea.seo-audit__input--invalid:hover:not(:focus) {
+  border-color: var(--field-color-border-error);
+}
+
+/* ---------- Pagination ----------------------------------------------------- */
+
+.seo-audit__pagination {
+  justify-content: center;
+}
+
+/* ---------- Bulk action bar ------------------------------------------------ */
+
+/* Pinned to the bottom of the view while rows are selected. */
+.seo-audit__bulk {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacer-2);
+  margin-inline: calc(var(--gutter-h) * -1);
+  padding: var(--spacer-2) var(--gutter-h);
+  background: var(--color-bg-elevated);
+  border-top: var(--stroke-width-small) solid var(--color-border);
+}
+
+/* ---------- Bulk preview dialog ------------------------------------------- */
+
+.seo-audit__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacer-4);
+  background: var(--color-modalbackdrop);
+}
+
+.seo-audit__modal {
+  display: flex;
+  flex-direction: column;
+  width: min(56rem, 100%);
+  max-height: 85vh;
+  overflow: hidden;
+  color: var(--color-text);
+  background: var(--color-bg);
+  border: var(--stroke-width-small) solid var(--color-border);
+  border-radius: var(--radius-large);
+}
+
+.seo-audit__modal-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacer-1);
+  padding: var(--spacer-3) var(--spacer-4);
+  border-bottom: var(--stroke-width-small) solid var(--color-border);
+}
+
+.seo-audit__modal-body {
+  flex: 1;
+  padding: var(--spacer-2) var(--spacer-4);
+  overflow-y: auto;
+}
+
+.seo-audit__change {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacer-2);
+  padding: var(--spacer-2) 0;
+}
+
+.seo-audit__change + .seo-audit__change {
+  border-top: var(--stroke-width-small) solid var(--color-border);
+}
+
+.seo-audit__before {
+  text-decoration: line-through;
+  opacity: 0.75;
+}
+
+.seo-audit__modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacer-2);
+  padding: var(--spacer-2) var(--spacer-4);
+  border-top: var(--stroke-width-small) solid var(--color-border);
+}
