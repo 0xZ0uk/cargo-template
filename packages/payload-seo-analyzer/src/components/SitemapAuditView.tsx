@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useMemo, useCallback, useId } from 'react'
 import { Button, Banner, CheckIcon, EditIcon, EyeIcon, Pill, RefreshIcon, Tabs, TrashIcon, useConfig } from '@payloadcms/ui'
 import { formatAdminURL } from 'payload/shared'
-import { useDashboardT, useSeoLocale } from '../hooks/useSeoLocale.js'
+import { useDashboardT, useSeoFeature, useSeoLocale } from '../hooks/useSeoLocale.js'
 import { type DashboardTranslations } from '../dashboard-i18n.js'
 import { LiveRegion } from './LiveRegion.js'
 import { toCsv } from '../helpers/csv.js'
@@ -1331,6 +1331,10 @@ export function SitemapAuditView() {
   const [search, setSearch] = useState('')
   const [scoreMap, setScoreMap] = useState<Map<string, number>>(new Map())
   const [logs404Count, setLogs404Count] = useState(0)
+  // Tabs backed by optional features: hidden (and never fetched) when the flag is off.
+  // `undefined` (flags unavailable) keeps them, as before.
+  const seoLogsEnabled = useSeoFeature('seoLogs') !== false
+  const externalLinksEnabled = useSeoFeature('externalLinks') !== false
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -1340,7 +1344,9 @@ export function SitemapAuditView() {
       const [sitemapRes, auditRes, logsRes] = await Promise.all([
         fetch(seoApi('/sitemap-audit'), { credentials: 'include', cache: 'no-store' }),
         fetch(seoApi('/audit'), { credentials: 'include', cache: 'no-store' }),
-        fetch(seoApi('/seo-logs'), { credentials: 'include', cache: 'no-store' }).catch(() => null),
+        seoLogsEnabled
+          ? fetch(seoApi('/seo-logs'), { credentials: 'include', cache: 'no-store' }).catch(() => null)
+          : null,
       ])
       if (!sitemapRes.ok) throw new Error(`HTTP ${sitemapRes.status}`)
       const json = await sitemapRes.json()
@@ -1382,7 +1388,7 @@ export function SitemapAuditView() {
       setError(e instanceof Error ? e.message : t.common.loadingError)
     }
     setLoading(false)
-  }, [t])
+  }, [t, seoApi, seoLogsEnabled])
 
   useEffect(() => {
     fetchData()
@@ -1460,8 +1466,8 @@ export function SitemapAuditView() {
     { value: 'weak', label: t.sitemapAudit.fragilePages, count: filtered.weakPages.length },
     { value: 'hubs', label: t.sitemapAudit.linkHubs, count: filtered.linkHubs.length },
     { value: 'broken', label: t.sitemapAudit.brokenLinks, count: filtered.brokenLinks.length },
-    { value: 'logs404', label: t.sitemapAudit.logs404, count: logs404Count },
-    { value: 'external', label: t.sitemapAudit.externalLinks },
+    ...(seoLogsEnabled ? [{ value: 'logs404' as const, label: t.sitemapAudit.logs404, count: logs404Count }] : []),
+    ...(externalLinksEnabled ? [{ value: 'external' as const, label: t.sitemapAudit.externalLinks }] : []),
   ]
 
   const summary = `${stats.totalPages} ${t.common.page.toLowerCase()}s, ${stats.totalLinks} ${t.sitemapAudit.links}`
@@ -1563,8 +1569,8 @@ export function SitemapAuditView() {
           {activeTab === 'weak' && <WeakTab pages={filtered.weakPages} scoreMap={scoreMap} />}
           {activeTab === 'hubs' && <HubsTab hubs={filtered.linkHubs} />}
           {activeTab === 'broken' && <BrokenTab links={filtered.brokenLinks} onRefresh={fetchData} />}
-          {activeTab === 'logs404' && <Logs404Tab />}
-          {activeTab === 'external' && <ExternalLinksTab />}
+          {activeTab === 'logs404' && seoLogsEnabled && <Logs404Tab />}
+          {activeTab === 'external' && externalLinksEnabled && <ExternalLinksTab />}
         </div>
       </ViewBody>
     </>
