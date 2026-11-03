@@ -1,4 +1,13 @@
-# @consilioweb/payload-seo-analyzer
+# @0xz0uk/payload-seo-analyzer
+
+> **Payload 4 fork** of [`@consilioweb/payload-seo-analyzer`](https://github.com/pOwn3d/payload-seo-analyzer) by ConsilioWEB (MIT).
+>
+> Differences from upstream:
+> - Requires `payload` / `@payloadcms/ui` 4.x. No dependency on Next.js: admin views use `DefaultTemplate` from `@payloadcms/ui/rsc` and redirect through Payload's server adapter, so they run under any Payload 4 adapter (Next.js, TanStack Start).
+> - Runs on Cloudflare Workers: no timers at config time, background schedulers are skipped on serverless isolates, client IP prefers `cf-connecting-ip`.
+> - Plugin collections set `versions: false` (Payload 4 versions collections by default).
+>
+> Replace `@consilioweb/payload-seo-analyzer` with `@0xz0uk/payload-seo-analyzer` in the docs below. The Next.js setup steps don't apply.
 
 > An offline-first SEO toolkit for Payload CMS 3 + Next.js: on-page analysis in the editor sidebar, a nine-view admin dashboard, generated sitemaps and JSON-LD, plus opt-in Google Search Console and AI assists.
 
