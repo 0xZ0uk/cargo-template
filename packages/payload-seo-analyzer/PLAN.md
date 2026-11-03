@@ -10,7 +10,8 @@ Handoff for whoever continues porting `@cargo/payload-seo-analyzer`. Last update
   - The audit and the caches the UI depends on persist in R2 through the plugin's `cacheStore` option and build through `waitUntil`.
   - `seo-redirects` apply on the site, and `/sitemap.xml`, `/robots.txt` and `/llms.txt` are served at the root.
   - The admin UI has no hard-coded paths, and no `NEXT_*` env vars are left.
-- **Not verified on a deployed Worker yet**: `wrangler.jsonc` still has a placeholder `database_id`.
+- **Verified on a deployed Worker** (2026-11-03, `cargo-template.pedrsntana.workers.dev`, 1,500 seeded pages): every enabled feature works. See "Deployed Worker check" below.
+  - Admin login on Workers needed a Payload patch (`patches/payload@4.0.0-beta.6.patch`): Payload 4 hashes passwords with 600,000 PBKDF2 iterations, and deployed Workers reject anything above 100,000 (local workerd doesn't, so `pnpm web preview` hides it).
 - Everything that grows D1, needs background timers, or calls third-party APIs is **turned off** in `apps/web` and only partly ported (P2).
 
 ## Where things are
@@ -93,7 +94,7 @@ Results are in "Done on 2026-11-03".
 
 ## Feature matrix
 
-**Port status** means the code compiles and runs on Payload 4 and the UI is rebuilt. **Verified** means exercised in the Node dev server (API calls and/or screenshots). **Workers** is the status in workerd: the enabled features passed in local workerd (`pnpm web preview`), and nothing has run on a deployed Worker yet.
+**Port status** means the code compiles and runs on Payload 4 and the UI is rebuilt. **Verified** means exercised in the Node dev server (API calls and/or screenshots). **Workers** is the status in workerd: the enabled features passed in local workerd (`pnpm web preview`), and a deployed Worker passed the same checks on 2026-11-03 (see "Deployed Worker check").
 
 | Feature flag | What it is | In `apps/web` | Port status | Verified (Node) | Workers concerns |
 |---|---|---|---|---|---|
@@ -168,8 +169,26 @@ Upstream behaviour that doesn't work, or has no equivalent, in this fork today:
 
 ### Next: left over from P0/P1
 
-- **Deploy and re-check** on a real Worker once `database_id` is set. Check memory per isolate (128 MB) on the sitemap audit and the audit, since both hold every doc in memory.
-- **Chunked audit builds for big sites.** Use Payload jobs or Queues that save progress to R2 with a cursor, triggered on save and by a Cron Trigger. This ties into P2 item 9. Until then, keep `SEO_AUDIT_MAX_DOCS` at or below ~1500–2500.
+- **Deployed Worker check (done 2026-11-03).** Deployed with `pnpm web deploy` to `cargo-template.pedrsntana.workers.dev` (D1 `cargo-template`, R2 `cargo-template-media`), then checked over REST with a user API key.
+  - **Passed:** sidebar `/validate`, `check-keyword`, `suggest-links`, the dashboard audit (202, then 200 from R2), redirect CRUD, frontend 301 (query kept), `redirect-chains`, the sitemap audit, settings save, root `/sitemap.xml` and `/robots.txt` with absolute URLs, JSON-LD on pages, and every admin view. Startup is 17–26 ms and the bundle is 4.4 MB gzipped. `PAYLOAD_SECRET` is stored as `secret_text`.
+  - **CPU at 1,500 pages** (from Workers Observability `cpuTimeMs`):
+
+    | Request | CPU | Wall |
+    |---|---|---|
+    | Cold audit build (`waitUntil`) | 15.7 s | 22.7 s |
+    | `indexation-audit` | 12.7 s | 17.5 s |
+    | Uncached `sitemap-audit` | 1.2 s | 4.3 s |
+    | Uncached `sitemap.xml` | 0.9 s | 2.8 s |
+    | Cached reads, `/validate`, admin views | ≤ 0.2 s | — |
+
+    The audit costs ~10 ms CPU per doc deployed, about 3× the local workerd estimate. With the default 30 s CPU limit it fails above roughly 2,800 docs. No request hit the memory limit.
+  - **Fixed:** the `/breadcrumb` endpoint returned `http://localhost:3000` URLs; it now falls back to the request origin, and its default home label follows the locale.
+- **Admin login on Workers (fixed outside the plugin).** Payload `4.0.0-beta.6` (and `canary.39`) hash passwords with PBKDF2-SHA256 at 600,000 iterations. Deployed Workers fail with `Pbkdf2 failed: iteration counts above 100000 are not supported`, and Payload swallows the error, so every login looked like a wrong password.
+  - `patches/payload@4.0.0-beta.6.patch` (pnpm `patchedDependencies`, same patch as our other Payload 4 Workers apps) writes new hashes as `pbkdf2-sha256-v2-i100000-l32:` (the format proposed in payloadcms/payload#18461). It still verifies v1 (600,000) hashes where the runtime allows it, and rehashes them on login.
+  - v1 hashes can't be verified on Workers. Reset such passwords from Node (Local API with `PAYLOAD_MIGRATE_REMOTE=true`) or log in once through the Node dev server against the same database.
+  - Verified on the deployed Worker: password login, wrong-password 401, a password changed through the Worker, and the full SEO check over a cookie session.
+- **`indexation-audit` is uncached and uncapped.** It's registered with `dashboard` but only the Performance view calls it, and it costs ~8.5 ms CPU per doc deployed. Cache it like the audit and apply `SEO_AUDIT_MAX_DOCS`, or register it only with `performance`.
+- **Chunked audit builds for big sites.** Use Payload jobs or Queues that save progress to R2 with a cursor, triggered on save and by a Cron Trigger. This ties into P2 item 9. Until then, keep `SEO_AUDIT_MAX_DOCS` at or below ~2000 (measured on a deployed Worker), or raise `limits.cpu_ms` in `wrangler.jsonc`.
 - **Trailing slashes:** TanStack answers `/foo/` with a 307 to `/foo` before any redirect lookup, so it takes two hops and the first one is temporary. Make it a permanent 308/301.
 - **Dashboard paging:** at 1500 docs it shows "1500 pages analyzed" but "300 results displayed" (the endpoint pages by 300). Check whether the UI loads the rest.
 - **Readability:** the audit always uses `calculateFleschFR`, so English sites score low (an average of 22 on the seed corpus). Use the locale-appropriate formula.
