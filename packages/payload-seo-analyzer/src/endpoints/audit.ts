@@ -140,23 +140,52 @@ function minRefreshIntervalMs(): number {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 5 * 60_000
 }
 
+type AnalyzedResult = ReturnType<typeof analyzeDoc>
+
 /**
- * Build the full site-wide audit cache. Intended to run in the BACKGROUND (not awaited by
- * the HTTP handler) so the request returns immediately and the heavy work is decoupled from
- * the request lifecycle (no timeouts, no holding a large JSON response while building).
+ * Saved state of a chunked build between steps (`SeoSharedCache.writeProgress`). The scan
+ * resumes at page `page` of `collections[collection]`, with the same page size.
  */
-async function buildAuditCache(
+interface AuditProgress {
+  v: 1
+  /** Generation read when the build started; the finished audit is stamped with it. */
+  gen: string
+  collection: number
+  page: number
+  batchSize: number
+  results: AnalyzedResult[]
+  capped: boolean
+}
+
+/**
+ * How much one build step may do before it saves its progress and pauses. Only builds
+ * that run through `waitUntil` (Workers, ~30 s CPU and wall time per invocation) are
+ * chunked; elsewhere a step runs to the end. The budget is checked between DB pages, so a
+ * step can overrun it by one page. Env: `SEO_AUDIT_STEP_DOCS` (default 800, about 8 s CPU
+ * on a deployed Worker) and `SEO_AUDIT_STEP_MS` (default 20 s of wall time).
+ */
+function auditStepBudget(chunked: boolean): { maxDocs: number; maxMs: number } {
+  if (!chunked) return { maxDocs: Infinity, maxMs: Infinity }
+  const docs = parseInt(process.env.SEO_AUDIT_STEP_DOCS || '800', 10)
+  const ms = parseInt(process.env.SEO_AUDIT_STEP_MS || '20000', 10)
+  return {
+    maxDocs: Number.isFinite(docs) && docs > 0 ? docs : 800,
+    maxMs: Number.isFinite(ms) && ms > 0 ? ms : 20000,
+  }
+}
+
+/**
+ * Scan the collections from `progress` until every doc is analyzed (returns true) or the
+ * step budget is spent (returns false; `progress` holds the cursor). Mutates `progress`.
+ */
+async function scanAuditDocs(
   payload: Payload,
   collections: string[],
-  globals: string[],
-  seoConfig?: SeoConfig,
-  reqLocale?: string,
-  opts: { unthrottled?: boolean } = {},
-): Promise<CachedAudit> {
-  // Load merged config from DB settings + plugin config (locale-aware so the audit scores
-  // each locale with its own language rules)
-  const { config: mergedConfig, ignoredSlugs } = await loadMergedConfig(payload, seoConfig, { reqLocale })
-
+  mergedConfig: SeoConfig,
+  ignoredSlugs: string[],
+  progress: AuditProgress,
+  opts: { unthrottled: boolean; maxDocs: number; maxMs: number },
+): Promise<boolean> {
   // Tiered + THROTTLED build to stay light on constrained shared hosting (e.g. Infomaniak).
   // Process SMALL batches and PAUSE between each (real delay, not just setImmediate): this caps
   // CPU usage and gives V8 time to reclaim the previous batch before loading the next, so the
@@ -168,8 +197,7 @@ async function buildAuditCache(
   // cooperative pauses only make the build overrun that budget. Defaults drop to zero
   // pauses and bigger batches; the env vars still override.
   const fast = opts.unthrottled === true
-  const BATCH_SIZE = Math.min(100, Math.max(1, parseInt(process.env.SEO_AUDIT_BATCH_SIZE || (fast ? '50' : '10'), 10) || 10))
-  const MAX_DOCS = auditMaxDocs()
+  const BATCH_SIZE = progress.batchSize
   const BATCH_DELAY_MS = Math.min(5000, Math.max(0, parseInt(process.env.SEO_AUDIT_BATCH_DELAY_MS || (fast ? '0' : '100'), 10) || 0))
   // Per-document throttle: a REAL pause (not just setImmediate) after each doc gives the event
   // loop idle time so the site stays responsive while the (background) build runs. Trades a
@@ -191,34 +219,42 @@ async function buildAuditCache(
   const rawDepth = parseInt(process.env.SEO_AUDIT_DEPTH ?? '0', 10)
   const DEPTH = Number.isNaN(rawDepth) ? 0 : Math.min(2, Math.max(0, rawDepth))
 
-  const allResults: ReturnType<typeof analyzeDoc>[] = []
-  let capped = false
+  const MAX_DOCS = auditMaxDocs()
+  const stepStart = Date.now()
+  let stepDocs = 0
 
-  collectionsLoop:
-  for (const collectionSlug of collections) {
+  for (; progress.collection < collections.length; progress.collection++, progress.page = 1) {
+    const collectionSlug = collections[progress.collection]
     try {
-      let page = 1
       let hasMore = true
       while (hasMore) {
+        // Budget check between pages, so the cursor always points at a whole page.
+        if (stepDocs >= opts.maxDocs || Date.now() - stepStart >= opts.maxMs) return false
         const result = await payload.find({
           collection: collectionSlug,
           limit: BATCH_SIZE,
-          page,
+          page: progress.page,
           depth: DEPTH,
+          // A stable order, so pages line up across the steps of a chunked build.
+          sort: 'id',
           overrideAccess: true,
         })
         for (const doc of result.docs) {
+          stepDocs++
           if (ignoredSlugs.includes(doc.slug as string)) continue
           // Skip drafts — the site-wide audit scores PUBLISHED content (collections without a
           // draft system have no _status, so they pass through unchanged).
           if ((doc as { _status?: string })._status === 'draft') continue
-          if (allResults.length >= MAX_DOCS) {
-            capped = true
-            break collectionsLoop
+          if (progress.results.length >= MAX_DOCS) {
+            progress.capped = true
+            payload.logger.warn(
+              `[seo] audit: capped at ${MAX_DOCS} docs (SEO_AUDIT_MAX_DOCS). Lower SEO_AUDIT_BATCH_SIZE on low-memory hosts, or raise the cap.`,
+            )
+            return true
           }
           const t0 = Date.now()
           try {
-            allResults.push(analyzeDoc(doc, collectionSlug, mergedConfig))
+            progress.results.push(analyzeDoc(doc, collectionSlug, mergedConfig))
           } catch (e) {
             payload.logger.warn(
               `[seo] audit: skipped ${collectionSlug}/${(doc as { id?: unknown }).id}: ${e instanceof Error ? e.message : 'error'}`,
@@ -238,7 +274,7 @@ async function buildAuditCache(
           }
         }
         hasMore = result.hasNextPage
-        page++
+        progress.page++
         // Extra throttle between DB pages (env-tunable). With the per-doc yield above this is
         // usually optional, but raising it cools the CPU further on the tiniest hosts.
         if (BATCH_DELAY_MS > 0) await new Promise((resolve) => setTimeout(resolve, BATCH_DELAY_MS))
@@ -247,13 +283,18 @@ async function buildAuditCache(
       // Collection might not exist — skip silently
     }
   }
+  return true
+}
 
-  if (capped) {
-    payload.logger.warn(
-      `[seo] audit: capped at ${MAX_DOCS} docs (SEO_AUDIT_MAX_DOCS). Lower SEO_AUDIT_BATCH_SIZE on low-memory hosts, or raise the cap.`,
-    )
-  }
-
+/** Add globals, previous scores and stats to the scanned docs. */
+async function finalizeAudit(
+  payload: Payload,
+  globals: string[],
+  mergedConfig: SeoConfig,
+  ignoredSlugs: string[],
+  allResults: AnalyzedResult[],
+  capped: boolean,
+): Promise<CachedAudit> {
   // Fetch from globals
   for (const globalSlug of globals) {
     try {
@@ -341,6 +382,112 @@ async function buildAuditCache(
   return { enrichedResults, stats, capped }
 }
 
+/** The whole audit in one pass (no budget, no saved progress). Used by `buildAuditToFile`. */
+async function buildAuditCache(
+  payload: Payload,
+  collections: string[],
+  globals: string[],
+  seoConfig?: SeoConfig,
+  reqLocale?: string,
+): Promise<CachedAudit> {
+  const progress: AuditProgress = {
+    v: 1,
+    gen: '',
+    collection: 0,
+    page: 1,
+    batchSize: auditBatchSize(false),
+    results: [],
+    capped: false,
+  }
+  const { config: mergedConfig, ignoredSlugs } = await loadMergedConfig(payload, seoConfig, { reqLocale })
+  await scanAuditDocs(payload, collections, mergedConfig, ignoredSlugs, progress, {
+    unthrottled: false,
+    maxDocs: Infinity,
+    maxMs: Infinity,
+  })
+  return finalizeAudit(payload, globals, mergedConfig, ignoredSlugs, progress.results, progress.capped)
+}
+
+/** Page size of a new build. Fixed for the whole build (saved in its progress). */
+function auditBatchSize(unthrottled: boolean): number {
+  return Math.min(100, Math.max(1, parseInt(process.env.SEO_AUDIT_BATCH_SIZE || (unthrottled ? '50' : '10'), 10) || 10))
+}
+
+/**
+ * Run one step of the audit build for `cacheKey`, which the caller has claimed
+ * (`tryStartBuildStep`). Resumes saved progress when `resumed`, else starts over. Returns
+ * 'done' once the audit is stored, 'paused' when the step budget ran out first (progress
+ * saved). Doesn't release the claim; see `runClaimedAuditStep`.
+ */
+async function runAuditBuildStep(
+  cache: SeoSharedCache,
+  payload: Payload,
+  collections: string[],
+  globals: string[],
+  seoConfig: SeoConfig | undefined,
+  cacheKey: string,
+  reqLocale: string | undefined,
+  resumed: boolean,
+): Promise<{ outcome: 'done' | 'paused'; processed: number }> {
+  const unthrottled = cache.hasWaitUntil
+  let progress = resumed ? await cache.readProgress<AuditProgress>(cacheKey) : null
+  if (!progress || progress.v !== 1 || !Array.isArray(progress.results)) {
+    progress = {
+      v: 1,
+      // Read the generation BEFORE building: a save during the build bumps it, so the
+      // result is stored already stale instead of hiding that save.
+      gen: await cache.generation(CACHE_KEY),
+      collection: 0,
+      page: 1,
+      batchSize: auditBatchSize(unthrottled),
+      results: [],
+      capped: false,
+    }
+  }
+  // Load merged config from DB settings + plugin config (locale-aware so the audit scores
+  // each locale with its own language rules)
+  const { config: mergedConfig, ignoredSlugs } = await loadMergedConfig(payload, seoConfig, { reqLocale })
+  const finished = await scanAuditDocs(payload, collections, mergedConfig, ignoredSlugs, progress, {
+    unthrottled,
+    ...auditStepBudget(unthrottled),
+  })
+  if (!finished) {
+    await cache.writeProgress(cacheKey, progress)
+    return { outcome: 'paused', processed: progress.results.length }
+  }
+  const result = await finalizeAudit(payload, globals, mergedConfig, ignoredSlugs, progress.results, progress.capped)
+  await cache.set(CACHE_KEY, cacheKey, result, progress.gen)
+  await cache.clearProgress(cacheKey)
+  return { outcome: 'done', processed: progress.results.length }
+}
+
+/** Run a claimed step and release the claim (pause or finish). Never throws. */
+async function runClaimedAuditStep(
+  cache: SeoSharedCache,
+  payload: Payload,
+  collections: string[],
+  globals: string[],
+  seoConfig: SeoConfig | undefined,
+  cacheKey: string,
+  reqLocale: string | undefined,
+  resumed: boolean,
+): Promise<'done' | 'paused' | 'failed'> {
+  try {
+    const step = await runAuditBuildStep(cache, payload, collections, globals, seoConfig, cacheKey, reqLocale, resumed)
+    if (step.outcome === 'paused') {
+      await cache.pauseBuild(cacheKey, step.processed)
+      return 'paused'
+    }
+    await cache.finishBuild(cacheKey)
+    return 'done'
+  } catch (e) {
+    payload.logger.error(`[seo] audit build failed: ${e instanceof Error ? e.message : 'unknown'}`)
+    await cache.clearProgress(cacheKey)
+    await cache.finishBuild(cacheKey)
+    return 'failed'
+  }
+}
+
 /** Yield once to the event loop (setImmediate where available, else a 0 ms timer). */
 function yieldToEventLoop(): Promise<void> {
   return new Promise((resolve) => {
@@ -350,9 +497,11 @@ function yieldToEventLoop(): Promise<void> {
 }
 
 /**
- * Kick off a background build if one isn't already running for this key (single-flight).
- * The build runs after the response: through the host's `waitUntil` when configured
- * (Workers cancel un-awaited work otherwise), else fire-and-forget (long-lived Node).
+ * Start (or resume) a background build step if none is running for this key
+ * (single-flight). The step runs after the response: through the host's `waitUntil` when
+ * configured (Workers cancel un-awaited work otherwise), else fire-and-forget (long-lived
+ * Node). On Workers a big site takes several steps; each poll of the dashboard starts the
+ * next one, and the `seoAuditContinue` job (`jobs` option) finishes builds nobody watches.
  */
 async function ensureAuditBuild(
   cache: SeoSharedCache,
@@ -363,23 +512,55 @@ async function ensureAuditBuild(
   cacheKey: string,
   reqLocale?: string,
 ): Promise<void> {
-  if (!(await cache.tryStartBuild(cacheKey))) return
-  const task = (async () => {
-    try {
-      // Read the generation BEFORE building: a save during the build bumps it, so the
-      // result is stored already stale instead of hiding that save.
-      const gen = await cache.generation(CACHE_KEY)
-      const result = await buildAuditCache(payload, collections, globals, seoConfig, reqLocale, {
-        unthrottled: cache.hasWaitUntil,
-      })
-      await cache.set(CACHE_KEY, cacheKey, result, gen)
-    } catch (e) {
-      payload.logger.error(`[seo] audit build failed: ${e instanceof Error ? e.message : 'unknown'}`)
-    } finally {
-      await cache.finishBuild(cacheKey)
-    }
-  })()
-  cache.runInBackground(task)
+  const claim = await cache.tryStartBuildStep(cacheKey)
+  if (!claim.claimed) return
+  cache.runInBackground(
+    runClaimedAuditStep(cache, payload, collections, globals, seoConfig, cacheKey, reqLocale, claim.resumed),
+  )
+}
+
+/** Hash of the config that shapes the audit; part of persisted keys. */
+function auditConfigHash(collections: string[], globals: string[], seoConfig: SeoConfig | undefined): string {
+  // v2: readability uses the locale-appropriate Flesch formula (was always French).
+  return hashConfig({ v: 2, collections, globals, seoConfig: seoConfig ?? null })
+}
+
+function auditCacheKey(cache: SeoSharedCache, configHash: string, reqLocale: string | undefined): string {
+  const localeKey = reqLocale ? `${CACHE_KEY}:${reqLocale}` : CACHE_KEY
+  return cache.persistent ? `${localeKey}:${configHash}` : localeKey
+}
+
+/**
+ * Run the next step of every paused audit build (one per locale), awaited. Used by the
+ * `seoAuditContinue` job, so a chunked build finishes even when nobody keeps the
+ * dashboard open. Builds that aren't paused are left alone (no prewarming).
+ */
+export async function continuePausedAuditBuilds(args: {
+  payload: Payload
+  collections: string[]
+  globals: string[]
+  seoConfig?: SeoConfig
+  cache: SeoSharedCache
+}): Promise<{ key: string; outcome: 'done' | 'paused' | 'failed' }[]> {
+  const { payload, collections, globals, seoConfig, cache } = args
+  const configHash = auditConfigHash(collections, globals, seoConfig)
+  const localization = payload.config.localization
+  const locales: (string | undefined)[] = localization
+    ? [...((localization as { localeCodes?: string[] }).localeCodes ?? []), 'all']
+    : [undefined]
+  const outcomes: { key: string; outcome: 'done' | 'paused' | 'failed' }[] = []
+  for (const locale of locales) {
+    const key = auditCacheKey(cache, configHash, locale)
+    const status = await cache.buildStatus(key)
+    if (!status.paused) continue
+    const claim = await cache.tryStartBuildStep(key)
+    if (!claim.claimed) continue
+    outcomes.push({
+      key,
+      outcome: await runClaimedAuditStep(cache, payload, collections, globals, seoConfig, key, locale, claim.resumed),
+    })
+  }
+  return outcomes
 }
 
 /** Shape of the build-time audit cache file (one CachedAudit per locale-scoped key). */
@@ -481,8 +662,7 @@ export function createAuditHandler(
 ): PayloadHandler {
   // Persisted entries outlive deploys, so their key includes a hash of the config that
   // shapes the audit: a deploy that changes collections/rules starts from a clean slate.
-  // v2: readability uses the locale-appropriate Flesch formula (was always French).
-  const configHash = hashConfig({ v: 2, collections, globals, seoConfig: seoConfig ?? null })
+  const configHash = auditConfigHash(collections, globals, seoConfig)
   // The build-time file cache is a filesystem feature for long-lived Node hosts. With a
   // persistent store the audit already survives restarts, so the file is ignored there
   // (the plugin warns at init).
@@ -505,8 +685,7 @@ export function createAuditHandler(
       // gave the caller an unbounded key space — every value a guaranteed cache miss,
       // hence a fresh site-wide build past both the admin gate and the refresh throttle.
       const reqLocale = safeCacheLocale(req)
-      const localeKey = reqLocale ? `${CACHE_KEY}:${reqLocale}` : CACHE_KEY
-      const cacheKey = cache.persistent ? `${localeKey}:${configHash}` : localeKey
+      const cacheKey = auditCacheKey(cache, configHash, reqLocale)
 
       // Manual refresh — drop the stale cache so the next poll waits for the fresh build.
       // (Skip if a build is already running: it will repopulate the cache shortly anyway.)
@@ -571,7 +750,13 @@ export function createAuditHandler(
         // the client to poll. The 202 response is tiny and returns immediately.
         await ensureAuditBuild(cache, req.payload, collections, globals, seoConfig, cacheKey, reqLocale)
         return Response.json(
-          { building: true, results: [], stats: null },
+          {
+            building: true,
+            results: [],
+            stats: null,
+            // Docs analyzed so far by a chunked build (absent before its first pause).
+            ...(typeof build.processed === 'number' ? { processed: build.processed } : {}),
+          },
           { status: 202, headers: { 'Cache-Control': 'no-store' } },
         )
       }

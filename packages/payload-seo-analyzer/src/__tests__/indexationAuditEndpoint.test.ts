@@ -56,7 +56,7 @@ function makeReq(docs: Record<string, unknown>[], query = '') {
 }
 
 afterEach(() => {
-  delete process.env.SEO_AUDIT_MAX_DOCS
+  delete process.env.SEO_INDEXATION_MAX_DOCS
 })
 
 describe('indexation-audit', () => {
@@ -84,8 +84,8 @@ describe('indexation-audit', () => {
     expect(find).toHaveBeenCalledWith(expect.objectContaining({ depth: 0 }))
   })
 
-  it('caps the scan at SEO_AUDIT_MAX_DOCS and says so', async () => {
-    process.env.SEO_AUDIT_MAX_DOCS = '150'
+  it('caps the scan at SEO_INDEXATION_MAX_DOCS and says so', async () => {
+    process.env.SEO_INDEXATION_MAX_DOCS = '150'
     const docs = Array.from({ length: 250 }, (_, i) => richDoc(i + 1))
     const { req } = makeReq(docs)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

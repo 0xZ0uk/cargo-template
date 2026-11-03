@@ -15,7 +15,7 @@
  *
  * Cost: it is a whole-site scan, so it is cached like the dashboard audit (persisted in
  * the `cacheStore` when one is set, invalidated on every content or settings save),
- * capped at `SEO_AUDIT_MAX_DOCS` (default 1500), and only runs the `technical` rule group
+ * capped at `SEO_INDEXATION_MAX_DOCS` (default 1500), and only runs the `technical` rule group
  * on the few fields that group reads (slug, canonical, robots), at depth 0. The technical
  * checks never read content, so the verdict is the same as a full analysis.
  *
@@ -27,7 +27,7 @@ import type { RuleGroup, SeoConfig, SeoCheck, SeoInput } from '../types.js'
 import { buildSeoInputFromDoc } from './validate.js'
 import { loadMergedConfig } from '../helpers/loadMergedConfig.js'
 import { isSeoAdminRequest, isSeoPanelUser } from '../helpers/isAdmin.js'
-import { auditMaxDocs } from '../helpers/auditLimits.js'
+import { indexationMaxDocs } from '../helpers/auditLimits.js'
 import { safeCacheLocale } from '../helpers/safeCacheLocale.js'
 import { defaultSeoSharedCache, hashConfig, type SeoSharedCache } from '../cache.js'
 
@@ -463,7 +463,7 @@ export function createIndexationAuditHandler(
         ...baseConfig,
         disabledRules: [...new Set([...(baseConfig.disabledRules ?? []), ...NON_TECHNICAL_GROUPS])],
       }
-      const maxDocs = auditMaxDocs()
+      const maxDocs = indexationMaxDocs()
       let capped = false
 
       const entries: IndexationEntry[] = []
@@ -561,7 +561,7 @@ export function createIndexationAuditHandler(
       const hygiene = analyzeIndexationHygiene(allRecords, { siteUrl: mergedConfig.siteUrl })
 
       if (capped) {
-        req.payload.logger.warn(`[seo] indexation-audit: capped at ${maxDocs} docs (SEO_AUDIT_MAX_DOCS).`)
+        req.payload.logger.warn(`[seo] indexation-audit: capped at ${maxDocs} docs (SEO_INDEXATION_MAX_DOCS).`)
       }
 
       const responseData = {
