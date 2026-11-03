@@ -3,8 +3,7 @@
 'use client'
 
 import React from 'react'
-// @ts-ignore — next is a peer dependency
-import { usePathname } from 'next/navigation'
+import { usePathname } from '@payloadcms/ui'
 import { useDashboardT } from '../hooks/useSeoLocale.js'
 import { withSeoErrorBoundary } from './withSeoErrorBoundary.js'
 

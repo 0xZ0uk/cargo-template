@@ -60,10 +60,16 @@ describe('error boundary — the nine admin views', () => {
     expect(views).toHaveLength(9)
   })
 
-  it.each(views)('%s wraps its client body', (file) => {
+  it('the shared shell wraps the client body', () => {
+    const shell = read('views/adminViewShell.tsx')
+    expect(shell).toContain('<ViewErrorBoundary')
+    expect(shell).toContain("from './ErrorBoundaryClient.js'")
+  })
+
+  it.each(views)('%s renders through the shared shell', (file) => {
     const source = read(path.join('views', file))
-    expect(source).toContain('<ViewErrorBoundary')
-    expect(source).toContain("from './ErrorBoundaryClient.js'")
+    expect(source).toContain("from './adminViewShell.js'")
+    expect(source).toMatch(/renderSeoAdminView\(props, /)
   })
 
   it('the boundary reaches the server views through the client entry, not by import', () => {
@@ -73,7 +79,7 @@ describe('error boundary — the nine admin views', () => {
     // client export, which tsup keeps external.
     const bridge = read('views/ErrorBoundaryClient.tsx')
     expect(bridge).toContain("'use client'")
-    expect(bridge).toContain("@consilioweb/payload-seo-analyzer/client")
+    expect(bridge).toContain("@0xz0uk/payload-seo-analyzer/client")
 
     for (const file of fs.readdirSync(path.join(SRC, 'views')).filter((f) => f.endsWith('View.tsx'))) {
       const source = read(path.join('views', file))

@@ -14,7 +14,7 @@ const SELF_PATH = fileURLToPath(import.meta.url)
 /**
  * The package name is read from our own package.json rather than hardcoded.
  * It used to be hardcoded as `@consilioweb/seo-analyzer` while the package is
- * actually published as `@consilioweb/payload-seo-analyzer`: no import matched,
+ * actually published as `@0xz0uk/payload-seo-analyzer`: no import matched,
  * the removal command removed nothing, and the script still printed
  * "Uninstall complete". A hardcoded name cannot drift here.
  */

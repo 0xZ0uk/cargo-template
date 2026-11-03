@@ -8,7 +8,7 @@
  * - API endpoints for validation, keyword dedup, and audit
  *
  * Usage:
- *   import { seoAnalyzerPlugin } from '@consilioweb/payload-seo-analyzer'
+ *   import { seoAnalyzerPlugin } from '@0xz0uk/payload-seo-analyzer'
  *
  *   export default buildConfig({
  *     plugins: [
@@ -838,63 +838,63 @@ export const seoAnalyzerPlugin =
 
       if (features.dashboard) {
         views.seo = {
-          Component: '@consilioweb/payload-seo-analyzer/views#SeoView',
+          Component: '@0xz0uk/payload-seo-analyzer/views#SeoView',
           path: '/seo',
         }
       }
 
       if (features.sitemapAudit && pluginConfig.addSitemapAuditView !== false) {
         views['sitemap-audit'] = {
-          Component: '@consilioweb/payload-seo-analyzer/views#SitemapAuditView',
+          Component: '@0xz0uk/payload-seo-analyzer/views#SitemapAuditView',
           path: '/sitemap-audit',
         }
       }
 
       if (features.settings) {
         views['seo-config'] = {
-          Component: '@consilioweb/payload-seo-analyzer/views#SeoConfigView',
+          Component: '@0xz0uk/payload-seo-analyzer/views#SeoConfigView',
           path: '/seo-config',
         }
       }
 
       if (features.redirects) {
         views['redirects'] = {
-          Component: '@consilioweb/payload-seo-analyzer/views#RedirectManagerView',
+          Component: '@0xz0uk/payload-seo-analyzer/views#RedirectManagerView',
           path: '/redirects',
         }
       }
 
       if (features.cannibalization) {
         views['cannibalization'] = {
-          Component: '@consilioweb/payload-seo-analyzer/views#CannibalizationView',
+          Component: '@0xz0uk/payload-seo-analyzer/views#CannibalizationView',
           path: '/cannibalization',
         }
       }
 
       if (features.performance) {
         views['performance'] = {
-          Component: '@consilioweb/payload-seo-analyzer/views#PerformanceView',
+          Component: '@0xz0uk/payload-seo-analyzer/views#PerformanceView',
           path: '/performance',
         }
       }
 
       if (features.keywords) {
         views['keyword-research'] = {
-          Component: '@consilioweb/payload-seo-analyzer/views#KeywordResearchView',
+          Component: '@0xz0uk/payload-seo-analyzer/views#KeywordResearchView',
           path: '/keyword-research',
         }
       }
 
       if (features.schemaBuilder) {
         views['schema-builder'] = {
-          Component: '@consilioweb/payload-seo-analyzer/views#SchemaBuilderView',
+          Component: '@0xz0uk/payload-seo-analyzer/views#SchemaBuilderView',
           path: '/schema-builder',
         }
       }
 
       if (features.linkGraph) {
         views['link-graph'] = {
-          Component: '@consilioweb/payload-seo-analyzer/views#LinkGraphView',
+          Component: '@0xz0uk/payload-seo-analyzer/views#LinkGraphView',
           path: '/link-graph',
         }
       }
@@ -903,7 +903,7 @@ export const seoAnalyzerPlugin =
       const navLinks = config.admin.components.afterNavLinks || []
       config.admin.components.afterNavLinks = [
         ...(Array.isArray(navLinks) ? navLinks : [navLinks]),
-        '@consilioweb/payload-seo-analyzer/client#SeoNavLink',
+        '@0xz0uk/payload-seo-analyzer/client#SeoNavLink',
       ]
     }
 
@@ -947,6 +947,19 @@ export const seoAnalyzerPlugin =
     const existingOnInit = config.onInit
     config.onInit = async (payload) => {
       if (existingOnInit) await existingOnInit(payload)
+      // Serverless isolates (Cloudflare Workers) have no long-lived process: onInit runs
+      // inside the first request and any setTimeout/setInterval dies with it. The cache
+      // warm-up would also burn that request's CPU budget on a full site audit. Skip the
+      // background schedulers there; use the on-demand endpoints (or Payload jobs on a
+      // cron trigger) instead.
+      if (isServerlessIsolate()) {
+        if (features.gscApi || features.alerts || pluginConfig.retentionDays) {
+          payload.logger.warn(
+            '[seo-analyzer] Background schedulers (rank tracking, alerts, retention purge) do not run on serverless isolates; trigger them from a cron instead.',
+          )
+        }
+        return
+      }
       // Skip startup pre-loading on low-memory hosts (features.warmCache: false)
       if (features.warmCache) {
         startCacheWarmUp(payload, basePath, targetGlobals, targetCollections)
@@ -965,6 +978,11 @@ export const seoAnalyzerPlugin =
 
     return config
   }
+
+/** True on runtimes without a long-lived process, where background timers cannot run. */
+function isServerlessIsolate(): boolean {
+  return typeof navigator !== 'undefined' && navigator.userAgent === 'Cloudflare-Workers'
+}
 
 /** @deprecated Use `seoAnalyzerPlugin` instead. Kept for backward compatibility. */
 export { seoAnalyzerPlugin as seoPlugin }

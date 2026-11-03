@@ -20,7 +20,7 @@
  * Search Console API, and register the redirect URI `<siteUrl>/api<basePath>/gsc/callback`.
  */
 import type { PayloadHandler } from 'payload'
-import { randomBytes } from 'crypto'
+import { randomBytes } from 'node:crypto'
 import type { SeoConfig } from '../types.js'
 import { encryptToken, safeEqual } from '../helpers/tokenCrypto.js'
 import { escapeHtml } from '../helpers/escapeHtml.js'

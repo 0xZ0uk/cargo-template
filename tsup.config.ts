@@ -10,7 +10,7 @@ const sharedConfig: Partial<Options> = {
   splitting: false,
   treeshake: true,
   target: 'es2022',
-  external: ['payload', '@payloadcms/ui', '@payloadcms/next', '@payloadcms/next/templates', 'react', 'react-dom', 'react/jsx-runtime', 'next', 'next/navigation', '@consilioweb/payload-seo-analyzer', '@consilioweb/payload-seo-analyzer/client'],
+  external: ['payload', '@payloadcms/ui', '@payloadcms/ui/rsc', 'react', 'react-dom', 'react/jsx-runtime', '@0xz0uk/payload-seo-analyzer', '@0xz0uk/payload-seo-analyzer/client'],
 }
 
 export default defineConfig([

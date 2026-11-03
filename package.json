@@ -1,7 +1,7 @@
 {
-  "name": "@consilioweb/payload-seo-analyzer",
-  "version": "4.2.2",
-  "description": "Payload CMS SEO plugin — 50+ checks, dashboard, Lexical JSON support, Flesch FR/EN readability, i18n",
+  "name": "@0xz0uk/payload-seo-analyzer",
+  "version": "5.0.0-beta.0",
+  "description": "Payload CMS 4 SEO plugin (fork of @consilioweb/payload-seo-analyzer) — 50+ checks, dashboard, Lexical JSON support, readability, i18n",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -79,8 +79,6 @@
     "readability-score",
     "flesch",
     "lexical",
-    "next.js",
-    "nextjs",
     "i18n",
     "french",
     "english",
@@ -89,51 +87,43 @@
     "sitemap",
     "seo-dashboard",
     "redirects",
-    "typescript"
+    "typescript",
+    "payload-4",
+    "cloudflare-workers"
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/pOwn3d/payload-seo-analyzer.git"
+    "url": "git+https://github.com/0xZ0uk/payload-seo-analyzer.git"
   },
-  "homepage": "https://github.com/pOwn3d/payload-seo-analyzer#readme",
+  "homepage": "https://github.com/0xZ0uk/payload-seo-analyzer#readme",
   "bugs": {
-    "url": "https://github.com/pOwn3d/payload-seo-analyzer/issues"
+    "url": "https://github.com/0xZ0uk/payload-seo-analyzer/issues"
   },
   "author": "ConsilioWEB <contact@consilioweb.fr> (https://consilioweb.fr)",
   "license": "MIT",
   "packageManager": "pnpm@11.25.0",
   "peerDependencies": {
-    "@payloadcms/next": ">=3.79.1 <4.0.0",
-    "@payloadcms/ui": ">=3.79.1 <4.0.0",
-    "next": "^15.2.0 || ^16.0.0",
-    "payload": ">=3.79.1 <4.0.0",
-    "react": "^18.0.0 || ^19.0.0"
+    "@payloadcms/ui": ">=4.0.0-beta.6 <5.0.0",
+    "payload": ">=4.0.0-beta.6 <5.0.0",
+    "react": "^19.0.0"
   },
   "peerDependenciesMeta": {
     "@payloadcms/ui": {
       "optional": true
     },
-    "@payloadcms/next": {
-      "optional": true
-    },
     "react": {
-      "optional": true
-    },
-    "next": {
       "optional": true
     }
   },
   "engines": {
-    "node": "^20.19.0 || >=22.12.0"
+    "node": ">=22.12.0"
   },
   "devDependencies": {
-    "@payloadcms/next": "^3.90.1",
-    "@payloadcms/ui": "^3.90.1",
+    "@payloadcms/ui": "4.0.0-beta.6",
     "@testing-library/react": "^16.3.3",
     "@types/react": "^19.2.18",
     "jsdom": "^29.1.1",
-    "next": "^16.3.4",
-    "payload": "^3.90.1",
+    "payload": "4.0.0-beta.6",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "tsup": "^8.5.1",
@@ -142,5 +132,8 @@
   },
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "contributors": [
+    "ConsilioWEB <contact@consilioweb.fr> (https://consilioweb.fr) — original author"
+  ]
 }

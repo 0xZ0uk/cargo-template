@@ -13,7 +13,7 @@
  *
  * SECURITY: never log the plaintext token, the derived key, or the encrypted payload.
  */
-import { createCipheriv, createDecipheriv, randomBytes, scryptSync, timingSafeEqual } from 'crypto'
+import { createCipheriv, createDecipheriv, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 
 const ALGO = 'aes-256-gcm'
 const KEY_NAMESPACE = 'seo-analyzer:gsc:v1'

@@ -1003,9 +1003,11 @@ describe('SEO-13 — the admin views require an admin-panel session', () => {
   it('every view goes through the shared gate, none keeps a bare `req.user` check', () => {
     const views = readdirSync(VIEWS_DIR).filter((f) => f.endsWith('View.tsx'))
     expect(views.length).toBeGreaterThanOrEqual(9)
+    const shell = readFileSync(join(VIEWS_DIR, 'adminViewShell.tsx'), 'utf8')
+    expect(shell).toContain('seoViewRedirectTarget')
     const offenders = views.filter((file) => {
       const code = readFileSync(join(VIEWS_DIR, file), 'utf8')
-      return !code.includes('seoViewRedirectTarget') || /if \(!initPageResult\?\.req\?\.user\)/.test(code)
+      return !code.includes('renderSeoAdminView(props') || /if \(!initPageResult\?\.req\?\.user\)/.test(code)
     })
     expect(offenders).toEqual([])
   })

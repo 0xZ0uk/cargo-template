@@ -24,8 +24,8 @@ export function createSeoScoreHistoryCollection(): CollectionConfig {
       // The trackSeoScore hook writes with overrideAccess: true — unaffected.
       read: ({ req }) => isSeoPanelUser(req),
       create: ({ req }) => isSeoAdminRequest(req),
-      update: ({ req }) => isSeoPanelUser(req) && req.user?.role === 'admin',
-      delete: ({ req }) => isSeoPanelUser(req) && req.user?.role === 'admin',
+      update: ({ req }) => isSeoAdminRequest(req),
+      delete: ({ req }) => isSeoAdminRequest(req),
     },
     timestamps: false,
     fields: [

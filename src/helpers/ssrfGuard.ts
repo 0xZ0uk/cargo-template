@@ -14,7 +14,7 @@
  * and any embedded IPv4 (`::ffff:*` mapped, `::*` compatible, 6to4, NAT64) is
  * re-checked with the IPv4 rules.
  */
-import { promises as dns } from 'dns'
+import { promises as dns } from 'node:dns'
 
 /** Ports the checker is allowed to reach — anything else is internal-service scanning. */
 const ALLOWED_PORTS = new Set(['', '80', '443'])

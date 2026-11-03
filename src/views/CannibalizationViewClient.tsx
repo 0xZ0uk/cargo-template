@@ -3,4 +3,4 @@
 // Import from our own package's client entry — tsup keeps this external,
 // preserving the RSC boundary (this file = client, CannibalizationView wrapper = server)
 // @ts-ignore — self-reference via package exports
-export { CannibalizationView as CannibalizationViewClient } from '@consilioweb/payload-seo-analyzer/client'
+export { CannibalizationView as CannibalizationViewClient } from '@0xz0uk/payload-seo-analyzer/client'

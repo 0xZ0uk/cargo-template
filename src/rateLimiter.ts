@@ -23,28 +23,26 @@ export interface RateLimiter {
 export function createRateLimiter(maxRequests: number, windowMs: number): RateLimiter {
   const store = new Map<string, RateLimitEntry>()
 
-  // Periodic cleanup of expired entries every 60s
-  const cleanupInterval = setInterval(() => {
-    const now = Date.now()
+  // Expired entries are swept lazily from check() at most once a minute. A
+  // setInterval here would run while the Payload config is being built, i.e. at
+  // module scope, which Cloudflare Workers rejects ("Disallowed operation called
+  // within global scope"), and it would keep Node processes awake.
+  const sweepEveryMs = 60_000
+  let lastSweep = Date.now()
+  const sweep = (now: number) => {
+    lastSweep = now
     for (const [ip, entry] of store) {
-      // Remove timestamps older than the window
       entry.timestamps = entry.timestamps.filter((t) => now - t < windowMs)
       if (entry.timestamps.length === 0) {
         store.delete(ip)
       }
     }
-  }, 60_000)
-
-  // Allow garbage collection if the process is shutting down
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const interval = cleanupInterval as any
-  if (typeof interval.unref === 'function') {
-    interval.unref()
   }
 
   return {
     check(ip: string): boolean {
       const now = Date.now()
+      if (now - lastSweep >= sweepEveryMs) sweep(now)
       let entry = store.get(ip)
 
       if (!entry) {
@@ -67,9 +65,15 @@ export function createRateLimiter(maxRequests: number, windowMs: number): RateLi
 
 /**
  * Extract client IP from a Payload request.
- * Checks x-forwarded-for header first, then falls back to connection info.
+ * Prefers Cloudflare's `cf-connecting-ip` (set by the edge, not spoofable by the
+ * client), then x-forwarded-for, then x-real-ip.
  */
 export function getClientIp(req: { headers: Headers }): string {
+  const cfIp = req.headers.get('cf-connecting-ip')
+  if (cfIp) {
+    return cfIp.trim()
+  }
+
   const forwarded = req.headers.get('x-forwarded-for')
   if (forwarded) {
     // x-forwarded-for can contain multiple IPs: "client, proxy1, proxy2"
