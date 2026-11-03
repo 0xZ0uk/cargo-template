@@ -1,14 +1,17 @@
 # SEO analyzer: port status and plan
 
-Handoff for whoever continues porting `@cargo/payload-seo-analyzer`. Last updated 2026-11-03.
+Handoff for whoever continues porting `@cargo/payload-seo-analyzer`. Last updated 2026-11-03 (after P0 + P1).
 
 ## TL;DR
 
 - This package is a fork of [`@consilioweb/payload-seo-analyzer`](https://github.com/pOwn3d/payload-seo-analyzer) 4.2.2 (Payload 3 + Next.js), ported to **Payload 4 (4.0.0-beta.6)** and to our stack: **TanStack Start on Cloudflare Workers, D1 + R2**.
 - **Done:** it compiles and runs on Payload 4, has no Next.js dependency, and its whole admin UI has been rebuilt on `@payloadcms/ui` and Payload 4 tokens.
-- **Verified in the Node dev server only.** `apps/web` enables the core subset: editor sidebar, dashboard, redirects, sitemap audit, settings.
-- **Not verified in the Workers runtime** (`pnpm web preview` or a deployed Worker). The background audit and the in-memory caches are known to be unsafe there (see P0).
-- Everything that grows D1, needs background timers, or calls third-party APIs is **turned off** in `apps/web` and only partly ported.
+- **P0 and P1 are done** (branch `feat/seo-analyzer-workers`, 2026-11-03). The core subset `apps/web` enables (editor sidebar, dashboard, redirects, sitemap audit, settings, sitemap/robots/llms.txt) is **verified in local workerd** (`pnpm web preview`).
+  - The audit and the caches the UI depends on persist in R2 through the plugin's `cacheStore` option and build through `waitUntil`.
+  - `seo-redirects` apply on the site, and `/sitemap.xml`, `/robots.txt` and `/llms.txt` are served at the root.
+  - The admin UI has no hard-coded paths, and no `NEXT_*` env vars are left.
+- **Not verified on a deployed Worker yet**: `wrangler.jsonc` still has a placeholder `database_id`.
+- Everything that grows D1, needs background timers, or calls third-party APIs is **turned off** in `apps/web` and only partly ported (P2).
 
 ## Where things are
 
@@ -32,6 +35,7 @@ Port commits, oldest first (`git log --oneline 4cc80c2`):
 After that, in this repo:
 - `d4322b5` made it a workspace package
 - `1de8408` added it to `apps/web`
+- `feat/seo-analyzer-workers`: P0 + P1 (see "Done on 2026-11-03" below)
 
 ## Working on it
 
@@ -40,6 +44,7 @@ pnpm dev                                                 # root: tsup --watch fo
 pnpm --filter @cargo/payload-seo-analyzer test           # 728 vitest tests (jsdom for components)
 pnpm --filter @cargo/payload-seo-analyzer typecheck
 pnpm build                                               # plugin, then the production Worker
+PAYLOAD_SECRET=test-secret pnpm web test:int             # app integration tests (varlock exits without the secret)
 pnpm web generate:importmap                              # after adding/removing admin components or views
 pnpm web migrate:create <name>                           # after enabling a feature that adds a collection
 ```
@@ -61,6 +66,12 @@ Gotchas:
 - **First request after adding collections:** the first dev request sometimes fails with `index payload_locked_documents_rels_order_idx already exists`. That's a drizzle/SQLite push quirk; the next request works.
 - **Rate limiting:** the plugin rate-limits its expensive endpoints per user (10/min), so automated checks that load many views quickly get HTTP 429.
 - **e2e port:** `apps/web` e2e specs hard-code `localhost:3000` with `reuseExistingServer`. Any other app on that port gets tested instead.
+- **workerd preview:**
+  - `pnpm web preview` doesn't take `--port` cleanly. Run `pnpm web build`, then `CLOUDFLARE_RUNTIME=true vite preview --port 4310` from `apps/web`.
+  - A local D1 created by Payload's dev push makes `pnpm web migrate` stop at the "data loss" prompt. Back up `.wrangler/state` and migrate a fresh copy.
+  - The build writes the secret to `dist/server/.dev.vars`. It's gitignored, but it's on disk.
+  - `/cdn-cgi/local/explorer/api` lists R2 objects and request traces. It shows no CPU time.
+- **Env vars on Workers:** varlock only passes variables declared in `apps/web/.env.schema` to workerd. A plugin `SEO_*` variable does nothing there until it's declared (today: `SEO_LLMS_TXT`, `SEO_AUDIT_MAX_DOCS`, `SEO_FETCH_MAX_DOCS`).
 
 ### Visual check (what was used for the UI rebuild)
 
@@ -72,18 +83,26 @@ Gotchas:
 
 Nothing from that run is kept; recreate it as needed.
 
+### Workers check (what was used for P0)
+
+1. Seed 300–1500 published pages, each about 550 words with internal and external links, through `payload run` or REST.
+2. Exercise every enabled endpoint and admin view with curl and Playwright against the workerd preview.
+3. Time the uncached scans. Local workerd enforces no CPU limit, so use the process's CPU time as an upper bound.
+
+Results are in "Done on 2026-11-03".
+
 ## Feature matrix
 
-**Port status** means the code compiles and runs on Payload 4 and the UI is rebuilt. **Verified** means exercised in the Node dev server (API calls and/or screenshots). **Workers** is the status in workerd, where none has been run.
+**Port status** means the code compiles and runs on Payload 4 and the UI is rebuilt. **Verified** means exercised in the Node dev server (API calls and/or screenshots). **Workers** is the status in workerd: the enabled features passed in local workerd (`pnpm web preview`), and nothing has run on a deployed Worker yet.
 
 | Feature flag | What it is | In `apps/web` | Port status | Verified (Node) | Workers concerns |
 |---|---|---|---|---|---|
 | `analyzer` (always on) | Score sidebar on Pages, 50+ rules, Lexical parsing | on | done | yes, live editing and `POST /validate` | none known |
-| `dashboard` | `/admin/seo` site audit, filters, bulk actions, CSV/PDF export | on | done | yes, the audit built and rendered | **P0**: background build + in-memory cache |
-| `redirects` | `seo-redirects` collection, `/admin/redirects`, auto-redirect on slug change, CSV import/export | on | done | yes, CRUD via REST | none in the admin. **Redirects aren't applied on the frontend** (see P1) |
-| `sitemapAudit` | `/admin/sitemap-audit`: orphans, weak pages, hubs, broken links, 404 logs tab | on | done | yes | Whole-site scan per request: CPU limits on large sites |
-| `settings` | `seo-settings` collection, `/admin/seo-config` | on | done | yes, renders; saving not exercised | none known |
-| *(always on)* | `GET /api/seo-plugin/sitemap.xml`, `robots.txt`, `llms.txt`, news/image/video sitemaps | on | done | `sitemap.xml` and `robots.txt` return 200 | Not served at the root (`/sitemap.xml`): see P1. Needs `SITE_URL` |
+| `dashboard` | `/admin/seo` site audit, filters, bulk actions, CSV/PDF export | on | done | yes | **local workerd: pass.** Persisted in R2 and built via `waitUntil`; fine up to the 1500-doc default cap (~6 s). Larger sites need chunked builds (see "Next") |
+| `redirects` | `seo-redirects` collection, `/admin/redirects`, auto-redirect on slug change, CSV import/export | on | done | yes | **local workerd: pass**, including the frontend 301/302 |
+| `sitemapAudit` | `/admin/sitemap-audit`: orphans, weak pages, hubs, broken links (the 404 and External tabs follow `seoLogs` / `externalLinks`) | on | done | yes | **local workerd: pass.** ~0.4 ms per doc uncached, persisted in R2 |
+| `settings` | `seo-settings` collection, `/admin/seo-config` | on | done | yes | **local workerd: pass**, including saving |
+| *(always on)* | `GET /api/seo-plugin/sitemap.xml`, `robots.txt`, `llms.txt`, news/image/video sitemaps | on | done | yes | **local workerd: pass.** Served at `/sitemap.xml`, `/robots.txt` and `/llms.txt`; `llms.txt` needs `SEO_LLMS_TXT=1`. Without `SITE_URL` they use the request origin |
 | `cannibalization` | `/admin/cannibalization` | off | UI done | renders (empty data) | whole-site scan |
 | `keywords` | `/admin/keyword-research` + AI content brief | off | UI done | renders (empty data) | whole-site scan; the brief needs AI |
 | `linkGraph` | `/admin/link-graph`, crawl budget | off | UI done | renders with data | whole-site scan; client-side force simulation is fine |
@@ -106,13 +125,10 @@ Nothing from that run is kept; recreate it as needed.
 Upstream behaviour that doesn't work, or has no equivalent, in this fork today:
 
 1. **Background schedulers.** Upstream starts `setInterval` jobs in `onInit`: cache warm-up, rank tracker, alerts digest, retention purge. They're skipped on Workers (`isServerlessIsolate()` in `plugin.ts`) and have no replacement yet. They still run under Node.
-2. **Next.js frontend helpers.**
-   - `buildSeoMetadata()` returns a Next.js `Metadata` object.
-   - `buildJsonLd` / `serializeJsonLd` and the breadcrumb helpers are framework-agnostic, but nothing in `apps/web` uses them.
-   - There's no TanStack `head()` adapter.
-3. **Middleware-based redirects and 404 logging.** Upstream's README has hosts wire Next middleware to apply `seo-redirects` and to POST 404s to `seo-logs`. There's no TanStack equivalent yet.
-4. **Root sitemap/robots.** Upstream suggests Next route handlers that re-export the endpoints at `/sitemap.xml` and `/robots.txt`. Missing in `apps/web`.
-5. **Build-time audit cache** (`auditCacheFile`, `buildAuditToFile()`). It reads and writes the filesystem, which Workers don't have. It's guarded by a dynamic import plus try/catch, so it fails silently. It needs an R2/KV replacement or removal.
+2. **Next.js frontend helpers.** `buildSeoMetadata()` still returns a Next.js `Metadata` object. `apps/web` builds its meta tags from `@payloadcms/plugin-seo` and its JSON-LD in `src/utilities/pageJsonLd.ts` (with `buildJsonLd` / `serializeJsonLd`). There's no generic TanStack `head()` adapter in the package.
+3. **404 logging.** Redirects are applied in `apps/web` (`_frontend/$slug.tsx`, `_frontend/$.tsx`, `redirects.functions.ts`). Nothing posts 404s anywhere, because `seoLogs` is off (P2).
+4. *(done)* Root sitemap/robots/llms.txt: `apps/web/src/app/{sitemap[.]xml,robots[.]txt,llms[.]txt}.ts` hand the request to Payload's API handler in-process (`servePluginFile.ts`).
+5. **Build-time audit cache** (`auditCacheFile`, `buildAuditToFile()`): Node only. It's ignored with a warning when `cacheStore` is set or on Workers.
 6. **E2E harness.** `e2e/` and `e2e/ui/` are upstream's Next.js 16 + Payload 3 test apps. They're not workspace members (only `packages/*` is) and don't run. Its package scripts were removed.
 7. **Locales.** Analysis and UI strings are French and English only (`SeoLocale = 'fr' | 'en'`). Other admin languages fall back to English.
 8. **Publishing.** The package is `private`. Upstream's npm release flow, `prepublishOnly`, CI and dependabot were removed.
@@ -120,32 +136,51 @@ Upstream behaviour that doesn't work, or has no equivalent, in this fork today:
 
 ## Remaining work, prioritised
 
-### P0: required before enabling more features or relying on the dashboard in production
+### Done on 2026-11-03 (P0 + P1)
 
-1. **Run the plugin in workerd.**
-   - Run `pnpm web preview` (local workerd + local D1/R2), then a deployed Worker.
-   - Exercise the sidebar, dashboard, redirects, sitemap audit, settings, `sitemap.xml` and `robots.txt`.
-   - Watch for Node APIs, CPU-time limits and script size. The Worker already needs the paid plan.
-2. **Redesign the dashboard audit for Workers.**
-   - Today: `endpoints/audit.ts` starts `void buildAuditCache(...)` (fire-and-forget, with `setTimeout` throttling) and keeps the result in the in-memory `seoCache` (`src/cache.ts`). The browser polls `GET /audit` until the cache is filled.
-   - Problem: on Workers, unawaited work after the response is cancelled (no `ctx.waitUntil`), and each isolate has its own memory. Polls can land on isolates that never built anything.
-   - Options:
-     - (a) For small sites, build within the request and stream or return it.
-     - (b) Persist the result (R2 object or a KV namespace keyed by locale and config hash), and run the build through `waitUntil` or a Payload job.
-     - (c) Payload jobs (`jobs.tasks`) plus a Cron Trigger.
-   - Same issue for every module-level `Map` cache: `endpoints/performance.ts`, `externalLinks.ts`, `rankTracking.ts`, `alerts.ts`, `cannibalization.ts`, `llmsTxt.ts`, `redirectChains.ts`.
-   - The rate limiter (`rateLimiter.ts`) is per-isolate too. That's acceptable but weak; Workers' Rate Limiting binding is the proper fix.
-3. **Decide on whole-site scans.** Sitemap audit, link graph, cannibalization, keywords and duplicate content load every document per request (`fetchAllDocs`, `SEO_FETCH_MAX_DOCS`, default 5000). Measure CPU time on a realistic site, then cap with the existing env vars, paginate, or precompute (ties into item 2).
+1. **Ran in workerd.** Every enabled feature passed in local `pnpm web preview`: sidebar `/validate`, the dashboard audit (202 then 200, survives a restart, invalidated by saves), redirect CRUD and auto-redirect, frontend 301/302, sitemap audit, settings, root files, JSON-LD, and the admin views with no console errors. No Node API failures and no unhandled rejections showed up.
+   - Fixes found during the run: the sitemap-audit tabs now follow `seoLogs` / `externalLinks`, `SEO_LLMS_TXT` is declared in `.env.schema`, and the bulk-301 buttons are translated.
+   - Worker bundle: `dist/server` is about 19.7 MB raw, ~4.4 MB gzipped (fine on the paid plan). AWS SDK chunks are bundled: see "Next".
+   - **A deployed Worker is still unverified.**
+2. **Dashboard audit on Workers.** There's a new `cacheStore` option (`get` / `put` / `delete` on strings) and a `waitUntil` option, both exported as types. `apps/web/src/plugins/seoCacheStore.ts` backs the store with R2 under `seo-analyzer/cache/`.
+   - `SeoSharedCache` (`cache.ts`) persists `audit`, `sitemap-audit` and `redirect-chains` as `entry/<key>`. Keys include the locale and a hash of the config.
+   - Invalidation is a random generation token per base (`gen/<base>`) that every isolate reads.
+   - Single-flight across isolates is best effort, through a `build/<key>` marker that counts as dead after 2 min (`SEO_AUDIT_BUILD_STALE_MS`). With `waitUntil`, the build drops its throttling pauses.
+   - Cache invalidation used to live inside the score-history hook, so it never ran with `scoreHistory: false`. It's now its own hook (`hooks/invalidateSeoCaches.ts`) on the target collections, redirects and settings.
+   - Without `cacheStore`, Node hosts behave as before.
+3. **Whole-site scans measured** in local workerd, as workerd process CPU (an upper bound):
+   - The audit takes ~3.5 ms per doc: 1.25 s at 300 docs, 5.2 s at 1500, ~17 s extrapolated to 5000.
+   - The uncached sitemap audit takes ~0.4 ms per doc, and `sitemap.xml` ~0.35 ms per doc. Cached reads take 10–25 ms.
+   - The stored audit is 1.1 MB at 1500 docs.
+   - **Verdict:** comfortable at the default caps (audit 1500, other scans 5000). An audit of more than ~3000 docs won't reliably fit one `waitUntil` (≈30 s of wall time in production). `SEO_AUDIT_MAX_DOCS` and `SEO_FETCH_MAX_DOCS` are declared so they can be tuned.
+4. **Frontend redirects.** Redirects are looked up only when the page lookup misses, so existing pages never hit D1 for them.
+   - The whole table is cached per isolate for 60 s.
+   - Multi-segment paths go through a catch-all route.
+   - Matching is case-insensitive and ignores trailing slashes. The query string is kept.
+   - Targets follow the `redirectSafety.ts` policy.
+5. **Root `/sitemap.xml`, `/robots.txt`, `/llms.txt`.** These fall back to the request origin when neither the `siteUrl` option nor `SITE_URL` is set.
+6. **No hard-coded paths.**
+   - `hooks/useSeoApi.ts` (`useSeoApi`, `usePayloadApi`, `useAdminRoute`) builds URLs from `routes.api` plus `endpointBasePath`, which is forwarded in `admin.custom.seoAnalyzer`.
+   - Admin links use `formatAdminURL`.
+   - `noHardCodedPaths.test.ts` guards both.
+7. **Env vars.** `helpers/siteUrl.ts` resolves the site URL from the `siteUrl` option, then `SITE_URL`, then a fallback. No `NEXT_*` / `PAYLOAD_PUBLIC_*` reads are left, and a test guards that.
+8. **JSON-LD in `head()`.** Pages get WebPage and BreadcrumbList; home gets WebSite, Organization and WebPage. `buildJsonLd`'s breadcrumb label defaults to "Home" (`homeLabel` / `locale` options).
 
-### P1: needed for the enabled features to be complete
+### Next: left over from P0/P1
 
-4. **Apply redirects on the frontend.** In `apps/web`, look up `seo-redirects` for unmatched paths (TanStack `beforeLoad` / `notFound`, or a server middleware) and return 301/302. Include multi-segment paths: today only `/$slug` exists. The plugin already exposes chain detection and redirect safety helpers (`helpers/redirectSafety.ts`). Cache lookups so they don't hit D1 on every request.
-5. **Serve `/sitemap.xml`, `/robots.txt` (and `/llms.txt`) at the site root** as TanStack server routes that proxy the plugin endpoints. Set `SITE_URL` in `.env.production`: with `SITE_URL` empty, `robots.txt` currently prints `Sitemap: /sitemap.xml`.
-6. **Remove hard-coded paths in the admin UI.**
-   - 57 `'/api/seo-plugin/...'` fetches across 21 components ignore both the `endpointBasePath` option and a custom `routes.api`. Build URLs from `useConfig().config.routes.api` plus a base path forwarded through `admin.custom.seoAnalyzer` (that's where the feature flags already travel).
-   - Two `/admin/collections/...` links remain (`SeoAnalyzer.tsx` ~L1278, `LinkGraphView.tsx` ~L490). Use `formatAdminURL` like the other views.
-7. **Rename env vars.** `NEXT_PUBLIC_SERVER_URL` / `PAYLOAD_PUBLIC_SERVER_URL` fallbacks for the site URL (about 26 uses) are Next-isms. Prefer `seoConfig.siteUrl`, then `SITE_URL`. Declare any variable the app enables in `apps/web/.env.schema` (secrets `@sensitive`) and run `pnpm web cf-typegen`.
-8. **TanStack `head()` integration (optional).** Either map `buildSeoMetadata()` output to TanStack `head()` meta/links, or emit JSON-LD (`buildJsonLd`) from `apps/web/src/utilities/pageHead.ts`. `@payloadcms/plugin-seo` fields remain the source of the meta tags.
+- **Deploy and re-check** on a real Worker once `database_id` is set. Check memory per isolate (128 MB) on the sitemap audit and the audit, since both hold every doc in memory.
+- **Chunked audit builds for big sites.** Use Payload jobs or Queues that save progress to R2 with a cursor, triggered on save and by a Cron Trigger. This ties into P2 item 9. Until then, keep `SEO_AUDIT_MAX_DOCS` at or below ~1500–2500.
+- **Trailing slashes:** TanStack answers `/foo/` with a 307 to `/foo` before any redirect lookup, so it takes two hops and the first one is temporary. Make it a permanent 308/301.
+- **Dashboard paging:** at 1500 docs it shows "1500 pages analyzed" but "300 results displayed" (the endpoint pages by 300). Check whether the UI loads the rest.
+- **Readability:** the audit always uses `calculateFleschFR`, so English sites score low (an average of 22 on the seed corpus). Use the locale-appropriate formula.
+- **`SeoAnalyzer.tsx` "view pages" link** builds `/collections/<collection>/<slug>`, but Payload needs the document id there. `check-keyword` returns no id.
+- **`seo-settings.breadcrumb.homeLabel`** still defaults to `Accueil`. Changing it means a migration, because the column has a DB default.
+- **Per-isolate caches remain**, each limited by its TTL: rendered sitemap XMLs, the suggest-links index, the caches of disabled features, and the rate limiter. The Workers Rate Limiting binding is the proper fix for the last one.
+- **R2 hygiene:** old config hashes leave orphaned keys under `seo-analyzer/cache/`. Add an R2 lifecycle rule on that prefix.
+- **Bundle:** find out why AWS SDK chunks (`sts`, `sso-oidc`) end up in the Worker.
+- **Optional cleanups:**
+  - Export `validateRedirectTarget` / `normalizeFromPath` from the package, so `apps/web/src/utilities/redirects.ts` can drop its mirrored target policy.
+  - Add a server-safe package entry for `buildJsonLd` / `serializeJsonLd`, so the frontend can import them statically.
 
 ### P2: before enabling the off-by-default features
 
@@ -178,10 +213,10 @@ Upstream behaviour that doesn't work, or has no equivalent, in this fork today:
 
 ## Definition of done for "fully ported"
 
-- Every feature flag is either verified in a deployed Worker or explicitly marked unsupported on Workers in this file and in `README.md`.
-- No unpersisted background work and no module-level caches the UI depends on.
+- Every feature flag is either verified in a deployed Worker or explicitly marked unsupported on Workers in this file and in `README.md`. *(Enabled features: local workerd only.)*
+- No unpersisted background work and no module-level caches the UI depends on. *(Done for the enabled features.)*
 - No time-series data in the main D1.
-- No hard-coded `/api/seo-plugin` or `/admin` paths.
-- No `NEXT_*` environment variables.
-- Redirects, `sitemap.xml` and `robots.txt` work on the live site.
+- No hard-coded `/api/seo-plugin` or `/admin` paths. *(Done.)*
+- No `NEXT_*` environment variables. *(Done in code; `README.md` and `e2e/` still mention them.)*
+- Redirects, `sitemap.xml` and `robots.txt` work on the live site. *(Done in local workerd.)*
 - Unit tests, typecheck, lint and an e2e pass over the SEO views run in CI from the repo root.
