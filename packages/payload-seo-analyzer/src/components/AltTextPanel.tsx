@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { Banner, Button, RefreshIcon } from '@payloadcms/ui'
 import { Card, EmptyState, LoadingState, TonePill } from '../ui/index.js'
+import { useSeoApi } from '../hooks/useSeoApi.js'
 import './AltTextPanel.css'
 
 const S = {
@@ -55,6 +56,7 @@ interface RowState {
 }
 
 export function AltTextPanel({ locale }: { locale: 'fr' | 'en' }) {
+  const seoApi = useSeoApi()
   const s = S[locale] ?? S.fr
   const [items, setItems] = useState<Item[] | null>(null)
   const [collection, setCollection] = useState('media')
@@ -66,7 +68,7 @@ export function AltTextPanel({ locale }: { locale: 'fr' | 'en' }) {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch('/api/seo-plugin/alt-text-audit', { credentials: 'include', cache: 'no-store' })
+      const res = await fetch(seoApi('/alt-text-audit'), { credentials: 'include', cache: 'no-store' })
       if (res.status === 404) {
         setStatus('disabled')
         return
@@ -97,7 +99,7 @@ export function AltTextPanel({ locale }: { locale: 'fr' | 'en' }) {
   const generate = async (item: Item) => {
     setRow(item.id, { busy: true, error: undefined })
     try {
-      const res = await fetch('/api/seo-plugin/ai-alt-text', {
+      const res = await fetch(seoApi('/ai-alt-text'), {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -119,7 +121,7 @@ export function AltTextPanel({ locale }: { locale: 'fr' | 'en' }) {
     if (!alt) return
     setRow(item.id, { busy: true, error: undefined })
     try {
-      const res = await fetch('/api/seo-plugin/ai-alt-text', {
+      const res = await fetch(seoApi('/ai-alt-text'), {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },

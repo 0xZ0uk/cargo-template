@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react'
 import { Banner, Button, RefreshIcon } from '@payloadcms/ui'
 import { useSeoFeature } from '../hooks/useSeoLocale.js'
 import { Card, DataTable, EmptyState, LoadingState, TonePill } from '../ui/index.js'
+import { useSeoApi } from '../hooks/useSeoApi.js'
 import './GscPanel.css'
 
 const S = {
@@ -74,6 +75,7 @@ interface GscRow {
 }
 
 export function GscPanel({ locale }: { locale: 'fr' | 'en' }) {
+  const seoApi = useSeoApi()
   const gscEnabled = useSeoFeature('gscApi')
   const s = S[locale] ?? S.fr
   const [status, setStatus] = useState<GscStatus | null>(null)
@@ -92,7 +94,7 @@ export function GscPanel({ locale }: { locale: 'fr' | 'en' }) {
       return
     }
     try {
-      const res = await fetch('/api/seo-plugin/gsc/status', { credentials: 'include' })
+      const res = await fetch(seoApi('/gsc/status'), { credentials: 'include' })
       if (res.status === 404) {
         // Endpoint not registered — features.gscApi is off. Show the "not configured" guidance.
         setStatus({ configured: false, connected: false, connectedEmail: null, connectedAt: null, propertyUrl: null, redirectUri: null })
@@ -114,7 +116,7 @@ export function GscPanel({ locale }: { locale: 'fr' | 'en' }) {
     setBusy(true)
     setError(null)
     try {
-      const res = await fetch('/api/seo-plugin/gsc/auth', { credentials: 'include' })
+      const res = await fetch(seoApi('/gsc/auth'), { credentials: 'include' })
       const json = await res.json()
       if (!res.ok) setError(json.error || `Error ${res.status}`)
       else if (json.authUrl) window.open(json.authUrl, '_blank', 'noopener,noreferrer')
@@ -129,7 +131,7 @@ export function GscPanel({ locale }: { locale: 'fr' | 'en' }) {
     setBusy(true)
     setError(null)
     try {
-      await fetch('/api/seo-plugin/gsc/disconnect', { method: 'POST', credentials: 'include' })
+      await fetch(seoApi('/gsc/disconnect'), { method: 'POST', credentials: 'include' })
       setRows(null)
       await loadStatus()
     } catch (e) {
@@ -145,7 +147,7 @@ export function GscPanel({ locale }: { locale: 'fr' | 'en' }) {
     setError(null)
     setRows(null)
     try {
-      const res = await fetch(`/api/seo-plugin/gsc/data?dimension=${dim}&rowLimit=50`, { credentials: 'include' })
+      const res = await fetch(seoApi(`/gsc/data?dimension=${dim}&rowLimit=50`), { credentials: 'include' })
       const json = await res.json()
       if (!res.ok) setError(json.error || `Error ${res.status}`)
       else setRows((json.rows as GscRow[]) || [])

@@ -18,6 +18,7 @@ import { cx } from '../ui/index.js'
 import { useDashboardT } from '../hooks/useSeoLocale.js'
 import { withSeoErrorBoundary } from './withSeoErrorBoundary.js'
 import { resolveMetaFieldOptions, type MetaFieldOptionProps } from './metaFieldOptions.js'
+import { useSeoApi } from '../hooks/useSeoApi.js'
 import './MetaField.css'
 
 // ---------------------------------------------------------------------------
@@ -35,6 +36,8 @@ interface MetaImageFieldProps extends MetaFieldOptionProps {
 function MetaImageFieldInner(props: MetaImageFieldProps) {
   const { path } = props
   const { hasGenerateFn, basePath } = resolveMetaFieldOptions(props)
+  const seoApi = useSeoApi()
+  const generateUrl = basePath ? `${basePath}/generate` : seoApi('/generate')
   const t = useDashboardT()
 
   const { value, setValue } = useField<string | number | null>({ path })
@@ -52,7 +55,7 @@ function MetaImageFieldInner(props: MetaImageFieldProps) {
     setSuccess(false)
 
     try {
-      const res = await fetch(`${basePath}/generate`, {
+      const res = await fetch(generateUrl, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -81,7 +84,7 @@ function MetaImageFieldInner(props: MetaImageFieldProps) {
     } finally {
       setLoading(false)
     }
-  }, [basePath, collectionSlug, globalSlug, docId, setValue])
+  }, [generateUrl, collectionSlug, globalSlug, docId, setValue])
 
   return (
     <div className="seo-meta-field">

@@ -18,6 +18,7 @@ import {
   queryGscSearchAnalytics,
   isGscAdminRequest,
 } from '../helpers/gscClient.js'
+import { payloadApiRoute } from '../helpers/seoApiUrl.js'
 
 const RANK_COLLECTION = 'seo-rank-history'
 const round1 = (n: number) => Math.round(n * 10) / 10
@@ -42,7 +43,7 @@ export async function runRankSnapshot(
   seoConfig?: SeoConfig,
   opts?: { windowDays?: number; rowLimit?: number },
 ): Promise<RankSnapshotResult> {
-  const cfg = getGscOAuthConfig(basePath, seoConfig)
+  const cfg = getGscOAuthConfig(basePath, seoConfig, payloadApiRoute(payload))
   if (!cfg) return { ok: false, reason: 'not_configured' }
 
   const authDoc = await getOrCreateGscAuthDoc(payload)

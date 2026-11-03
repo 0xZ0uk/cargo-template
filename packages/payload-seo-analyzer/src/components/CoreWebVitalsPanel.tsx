@@ -3,6 +3,7 @@
 import React, { useState } from 'react'
 import { Banner, Button, Tabs } from '@payloadcms/ui'
 import { Card, Field, Grid, StatTile, type Tone } from '../ui/index.js'
+import { useSeoApi } from '../hooks/useSeoApi.js'
 import './CoreWebVitalsPanel.css'
 
 const S = {
@@ -79,6 +80,7 @@ function formatValue(m: Metric, key: string): string {
 }
 
 export function CoreWebVitalsPanel({ locale }: { locale: 'fr' | 'en' }) {
+  const seoApi = useSeoApi()
   const s = S[locale] ?? S.fr
   const [url, setUrl] = useState<string>(typeof window !== 'undefined' ? window.location.origin : '')
   const [strategy, setStrategy] = useState<'mobile' | 'desktop'>('mobile')
@@ -93,7 +95,7 @@ export function CoreWebVitalsPanel({ locale }: { locale: 'fr' | 'en' }) {
     setData(null)
     try {
       const res = await fetch(
-        `/api/seo-plugin/core-web-vitals?url=${encodeURIComponent(url)}&strategy=${strategy}`,
+        seoApi(`/core-web-vitals?url=${encodeURIComponent(url)}&strategy=${strategy}`),
         { credentials: 'include' },
       )
       const json = await res.json()

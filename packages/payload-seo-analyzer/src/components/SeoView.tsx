@@ -36,6 +36,7 @@ import {
   scoreTone,
   type Tone,
 } from '../ui/index.js'
+import { usePayloadApi, useSeoApi } from '../hooks/useSeoApi.js'
 import './SeoView.css'
 
 // ---------------------------------------------------------------------------
@@ -500,6 +501,8 @@ function BulkActionBar({
 // Main SeoView component
 // ---------------------------------------------------------------------------
 export function SeoView() {
+  const payloadApi = usePayloadApi()
+  const seoApi = useSeoApi()
   const locale = useSeoLocale()
   const t = useDashboardT()
   const {
@@ -539,7 +542,7 @@ export function SeoView() {
     setBuilding(false)
     setNotBuilt(false)
     try {
-      const base = '/api/seo-plugin/audit'
+      const base = seoApi('/audit')
       const firstUrl =
         mode === 'peek' ? `${base}?noBuild=1` : mode === 'refresh' ? `${base}?nocache=1` : base
       let res = await fetch(firstUrl, { credentials: 'include', cache: 'no-store' })
@@ -782,7 +785,7 @@ export function SeoView() {
       for (const key of selectedIds) {
         const [collection, id] = key.split('::')
         try {
-          await fetch(`/api/${collection}/${id}`, {
+          await fetch(payloadApi(`/${collection}/${id}`), {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
@@ -807,7 +810,7 @@ export function SeoView() {
     setBulkOptimizing(true)
     setBulkPreview(null)
     try {
-      const res = await fetch('/api/seo-plugin/ai-optimize-bulk', {
+      const res = await fetch(seoApi('/ai-optimize-bulk'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -854,7 +857,7 @@ export function SeoView() {
       focusKeyword: r.after.focusKeyword,
     }))
     try {
-      await fetch('/api/seo-plugin/ai-optimize-bulk', {
+      await fetch(seoApi('/ai-optimize-bulk'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -914,7 +917,7 @@ export function SeoView() {
       setSaving(true)
       setSaveError(null)
       try {
-        const res = await fetch(`/api/${item.collection}/${item.id}`, {
+        const res = await fetch(payloadApi(`/${item.collection}/${item.id}`), {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -934,7 +937,7 @@ export function SeoView() {
   // Fetch site name from settings for branded PDF
   const [siteName, setSiteName] = useState<string>('')
   useEffect(() => {
-    fetch('/api/seo-plugin/settings', { credentials: 'include', cache: 'no-store' })
+    fetch(seoApi('/settings'), { credentials: 'include', cache: 'no-store' })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data?.siteName) setSiteName(data.siteName)

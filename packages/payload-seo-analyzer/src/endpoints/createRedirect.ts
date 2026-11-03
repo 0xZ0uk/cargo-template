@@ -2,7 +2,7 @@
  * Create redirect endpoint handler.
  * Creates 301/302 redirect entries via Payload's collection API.
  * Supports both single and bulk redirect creation.
- * Invalidates sitemap-audit cache after creation.
+ * Invalidates the redirect-derived caches (sitemap audit, link graph, chains) after creation.
  *
  * NOTE: Rate limiting is not handled by this plugin. The consuming application
  * should implement rate limiting via its own middleware (e.g., express-rate-limit,
@@ -10,7 +10,8 @@
  */
 
 import type { PayloadHandler } from 'payload'
-import { seoCache } from '../cache.js'
+import { defaultSeoSharedCache, REDIRECT_CACHE_BASES, type SeoSharedCache } from '../cache.js'
+import { invalidateForRequest } from '../hooks/invalidateSeoCaches.js'
 import { parseJsonBody } from '../helpers/parseBody.js'
 import { validateRedirectDestination, normalizeFromPath } from '../helpers/redirectSafety.js'
 
@@ -19,6 +20,7 @@ import { isSeoAdminRequest as isAdmin, isSeoPanelUser } from '../helpers/isAdmin
 export function createRedirectHandler(
   redirectsCollection: string,
   allowExternalRedirects = false,
+  cache: SeoSharedCache = defaultSeoSharedCache,
 ): PayloadHandler {
   return async (req) => {
     if (!isSeoPanelUser(req)) {
@@ -94,9 +96,10 @@ export function createRedirectHandler(
           }
         }
 
-        // Invalidate caches that depend on redirect data (all locale variants)
-        seoCache.invalidateByPrefix('sitemap-audit')
-        seoCache.invalidateByPrefix('link-graph')
+        // Invalidate caches that depend on redirect data (all locale variants). Usually a
+        // no-op: the redirects collection's own hook already did it during create (deduped
+        // per request), but a host-supplied redirects collection may not carry that hook.
+        await invalidateForRequest(cache, req, REDIRECT_CACHE_BASES)
 
         return Response.json({
           success: true,
@@ -131,9 +134,8 @@ export function createRedirectHandler(
         overrideAccess: true,
       })
 
-      // Invalidate caches that depend on redirect data (all locale variants)
-      seoCache.invalidateByPrefix('sitemap-audit')
-      seoCache.invalidateByPrefix('link-graph')
+      // Invalidate caches that depend on redirect data (see the bulk branch above).
+      await invalidateForRequest(cache, req, REDIRECT_CACHE_BASES)
 
       return Response.json({ success: true, redirect })
     } catch (error) {

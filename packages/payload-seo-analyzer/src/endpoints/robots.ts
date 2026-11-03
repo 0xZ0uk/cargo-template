@@ -5,6 +5,8 @@
  */
 
 import type { PayloadHandler } from 'payload'
+import type { SeoConfig } from '../types.js'
+import { requestOrigin, resolveSiteUrl } from '../helpers/siteUrl.js'
 import { parseJsonBody } from '../helpers/parseBody.js'
 import { sanitizeRobotsRules } from '../helpers/robotsSafety.js'
 
@@ -14,7 +16,7 @@ import { isSeoAdminRequest as isAdmin, isSeoPanelUser } from '../helpers/isAdmin
  * GET handler — generates robots.txt dynamically from seo-settings.
  * Public endpoint, no authentication required.
  */
-export function createRobotsHandler(targetCollections: string[]): PayloadHandler {
+export function createRobotsHandler(targetCollections: string[], seoConfig?: SeoConfig): PayloadHandler {
   return async (req) => {
     try {
       const settings = await req.payload.find({
@@ -25,7 +27,9 @@ export function createRobotsHandler(targetCollections: string[]): PayloadHandler
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const config = settings.docs[0] as Record<string, any> | undefined
 
-      const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL || ''
+      // Without a configured site URL, fall back to the request's origin: a relative
+      // `Sitemap:` line is invalid.
+      const serverUrl = resolveSiteUrl(seoConfig?.siteUrl, requestOrigin(req))
 
       let content = `User-agent: *\n`
       content += `Allow: /\n`

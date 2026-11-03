@@ -23,11 +23,13 @@ import {
   type RuleGroup,
 } from '../index.js'
 import { SCORE_GOOD, SCORE_OK } from '../constants.js'
+import { formatAdminURL } from 'payload/shared'
 import { SeoSocialPreview } from './SeoSocialPreview.js'
 import { useDashboardT, useSeoAnalysisLocale, type SeoAnalysisLocaleOptions } from '../hooks/useSeoLocale.js'
 import { type DashboardTranslations } from '../dashboard-i18n.js'
 import { withSeoErrorBoundary } from './withSeoErrorBoundary.js'
 import { Card, Checklist, cx, ScoreRing, statusTone, TonePill, type Tone } from '../ui/index.js'
+import { useAdminRoute, useSeoApi } from '../hooks/useSeoApi.js'
 import './SeoAnalyzer.css'
 
 // ---------------------------------------------------------------------------
@@ -292,6 +294,7 @@ function useKeywordDuplicateCheck(
   keyword: string | undefined,
   documentId: string | undefined,
 ): KeywordUsage | null {
+  const seoApi = useSeoApi()
   const [result, setResult] = useState<KeywordUsage | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const prevKeyword = useRef<string | undefined>(undefined)
@@ -301,7 +304,7 @@ function useKeywordDuplicateCheck(
       try {
         const params = new URLSearchParams({ keyword: kw })
         if (documentId) params.set('excludeId', documentId)
-        const res = await fetch(`/api/seo-plugin/check-keyword?${params.toString()}`, {
+        const res = await fetch(seoApi(`/check-keyword?${params.toString()}`), {
           credentials: 'include',
           cache: 'no-store',
         })
@@ -352,6 +355,7 @@ function useInternalLinkSuggestions(
   collection: string | undefined,
   textContent: string,
 ): { suggestions: LinkSuggestion[]; loading: boolean } {
+  const seoApi = useSeoApi()
   const [suggestions, setSuggestions] = useState<LinkSuggestion[]>([])
   const [loading, setLoading] = useState(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -373,7 +377,7 @@ function useInternalLinkSuggestions(
     timerRef.current = setTimeout(async () => {
       setLoading(true)
       try {
-        const res = await fetch('/api/seo-plugin/suggest-links', {
+        const res = await fetch(seoApi('/suggest-links'), {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
@@ -490,6 +494,8 @@ interface SeoAnalyzerFieldProps {
 }
 
 const SeoAnalyzerInner: React.FC<SeoAnalyzerFieldProps> = ({ field }) => {
+  const seoApi = useSeoApi()
+  const adminRoute = useAdminRoute()
   const analysisLocale = useSeoAnalysisLocale(field?.admin?.custom)
   const t = useDashboardT()
   const [formFields, dispatchFields] = useAllFormFields()
@@ -935,7 +941,7 @@ const SeoAnalyzerInner: React.FC<SeoAnalyzerFieldProps> = ({ field }) => {
         blockIdx++
       }
 
-      const res = await fetch('/api/seo-plugin/ai-generate', {
+      const res = await fetch(seoApi('/ai-generate'), {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -962,7 +968,7 @@ const SeoAnalyzerInner: React.FC<SeoAnalyzerFieldProps> = ({ field }) => {
     setAiOptimizeApplied(false)
     setAiOptimizeError(false)
     try {
-      const res = await fetch('/api/seo-plugin/ai-optimize', {
+      const res = await fetch(seoApi('/ai-optimize'), {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -1275,7 +1281,7 @@ const SeoAnalyzerInner: React.FC<SeoAnalyzerFieldProps> = ({ field }) => {
                       margin={false}
                       newTab
                       size="medium"
-                      url={`/admin/collections/${page.collection}/${page.slug}`}
+                      url={formatAdminURL({ adminRoute, path: `/collections/${page.collection}/${page.slug}` })}
                     >
                       {t.common.edit}
                     </Button>

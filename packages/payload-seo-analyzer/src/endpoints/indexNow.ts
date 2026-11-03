@@ -15,6 +15,7 @@ import { resolveGscSiteUrl } from '../helpers/gscClient.js'
 import { buildDocUrl, type CollectionRoutes } from '../helpers/docUrl.js'
 
 import { isSeoAdminRequest as isAdmin } from '../helpers/isAdmin.js'
+import { payloadApiRoute } from '../helpers/seoApiUrl.js'
 
 /**
  * Build a public URL for a doc from its slug.
@@ -57,8 +58,8 @@ export async function submitToIndexNow(
   }
 }
 
-function keyLocationFor(siteUrl: string, basePath: string): string {
-  return `${siteUrl.replace(/\/$/, '')}/api${basePath}/indexnow-key.txt`
+function keyLocationFor(siteUrl: string, basePath: string, apiRoute: string = '/api'): string {
+  return `${siteUrl.replace(/\/$/, '')}${apiRoute}${basePath}/indexnow-key.txt`
 }
 
 // ---------------------------------------------------------------------------
@@ -105,7 +106,7 @@ export function createIndexNowSubmitHandler(
         }
       }
 
-      const result = await submitToIndexNow(siteUrl, key, keyLocationFor(siteUrl, basePath), urls)
+      const result = await submitToIndexNow(siteUrl, key, keyLocationFor(siteUrl, basePath, payloadApiRoute(req.payload)), urls)
       return Response.json(
         { submitted: urls.length, ...result },
         { headers: { 'Cache-Control': 'no-store' } },
@@ -133,7 +134,7 @@ export function createIndexNowHook(basePath: string, seoConfig?: SeoConfig): Col
       const slug = ((doc as { slug?: string })?.slug as string) || ''
       const url = docToUrl(slug, siteUrl, collection?.slug, seoConfig?.collectionRoutes)
       // Fire-and-forget — never block the save on an external ping.
-      void submitToIndexNow(siteUrl, key, keyLocationFor(siteUrl, basePath), [url]).then((r) => {
+      void submitToIndexNow(siteUrl, key, keyLocationFor(siteUrl, basePath, payloadApiRoute(req.payload)), [url]).then((r) => {
         if (!r.ok && r.reason !== 'no_key_or_urls') {
           req?.payload?.logger?.warn(`[seo] IndexNow submit failed (${r.status || r.reason})`)
         }

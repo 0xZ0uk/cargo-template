@@ -3,6 +3,7 @@
 import React, { useState } from 'react'
 import { Banner, Button, Pill } from '@payloadcms/ui'
 import { Card } from '../ui/index.js'
+import { useSeoApi } from '../hooks/useSeoApi.js'
 import './ContentBriefPanel.css'
 
 const S = {
@@ -52,6 +53,7 @@ interface Brief {
 }
 
 export function ContentBriefPanel({ locale }: { locale: 'fr' | 'en' }) {
+  const seoApi = useSeoApi()
   const s = S[locale] ?? S.fr
   const [keyword, setKeyword] = useState('')
   const [brief, setBrief] = useState<Brief | null>(null)
@@ -64,7 +66,7 @@ export function ContentBriefPanel({ locale }: { locale: 'fr' | 'en' }) {
     setError(null)
     setBrief(null)
     try {
-      const res = await fetch('/api/seo-plugin/ai-content-brief', {
+      const res = await fetch(seoApi('/ai-content-brief'), {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },

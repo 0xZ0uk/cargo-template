@@ -21,7 +21,11 @@ export interface MetaFieldsConfig {
   hasGenerateDescription?: boolean
   /** Whether a generateImage function is configured */
   hasGenerateImage?: boolean
-  /** Base API path for the generate endpoint (default: '/api/seo-plugin') */
+  /**
+   * Full base URL path of the generate endpoint, including the API route
+   * (e.g. '/api/seo-plugin'). Leave unset to build it in the browser from
+   * Payload's `routes.api` and the plugin's `endpointBasePath`.
+   */
   basePath?: string
 }
 
@@ -36,7 +40,7 @@ export function metaFields(config: MetaFieldsConfig = {}): Field[] {
     hasGenerateTitle = false,
     hasGenerateDescription = false,
     hasGenerateImage = false,
-    basePath = '/api/seo-plugin',
+    basePath,
   } = config
 
   return [
@@ -71,7 +75,7 @@ export function metaFields(config: MetaFieldsConfig = {}): Field[] {
             },
             custom: {
               hasGenerateFn: hasGenerateTitle,
-              basePath,
+              ...(basePath && { basePath }),
             },
           },
         },
@@ -87,7 +91,7 @@ export function metaFields(config: MetaFieldsConfig = {}): Field[] {
             },
             custom: {
               hasGenerateFn: hasGenerateDescription,
-              basePath,
+              ...(basePath && { basePath }),
             },
           },
         },
@@ -107,7 +111,7 @@ export function metaFields(config: MetaFieldsConfig = {}): Field[] {
             },
             custom: {
               hasGenerateFn: hasGenerateImage,
-              basePath,
+              ...(basePath && { basePath }),
             },
           },
         },

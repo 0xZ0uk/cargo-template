@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useMemo, useCallback, useId } from 'react'
 import { Button, Banner, CheckIcon, EditIcon, EyeIcon, Pill, RefreshIcon, Tabs, TrashIcon, useConfig } from '@payloadcms/ui'
 import { formatAdminURL } from 'payload/shared'
-import { useDashboardT, useSeoLocale } from '../hooks/useSeoLocale.js'
+import { useDashboardT, useSeoFeature, useSeoLocale } from '../hooks/useSeoLocale.js'
 import { type DashboardTranslations } from '../dashboard-i18n.js'
 import { LiveRegion } from './LiveRegion.js'
 import { toCsv } from '../helpers/csv.js'
@@ -21,6 +21,7 @@ import {
   ViewBody,
   ViewHeader,
 } from '../ui/index.js'
+import { useSeoApi } from '../hooks/useSeoApi.js'
 import './SitemapAuditView.css'
 
 // ---------------------------------------------------------------------------
@@ -440,6 +441,7 @@ function HubsTab({ hubs }: { hubs: LinkHub[] }) {
 // BrokenTab (C1: suggestions, C2: redirect button, C5: hover preview, bulk)
 // ---------------------------------------------------------------------------
 function BrokenTab({ links, onRefresh }: { links: BrokenLink[]; onRefresh: () => void }) {
+  const seoApi = useSeoApi()
   const t = useDashboardT()
   const [createdRedirects, setCreatedRedirects] = useState<Set<string>>(new Set())
   const [loadingRedirects, setLoadingRedirects] = useState<Set<string>>(new Set())
@@ -452,7 +454,7 @@ function BrokenTab({ links, onRefresh }: { links: BrokenLink[]; onRefresh: () =>
     const key = from
     setLoadingRedirects((prev) => new Set(prev).add(key))
     try {
-      const res = await fetch('/api/seo-plugin/create-redirect', {
+      const res = await fetch(seoApi('/create-redirect'), {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -489,7 +491,7 @@ function BrokenTab({ links, onRefresh }: { links: BrokenLink[]; onRefresh: () =>
     setBulkLoading(true)
     setBulkResult(null)
     try {
-      const res = await fetch('/api/seo-plugin/create-redirect', {
+      const res = await fetch(seoApi('/create-redirect'), {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -531,7 +533,7 @@ function BrokenTab({ links, onRefresh }: { links: BrokenLink[]; onRefresh: () =>
     setBulkLoading(true)
     setBulkResult(null)
     try {
-      const res = await fetch('/api/seo-plugin/create-redirect', {
+      const res = await fetch(seoApi('/create-redirect'), {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -614,7 +616,7 @@ function BrokenTab({ links, onRefresh }: { links: BrokenLink[]; onRefresh: () =>
               margin={false}
               onClick={handleBulkCreate}
             >
-              {bulkLoading ? '...' : `301 selection (${selectedWithSuggestion})`}
+              {bulkLoading ? '...' : `${t.sitemapAudit.redirectSelected} (${selectedWithSuggestion})`}
             </Button>
           )}
           <Button
@@ -623,7 +625,7 @@ function BrokenTab({ links, onRefresh }: { links: BrokenLink[]; onRefresh: () =>
             margin={false}
             onClick={handleBulkCreateAll}
           >
-            {bulkLoading ? '...' : `301 tout (${withSuggestionCount})`}
+            {bulkLoading ? '...' : `${t.sitemapAudit.redirectAll} (${withSuggestionCount})`}
           </Button>
         </div>
       </div>
@@ -759,6 +761,7 @@ interface SeoLog {
 }
 
 function Logs404Tab() {
+  const seoApi = useSeoApi()
   const locale = useSeoLocale()
   const t = useDashboardT()
   const [logs, setLogs] = useState<SeoLog[]>([])
@@ -774,7 +777,7 @@ function Logs404Tab() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch('/api/seo-plugin/seo-logs', { credentials: 'include', cache: 'no-store' })
+      const res = await fetch(seoApi('/seo-logs'), { credentials: 'include', cache: 'no-store' })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const json = await res.json()
       setLogs(json.logs || [])
@@ -791,7 +794,7 @@ function Logs404Tab() {
   const handleCreateRedirect = useCallback(async (from: string, to: string) => {
     setLoadingRedirects((prev) => new Set(prev).add(from))
     try {
-      const res = await fetch('/api/seo-plugin/create-redirect', {
+      const res = await fetch(seoApi('/create-redirect'), {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -810,7 +813,7 @@ function Logs404Tab() {
 
   const handleIgnore = useCallback(async (id: number | string) => {
     try {
-      await fetch(`/api/seo-plugin/seo-logs?id=${id}&action=ignore`, {
+      await fetch(seoApi(`/seo-logs?id=${id}&action=ignore`), {
         method: 'DELETE',
         credentials: 'include',
       })
@@ -820,7 +823,7 @@ function Logs404Tab() {
 
   const handleDelete = useCallback(async (id: number | string) => {
     try {
-      await fetch(`/api/seo-plugin/seo-logs?id=${id}`, {
+      await fetch(seoApi(`/seo-logs?id=${id}`), {
         method: 'DELETE',
         credentials: 'include',
       })
@@ -841,7 +844,7 @@ function Logs404Tab() {
 
     setBulkLoading(true)
     try {
-      const res = await fetch('/api/seo-plugin/create-redirect', {
+      const res = await fetch(seoApi('/create-redirect'), {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -1057,6 +1060,7 @@ function Logs404Tab() {
 type ExternalFilter = 'all' | 'broken' | 'ok'
 
 function ExternalLinksTab() {
+  const seoApi = useSeoApi()
   const t = useDashboardT()
   const [data, setData] = useState<ExternalLinksData | null>(null)
   const [loading, setLoading] = useState(false)
@@ -1067,7 +1071,7 @@ function ExternalLinksTab() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch('/api/seo-plugin/external-links', {
+      const res = await fetch(seoApi('/external-links'), {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -1315,6 +1319,7 @@ function exportCSV(data: SitemapAuditData, t: DashboardTranslations) {
 // Main SitemapAuditView component
 // ---------------------------------------------------------------------------
 export function SitemapAuditView() {
+  const seoApi = useSeoApi()
   // One base id per mount: the tab/panel wiring must not collide if the view
   // is ever mounted twice on the same screen.
   const uid = useId()
@@ -1326,6 +1331,10 @@ export function SitemapAuditView() {
   const [search, setSearch] = useState('')
   const [scoreMap, setScoreMap] = useState<Map<string, number>>(new Map())
   const [logs404Count, setLogs404Count] = useState(0)
+  // Tabs backed by optional features: hidden (and never fetched) when the flag is off.
+  // `undefined` (flags unavailable) keeps them, as before.
+  const seoLogsEnabled = useSeoFeature('seoLogs') !== false
+  const externalLinksEnabled = useSeoFeature('externalLinks') !== false
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -1333,9 +1342,11 @@ export function SitemapAuditView() {
     try {
       // C3: Parallel fetch for sitemap audit + SEO scores + 404 logs count
       const [sitemapRes, auditRes, logsRes] = await Promise.all([
-        fetch('/api/seo-plugin/sitemap-audit', { credentials: 'include', cache: 'no-store' }),
-        fetch('/api/seo-plugin/audit', { credentials: 'include', cache: 'no-store' }),
-        fetch('/api/seo-plugin/seo-logs', { credentials: 'include', cache: 'no-store' }).catch(() => null),
+        fetch(seoApi('/sitemap-audit'), { credentials: 'include', cache: 'no-store' }),
+        fetch(seoApi('/audit'), { credentials: 'include', cache: 'no-store' }),
+        seoLogsEnabled
+          ? fetch(seoApi('/seo-logs'), { credentials: 'include', cache: 'no-store' }).catch(() => null)
+          : null,
       ])
       if (!sitemapRes.ok) throw new Error(`HTTP ${sitemapRes.status}`)
       const json = await sitemapRes.json()
@@ -1377,7 +1388,7 @@ export function SitemapAuditView() {
       setError(e instanceof Error ? e.message : t.common.loadingError)
     }
     setLoading(false)
-  }, [t])
+  }, [t, seoApi, seoLogsEnabled])
 
   useEffect(() => {
     fetchData()
@@ -1455,8 +1466,8 @@ export function SitemapAuditView() {
     { value: 'weak', label: t.sitemapAudit.fragilePages, count: filtered.weakPages.length },
     { value: 'hubs', label: t.sitemapAudit.linkHubs, count: filtered.linkHubs.length },
     { value: 'broken', label: t.sitemapAudit.brokenLinks, count: filtered.brokenLinks.length },
-    { value: 'logs404', label: t.sitemapAudit.logs404, count: logs404Count },
-    { value: 'external', label: t.sitemapAudit.externalLinks },
+    ...(seoLogsEnabled ? [{ value: 'logs404' as const, label: t.sitemapAudit.logs404, count: logs404Count }] : []),
+    ...(externalLinksEnabled ? [{ value: 'external' as const, label: t.sitemapAudit.externalLinks }] : []),
   ]
 
   const summary = `${stats.totalPages} ${t.common.page.toLowerCase()}s, ${stats.totalLinks} ${t.sitemapAudit.links}`
@@ -1558,8 +1569,8 @@ export function SitemapAuditView() {
           {activeTab === 'weak' && <WeakTab pages={filtered.weakPages} scoreMap={scoreMap} />}
           {activeTab === 'hubs' && <HubsTab hubs={filtered.linkHubs} />}
           {activeTab === 'broken' && <BrokenTab links={filtered.brokenLinks} onRefresh={fetchData} />}
-          {activeTab === 'logs404' && <Logs404Tab />}
-          {activeTab === 'external' && <ExternalLinksTab />}
+          {activeTab === 'logs404' && seoLogsEnabled && <Logs404Tab />}
+          {activeTab === 'external' && externalLinksEnabled && <ExternalLinksTab />}
         </div>
       </ViewBody>
     </>

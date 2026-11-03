@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { Banner, Button, RefreshIcon } from '@payloadcms/ui'
 import { Card, Checklist, Grid, LoadingState, StatTile, TonePill, scoreTone, type Tone } from '../ui/index.js'
+import { useSeoApi } from '../hooks/useSeoApi.js'
 
 interface PageOption {
   id: string | number
@@ -84,6 +85,7 @@ function gradeTone(grade?: string): Tone {
 }
 
 export function ContentGradePanel({ locale }: { locale: 'fr' | 'en' }) {
+  const seoApi = useSeoApi()
   const s = S[locale] ?? S.fr
   const [pages, setPages] = useState<PageOption[]>([])
   const [pagesLoading, setPagesLoading] = useState(true)
@@ -95,7 +97,7 @@ export function ContentGradePanel({ locale }: { locale: 'fr' | 'en' }) {
   const loadPages = useCallback(async () => {
     setPagesLoading(true)
     try {
-      const res = await fetch('/api/seo-plugin/audit', { credentials: 'include', cache: 'no-store' })
+      const res = await fetch(seoApi('/audit'), { credentials: 'include', cache: 'no-store' })
       const json = await res.json()
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const results: any[] = Array.isArray(json.results) ? json.results : []
@@ -123,7 +125,7 @@ export function ContentGradePanel({ locale }: { locale: 'fr' | 'en' }) {
     setData(null)
     try {
       const res = await fetch(
-        `/api/seo-plugin/content-grade?collection=${encodeURIComponent(collection)}&id=${encodeURIComponent(id)}`,
+        seoApi(`/content-grade?collection=${encodeURIComponent(collection)}&id=${encodeURIComponent(id)}`),
         { credentials: 'include', cache: 'no-store' },
       )
       const json = await res.json()

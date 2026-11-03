@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react'
 import { Banner, Button } from '@payloadcms/ui'
 import { useSeoFeature } from '../hooks/useSeoLocale.js'
 import { Card, Checklist, EmptyState, LoadingState, TonePill, type Tone } from '../ui/index.js'
+import { useSeoApi } from '../hooks/useSeoApi.js'
 
 const S = {
   fr: {
@@ -66,6 +67,7 @@ interface Config {
 }
 
 export function AlertsPanel({ locale }: { locale: 'fr' | 'en' }) {
+  const seoApi = useSeoApi()
   const alertsEnabled = useSeoFeature('alerts')
   const s = S[locale] ?? S.fr
   const [digest, setDigest] = useState<Digest | null>(null)
@@ -86,7 +88,7 @@ export function AlertsPanel({ locale }: { locale: 'fr' | 'en' }) {
         setDigest(null)
         return
       }
-      const res = await fetch('/api/seo-plugin/alerts-digest', { credentials: 'include', cache: 'no-store' })
+      const res = await fetch(seoApi('/alerts-digest'), { credentials: 'include', cache: 'no-store' })
       if (res.status === 404 || res.status === 403) {
         // Feature not enabled (features.alerts) or insufficient rights — show the hint, not an error.
         setConfig({ webhookConfigured: false, emailConfigured: false, scoreDrop: 0, positionDrop: 0, windowHours: 0 })
@@ -116,7 +118,7 @@ export function AlertsPanel({ locale }: { locale: 'fr' | 'en' }) {
     setError(null)
     setNotice(null)
     try {
-      const res = await fetch('/api/seo-plugin/alerts-run', { method: 'POST', credentials: 'include' })
+      const res = await fetch(seoApi('/alerts-run'), { method: 'POST', credentials: 'include' })
       const json = await res.json()
       if (!res.ok) {
         setError(json.error || `Error ${res.status}`)

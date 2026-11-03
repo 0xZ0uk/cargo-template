@@ -9,7 +9,7 @@
  */
 
 import type { PayloadHandler } from 'payload'
-import { seoCache } from '../cache.js'
+import { defaultSeoSharedCache, hashConfig, type SeoSharedCache } from '../cache.js'
 import { extractAllInternalLinks, normalizeToSlug, resolveToDocSlug } from '../helpers/linkExtractor.js'
 import { fetchAllDocs } from '../helpers/fetchAllDocs.js'
 import { isSeoAdminRequest, isSeoPanelUser } from '../helpers/isAdmin.js'
@@ -50,7 +50,12 @@ export function createSitemapAuditHandler(
   collections: string[],
   redirectsCollection = 'seo-redirects',
   knownRoutes: string[] = [],
+  cache: SeoSharedCache = defaultSeoSharedCache,
 ): PayloadHandler {
+  // Persisted entries outlive deploys: scope them by the config that shapes the result.
+  const configSuffix = cache.persistent
+    ? `:${hashConfig({ v: 1, collections, redirectsCollection, knownRoutes })}`
+    : ''
   return async (req) => {
     try {
       if (!isSeoPanelUser(req)) {
@@ -65,9 +70,12 @@ export function createSitemapAuditHandler(
 
       // Locale-scoped: content differs per locale, so cache must not collide across locales.
       const reqLocale = safeCacheLocale(req)
-      const CACHE_KEY = reqLocale ? `sitemap-audit:${reqLocale}` : 'sitemap-audit'
+      const CACHE_KEY = (reqLocale ? `sitemap-audit:${reqLocale}` : 'sitemap-audit') + configSuffix
+      // Read the generation before computing (even on nocache) so a save that lands while
+      // this request runs leaves the stored result stale rather than hiding the save.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const cached = noCache ? null : seoCache.get<any>(CACHE_KEY)
+      const lookup = await cache.lookup<any>('sitemap-audit', CACHE_KEY)
+      const cached = noCache ? null : lookup.data
       if (cached) {
         return Response.json({ ...cached, cached: true }, { headers: { 'Cache-Control': 'no-store' } })
       }
@@ -326,7 +334,7 @@ export function createSitemapAuditHandler(
         },
       }
 
-      seoCache.set(CACHE_KEY, responseData)
+      await cache.set('sitemap-audit', CACHE_KEY, responseData, lookup.gen)
       return Response.json({ ...responseData, cached: false }, { headers: { 'Cache-Control': 'no-store' } })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Internal server error'

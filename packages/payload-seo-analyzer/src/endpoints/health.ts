@@ -15,6 +15,8 @@ import { getGscOAuthConfig, getOrCreateGscAuthDoc } from '../helpers/gscClient.j
 import { aiModel } from '../helpers/aiModel.js'
 
 import { isSeoAdminRequest as isAdmin } from '../helpers/isAdmin.js'
+import { resolveSiteUrl } from '../helpers/siteUrl.js'
+import { payloadApiRoute } from '../helpers/seoApiUrl.js'
 
 export function createSeoHealthHandler(basePath: string, seoConfig?: SeoConfig): PayloadHandler {
   return async (req) => {
@@ -26,12 +28,12 @@ export function createSeoHealthHandler(basePath: string, seoConfig?: SeoConfig):
         aiKey: !!process.env.ANTHROPIC_API_KEY,
         aiModel: aiModel(),
         pageSpeedKey: !!(process.env.PAGESPEED_API_KEY || process.env.GOOGLE_PAGESPEED_API_KEY),
-        gscConfigured: !!getGscOAuthConfig(basePath, seoConfig),
+        gscConfigured: !!getGscOAuthConfig(basePath, seoConfig, payloadApiRoute(req.payload)),
         gscEncryptionKey: !!process.env.SEO_GSC_ENCRYPTION_KEY,
         alertWebhook: !!process.env.SEO_ALERT_WEBHOOK_URL,
         alertEmail: !!process.env.SEO_ALERT_EMAIL,
         indexNowKey: !!process.env.SEO_INDEXNOW_KEY,
-        siteUrl: seoConfig?.siteUrl || process.env.NEXT_PUBLIC_SERVER_URL || null,
+        siteUrl: resolveSiteUrl(seoConfig?.siteUrl) || null,
       }
 
       // --- Runtime cache state ---

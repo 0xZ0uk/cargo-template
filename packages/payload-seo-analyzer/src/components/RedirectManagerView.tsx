@@ -5,6 +5,7 @@ import { Banner, Button, CheckIcon, ChevronIcon, EditIcon, RefreshIcon, TrashIco
 import { useDashboardT, useSeoLocale } from '../hooks/useSeoLocale.js'
 import { toCsv } from '../helpers/csv.js'
 import { Card, DataTable, EmptyState, Field, Grid, LoadingState, StatTile, TonePill, ViewBody, ViewHeader, type Tone } from '../ui/index.js'
+import { useSeoApi } from '../hooks/useSeoApi.js'
 import './RedirectManagerView.css'
 
 // ---------------------------------------------------------------------------
@@ -69,6 +70,7 @@ function typeTone(type: string): Tone {
 // Main RedirectManagerView component
 // ---------------------------------------------------------------------------
 export function RedirectManagerView() {
+  const seoApi = useSeoApi()
   const locale = useSeoLocale()
   const t = useDashboardT()
   // useId(), never a literal: duplicate ids would break the very association
@@ -140,7 +142,7 @@ export function RedirectManagerView() {
         })
         if (searchDebounced) params.set('search', searchDebounced)
 
-        const res = await fetch(`/api/seo-plugin/redirects?${params.toString()}`, {
+        const res = await fetch(seoApi(`/redirects?${params.toString()}`), {
           credentials: 'include',
           cache: 'no-store',
         })
@@ -174,7 +176,7 @@ export function RedirectManagerView() {
     if (!newFrom.trim() || !newTo.trim()) return
     setAdding(true)
     try {
-      const res = await fetch('/api/seo-plugin/create-redirect', {
+      const res = await fetch(seoApi('/create-redirect'), {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -205,7 +207,7 @@ export function RedirectManagerView() {
   const handleDelete = useCallback(
     async (id: string) => {
       try {
-        const res = await fetch('/api/seo-plugin/redirects', {
+        const res = await fetch(seoApi('/redirects'), {
           method: 'DELETE',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
@@ -226,7 +228,7 @@ export function RedirectManagerView() {
     if (selectedIds.size === 0) return
     const ids = Array.from(selectedIds)
     try {
-      const res = await fetch('/api/seo-plugin/redirects', {
+      const res = await fetch(seoApi('/redirects'), {
         method: 'DELETE',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -258,7 +260,7 @@ export function RedirectManagerView() {
     if (!editId || !editFrom.trim() || !editTo.trim()) return
     setSaving(true)
     try {
-      const res = await fetch('/api/seo-plugin/redirects', {
+      const res = await fetch(seoApi('/redirects'), {
         method: 'PATCH',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -319,7 +321,7 @@ export function RedirectManagerView() {
       }
 
       try {
-        const res = await fetch('/api/seo-plugin/redirects', {
+        const res = await fetch(seoApi('/redirects'), {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
@@ -347,7 +349,7 @@ export function RedirectManagerView() {
   const handleExportCsv = useCallback(async () => {
     try {
       // Fetch all redirects (no pagination limit)
-      const res = await fetch('/api/seo-plugin/redirects?limit=10000', {
+      const res = await fetch(seoApi('/redirects?limit=10000'), {
         credentials: 'include',
         cache: 'no-store',
       })

@@ -29,5 +29,6 @@ export const pageHead = (data?: LoadPageResult) => {
       ...(imageURL ? [{ property: 'og:image', content: imageURL }] : []),
       { name: 'twitter:card', content: 'summary_large_image' },
     ],
+    scripts: data.jsonLd.map((children) => ({ children, type: 'application/ld+json' })),
   }
 }

@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react'
 import { Banner, Button, NewTabIcon, RefreshIcon } from '@payloadcms/ui'
 import { useSeoFeature } from '../hooks/useSeoLocale.js'
 import { Card, DataTable, EmptyState, LoadingState, TonePill } from '../ui/index.js'
+import { usePayloadApi, useSeoApi } from '../hooks/useSeoApi.js'
 import './CtrOpportunitiesPanel.css'
 
 const S = {
@@ -65,6 +66,8 @@ interface RowState {
 }
 
 export function CtrOpportunitiesPanel({ locale }: { locale: 'fr' | 'en' }) {
+  const payloadApi = usePayloadApi()
+  const seoApi = useSeoApi()
   const gscEnabled = useSeoFeature('gscApi')
   const s = S[locale] ?? S.fr
   const [opps, setOpps] = useState<Opportunity[] | null>(null)
@@ -83,7 +86,7 @@ export function CtrOpportunitiesPanel({ locale }: { locale: 'fr' | 'en' }) {
         setNotConnected(true)
         return
       }
-      const res = await fetch('/api/seo-plugin/ctr-opportunities', { credentials: 'include', cache: 'no-store' })
+      const res = await fetch(seoApi('/ctr-opportunities'), { credentials: 'include', cache: 'no-store' })
       // 404 = endpoint not registered (features.gscApi off) · 403/409/400 = not admin / not connected / misconfig.
       if (res.status === 404 || res.status === 403 || res.status === 409 || res.status === 400) {
         setNotConnected(true)
@@ -113,7 +116,7 @@ export function CtrOpportunitiesPanel({ locale }: { locale: 'fr' | 'en' }) {
     if (!o.doc) return
     setRow(o.url, { busy: true, error: undefined })
     try {
-      const res = await fetch('/api/seo-plugin/ai-optimize', {
+      const res = await fetch(seoApi('/ai-optimize'), {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -142,7 +145,7 @@ export function CtrOpportunitiesPanel({ locale }: { locale: 'fr' | 'en' }) {
       patch.focusKeyword = rs.suggestion.focusKeyword
     }
     try {
-      await fetch(`/api/${o.doc.collection}/${o.doc.id}`, {
+      await fetch(payloadApi(`/${o.doc.collection}/${o.doc.id}`), {
         method: 'PATCH',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },

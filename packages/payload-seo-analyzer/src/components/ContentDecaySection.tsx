@@ -4,6 +4,7 @@ import React, { useState, useMemo } from 'react'
 import { Button, Collapsible } from '@payloadcms/ui'
 import { useDashboardT } from '../hooks/useSeoLocale.js'
 import { DataTable, Dot, EmptyState, TonePill, cx, type Tone } from '../ui/index.js'
+import { usePayloadApi } from '../hooks/useSeoApi.js'
 import './ContentDecaySection.css'
 
 interface AuditItem {
@@ -17,6 +18,7 @@ interface AuditItem {
 }
 
 export function ContentDecaySection({ items }: { items: AuditItem[] }) {
+  const payloadApi = usePayloadApi()
   const t = useDashboardT()
   const [open, setOpen] = useState(false)
   const [markingReviewed, setMarkingReviewed] = useState<string | null>(null)
@@ -66,7 +68,7 @@ export function ContentDecaySection({ items }: { items: AuditItem[] }) {
     setMarkingReviewed(key)
     try {
       const today = new Date().toISOString().split('T')[0]
-      const res = await fetch(`/api/${item.collection}/${item.id}`, {
+      const res = await fetch(payloadApi(`/${item.collection}/${item.id}`), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

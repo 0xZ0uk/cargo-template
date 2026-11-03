@@ -17,6 +17,7 @@ import {
   ViewHeader,
   type Tone,
 } from '../ui/index.js'
+import { useSeoApi } from '../hooks/useSeoApi.js'
 import './KeywordResearchView.css'
 
 // ---------------------------------------------------------------------------
@@ -92,6 +93,7 @@ function ExpandableList({ items, label, seeLessLabel }: { items: string[]; label
 // ---------------------------------------------------------------------------
 
 export function KeywordResearchView() {
+  const seoApi = useSeoApi()
   const locale = useSeoLocale()
   const t = useDashboardT()
 
@@ -124,7 +126,7 @@ export function KeywordResearchView() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch('/api/seo-plugin/keyword-research', {
+      const res = await fetch(seoApi('/keyword-research'), {
         credentials: 'include',
         cache: 'no-store',
       })

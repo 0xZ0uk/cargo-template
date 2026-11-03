@@ -20,6 +20,7 @@ import {
   isGscAdminRequest,
   type GscRow,
 } from '../helpers/gscClient.js'
+import { payloadApiRoute } from '../helpers/seoApiUrl.js'
 
 /**
  * Approximate blended organic CTR by average SERP position (industry curves, desktop+mobile).
@@ -138,7 +139,7 @@ export function createCtrOpportunitiesHandler(
     try {
       if (!isGscAdminRequest(req)) return Response.json({ error: 'Forbidden' }, { status: 403 })
 
-      const cfg = getGscOAuthConfig(basePath, seoConfig)
+      const cfg = getGscOAuthConfig(basePath, seoConfig, payloadApiRoute(req.payload))
       if (!cfg) return Response.json({ error: 'GSC OAuth not configured.' }, { status: 400 })
 
       const authDoc = await getOrCreateGscAuthDoc(req.payload)

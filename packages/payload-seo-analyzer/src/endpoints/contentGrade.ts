@@ -39,6 +39,7 @@ import { expectedCtrForPosition } from './ctrOpportunities.js'
 import { extractDocContent } from '../helpers/extractDocContent.js'
 import { normalizeForComparison, countWords } from '../helpers.js'
 import { getStopWords } from '../constants.js'
+import { payloadApiRoute } from '../helpers/seoApiUrl.js'
 
 // ---------------------------------------------------------------------------
 // Tunable thresholds — internal weighting of a COMPOSITE indicator, not external
@@ -532,7 +533,7 @@ export function createContentGradeHandler(
       const slug = typeof doc.slug === 'string' ? doc.slug : ''
 
       // --- GSC connection — clean 200 + gscConnected:false when unavailable (never raw 404/500) ---
-      const cfg = getGscOAuthConfig(basePath, seoConfig)
+      const cfg = getGscOAuthConfig(basePath, seoConfig, payloadApiRoute(req.payload))
       if (!cfg) {
         return Response.json(
           {

@@ -198,3 +198,58 @@ describe('seoAnalyzerPlugin — retention purge (opt-in)', () => {
     expect(paths(withRetention).filter((p) => p !== '/seo-plugin/retention')).toEqual(paths(without))
   })
 })
+
+describe('seoAnalyzerPlugin — cache invalidation wiring', () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const hooksOf = (out: any, slug: string, kind: string): unknown[] => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const c = out.collections.find((x: any) => x.slug === slug)
+    const h = c?.hooks?.[kind] ?? []
+    return Array.isArray(h) ? h : [h]
+  }
+
+  it('invalidates on save/delete even with score history off (the apps/web setup)', () => {
+    const out = run({ collections: ['pages'], features: { scoreHistory: false } })
+    expect(hooksOf(out, 'pages', 'afterChange').length).toBe(1)
+    expect(hooksOf(out, 'pages', 'afterDelete').length).toBe(1)
+  })
+
+  it('invalidates on redirects and settings changes', () => {
+    const out = run({ collections: ['pages'] })
+    expect(hooksOf(out, 'seo-redirects', 'afterChange').length).toBeGreaterThan(0)
+    expect(hooksOf(out, 'seo-redirects', 'afterDelete').length).toBeGreaterThan(0)
+    expect(hooksOf(out, 'seo-settings', 'afterChange').length).toBeGreaterThan(0)
+  })
+
+  it('routes the dashboard audit through the cacheStore and waitUntil', async () => {
+    const data = new Map<string, string>()
+    const store = {
+      get: async (k: string) => data.get(k) ?? null,
+      put: async (k: string, v: string) => void data.set(k, v),
+      delete: async (k: string) => void data.delete(k),
+    }
+    const background: Promise<unknown>[] = []
+    const out = run({
+      collections: ['pages'],
+      cacheStore: store,
+      waitUntil: (p: Promise<unknown>) => void background.push(p),
+    })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const audit = out.endpoints.find((e: any) => e.path === '/seo-plugin/audit')
+    const payload = {
+      config: { admin: { user: 'users' } },
+      logger: { warn: () => {}, error: () => {}, info: () => {} },
+      find: async () => ({ docs: [], hasNextPage: false }),
+      findGlobal: async () => null,
+    }
+    const res = await audit.handler({
+      user: { id: 'cache-wiring', collection: 'users' },
+      url: 'http://localhost/api/seo-plugin/audit',
+      payload,
+    })
+    expect(res.status).toBe(202)
+    expect(background).toHaveLength(1)
+    await Promise.all(background)
+    expect([...data.keys()].some((k) => k.startsWith('entry/audit'))).toBe(true)
+  })
+})

@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react'
 import { Banner, Button, RefreshIcon } from '@payloadcms/ui'
 import { useSeoFeature } from '../hooks/useSeoLocale.js'
 import { Card, DataTable, EmptyState, LoadingState, TonePill } from '../ui/index.js'
+import { useSeoApi } from '../hooks/useSeoApi.js'
 import './RankTrackingPanel.css'
 
 const S = {
@@ -58,6 +59,7 @@ interface Mover {
 }
 
 export function RankTrackingPanel({ locale }: { locale: 'fr' | 'en' }) {
+  const seoApi = useSeoApi()
   const gscEnabled = useSeoFeature('gscApi')
   const s = S[locale] ?? S.fr
   const [movers, setMovers] = useState<Mover[] | null>(null)
@@ -78,7 +80,7 @@ export function RankTrackingPanel({ locale }: { locale: 'fr' | 'en' }) {
         setMovers(null)
         return
       }
-      const res = await fetch('/api/seo-plugin/rank-history', { credentials: 'include', cache: 'no-store' })
+      const res = await fetch(seoApi('/rank-history'), { credentials: 'include', cache: 'no-store' })
       // 404 = endpoint not registered (features.gscApi off) · 403/409 = not admin / not connected.
       if (res.status === 404 || res.status === 403 || res.status === 409) {
         setNotConnected(true)
@@ -107,7 +109,7 @@ export function RankTrackingPanel({ locale }: { locale: 'fr' | 'en' }) {
     setBusy(true)
     setError(null)
     try {
-      const res = await fetch('/api/seo-plugin/rank-snapshot', { method: 'POST', credentials: 'include' })
+      const res = await fetch(seoApi('/rank-snapshot'), { method: 'POST', credentials: 'include' })
       const json = await res.json()
       if (res.status === 409) {
         setNotConnected(true)

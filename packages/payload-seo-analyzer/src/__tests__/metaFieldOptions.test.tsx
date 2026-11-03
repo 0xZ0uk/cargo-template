@@ -56,6 +56,17 @@ describe('meta fields read their options from admin.custom', () => {
   })
 })
 
+describe('meta fields without an explicit base path', () => {
+  it('call the plugin endpoint under the default API route', () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ result: 'x' })))
+    vi.stubGlobal('fetch', fetchMock)
+    const field = clientField('title', { hasGenerateTitle: true })
+    render(<MetaTitleField path="meta.title" field={field} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }))
+    expect(fetchMock).toHaveBeenCalledWith('/api/seo-plugin/generate', expect.objectContaining({ method: 'POST' }))
+  })
+})
+
 describe('resolveMetaFieldOptions', () => {
   it('prefers direct props, then admin.custom, then the defaults', () => {
     const field = { admin: { custom: { hasGenerateFn: true, basePath: '/api/custom' } } }
@@ -64,6 +75,7 @@ describe('resolveMetaFieldOptions', () => {
       hasGenerateFn: false,
       basePath: '/api/own',
     })
-    expect(resolveMetaFieldOptions({})).toEqual({ hasGenerateFn: false, basePath: '/api/seo-plugin' })
+    // No basePath: the field builds the URL from `useSeoApi()` instead of a hard-coded one.
+    expect(resolveMetaFieldOptions({})).toEqual({ hasGenerateFn: false, basePath: undefined })
   })
 })

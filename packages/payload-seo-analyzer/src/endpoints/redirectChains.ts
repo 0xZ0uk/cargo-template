@@ -8,7 +8,7 @@
  */
 
 import type { PayloadHandler } from 'payload'
-import { seoCache } from '../cache.js'
+import { defaultSeoSharedCache, type SeoSharedCache } from '../cache.js'
 import { isSeoAdminRequest, isSeoPanelUser } from '../helpers/isAdmin.js'
 
 interface RedirectChainResult {
@@ -17,7 +17,10 @@ interface RedirectChainResult {
   length: number
 }
 
-export function createRedirectChainsHandler(redirectsCollection: string): PayloadHandler {
+export function createRedirectChainsHandler(
+  redirectsCollection: string,
+  cache: SeoSharedCache = defaultSeoSharedCache,
+): PayloadHandler {
   return async (req) => {
     try {
       if (!isSeoPanelUser(req)) {
@@ -29,8 +32,9 @@ export function createRedirectChainsHandler(redirectsCollection: string): Payloa
       // so it is reserved to SEO admins — the same gate as /audit?nocache=1. A panel
       // user without the role silently gets the cached result instead of a 403.
       const noCache = url.searchParams.get('nocache') === '1' && isSeoAdminRequest(req)
-      const CACHE_KEY = 'redirect-chains'
-      const cached = noCache ? null : seoCache.get<unknown>(CACHE_KEY)
+      const CACHE_KEY = cache.persistent ? `redirect-chains:${redirectsCollection}` : 'redirect-chains'
+      const lookup = await cache.lookup<unknown>('redirect-chains', CACHE_KEY)
+      const cached = noCache ? null : lookup.data
       if (cached) {
         return Response.json({ ...(cached as Record<string, unknown>), cached: true })
       }
@@ -122,7 +126,7 @@ export function createRedirectChainsHandler(redirectsCollection: string): Payloa
         },
       }
 
-      seoCache.set(CACHE_KEY, responseData)
+      await cache.set('redirect-chains', CACHE_KEY, responseData, lookup.gen)
       return Response.json({ ...responseData, cached: false })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Internal server error'

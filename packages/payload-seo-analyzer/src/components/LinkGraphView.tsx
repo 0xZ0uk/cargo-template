@@ -8,6 +8,7 @@
 
 import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { Banner, Button } from '@payloadcms/ui'
+import { formatAdminURL } from 'payload/shared'
 import { getTranslations } from '../i18n.js'
 import { useSeoLocale } from '../hooks/useSeoLocale.js'
 import {
@@ -24,6 +25,7 @@ import {
   ViewBody,
   ViewHeader,
 } from '../ui/index.js'
+import { useAdminRoute, useSeoApi } from '../hooks/useSeoApi.js'
 import './LinkGraphView.css'
 
 // ---------------------------------------------------------------------------
@@ -276,6 +278,8 @@ function getNodeRadius(node: GraphNode, maxDegree: number): number {
 // ---------------------------------------------------------------------------
 
 export function LinkGraphView() {
+  const seoApi = useSeoApi()
+  const adminRoute = useAdminRoute()
   const locale = useSeoLocale()
   const T = getTranslations(locale)
   const cb = CB_LABELS[locale === 'en' ? 'en' : 'fr']
@@ -308,7 +312,7 @@ export function LinkGraphView() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch('/api/seo-plugin/link-graph', { credentials: 'include', cache: 'no-store' })
+      const res = await fetch(seoApi('/link-graph'), { credentials: 'include', cache: 'no-store' })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const json: GraphData = await res.json()
       setData(json)
@@ -485,10 +489,13 @@ export function LinkGraphView() {
     setTooltipNode(null)
   }, [])
 
-  const handleNodeClick = useCallback((node: SimNode) => {
-    // Open the edit page using the Payload document ID
-    window.open(`/admin/collections/${node.collection}/${node.docId}`, '_blank')
-  }, [])
+  const handleNodeClick = useCallback(
+    (node: SimNode) => {
+      // Open the edit page using the Payload document ID
+      window.open(formatAdminURL({ adminRoute, path: `/collections/${node.collection}/${node.docId}` }), '_blank')
+    },
+    [adminRoute],
+  )
 
   // ---------------------------------------------------------------------------
   // Render

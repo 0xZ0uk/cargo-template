@@ -7,6 +7,7 @@
 import type { PayloadHandler } from 'payload'
 import type { SeoConfig } from '../types.js'
 import { buildDocPath } from '../helpers/docUrl.js'
+import { requestOrigin, resolveSiteUrl } from '../helpers/siteUrl.js'
 import { fetchAllDocs } from '../helpers/fetchAllDocs.js'
 import { seoCache } from '../cache.js'
 
@@ -69,7 +70,7 @@ export function createSitemapHandler(
   targetCollections: string[],
   seoConfig?: SeoConfig,
 ): PayloadHandler {
-  const cacheKey = `${SITEMAP_XML_CACHE_BASE}:${targetCollections.join(',')}`
+  const cacheKeyBase = `${SITEMAP_XML_CACHE_BASE}:${targetCollections.join(',')}`
 
   const xmlResponse = (xml: string) =>
     new Response(xml, {
@@ -86,10 +87,13 @@ export function createSitemapHandler(
       // on its only unauthenticated (and deliberately un-rate-limited) endpoint.
       // Staleness stays bounded by the cache TTL, which is well under the one-hour
       // Cache-Control this endpoint has always advertised.
+      // Without a configured site URL, fall back to the request's origin (sitemap
+      // `<loc>` values must be absolute). The XML then depends on the host, so the
+      // origin is part of the cache key.
+      const serverUrl = resolveSiteUrl(seoConfig?.siteUrl, requestOrigin(req))
+      const cacheKey = `${cacheKeyBase}:${serverUrl}`
       const cachedXml = seoCache.get<string>(cacheKey)
       if (typeof cachedXml === 'string') return xmlResponse(cachedXml)
-
-      const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL || ''
 
       // Read sitemap config from seo-settings
       const settingsResult = await req.payload.find({

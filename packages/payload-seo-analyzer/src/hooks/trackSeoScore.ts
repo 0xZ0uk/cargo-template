@@ -15,35 +15,11 @@ import { analyzeSeo } from '../index.js'
 import { buildSeoInputFromDoc } from '../endpoints/validate.js'
 import { countWords } from '../helpers.js'
 import { extractDocContent } from '../helpers/extractDocContent.js'
-import { seoCache } from '../cache.js'
 import { loadMergedConfig } from '../helpers/loadMergedConfig.js'
 
 /** Minimum interval between snapshots in milliseconds (1 hour) */
 const RATE_LIMIT_MS = 60 * 60 * 1000
 
-/**
- * Expensive caches that depend on document content. Invalidated synchronously
- * on every save (by prefix, so locale-scoped variants like `audit:fr` are cleared).
- */
-const CACHE_BASES = [
-  'audit',
-  'cannibalization',
-  'keyword-research',
-  'external-links',
-  'link-graph',
-  'sitemap-audit',
-  'duplicate-content',
-  // Corpus index behind /suggest-links — see endpoints/suggestLinks.ts.
-  'suggest-links-index',
-  // Rendered sitemap.xml — see endpoints/sitemap.ts. Public, anonymous and cached,
-  // so a publish/unpublish must drop it or the new URL waits for the TTL.
-  'sitemap-xml',
-  // Same deal for the three extension sitemaps — see endpoints/sitemapExtensions.ts.
-  // The news one especially: a freshly published article must appear without waiting.
-  'sitemap-news',
-  'sitemap-images',
-  'sitemap-video',
-] as const
 
 export function createTrackSeoScoreHook(seoConfig?: SeoConfig): CollectionAfterChangeHook {
   return async ({ doc, collection, req }) => {
@@ -114,18 +90,13 @@ export function createTrackSeoScoreHook(seoConfig?: SeoConfig): CollectionAfterC
           overrideAccess: true,
         })
 
-        // (Caches are invalidated synchronously on save — see the invalidateByPrefix
-        // loop in the hook body. Doing it here would be skipped by the rate-limit.)
+        // (Caches are invalidated by the dedicated hook in hooks/invalidateSeoCaches.ts,
+        // which runs on every save regardless of this rate limit or of score history.)
       } catch (error) {
         // Fire-and-forget: log but never block the save
         req.payload.logger.error(`[seo] trackSeoScore error: ${error instanceof Error ? error.message : 'unknown'}`)
       }
     }
-
-    // Invalidate the expensive caches synchronously on every save (by prefix so
-    // all locale variants are cleared). Runs OUTSIDE the rate-limited doTrack()
-    // below — otherwise a second edit within the snapshot window would serve stale data.
-    for (const base of CACHE_BASES) seoCache.invalidateByPrefix(base)
 
     // Run async without awaiting (fire-and-forget)
     void doTrack()
@@ -213,18 +184,13 @@ export function createTrackSeoScoreGlobalHook(seoConfig?: SeoConfig): GlobalAfte
           overrideAccess: true,
         })
 
-        // (Caches are invalidated synchronously on save — see the invalidateByPrefix
-        // loop in the hook body. Doing it here would be skipped by the rate-limit.)
+        // (Caches are invalidated by the dedicated hook in hooks/invalidateSeoCaches.ts,
+        // which runs on every save regardless of this rate limit or of score history.)
       } catch (error) {
         // Fire-and-forget: log but never block the save
         req.payload.logger.error(`[seo] trackSeoScoreGlobal error: ${error instanceof Error ? error.message : 'unknown'}`)
       }
     }
-
-    // Invalidate the expensive caches synchronously on every save (by prefix so
-    // all locale variants are cleared). Runs OUTSIDE the rate-limited doTrack()
-    // below — otherwise a second edit within the snapshot window would serve stale data.
-    for (const base of CACHE_BASES) seoCache.invalidateByPrefix(base)
 
     // Run async without awaiting (fire-and-forget)
     void doTrack()

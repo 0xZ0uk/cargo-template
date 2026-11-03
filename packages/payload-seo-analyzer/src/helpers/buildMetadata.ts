@@ -16,11 +16,12 @@
 
 import { getSchemaImageUrl } from './buildSchema.js'
 import { buildDocUrl, type CollectionRoutes } from './docUrl.js'
+import { resolveSiteUrl } from './siteUrl.js'
 
 export interface SeoMetadataOptions {
   /** Collection slug — used to pick the Open Graph type (posts → 'article') */
   collection?: string
-  /** Absolute site URL (defaults to NEXT_PUBLIC_SERVER_URL / PAYLOAD_PUBLIC_SERVER_URL) */
+  /** Absolute site URL (defaults to the SITE_URL environment variable) */
   siteUrl?: string
   /** Site name for Open Graph */
   siteName?: string
@@ -59,15 +60,6 @@ export interface SeoMetadata {
     description?: string
     images?: string[]
   }
-}
-
-function resolveSiteUrl(explicit?: string): string {
-  return (
-    explicit ||
-    process.env.NEXT_PUBLIC_SERVER_URL ||
-    process.env.PAYLOAD_PUBLIC_SERVER_URL ||
-    ''
-  ).replace(/\/$/, '')
 }
 
 function parseRobots(

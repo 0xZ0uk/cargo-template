@@ -17,6 +17,7 @@ import {
 import { useDashboardT } from '../hooks/useSeoLocale.js'
 import { type DashboardTranslations } from '../dashboard-i18n.js'
 import { Card, cx, DataTable, Field, Grid, LoadingState, ViewBody, ViewHeader } from '../ui/index.js'
+import { useSeoApi } from '../hooks/useSeoApi.js'
 import './SeoConfigView.css'
 
 // ---------------------------------------------------------------------------
@@ -184,6 +185,7 @@ function SlugChip({ slug, removeLabel, onRemove }: { slug: string; removeLabel: 
 // Main SeoConfigView component
 // ---------------------------------------------------------------------------
 export function SeoConfigView() {
+  const seoApi = useSeoApi()
   const t = useDashboardT()
   // useId(), never a literal id: nothing forbids a host from mounting this view
   // twice (a custom route reusing the component), and duplicate ids break the
@@ -223,7 +225,7 @@ export function SeoConfigView() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch('/api/seo-plugin/settings', { credentials: 'include', cache: 'no-store' })
+      const res = await fetch(seoApi('/settings'), { credentials: 'include', cache: 'no-store' })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json()
       setSettings(data.settings || {})
@@ -241,7 +243,7 @@ export function SeoConfigView() {
   useEffect(() => {
     ;(async () => {
       try {
-        const res = await fetch('/api/seo-plugin/audit?limit=500', { credentials: 'include', cache: 'no-store' })
+        const res = await fetch(seoApi('/audit?limit=500'), { credentials: 'include', cache: 'no-store' })
         if (res.ok) {
           const data = await res.json()
           const slugs = (data.results || []).map((r: { slug: string; title: string; collection: string }) => ({
@@ -287,7 +289,7 @@ export function SeoConfigView() {
   const handleSave = useCallback(async () => {
     setSaving(true)
     try {
-      const res = await fetch('/api/seo-plugin/settings', {
+      const res = await fetch(seoApi('/settings'), {
         method: 'PATCH',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -440,7 +442,7 @@ export function SeoConfigView() {
   const fetchSitemapPreview = useCallback(async () => {
     setLoadingPreview(true)
     try {
-      const res = await fetch('/api/seo-plugin/sitemap-config', { credentials: 'include', cache: 'no-store' })
+      const res = await fetch(seoApi('/sitemap-config'), { credentials: 'include', cache: 'no-store' })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json()
       setSitemapPreview(data)

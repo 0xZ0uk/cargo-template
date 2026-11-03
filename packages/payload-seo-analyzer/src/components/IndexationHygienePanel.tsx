@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { Banner, Button, RefreshIcon } from '@payloadcms/ui'
 import { Card, Checklist, Grid, LoadingState, StatTile, TonePill, type Tone } from '../ui/index.js'
+import { useSeoApi } from '../hooks/useSeoApi.js'
 
 type Severity = 'pass' | 'warning' | 'fail'
 
@@ -83,6 +84,7 @@ function sevTone(sev?: Severity): Tone {
 }
 
 export function IndexationHygienePanel({ locale }: { locale: 'fr' | 'en' }) {
+  const seoApi = useSeoApi()
   const s = S[locale] ?? S.fr
   const [data, setData] = useState<HygieneResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -93,7 +95,7 @@ export function IndexationHygienePanel({ locale }: { locale: 'fr' | 'en' }) {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch('/api/seo-plugin/indexation-audit', { credentials: 'include', cache: 'no-store' })
+      const res = await fetch(seoApi('/indexation-audit'), { credentials: 'include', cache: 'no-store' })
       if (res.status === 404 || res.status === 403) {
         setUnavailable(true)
         return

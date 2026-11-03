@@ -18,6 +18,7 @@ import { Meter, cx, rangeTone } from '../ui/index.js'
 import { useDashboardT } from '../hooks/useSeoLocale.js'
 import { withSeoErrorBoundary } from './withSeoErrorBoundary.js'
 import { resolveMetaFieldOptions, type MetaFieldOptionProps } from './metaFieldOptions.js'
+import { useSeoApi } from '../hooks/useSeoApi.js'
 import './MetaField.css'
 
 // ---------------------------------------------------------------------------
@@ -42,6 +43,8 @@ const TITLE_MAX = 60
 function MetaTitleFieldInner(props: MetaTitleFieldProps) {
   const { path } = props
   const { hasGenerateFn, basePath } = resolveMetaFieldOptions(props)
+  const seoApi = useSeoApi()
+  const generateUrl = basePath ? `${basePath}/generate` : seoApi('/generate')
   const t = useDashboardT()
   // One instance per locale tab on a localized document: a literal id would
   // point every tab's label at the first tab's input.
@@ -61,7 +64,7 @@ function MetaTitleFieldInner(props: MetaTitleFieldProps) {
     setError(null)
 
     try {
-      const res = await fetch(`${basePath}/generate`, {
+      const res = await fetch(generateUrl, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -88,7 +91,7 @@ function MetaTitleFieldInner(props: MetaTitleFieldProps) {
     } finally {
       setLoading(false)
     }
-  }, [basePath, collectionSlug, globalSlug, docId, setValue])
+  }, [generateUrl, collectionSlug, globalSlug, docId, setValue])
 
   return (
     <div className="seo-meta-field">

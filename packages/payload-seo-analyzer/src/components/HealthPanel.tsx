@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { Banner } from '@payloadcms/ui'
 import { Card, Dot, TonePill } from '../ui/index.js'
+import { useSeoApi } from '../hooks/useSeoApi.js'
 
 const S = {
   fr: {
@@ -39,12 +40,13 @@ interface Health {
 }
 
 export function HealthPanel({ locale }: { locale: 'fr' | 'en' }) {
+  const seoApi = useSeoApi()
   const s = S[locale] ?? S.fr
   const [h, setH] = useState<Health | null>(null)
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch('/api/seo-plugin/health', { credentials: 'include', cache: 'no-store' })
+      const res = await fetch(seoApi('/health'), { credentials: 'include', cache: 'no-store' })
       if (res.ok) setH((await res.json()) as Health)
     } catch {
       /* ignore */
