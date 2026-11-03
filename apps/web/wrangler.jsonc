@@ -24,4 +24,25 @@
       "bucket_name": "cargo-template-media",
     },
   ],
+  // Rate limits for the SEO analyzer's endpoints, shared by every isolate in a Cloudflare
+  // location (the plugin's own limiters are per isolate). Limits mirror `SEO_RATE_LIMITS`
+  // in the plugin; see src/plugins/seoRateLimit.ts. `namespace_id` is account-wide: give
+  // each Worker its own ids, or they share counters.
+  "ratelimits": [
+    {
+      "name": "SEO_RATE_LIMIT_EXPENSIVE",
+      "namespace_id": "1001",
+      "simple": { "limit": 10, "period": 60 },
+    },
+    {
+      "name": "SEO_RATE_LIMIT_AUDIT_POLL",
+      "namespace_id": "1002",
+      "simple": { "limit": 120, "period": 60 },
+    },
+    {
+      "name": "SEO_RATE_LIMIT_AI_INTERACTIVE",
+      "namespace_id": "1003",
+      "simple": { "limit": 30, "period": 60 },
+    },
+  ],
 }

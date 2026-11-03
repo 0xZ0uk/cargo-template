@@ -13,15 +13,60 @@
  *
  * Read-only; requires an authenticated user.
  *
- * NOTE: Rate limiting is not handled by this plugin. The consuming application should
- * implement it via its own middleware.
+ * Cost: it is a whole-site scan, so it is cached like the dashboard audit (persisted in
+ * the `cacheStore` when one is set, invalidated on every content or settings save),
+ * capped at `SEO_AUDIT_MAX_DOCS` (default 1500), and only runs the `technical` rule group
+ * on the few fields that group reads (slug, canonical, robots), at depth 0. The technical
+ * checks never read content, so the verdict is the same as a full analysis.
+ *
+ * Rate limiting is applied by the plugin (`withRateLimit` in plugin.ts).
  */
 import type { PayloadHandler } from 'payload'
 import { analyzeSeo } from '../index.js'
-import type { SeoConfig, SeoCheck } from '../types.js'
+import type { RuleGroup, SeoConfig, SeoCheck, SeoInput } from '../types.js'
 import { buildSeoInputFromDoc } from './validate.js'
 import { loadMergedConfig } from '../helpers/loadMergedConfig.js'
-import { isSeoPanelUser } from '../helpers/isAdmin.js'
+import { isSeoAdminRequest, isSeoPanelUser } from '../helpers/isAdmin.js'
+import { auditMaxDocs } from '../helpers/auditLimits.js'
+import { safeCacheLocale } from '../helpers/safeCacheLocale.js'
+import { defaultSeoSharedCache, hashConfig, type SeoSharedCache } from '../cache.js'
+
+/** Every rule group except `technical`, the only one the indexation checks come from. */
+const NON_TECHNICAL_GROUPS: RuleGroup[] = [
+  'title',
+  'meta-description',
+  'url',
+  'headings',
+  'content',
+  'images',
+  'linking',
+  'social',
+  'schema',
+  'readability',
+  'quality',
+  'secondary-keywords',
+  'cornerstone',
+  'freshness',
+  'accessibility',
+  'ecommerce',
+  'eeat',
+  'geo',
+  'hreflang',
+]
+
+/**
+ * The subset of the analyzer input the technical rules read. Dropping the content skips
+ * the Lexical extraction in `buildContext`, which is most of the per-doc cost.
+ */
+export function technicalOnlyInput(input: SeoInput): SeoInput {
+  return {
+    slug: input.slug,
+    canonicalUrl: input.canonicalUrl,
+    robotsMeta: input.robotsMeta,
+    isGlobal: input.isGlobal,
+    isPost: input.isPost,
+  }
+}
 
 /** Technical-group check ids that represent an indexation/canonical hygiene problem. */
 const INDEXATION_CHECK_IDS = new Set([
@@ -391,14 +436,35 @@ export function createIndexationAuditHandler(
   collections: string[],
   seoConfig?: SeoConfig,
   globals: string[] = [],
+  cache: SeoSharedCache = defaultSeoSharedCache,
 ): PayloadHandler {
+  // Persisted entries outlive deploys: scope them by the config that shapes the result.
+  const configSuffix = cache.persistent ? `:${hashConfig({ v: 1, collections, globals, seoConfig })}` : ''
   return async (req) => {
     try {
       if (!isSeoPanelUser(req)) {
         return Response.json({ error: 'Unauthorized' }, { status: 401 })
       }
 
-      const { config: mergedConfig, ignoredSlugs } = await loadMergedConfig(req.payload, seoConfig)
+      // Same gate as /audit?nocache=1: only SEO admins may force the whole-site rescan.
+      const noCache = new URL(req.url as string).searchParams.get('nocache') === '1' && isSeoAdminRequest(req)
+      const reqLocale = safeCacheLocale(req)
+      const CACHE_KEY = (reqLocale ? `indexation-audit:${reqLocale}` : 'indexation-audit') + configSuffix
+      // Read the generation before computing, so a save landing mid-scan leaves the stored
+      // result stale instead of hiding the save.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const lookup = await cache.lookup<any>('indexation-audit', CACHE_KEY)
+      if (!noCache && lookup.data) {
+        return Response.json({ ...lookup.data, cached: true }, { headers: { 'Cache-Control': 'no-store' } })
+      }
+
+      const { config: baseConfig, ignoredSlugs } = await loadMergedConfig(req.payload, seoConfig)
+      const mergedConfig: SeoConfig = {
+        ...baseConfig,
+        disabledRules: [...new Set([...(baseConfig.disabledRules ?? []), ...NON_TECHNICAL_GROUPS])],
+      }
+      const maxDocs = auditMaxDocs()
+      let capped = false
 
       const entries: IndexationEntry[] = []
       // Every inspected doc (not just flagged ones) — fuels the cross-page hygiene pass.
@@ -407,7 +473,7 @@ export function createIndexationAuditHandler(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const inspect = (doc: any, collection: string, isGlobal = false): void => {
         const input = buildSeoInputFromDoc(doc, collection, { isGlobal })
-        const analysis = analyzeSeo(input, mergedConfig)
+        const analysis = analyzeSeo(technicalOnlyInput(input), mergedConfig)
         const issues: IndexationIssue[] = analysis.checks
           .filter(
             (c) => c.group === 'technical' && INDEXATION_CHECK_IDS.has(c.id) && c.status !== 'pass',
@@ -442,6 +508,7 @@ export function createIndexationAuditHandler(
         if (++processed % 50 === 0) await new Promise((resolve) => setImmediate(resolve))
       }
 
+      collectionsLoop:
       for (const collectionSlug of collections) {
         try {
           let page = 1
@@ -451,11 +518,16 @@ export function createIndexationAuditHandler(
               collection: collectionSlug,
               limit: 100,
               page,
-              depth: 1,
+              // The technical rules read slug / canonical / robots only: no relations needed.
+              depth: 0,
               overrideAccess: true,
             })
             for (const doc of result.docs) {
               if (ignoredSlugs.includes(doc.slug as string)) continue
+              if (allRecords.length >= maxDocs) {
+                capped = true
+                break collectionsLoop
+              }
               inspect(doc, collectionSlug)
               await maybeYield()
             }
@@ -471,7 +543,7 @@ export function createIndexationAuditHandler(
         try {
           const doc = await req.payload.findGlobal({
             slug: globalSlug,
-            depth: 1,
+            depth: 0,
             overrideAccess: true,
           })
           if (doc) inspect(doc, `global:${globalSlug}`, true)
@@ -488,21 +560,26 @@ export function createIndexationAuditHandler(
       // Cross-page hygiene: mass noindex, canonical cannibalization / dangling / missing.
       const hygiene = analyzeIndexationHygiene(allRecords, { siteUrl: mergedConfig.siteUrl })
 
-      return Response.json(
-        {
-          entries,
-          summary: {
-            totalFlagged: entries.length,
-            noindexCount,
-            canonicalIssueCount,
-            // Additive (backwards-compatible) fields:
-            totalDocs: allRecords.length,
-            overallSeverity: hygiene.overallSeverity,
-          },
-          hygiene,
+      if (capped) {
+        req.payload.logger.warn(`[seo] indexation-audit: capped at ${maxDocs} docs (SEO_AUDIT_MAX_DOCS).`)
+      }
+
+      const responseData = {
+        entries,
+        summary: {
+          totalFlagged: entries.length,
+          noindexCount,
+          canonicalIssueCount,
+          // Additive (backwards-compatible) fields:
+          totalDocs: allRecords.length,
+          overallSeverity: hygiene.overallSeverity,
+          capped,
+          maxDocs,
         },
-        { headers: { 'Cache-Control': 'no-store' } },
-      )
+        hygiene,
+      }
+      await cache.set('indexation-audit', CACHE_KEY, responseData, lookup.gen)
+      return Response.json({ ...responseData, cached: false }, { headers: { 'Cache-Control': 'no-store' } })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Internal server error'
       req.payload.logger.error(`[seo] indexation-audit error: ${message}`)

@@ -99,7 +99,7 @@ import { resolveGscSiteUrl } from './helpers/gscClient.js'
 import { createGenerateHandler } from './endpoints/generate.js'
 import { seoTranslations } from './translations.js'
 import { registerDashboardTranslations } from './dashboard-i18n.js'
-import { createRateLimiter, rateLimitKey } from './rateLimiter.js'
+import { createBucketRateLimiter, rateLimitKey, type BucketRateLimiter, type SeoRateLimit } from './rateLimiter.js'
 import {
   CONTENT_CACHE_BASES,
   REDIRECT_CACHE_BASES,
@@ -202,6 +202,14 @@ export interface SeoPluginConfig {
    * (see `SEO_AUDIT_*` env vars) to fit the host's post-response budget.
    */
   waitUntil?: SeoWaitUntil
+  /**
+   * Shared rate limiter for the plugin's limited endpoints. Called with the bucket
+   * (`SEO_RATE_LIMITS` lists each bucket's limit) and the caller key; return `true` to
+   * allow, `false` to answer 429, `undefined` to use the in-memory limiter. Omitted: the
+   * in-memory limiters, which on Workers count per isolate. On Workers, back each bucket
+   * with a Rate Limiting binding of the same limit.
+   */
+  rateLimit?: SeoRateLimit
   /** Granular feature flags — all default to true. Disable features you don't need
    *  to reduce collections, endpoints, and admin views loaded by the plugin.
    *  The core analyzer sidebar, validate endpoint, and meta fields are always active. */
@@ -587,36 +595,31 @@ export const seoAnalyzerPlugin =
       }
     })
 
-    // Rate limiter for expensive POST endpoints (LLM calls, heavy crawls): 10 req / 60s per IP.
-    // NOTE: these limiters are in-memory, so on Workers each isolate counts separately
-    // (a weak bound there). `cacheStore` deliberately does not back them; Workers' Rate
-    // Limiting binding is the proper fix (see PLAN.md).
-    const expensiveEndpointLimiter = createRateLimiter(10, 60_000)
-    // Separate, poll-friendly limiter for the background-built audits. These GET endpoints are
-    // POLLED by the dashboard every 3s while the (single-flight) build runs — a build on a large
-    // site can take minutes. The actual expensive work is the background build, which single-flight
-    // already bounds to one at a time; the polled requests just read the cache / return a 202. A
-    // 10/min cap (the expensive limiter) throttled the polls themselves and surfaced as HTTP 429
-    // mid-build. This higher cap fits sustained polling (≈20 req/min/tab) while still guarding abuse.
-    const auditPollLimiter = createRateLimiter(120, 60_000)
-    // Per-document LLM endpoints (/ai-rewrite, /ai-optimize) were registered with NO limiter at
-    // all: a panel user could bill the site owner an unbounded number of Claude calls in a loop.
-    // They are driven one document at a time by a human click (SEO sidebar, CTR panel), so the
-    // 10/min expensive cap would surface as a 429 in the middle of a legitimate pass over a list.
-    // 30/min per user still bounds the spend hard while staying well above human clicking.
-    const aiInteractiveLimiter = createRateLimiter(30, 60_000)
+    // Rate limiting, per caller (user, else IP) — limits in `SEO_RATE_LIMITS` (rateLimiter.ts).
+    // The in-memory limiters are per process, so on Workers each isolate counts on its own;
+    // the `rateLimit` option lets the host back them with a shared limiter (Workers Rate
+    // Limiting bindings in apps/web).
+    // - expensive (10/min): LLM calls and heavy crawls.
+    // - audit-poll (120/min): the background-built audits are POLLED every 3 s while the
+    //   (single-flight) build runs; the polls only read the cache or return a 202, and a
+    //   10/min cap surfaced as HTTP 429 mid-build.
+    // - ai-interactive (30/min): per-document LLM endpoints (/ai-rewrite, /ai-optimize),
+    //   one human click at a time; still bounds the spend hard.
+    const expensiveEndpointLimiter = createBucketRateLimiter('expensive', pluginConfig.rateLimit)
+    const auditPollLimiter = createBucketRateLimiter('audit-poll', pluginConfig.rateLimit)
+    const aiInteractiveLimiter = createBucketRateLimiter('ai-interactive', pluginConfig.rateLimit)
 
     /** Wrap a handler with rate limiting. Returns 429 if limit exceeded. */
     function withRateLimit(
       handler: ReturnType<typeof createAuditHandler>,
-      limiter: ReturnType<typeof createRateLimiter> = expensiveEndpointLimiter,
+      limiter: BucketRateLimiter = expensiveEndpointLimiter,
     ): typeof handler {
       return async (req) => {
         // Prefer the authenticated user id (not spoofable) over the client IP —
         // X-Forwarded-For is client-controlled, so an IP-only key is trivially
         // bypassed by varying the header. Shared with the other limited paths, so
         // the rule cannot drift between them — see rateLimiter.ts::rateLimitKey.
-        if (!limiter.check(rateLimitKey(req))) {
+        if (!(await limiter.check(rateLimitKey(req)))) {
           return Response.json(
             { error: 'Too Many Requests. Please try again later.' },
             { status: 429 },
@@ -669,12 +672,6 @@ export const seoAnalyzerPlugin =
         method: 'get',
         // Poll-friendly limiter: the dashboard polls this every 3s while the background build runs.
         handler: withRateLimit(createAuditHandler(targetCollections, seoConfig, targetGlobals, pluginConfig.auditCacheFile, sharedCache), auditPollLimiter),
-      })
-      // Indexation hygiene audit — cross-page noindex / canonical problems in one place
-      pluginEndpoints.push({
-        path: `${basePath}/indexation-audit`,
-        method: 'get',
-        handler: withRateLimit(createIndexationAuditHandler(targetCollections, seoConfig, targetGlobals)),
       })
     }
 
@@ -780,6 +777,14 @@ export const seoAnalyzerPlugin =
         { path: `${basePath}/performance`, method: 'post', handler: withRateLimit(createPerformanceHandler()) },
         // Core Web Vitals via PageSpeed Insights — informational, on-demand, SSRF-safe
         { path: `${basePath}/core-web-vitals`, method: 'get', handler: withRateLimit(createCoreWebVitalsHandler(seoConfig)) },
+        // Indexation hygiene (cross-page noindex / canonical problems). A whole-site scan, so
+        // it lives with the only view that calls it (the Performance view's hygiene panel)
+        // and is cached + capped like the dashboard audit.
+        {
+          path: `${basePath}/indexation-audit`,
+          method: 'get',
+          handler: withRateLimit(createIndexationAuditHandler(targetCollections, seoConfig, targetGlobals, sharedCache)),
+        },
       )
     }
 
@@ -846,9 +851,9 @@ export const seoAnalyzerPlugin =
     // SEO Logs (404 tracking)
     if (features.seoLogs) {
       pluginEndpoints.push(
-        { path: `${basePath}/seo-logs`, method: 'get', handler: createSeoLogsHandler(pluginConfig.seoLogsSecret) },
-        { path: `${basePath}/seo-logs`, method: 'post', handler: createSeoLogsHandler(pluginConfig.seoLogsSecret) },
-        { path: `${basePath}/seo-logs`, method: 'delete', handler: createSeoLogsHandler(pluginConfig.seoLogsSecret) },
+        { path: `${basePath}/seo-logs`, method: 'get', handler: createSeoLogsHandler(pluginConfig.seoLogsSecret, pluginConfig.rateLimit) },
+        { path: `${basePath}/seo-logs`, method: 'post', handler: createSeoLogsHandler(pluginConfig.seoLogsSecret, pluginConfig.rateLimit) },
+        { path: `${basePath}/seo-logs`, method: 'delete', handler: createSeoLogsHandler(pluginConfig.seoLogsSecret, pluginConfig.rateLimit) },
       )
     }
 

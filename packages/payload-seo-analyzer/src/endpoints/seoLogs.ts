@@ -11,7 +11,7 @@
 
 import type { PayloadHandler, Where } from 'payload'
 import { safeEqual } from '../helpers/tokenCrypto.js'
-import { createRateLimiter, rateLimitKey } from '../rateLimiter.js'
+import { createBucketRateLimiter, rateLimitKey, type SeoRateLimit } from '../rateLimiter.js'
 import { parseJsonBody } from '../helpers/parseBody.js'
 
 import { isSeoAdminRequest as isAdmin, isSeoPanelUser } from '../helpers/isAdmin.js'
@@ -57,9 +57,9 @@ function cappedText(value: unknown): string | undefined {
   return trimmed ? trimmed.slice(0, MAX_LOG_TEXT_LENGTH) : undefined
 }
 
-export function createSeoLogsHandler(seoLogsSecret?: string): PayloadHandler {
+export function createSeoLogsHandler(seoLogsSecret?: string, rateLimit?: SeoRateLimit): PayloadHandler {
   // Rate limiter for POST: 30 requests per 60 seconds per caller (user, else IP)
-  const postLimiter = createRateLimiter(30, 60_000)
+  const postLimiter = createBucketRateLimiter('seo-logs', rateLimit)
 
   return async (req) => {
     const method = req.method?.toUpperCase()
@@ -70,7 +70,7 @@ export function createSeoLogsHandler(seoLogsSecret?: string): PayloadHandler {
         // Rate limit POST requests. The bucket is keyed by the authenticated user when
         // there is one: keyed by IP alone, a caller varying X-Forwarded-For (which the
         // client controls) got a fresh bucket on every request and never hit the limit.
-        if (!postLimiter.check(rateLimitKey(req))) {
+        if (!(await postLimiter.check(rateLimitKey(req)))) {
           return Response.json(
             { error: 'Too Many Requests. Please try again later.' },
             { status: 429 },

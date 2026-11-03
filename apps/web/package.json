@@ -19,6 +19,7 @@
     "migrate:create": "cross-env NODE_OPTIONS=--no-deprecation PAYLOAD_SECRET=migration-only varlock run -- payload migrate:create",
     "migrate:remote": "cross-env NODE_OPTIONS=--no-deprecation APP_ENV=production NODE_ENV=production PAYLOAD_SECRET=migration-only PAYLOAD_MIGRATE_REMOTE=true varlock run -- payload migrate",
     "payload": "cross-env NODE_OPTIONS=--no-deprecation varlock run -- payload",
+    "r2:lifecycle": "wrangler r2 bucket lifecycle add cargo-template-media seo-analyzer-cache seo-analyzer/cache/ --expire-days 7 --force",
     "preview": "pnpm run build && cross-env NODE_OPTIONS=\"--no-deprecation --import=tsx/esm\" CLOUDFLARE_RUNTIME=true vite preview",
     "test": "pnpm run test:int && pnpm run test:e2e",
     "test:e2e": "cross-env NODE_OPTIONS=\"--no-deprecation --import=tsx/esm\" playwright test --config=playwright.config.ts",

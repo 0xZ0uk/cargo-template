@@ -95,7 +95,10 @@ export { createSitemapAuditHandler } from './endpoints/sitemap-audit.js'
 // Node/filesystem only: ignored (with a warning) when `cacheStore` is set or on Workers.
 export { buildAuditToFile } from './endpoints/audit.js'
 // Pluggable persistent cache (`cacheStore` / `waitUntil` plugin options).
+// Shared rate limiting (`rateLimit` plugin option).
 export type { SeoCacheStore, SeoWaitUntil } from './cache.js'
+export { SEO_RATE_LIMITS } from './rateLimiter.js'
+export type { SeoRateLimit, SeoRateLimitBucket } from './rateLimiter.js'
 
 // Re-export collection + hook for advanced consumers
 export { createSeoScoreHistoryCollection } from './collections/SeoScoreHistory.js'

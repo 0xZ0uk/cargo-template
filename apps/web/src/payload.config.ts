@@ -21,6 +21,7 @@ import { defaultLexical } from './fields/defaultLexical'
 import type { Page } from './payload-types'
 import { limitVersions } from './plugins/limitVersions'
 import { r2SeoCacheStore } from './plugins/seoCacheStore'
+import { workersSeoRateLimit } from './plugins/seoRateLimit'
 import { pagePath } from './utilities/pagePath'
 import { siteName } from './utilities/siteName'
 
@@ -161,6 +162,8 @@ export default buildConfig({
       // `waitUntil` is undefined under the Node dev server, which keeps promises alive.
       cacheStore: r2SeoCacheStore(cloudflare.R2),
       waitUntil,
+      // Rate limits shared across isolates (Workers Rate Limiting bindings).
+      rateLimit: workersSeoRateLimit(cloudflare),
       features: {
         aiFeatures: false,
         alerts: false,

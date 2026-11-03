@@ -20,6 +20,12 @@ export default defineConfig([
     entry: { index: 'src/index.ts' },
     clean: true,
   },
+  // Shared entry — pure helpers for frontend/route code (no Payload or React imports)
+  {
+    ...sharedConfig,
+    entry: { shared: 'src/shared.ts' },
+    clean: false,
+  },
   // Client entry — React components
   // "use client" is prepended via onSuccess because tsup strips module-level directives
   {

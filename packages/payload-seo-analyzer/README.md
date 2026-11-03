@@ -250,11 +250,11 @@ analyzer sidebar, the `validate` endpoint and the meta fields are always active.
 
 | Flag | Default | What it controls |
 |---|---|---|
-| `dashboard` | `true` | `/admin/seo`, `/audit`, `/indexation-audit` |
+| `dashboard` | `true` | `/admin/seo`, `/audit` |
 | `sitemapAudit` | `true` | `/admin/sitemap-audit`, `/sitemap-audit`, `/sitemap-config` |
 | `settings` | `true` | `/admin/seo-config`, `/settings`, the `seo-settings` collection |
 | `redirects` | `true` | `/admin/redirects`, redirect CRUD, the `seo-redirects` collection |
-| `performance` | `true` | `/admin/performance`, `/performance`, `/core-web-vitals`, the `seo-performance` collection |
+| `performance` | `true` | `/admin/performance`, `/performance`, `/core-web-vitals`, `/indexation-audit`, the `seo-performance` collection |
 | `linkGraph` | `true` | `/admin/link-graph`, `/link-graph` |
 | `keywords` | `true` | `/admin/keyword-research`, `/keyword-research` |
 | `cannibalization` | `true` | `/admin/cannibalization`, `/cannibalization` |
@@ -347,7 +347,7 @@ config, since Payload exposes a REST API for every collection.
 | Method | Path | Access | Feature |
 |---|---|---|---|
 | `GET` | `/audit` | Authenticated | `dashboard` |
-| `GET` | `/indexation-audit` | Authenticated | `dashboard` |
+| `GET` | `/indexation-audit` | Authenticated | `performance` |
 | `GET` | `/history` | Authenticated | `scoreHistory` |
 | `GET` | `/sitemap-audit`, `/sitemap-config` | Authenticated | `sitemapAudit` |
 | `GET` `PATCH` | `/settings` | Authenticated (GET) / SEO admin (PATCH) | `settings` |

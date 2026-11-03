@@ -1,3 +1,4 @@
+import { buildJsonLd, serializeJsonLd } from '@cargo/payload-seo-analyzer/shared'
 import type { RequiredDataFromCollectionSlug } from 'payload'
 
 import { pagePath } from './pagePath'
@@ -22,9 +23,8 @@ const compact = (node: JsonLdNode): JsonLdNode =>
  * - Every page: `WebPage` and a `BreadcrumbList` (Home › page).
  * - Home: `WebSite` and `Organization` as well, with no breadcrumb.
  *
- * Server-only: the plugin's package entry also holds the Payload plugin, so it's imported
- * dynamically and the client bundle never sees it. Serializing goes through the plugin's
- * `serializeJsonLd`, which escapes `<`, `>` and `&` so editor-written text can't close the
+ * The helpers come from the plugin's `shared` entry, which has no Payload or React imports.
+ * Serializing goes through the plugin's `serializeJsonLd`, which escapes `<`, `>` and `&` so editor-written text can't close the
  * `<script>` element.
  *
  * @param siteUrl - absolute origin without a trailing slash
@@ -33,8 +33,6 @@ export const buildPageJsonLd = async (
   page: PageForJsonLd,
   siteUrl: string,
 ): Promise<string[]> => {
-  const { buildJsonLd, serializeJsonLd } = await import('@cargo/payload-seo-analyzer')
-
   const slug = page.slug ?? 'home'
   const isHome = slug === 'home'
   const origin = siteUrl.replace(/\/+$/, '')

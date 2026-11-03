@@ -106,6 +106,33 @@ function toneText(tone: Tone): string {
   return tone === 'neutral' ? 'seo-text--secondary' : `seo-text--${tone}`
 }
 
+/** Largest page `/audit` serves (its `limit` is clamped to 500). */
+const AUDIT_PAGE_LIMIT = 500
+
+interface AuditPage {
+  results?: AuditItem[]
+  notBuilt?: boolean
+  pagination?: { page: number; totalPages: number }
+}
+
+/**
+ * `/audit` returns one page of results. Fetch the remaining pages of the cached audit
+ * (`noBuild=1`: never start a build) and return every result. If the cache is dropped
+ * mid-way (a save invalidated it), stop and keep what was loaded.
+ */
+export async function loadRemainingAuditPages(first: AuditPage, base: string): Promise<AuditItem[]> {
+  const items = [...(first.results ?? [])]
+  const totalPages = first.pagination?.totalPages ?? 1
+  for (let page = (first.pagination?.page ?? 1) + 1; page <= totalPages; page++) {
+    const res = await fetch(`${base}&noBuild=1&page=${page}`, { credentials: 'include', cache: 'no-store' })
+    if (!res.ok) break
+    const data = (await res.json()) as AuditPage
+    if (data.notBuilt || !data.results?.length) break
+    items.push(...data.results)
+  }
+  return items
+}
+
 function itemKey(item: AuditItem): string {
   return `${item.collection}::${item.id}`
 }
@@ -542,9 +569,12 @@ export function SeoView() {
     setBuilding(false)
     setNotBuilt(false)
     try {
-      const base = seoApi('/audit')
+      // The endpoint pages its results (max 500 per request); the first request asks for the
+      // largest page, and `loadRemainingAuditPages` fetches the rest so filters, counts and
+      // exports cover every analyzed page.
+      const base = seoApi(`/audit?limit=${AUDIT_PAGE_LIMIT}`)
       const firstUrl =
-        mode === 'peek' ? `${base}?noBuild=1` : mode === 'refresh' ? `${base}?nocache=1` : base
+        mode === 'peek' ? `${base}&noBuild=1` : mode === 'refresh' ? `${base}&nocache=1` : base
       let res = await fetch(firstUrl, { credentials: 'include', cache: 'no-store' })
 
       // Peek (dashboard open) never triggers a build: show the "run" CTA when nothing is cached
@@ -553,7 +583,7 @@ export function SeoView() {
         const data = await res.json()
         if (data.notBuilt) setNotBuilt(true)
         else {
-          setItems(data.results || [])
+          setItems(await loadRemainingAuditPages(data, base))
           setStats(data.stats || null)
         }
         setLoading(false)
@@ -573,7 +603,7 @@ export function SeoView() {
       if (res.status === 202 || res.status === 429) throw new Error(t.seoView.buildTimeout)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json()
-      setItems(data.results || [])
+      setItems(await loadRemainingAuditPages(data, base))
       setStats(data.stats || null)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : t.common.loadingError)

@@ -25,7 +25,8 @@ export function createCheckKeywordHandler(collections: string[], globals: string
         return Response.json({ error: 'Missing keyword parameter' }, { status: 400 })
       }
 
-      const results: Array<{ title: string; slug: string; collection: string }> = []
+      // `id` is what the admin edit URL needs (`/collections/<slug>/<id>`); globals have none.
+      const results: Array<{ id?: string | number; title: string; slug: string; collection: string }> = []
 
       for (const collectionSlug of collections) {
         try {
@@ -46,6 +47,7 @@ export function createCheckKeywordHandler(collections: string[], globals: string
           for (const doc of primaryResult.docs) {
             const d = doc as Record<string, unknown>
             results.push({
+              id: d.id as string | number,
               title: (d.title as string) || (d.slug as string) || 'Sans titre',
               slug: (d.slug as string) || '',
               collection: collectionSlug,
@@ -72,8 +74,9 @@ export function createCheckKeywordHandler(collections: string[], globals: string
               const d = doc as Record<string, unknown>
               // Avoid duplicates (doc might match both primary and secondary)
               const slug = (d.slug as string) || ''
-              if (!results.some((r) => r.collection === collectionSlug && r.slug === slug)) {
+              if (!results.some((r) => r.collection === collectionSlug && r.id === d.id)) {
                 results.push({
+                  id: d.id as string | number,
                   title: (d.title as string) || (d.slug as string) || 'Sans titre',
                   slug,
                   collection: collectionSlug,
