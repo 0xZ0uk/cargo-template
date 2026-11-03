@@ -7,6 +7,7 @@
 import type { PayloadHandler } from 'payload'
 import type { SeoConfig } from '../types.js'
 import { buildDocPath } from '../helpers/docUrl.js'
+import { resolveSiteUrl } from '../helpers/siteUrl.js'
 import { fetchAllDocs } from '../helpers/fetchAllDocs.js'
 import { seoCache } from '../cache.js'
 
@@ -89,7 +90,7 @@ export function createSitemapHandler(
       const cachedXml = seoCache.get<string>(cacheKey)
       if (typeof cachedXml === 'string') return xmlResponse(cachedXml)
 
-      const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL || ''
+      const serverUrl = resolveSiteUrl(seoConfig?.siteUrl)
 
       // Read sitemap config from seo-settings
       const settingsResult = await req.payload.find({

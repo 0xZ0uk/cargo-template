@@ -132,7 +132,7 @@ describe('sitemap.xml loc', () => {
 
   it('emits /posts/<slug> for posts and /<slug> for pages', async () => {
     const { createSitemapHandler } = await import('../endpoints/sitemap.js')
-    process.env.NEXT_PUBLIC_SERVER_URL = SITE
+    process.env.SITE_URL = SITE
     const req = {
       payload: makePayload({
         pages: [{ slug: 'home' }, { slug: 'a-propos' }],
@@ -148,7 +148,7 @@ describe('sitemap.xml loc', () => {
     expect(xml).toContain(`<loc>${SITE}/a-propos</loc>`)
     expect(xml).toContain(`<loc>${SITE}/posts/mon-article</loc>`)
     expect(xml).not.toContain(`<loc>${SITE}/mon-article</loc>`)
-    delete process.env.NEXT_PUBLIC_SERVER_URL
+    delete process.env.SITE_URL
   })
 })
 
@@ -178,7 +178,7 @@ describe('sitemap-config preview matches sitemap.xml', () => {
   it('previews the same paths that sitemap.xml emits as <loc>', async () => {
     const { createSitemapConfigHandler } = await import('../endpoints/sitemapConfig.js')
     const { createSitemapHandler } = await import('../endpoints/sitemap.js')
-    process.env.NEXT_PUBLIC_SERVER_URL = SITE
+    process.env.SITE_URL = SITE
 
     const collections = ['pages', 'posts']
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -201,13 +201,13 @@ describe('sitemap-config preview matches sitemap.xml', () => {
     }
     expect(xml).not.toContain(`<loc>${SITE}/mon-article</loc>`)
 
-    delete process.env.NEXT_PUBLIC_SERVER_URL
+    delete process.env.SITE_URL
   })
 
   it('follows the collectionRoutes opt-out on both sides', async () => {
     const { createSitemapConfigHandler } = await import('../endpoints/sitemapConfig.js')
     const { createSitemapHandler } = await import('../endpoints/sitemap.js')
-    process.env.NEXT_PUBLIC_SERVER_URL = SITE
+    process.env.SITE_URL = SITE
 
     const collections = ['posts']
     const seoConfig = { collectionRoutes: { posts: '' } }
@@ -225,6 +225,6 @@ describe('sitemap-config preview matches sitemap.xml', () => {
     expect(preview[0]?.url).toBe('/mon-article')
     expect(xml).toContain(`<loc>${SITE}/mon-article</loc>`)
 
-    delete process.env.NEXT_PUBLIC_SERVER_URL
+    delete process.env.SITE_URL
   })
 })

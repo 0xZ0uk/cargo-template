@@ -18,6 +18,7 @@ import type { PayloadHandler } from 'payload'
 import type { SeoConfig } from '../types.js'
 import { seoCache } from '../cache.js'
 import { isSeoAdminRequest, isSeoPanelUser } from '../helpers/isAdmin.js'
+import { resolveSiteUrl as resolveSharedSiteUrl } from '../helpers/siteUrl.js'
 
 // Google's official Core Web Vitals thresholds (good / needs-improvement boundaries).
 const CWV_THRESHOLDS = {
@@ -36,12 +37,7 @@ function rate(value: number | null, t: { good: number; poor: number }): Rating {
 }
 
 function resolveSiteUrl(seoConfig?: SeoConfig): string | undefined {
-  return (
-    seoConfig?.siteUrl ||
-    process.env.NEXT_PUBLIC_SERVER_URL ||
-    process.env.PAYLOAD_PUBLIC_SERVER_URL ||
-    undefined
-  )?.replace(/\/$/, '')
+  return resolveSharedSiteUrl(seoConfig?.siteUrl) || undefined
 }
 
 export function createCoreWebVitalsHandler(seoConfig?: SeoConfig): PayloadHandler {
@@ -63,7 +59,7 @@ export function createCoreWebVitalsHandler(seoConfig?: SeoConfig): PayloadHandle
       const siteUrl = resolveSiteUrl(seoConfig)
       if (!siteUrl) {
         return Response.json(
-          { error: 'siteUrl is not configured — set it in the plugin config or NEXT_PUBLIC_SERVER_URL.' },
+          { error: 'siteUrl is not configured — set it in the plugin config or the SITE_URL environment variable.' },
           { status: 400 },
         )
       }

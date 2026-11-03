@@ -8,6 +8,7 @@
 
 import { extractTextFromLexical } from '../helpers.js'
 import { buildDocUrl, type CollectionRoutes } from './docUrl.js'
+import { resolveSiteUrl } from './siteUrl.js'
 
 export const SCHEMA_TYPES = [
   'Article',
@@ -23,15 +24,6 @@ export const SCHEMA_TYPES = [
 ] as const
 
 export type SchemaType = (typeof SCHEMA_TYPES)[number]
-
-function resolveSiteUrl(explicit?: string): string {
-  return (
-    explicit ||
-    process.env.NEXT_PUBLIC_SERVER_URL ||
-    process.env.PAYLOAD_PUBLIC_SERVER_URL ||
-    'http://localhost:3000'
-  ).replace(/\/$/, '')
-}
 
 /** Resolve an absolute image URL from a populated meta.image or hero media object. */
 export function getSchemaImageUrl(
@@ -461,7 +453,7 @@ function buildVideoSchema(doc: Record<string, unknown>, siteUrl: string): Record
 export interface BuildJsonLdOptions {
   /** Collection slug — used to auto-detect the schema type when `type` is omitted */
   collection?: string
-  /** Absolute site URL (defaults to NEXT_PUBLIC_SERVER_URL / PAYLOAD_PUBLIC_SERVER_URL) */
+  /** Absolute site URL (defaults to the SITE_URL environment variable) */
   siteUrl?: string
   /** Force a specific schema type instead of auto-detecting */
   type?: SchemaType
@@ -481,7 +473,7 @@ export function buildJsonLd(
   doc: Record<string, unknown>,
   options: BuildJsonLdOptions = {},
 ): { type: SchemaType; jsonLd: Record<string, unknown> } {
-  const siteUrl = resolveSiteUrl(options.siteUrl)
+  const siteUrl = resolveSiteUrl(options.siteUrl, 'http://localhost:3000')
   const schemaType = options.type || detectSchemaType(options.collection || '', doc)
   // Resolved once and threaded down: every node that points at "this document"
   // must use the same public URL, prefixed by the collection route.

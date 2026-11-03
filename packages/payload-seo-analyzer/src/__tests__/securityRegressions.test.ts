@@ -708,7 +708,7 @@ describe('SEO-10 — the public sitemap is bounded and cached', () => {
     if (prevSitemapMax === undefined) delete process.env.SEO_SITEMAP_MAX_DOCS
     else process.env.SEO_SITEMAP_MAX_DOCS = prevSitemapMax
     seoCache.invalidateByPrefix(SITEMAP_XML_CACHE_BASE)
-    delete process.env.NEXT_PUBLIC_SERVER_URL
+    delete process.env.SITE_URL
   })
 
   function makePayload(docs: Record<string, unknown>[]) {

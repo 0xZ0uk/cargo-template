@@ -21,6 +21,7 @@ import type { Payload, PayloadHandler } from 'payload'
 import { buildDocPath } from '../helpers/docUrl.js'
 import { seoCache } from '../cache.js'
 import type { SeoConfig } from '../types.js'
+import { resolveSiteUrl as resolveSharedSiteUrl } from '../helpers/siteUrl.js'
 
 /**
  * Cache key bases for the three rendered documents, scoped by the collections the
@@ -41,7 +42,7 @@ function escapeXml(str: string): string {
 }
 
 function resolveSiteUrl(seoConfig?: SeoConfig): string {
-  return (seoConfig?.siteUrl || process.env.NEXT_PUBLIC_SERVER_URL || process.env.PAYLOAD_PUBLIC_SERVER_URL || '').replace(/\/$/, '')
+  return resolveSharedSiteUrl(seoConfig?.siteUrl)
 }
 
 /**

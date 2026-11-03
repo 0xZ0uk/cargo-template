@@ -24,12 +24,12 @@ describe('GSC OAuth callback page', () => {
   beforeEach(() => {
     process.env.GSC_OAUTH_CLIENT_ID = 'test-client-id'
     process.env.GSC_OAUTH_CLIENT_SECRET = 'test-client-secret'
-    process.env.NEXT_PUBLIC_SERVER_URL = 'https://site.example'
+    process.env.SITE_URL = 'https://site.example'
   })
   afterEach(() => {
     delete process.env.GSC_OAUTH_CLIENT_ID
     delete process.env.GSC_OAUTH_CLIENT_SECRET
-    delete process.env.NEXT_PUBLIC_SERVER_URL
+    delete process.env.SITE_URL
   })
 
   function makeReq(url: string) {

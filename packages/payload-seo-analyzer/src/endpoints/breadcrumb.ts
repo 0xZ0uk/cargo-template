@@ -12,6 +12,8 @@
  */
 
 import type { PayloadHandler } from 'payload'
+import type { SeoConfig } from '../types.js'
+import { resolveSiteUrl } from '../helpers/siteUrl.js'
 import { readAccessOpts } from '../helpers/readAccess.js'
 import { isSeoPanelUser } from '../helpers/isAdmin.js'
 
@@ -51,7 +53,7 @@ function humanize(segment: string): string {
 // Endpoint handler
 // ---------------------------------------------------------------------------
 
-export function createBreadcrumbHandler(targetCollections: string[]): PayloadHandler {
+export function createBreadcrumbHandler(targetCollections: string[], seoConfig?: SeoConfig): PayloadHandler {
   return async (req) => {
     try {
       if (!isSeoPanelUser(req)) {
@@ -107,7 +109,7 @@ export function createBreadcrumbHandler(targetCollections: string[]): PayloadHan
       }
 
       // 3. Determine base URL
-      const siteUrl = process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3000'
+      const siteUrl = resolveSiteUrl(seoConfig?.siteUrl, 'http://localhost:3000')
 
       // 4. Build breadcrumb items from slug path segments
       const segments = slug.split('/').filter(Boolean)

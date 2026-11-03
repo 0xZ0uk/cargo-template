@@ -41,3 +41,17 @@ describe('admin UI has no hard-coded API or admin paths', () => {
     })
   }
 })
+
+describe('no Next.js environment variables', () => {
+  it('source files do not read NEXT_* or PAYLOAD_PUBLIC_* variables (use siteUrl / SITE_URL)', () => {
+    const offenders: string[] = []
+    for (const file of sourceFiles(SRC).filter((f) => !f.includes(`${join('src', '__tests__')}`))) {
+      readFileSync(file, 'utf8')
+        .split('\n')
+        .forEach((line, i) => {
+          if (/process\.env\.(NEXT_|PAYLOAD_PUBLIC_)/.test(line)) offenders.push(`${file.slice(SRC.length + 1)}:${i + 1}: ${line.trim()}`)
+        })
+    }
+    expect(offenders).toEqual([])
+  })
+})
