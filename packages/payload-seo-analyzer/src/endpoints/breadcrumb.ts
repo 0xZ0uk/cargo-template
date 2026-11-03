@@ -13,7 +13,7 @@
 
 import type { PayloadHandler } from 'payload'
 import type { SeoConfig } from '../types.js'
-import { resolveSiteUrl } from '../helpers/siteUrl.js'
+import { requestOrigin, resolveSiteUrl } from '../helpers/siteUrl.js'
 import { readAccessOpts } from '../helpers/readAccess.js'
 import { isSeoPanelUser } from '../helpers/isAdmin.js'
 
@@ -74,7 +74,8 @@ export function createBreadcrumbHandler(targetCollections: string[], seoConfig?:
       }
 
       // 1. Fetch breadcrumb settings
-      let homeLabel = 'Accueil'
+      // Same default as buildJsonLd; the seo-settings value wins when set.
+      let homeLabel = seoConfig?.locale === 'fr' ? 'Accueil' : 'Home'
       let enabled = true
       let showOnHome = false
 
@@ -109,7 +110,7 @@ export function createBreadcrumbHandler(targetCollections: string[], seoConfig?:
       }
 
       // 3. Determine base URL
-      const siteUrl = resolveSiteUrl(seoConfig?.siteUrl, 'http://localhost:3000')
+      const siteUrl = resolveSiteUrl(seoConfig?.siteUrl, requestOrigin(req))
 
       // 4. Build breadcrumb items from slug path segments
       const segments = slug.split('/').filter(Boolean)
