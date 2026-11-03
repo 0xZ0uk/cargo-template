@@ -1,4 +1,4 @@
-# @0xz0uk/payload-seo-analyzer
+# @cargo/payload-seo-analyzer
 
 > **Payload 4 fork** of [`@consilioweb/payload-seo-analyzer`](https://github.com/pOwn3d/payload-seo-analyzer) by ConsilioWEB (MIT).
 >
@@ -8,7 +8,10 @@
 > - Plugin collections set `versions: false` (Payload 4 versions collections by default) and `admin.group: false` (managed from the SEO views, kept out of the sidebar).
 > - Admin UI rebuilt on `@payloadcms/ui` components and Payload 4 design tokens: native look in light and dark mode, SEO nav group that follows the feature flags. Conventions in [`src/ui/README.md`](src/ui/README.md).
 >
-> Replace `@consilioweb/payload-seo-analyzer` with `@0xz0uk/payload-seo-analyzer` in the docs below. The Next.js setup steps don't apply.
+> Lives in the Cargo monorepo (`packages/payload-seo-analyzer`) and is consumed by `apps/web` as `"@cargo/payload-seo-analyzer": "workspace:*"`; it isn't published to npm. Read `@consilioweb/payload-seo-analyzer` as `@cargo/payload-seo-analyzer` in the upstream docs below; the Next.js setup steps don't apply.
+>
+> Upstream fixes can be pulled from the repo root with
+> `git subtree pull --prefix=packages/payload-seo-analyzer https://github.com/pOwn3d/payload-seo-analyzer.git main` (expect conflicts in the ported files).
 
 > An offline-first SEO toolkit for Payload CMS 3 + Next.js: on-page analysis in the editor sidebar, a nine-view admin dashboard, generated sitemaps and JSON-LD, plus opt-in Google Search Console and AI assists.
 

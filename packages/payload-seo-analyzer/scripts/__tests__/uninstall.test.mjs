@@ -5,7 +5,7 @@ import path from 'node:path'
 import { PACKAGE_NAME, extractImportedNames, processFile, leftoverNotice } from '../uninstall.mjs'
 
 // Regression guard: PACKAGE_NAME used to be hardcoded to `@consilioweb/seo-analyzer`
-// while the package ships as `@0xz0uk/payload-seo-analyzer`. Nothing matched,
+// while the package ships as `@cargo/payload-seo-analyzer`. Nothing matched,
 // nothing was removed, and the script still announced "Uninstall complete".
 describe('uninstall script — package identity', () => {
   it('reads its own published name from package.json', () => {
@@ -13,7 +13,7 @@ describe('uninstall script — package identity', () => {
       fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf-8'),
     )
     expect(PACKAGE_NAME).toBe(pkg.name)
-    expect(PACKAGE_NAME).toBe('@0xz0uk/payload-seo-analyzer')
+    expect(PACKAGE_NAME).toBe('@cargo/payload-seo-analyzer')
   })
 })
 

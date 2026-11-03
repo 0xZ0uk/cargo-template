@@ -4,7 +4,7 @@
  * These fields mirror @payloadcms/plugin-seo's field structure for compatibility.
  *
  * Usage:
- *   import { metaFields } from '@0xz0uk/payload-seo-analyzer'
+ *   import { metaFields } from '@cargo/payload-seo-analyzer'
  *   // ...fields: [...metaFields({ uploadsCollection: 'media', hasGenerateTitle: true })]
  */
 
@@ -55,7 +55,7 @@ export function metaFields(config: MetaFieldsConfig = {}): Field[] {
           type: 'ui',
           admin: {
             components: {
-              Field: '@0xz0uk/payload-seo-analyzer/client#OverviewField',
+              Field: '@cargo/payload-seo-analyzer/client#OverviewField',
             },
           },
         },
@@ -67,7 +67,7 @@ export function metaFields(config: MetaFieldsConfig = {}): Field[] {
           label: 'Meta Title',
           admin: {
             components: {
-              Field: '@0xz0uk/payload-seo-analyzer/client#MetaTitleField',
+              Field: '@cargo/payload-seo-analyzer/client#MetaTitleField',
             },
             custom: {
               hasGenerateFn: hasGenerateTitle,
@@ -83,7 +83,7 @@ export function metaFields(config: MetaFieldsConfig = {}): Field[] {
           label: 'Meta Description',
           admin: {
             components: {
-              Field: '@0xz0uk/payload-seo-analyzer/client#MetaDescriptionField',
+              Field: '@cargo/payload-seo-analyzer/client#MetaDescriptionField',
             },
             custom: {
               hasGenerateFn: hasGenerateDescription,
@@ -102,7 +102,7 @@ export function metaFields(config: MetaFieldsConfig = {}): Field[] {
             description: 'Image for social sharing (Facebook, Twitter, LinkedIn).',
             components: {
               Field: hasGenerateImage
-                ? '@0xz0uk/payload-seo-analyzer/client#MetaImageField'
+                ? '@cargo/payload-seo-analyzer/client#MetaImageField'
                 : undefined,
             },
             custom: {
@@ -117,7 +117,7 @@ export function metaFields(config: MetaFieldsConfig = {}): Field[] {
           type: 'ui',
           admin: {
             components: {
-              Field: '@0xz0uk/payload-seo-analyzer/client#SerpPreviewField',
+              Field: '@cargo/payload-seo-analyzer/client#SerpPreviewField',
             },
           },
         },

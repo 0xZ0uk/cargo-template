@@ -1,7 +1,7 @@
 {
-  "name": "@0xz0uk/payload-seo-analyzer",
+  "name": "@cargo/payload-seo-analyzer",
   "version": "5.0.0-beta.0",
-  "description": "Payload CMS 4 SEO plugin (fork of @consilioweb/payload-seo-analyzer) \u2014 50+ checks, dashboard, Lexical JSON support, readability, i18n",
+  "description": "Payload CMS 4 SEO plugin for Cargo (fork of @consilioweb/payload-seo-analyzer): 50+ checks, dashboard, Lexical JSON support, readability, i18n",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -58,12 +58,10 @@
   ],
   "scripts": {
     "build": "tsup && node scripts/verify-dist-imports.mjs",
+    "dev": "tsup --watch",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e:ui:setup": "cd e2e/ui && npm run pack:plugin && npx playwright install chromium",
-    "test:e2e:ui": "cd e2e/ui && npm run test:e2e",
-    "typecheck": "tsc --noEmit",
-    "prepublishOnly": "npm run typecheck && npm run test && npm run build"
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [
     "seo",
@@ -94,17 +92,8 @@
     "payload-4",
     "cloudflare-workers"
   ],
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/0xZ0uk/payload-seo-analyzer.git"
-  },
-  "homepage": "https://github.com/0xZ0uk/payload-seo-analyzer#readme",
-  "bugs": {
-    "url": "https://github.com/0xZ0uk/payload-seo-analyzer/issues"
-  },
   "author": "ConsilioWEB <contact@consilioweb.fr> (https://consilioweb.fr)",
   "license": "MIT",
-  "packageManager": "pnpm@11.25.0",
   "peerDependencies": {
     "@payloadcms/ui": ">=4.0.0-beta.6 <5.0.0",
     "payload": ">=4.0.0-beta.6 <5.0.0",
@@ -122,21 +111,19 @@
     "node": ">=22.12.0"
   },
   "devDependencies": {
-    "@payloadcms/ui": "4.0.0-beta.6",
+    "@payloadcms/ui": "catalog:",
     "@testing-library/react": "^16.3.3",
-    "@types/react": "^19.2.18",
+    "@types/react": "catalog:",
     "jsdom": "^29.1.1",
-    "payload": "4.0.0-beta.6",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8",
+    "payload": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
     "tsup": "^8.5.1",
-    "typescript": "^5.9.3",
+    "typescript": "catalog:",
     "vitest": "^4.1.11"
-  },
-  "publishConfig": {
-    "access": "public"
   },
   "contributors": [
     "ConsilioWEB <contact@consilioweb.fr> (https://consilioweb.fr) \u2014 original author"
-  ]
+  ],
+  "private": true
 }

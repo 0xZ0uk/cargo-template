@@ -5,4 +5,4 @@
 // An error boundary is a class component with state: it CANNOT be bundled into
 // the server `views` entry, which carries no "use client" banner.
 // @ts-ignore — self-reference via package exports
-export { LocalizedSeoErrorBoundary as ViewErrorBoundary } from '@0xz0uk/payload-seo-analyzer/client'
+export { LocalizedSeoErrorBoundary as ViewErrorBoundary } from '@cargo/payload-seo-analyzer/client'

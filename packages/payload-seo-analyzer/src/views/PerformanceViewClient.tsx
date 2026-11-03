@@ -3,4 +3,4 @@
 // Import from our own package's client entry — tsup keeps this external,
 // preserving the RSC boundary (this file = client, PerformanceView wrapper = server)
 // @ts-ignore — self-reference via package exports
-export { PerformanceView as PerformanceViewClient } from '@0xz0uk/payload-seo-analyzer/client'
+export { PerformanceView as PerformanceViewClient } from '@cargo/payload-seo-analyzer/client'

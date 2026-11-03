@@ -47,7 +47,7 @@ export function seoFields(options: SeoAnalysisLocaleOptions = {}): Field[] {
       admin: {
         position: 'sidebar',
         components: {
-          Field: '@0xz0uk/payload-seo-analyzer/client#SeoAnalyzerField',
+          Field: '@cargo/payload-seo-analyzer/client#SeoAnalyzerField',
         },
         custom: analyzerCustom,
       },
