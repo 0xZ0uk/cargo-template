@@ -12,6 +12,8 @@ type LoadPageInput = {
 export type LoadPageResult = {
   /** True when a logged-in user asked for the draft, which turns on live preview. */
   draft: boolean
+  /** Structured data nodes, serialized and safe to embed in `<script type="application/ld+json">`. */
+  jsonLd: string[]
   /** The request origin, used to build absolute URLs for Open Graph tags. */
   origin: string
   page: RequiredDataFromCollectionSlug<'pages'> | null
@@ -56,5 +58,16 @@ export const loadPage = createServerFn({ method: 'GET', strict: { output: false 
       page = homeStatic
     }
 
-    return { draft, origin: getRequestUrl().origin, page }
+    const origin = getRequestUrl().origin
+    let jsonLd: string[] = []
+
+    if (page) {
+      const { buildPageJsonLd } = await import('@/utilities/pageJsonLd')
+      const { cloudflareEnv } = await import('#cloudflare-runtime')
+
+      // The configured public origin wins; the request origin is the fallback (dev, previews).
+      jsonLd = await buildPageJsonLd(page, process.env.SITE_URL || cloudflareEnv.SITE_URL || origin)
+    }
+
+    return { draft, jsonLd, origin, page }
   })

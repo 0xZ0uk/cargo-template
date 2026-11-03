@@ -11,7 +11,11 @@
 import { Route as rootRouteImport } from './app/__root'
 import { Route as FrontendRouteImport } from './app/_frontend'
 import { Route as PayloadRouteImport } from './app/_payload'
+import { Route as LlmsDottxtRouteImport } from './app/llms[.]txt'
+import { Route as RobotsDottxtRouteImport } from './app/robots[.]txt'
+import { Route as SitemapDotxmlRouteImport } from './app/sitemap[.]xml'
 import { Route as FrontendIndexRouteImport } from './app/_frontend/index'
+import { Route as FrontendSplatRouteImport } from './app/_frontend/$'
 import { Route as FrontendSlugRouteImport } from './app/_frontend/$slug'
 import { Route as PayloadAdminIndexRouteImport } from './app/_payload/admin.index'
 import { Route as PayloadAdminSplatRouteImport } from './app/_payload/admin.$'
@@ -25,9 +29,29 @@ const PayloadRoute = PayloadRouteImport.update({
   id: '/_payload',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LlmsDottxtRoute = LlmsDottxtRouteImport.update({
+  id: '/llms.txt',
+  path: '/llms.txt',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RobotsDottxtRoute = RobotsDottxtRouteImport.update({
+  id: '/robots.txt',
+  path: '/robots.txt',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
+  id: '/sitemap.xml',
+  path: '/sitemap.xml',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const FrontendIndexRoute = FrontendIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => FrontendRoute,
+} as any)
+const FrontendSplatRoute = FrontendSplatRouteImport.update({
+  id: '/$',
+  path: '/$',
   getParentRoute: () => FrontendRoute,
 } as any)
 const FrontendSlugRoute = FrontendSlugRouteImport.update({
@@ -53,6 +77,10 @@ const PayloadApiSplatRoute = PayloadApiSplatRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof FrontendIndexRoute
+  '/llms.txt': typeof LlmsDottxtRoute
+  '/robots.txt': typeof RobotsDottxtRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/$': typeof FrontendSplatRoute
   '/$slug': typeof FrontendSlugRoute
   '/admin/$': typeof PayloadAdminSplatRoute
   '/api/$': typeof PayloadApiSplatRoute
@@ -60,6 +88,10 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof FrontendIndexRoute
+  '/llms.txt': typeof LlmsDottxtRoute
+  '/robots.txt': typeof RobotsDottxtRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/$': typeof FrontendSplatRoute
   '/$slug': typeof FrontendSlugRoute
   '/admin/$': typeof PayloadAdminSplatRoute
   '/api/$': typeof PayloadApiSplatRoute
@@ -69,6 +101,10 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_frontend': typeof FrontendRouteWithChildren
   '/_payload': typeof PayloadRouteWithChildren
+  '/llms.txt': typeof LlmsDottxtRoute
+  '/robots.txt': typeof RobotsDottxtRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/_frontend/$': typeof FrontendSplatRoute
   '/_frontend/$slug': typeof FrontendSlugRoute
   '/_frontend/': typeof FrontendIndexRoute
   '/_payload/admin/$': typeof PayloadAdminSplatRoute
@@ -77,13 +113,35 @@ export interface FileRoutesById {
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/$slug' | '/admin/$' | '/api/$' | '/admin/'
+  fullPaths:
+    | '/'
+    | '/llms.txt'
+    | '/robots.txt'
+    | '/sitemap.xml'
+    | '/$'
+    | '/$slug'
+    | '/admin/$'
+    | '/api/$'
+    | '/admin/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/$slug' | '/admin/$' | '/api/$' | '/admin'
+  to:
+    | '/'
+    | '/llms.txt'
+    | '/robots.txt'
+    | '/sitemap.xml'
+    | '/$'
+    | '/$slug'
+    | '/admin/$'
+    | '/api/$'
+    | '/admin'
   id:
     | '__root__'
     | '/_frontend'
     | '/_payload'
+    | '/llms.txt'
+    | '/robots.txt'
+    | '/sitemap.xml'
+    | '/_frontend/$'
     | '/_frontend/$slug'
     | '/_frontend/'
     | '/_payload/admin/$'
@@ -94,6 +152,9 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   FrontendRoute: typeof FrontendRouteWithChildren
   PayloadRoute: typeof PayloadRouteWithChildren
+  LlmsDottxtRoute: typeof LlmsDottxtRoute
+  RobotsDottxtRoute: typeof RobotsDottxtRoute
+  SitemapDotxmlRoute: typeof SitemapDotxmlRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -112,11 +173,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PayloadRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/llms.txt': {
+      id: '/llms.txt'
+      path: '/llms.txt'
+      fullPath: '/llms.txt'
+      preLoaderRoute: typeof LlmsDottxtRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/robots.txt': {
+      id: '/robots.txt'
+      path: '/robots.txt'
+      fullPath: '/robots.txt'
+      preLoaderRoute: typeof RobotsDottxtRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sitemap.xml': {
+      id: '/sitemap.xml'
+      path: '/sitemap.xml'
+      fullPath: '/sitemap.xml'
+      preLoaderRoute: typeof SitemapDotxmlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_frontend/': {
       id: '/_frontend/'
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof FrontendIndexRouteImport
+      parentRoute: typeof FrontendRoute
+    }
+    '/_frontend/$': {
+      id: '/_frontend/$'
+      path: '/$'
+      fullPath: '/$'
+      preLoaderRoute: typeof FrontendSplatRouteImport
       parentRoute: typeof FrontendRoute
     }
     '/_frontend/$slug': {
@@ -151,11 +240,13 @@ declare module '@tanstack/react-router' {
 }
 
 interface FrontendRouteChildren {
+  FrontendSplatRoute: typeof FrontendSplatRoute
   FrontendSlugRoute: typeof FrontendSlugRoute
   FrontendIndexRoute: typeof FrontendIndexRoute
 }
 
 const FrontendRouteChildren: FrontendRouteChildren = {
+  FrontendSplatRoute: FrontendSplatRoute,
   FrontendSlugRoute: FrontendSlugRoute,
   FrontendIndexRoute: FrontendIndexRoute,
 }
@@ -182,6 +273,9 @@ const PayloadRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   FrontendRoute: FrontendRouteWithChildren,
   PayloadRoute: PayloadRouteWithChildren,
+  LlmsDottxtRoute: LlmsDottxtRoute,
+  RobotsDottxtRoute: RobotsDottxtRoute,
+  SitemapDotxmlRoute: SitemapDotxmlRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
