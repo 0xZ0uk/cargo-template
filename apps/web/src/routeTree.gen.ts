@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './app/__root'
 import { Route as FrontendRouteImport } from './app/_frontend'
 import { Route as PayloadRouteImport } from './app/_payload'
 import { Route as FrontendIndexRouteImport } from './app/_frontend/index'
+import { Route as FrontendSplatRouteImport } from './app/_frontend/$'
 import { Route as FrontendSlugRouteImport } from './app/_frontend/$slug'
 import { Route as PayloadAdminIndexRouteImport } from './app/_payload/admin.index'
 import { Route as PayloadAdminSplatRouteImport } from './app/_payload/admin.$'
@@ -28,6 +29,11 @@ const PayloadRoute = PayloadRouteImport.update({
 const FrontendIndexRoute = FrontendIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => FrontendRoute,
+} as any)
+const FrontendSplatRoute = FrontendSplatRouteImport.update({
+  id: '/$',
+  path: '/$',
   getParentRoute: () => FrontendRoute,
 } as any)
 const FrontendSlugRoute = FrontendSlugRouteImport.update({
@@ -53,6 +59,7 @@ const PayloadApiSplatRoute = PayloadApiSplatRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof FrontendIndexRoute
+  '/$': typeof FrontendSplatRoute
   '/$slug': typeof FrontendSlugRoute
   '/admin/$': typeof PayloadAdminSplatRoute
   '/api/$': typeof PayloadApiSplatRoute
@@ -60,6 +67,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof FrontendIndexRoute
+  '/$': typeof FrontendSplatRoute
   '/$slug': typeof FrontendSlugRoute
   '/admin/$': typeof PayloadAdminSplatRoute
   '/api/$': typeof PayloadApiSplatRoute
@@ -69,6 +77,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_frontend': typeof FrontendRouteWithChildren
   '/_payload': typeof PayloadRouteWithChildren
+  '/_frontend/$': typeof FrontendSplatRoute
   '/_frontend/$slug': typeof FrontendSlugRoute
   '/_frontend/': typeof FrontendIndexRoute
   '/_payload/admin/$': typeof PayloadAdminSplatRoute
@@ -77,13 +86,14 @@ export interface FileRoutesById {
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/$slug' | '/admin/$' | '/api/$' | '/admin/'
+  fullPaths: '/' | '/$' | '/$slug' | '/admin/$' | '/api/$' | '/admin/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/$slug' | '/admin/$' | '/api/$' | '/admin'
+  to: '/' | '/$' | '/$slug' | '/admin/$' | '/api/$' | '/admin'
   id:
     | '__root__'
     | '/_frontend'
     | '/_payload'
+    | '/_frontend/$'
     | '/_frontend/$slug'
     | '/_frontend/'
     | '/_payload/admin/$'
@@ -119,6 +129,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FrontendIndexRouteImport
       parentRoute: typeof FrontendRoute
     }
+    '/_frontend/$': {
+      id: '/_frontend/$'
+      path: '/$'
+      fullPath: '/$'
+      preLoaderRoute: typeof FrontendSplatRouteImport
+      parentRoute: typeof FrontendRoute
+    }
     '/_frontend/$slug': {
       id: '/_frontend/$slug'
       path: '/$slug'
@@ -151,11 +168,13 @@ declare module '@tanstack/react-router' {
 }
 
 interface FrontendRouteChildren {
+  FrontendSplatRoute: typeof FrontendSplatRoute
   FrontendSlugRoute: typeof FrontendSlugRoute
   FrontendIndexRoute: typeof FrontendIndexRoute
 }
 
 const FrontendRouteChildren: FrontendRouteChildren = {
+  FrontendSplatRoute: FrontendSplatRoute,
   FrontendSlugRoute: FrontendSlugRoute,
   FrontendIndexRoute: FrontendIndexRoute,
 }
