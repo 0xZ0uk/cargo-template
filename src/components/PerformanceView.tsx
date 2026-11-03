@@ -284,8 +284,17 @@ export function PerformanceView() {
       const reader = new FileReader()
       reader.onload = async (evt) => {
         try {
-          // @ts-ignore — xlsx is an optional dependency loaded dynamically
-          const xlsxMod: XLSXModule = await import(/* webpackIgnore: true */ 'xlsx')
+          // xlsx is an optional dependency the host may not install, so no bundler may
+          // resolve it at build time: Vite fails the whole admin client bundle on an
+          // unresolvable literal import. A plain `const` is not enough, because Vite's
+          // dependency optimizer folds it back into a literal and drops the ignore hint;
+          // the specifier is assembled at runtime instead. In the browser the import only
+          // succeeds if the host maps `xlsx` (e.g. an import map); otherwise it throws and
+          // the catch below resets the form.
+          const xlsxSpecifier = ['xl', 'sx'].join('')
+          const xlsxMod: XLSXModule = await import(
+            /* @vite-ignore */ /* webpackIgnore: true */ xlsxSpecifier
+          )
           const data = new Uint8Array(evt.target?.result as ArrayBuffer)
           const workbook = xlsxMod.read(data, { type: 'array' })
 
