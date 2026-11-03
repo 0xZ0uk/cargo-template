@@ -13,6 +13,10 @@ import { isSeoAdminRequest, isSeoPanelUser } from '../helpers/isAdmin.js'
 export function createSeoGscAuthCollection(): CollectionConfig {
   return {
     slug: 'seo-gsc-auth',
+    // Payload 4 versions every collection by default. These are operational records
+    // (settings, redirects, logs, snapshots), not authored content: version tables would
+    // only duplicate them, and collections with `timestamps: false` cannot be versioned.
+    versions: false,
     admin: {
       hidden: true,
       custom: { navHidden: true },

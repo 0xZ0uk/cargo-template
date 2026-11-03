@@ -14,6 +14,10 @@ export function createSeoRedirectsCollection(
 ): CollectionConfig {
   return {
     slug,
+    // Payload 4 versions every collection by default. These are operational records
+    // (settings, redirects, logs, snapshots), not authored content: version tables would
+    // only duplicate them, and collections with `timestamps: false` cannot be versioned.
+    versions: false,
     admin: {
       custom: { navHidden: true },
     },

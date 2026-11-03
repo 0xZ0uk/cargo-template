@@ -10,6 +10,10 @@ import { isSeoAdminRequest, isSeoPanelUser } from '../helpers/isAdmin.js'
 export function createSeoLogsCollection(): CollectionConfig {
   return {
     slug: 'seo-logs',
+    // Payload 4 versions every collection by default. These are operational records
+    // (settings, redirects, logs, snapshots), not authored content: version tables would
+    // only duplicate them, and collections with `timestamps: false` cannot be versioned.
+    versions: false,
     labels: {
       singular: 'Log SEO',
       plural: 'Logs SEO',
