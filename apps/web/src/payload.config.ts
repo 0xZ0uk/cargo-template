@@ -9,7 +9,7 @@ import { buildConfig } from 'payload'
 import type { PayloadLogger } from 'payload'
 import { fileURLToPath } from 'url'
 
-import { cloudflareEnv as cloudflare, isWorkersRuntime } from '#cloudflare-runtime'
+import { cloudflareEnv as cloudflare, isWorkersRuntime, waitUntil } from '#cloudflare-runtime'
 import { Users } from './collections/Users'
 import { Media } from './collections/Media'
 import { Folders } from './collections/Folders'
@@ -20,6 +20,7 @@ import { Header } from './Header/config'
 import { defaultLexical } from './fields/defaultLexical'
 import type { Page } from './payload-types'
 import { limitVersions } from './plugins/limitVersions'
+import { r2SeoCacheStore } from './plugins/seoCacheStore'
 import { pagePath } from './utilities/pagePath'
 import { siteName } from './utilities/siteName'
 
@@ -155,6 +156,11 @@ export default buildConfig({
       siteName,
       siteUrl: process.env.SITE_URL || cloudflare.SITE_URL || undefined,
       uploadsCollection: 'media',
+      // Workers isolates don't share memory and cancel un-awaited work: the dashboard audit
+      // (and the caches the admin polls) persist in R2 and build through `waitUntil`.
+      // `waitUntil` is undefined under the Node dev server, which keeps promises alive.
+      cacheStore: r2SeoCacheStore(cloudflare.R2),
+      waitUntil,
       features: {
         aiFeatures: false,
         alerts: false,
