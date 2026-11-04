@@ -185,6 +185,18 @@ export interface DashboardTranslations {
     brokenLabel: string
     rescan: string
     forceNewVerification: string
+    /** External tab: link checker buckets, capped / partial scan state. */
+    blocked: string
+    unreachable: string
+    unverified: string
+    unverifiedLabel: string
+    unverifiedNote: string
+    externalCapped: string
+    externalPartial: string
+    externalStoppedBudget: string
+    externalStoppedDeadline: string
+    continueScan: string
+    continuingScan: string
     analyzingInternal: string
     brokenLinkTo: string
     linkFrom: string
@@ -806,6 +818,17 @@ const fr: DashboardTranslations = {
     brokenLabel: 'Cassés',
     rescan: 'Rescanner',
     forceNewVerification: 'Forcer une nouvelle vérification',
+    blocked: 'blocked',
+    unreachable: 'unreachable',
+    unverified: 'couldn\'t verify',
+    unverifiedLabel: 'Couldn\'t verify',
+    unverifiedNote: 'Couldn\'t verify: the site answered 401, 403, 429, 451 or 999 (login, bot protection or rate limit). The link may still work in a browser.',
+    externalCapped: 'Only the first {max} of {total} unique external links are checked.',
+    externalPartial: '{checked} of {total} links checked, {pending} still pending.',
+    externalStoppedBudget: 'This step stopped because it used its request budget.',
+    externalStoppedDeadline: 'This step stopped because it ran out of time.',
+    continueScan: 'Continue scan',
+    continuingScan: 'Continuing…',
     analyzingInternal: 'Analyse du maillage interne en cours...',
     brokenLinkTo: 'lien cassé vers',
     linkFrom: 'lien depuis',
@@ -1424,6 +1447,17 @@ const en: DashboardTranslations = {
     brokenLabel: 'Broken',
     rescan: 'Rescan',
     forceNewVerification: 'Force a new verification',
+    blocked: 'blocked',
+    unreachable: 'unreachable',
+    unverified: 'couldn\'t verify',
+    unverifiedLabel: 'Couldn\'t verify',
+    unverifiedNote: 'Couldn\'t verify: the site answered 401, 403, 429, 451 or 999 (login, bot protection or rate limit). The link may still work in a browser.',
+    externalCapped: 'Only the first {max} of {total} unique external links are checked.',
+    externalPartial: '{checked} of {total} links checked, {pending} still pending.',
+    externalStoppedBudget: 'This step stopped because it used its request budget.',
+    externalStoppedDeadline: 'This step stopped because it ran out of time.',
+    continueScan: 'Continue scan',
+    continuingScan: 'Continuing…',
     analyzingInternal: 'Analyzing internal linking structure...',
     brokenLinkTo: 'broken link to',
     linkFrom: 'link from',

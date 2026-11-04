@@ -7,6 +7,7 @@ import { useDashboardT, useSeoFeature, useSeoLocale } from '../hooks/useSeoLocal
 import { type DashboardTranslations } from '../dashboard-i18n.js'
 import { LiveRegion } from './LiveRegion.js'
 import { toCsv } from '../helpers/csv.js'
+import { classifyLink, countLinkStates, type LinkState } from '../helpers/linkStatus.js'
 import {
   Card,
   cx,
@@ -17,6 +18,7 @@ import {
   LoadingState,
   ScorePill,
   StatTile,
+  type Tone,
   TonePill,
   ViewBody,
   ViewHeader,
@@ -92,16 +94,18 @@ interface ExternalLinkResult {
   sourcePages: Array<{ title: string; slug: string; collection: string }>
 }
 
+/** The scan fields are optional: a result cached by an older version doesn't have them. */
 interface ExternalLinksData {
   results: ExternalLinkResult[]
-  stats: {
-    total: number
-    ok: number
-    broken: number
-    timeout: number
-  }
+  /** More unique links exist than `maxLinks`: only the first `maxLinks` are checked. */
+  capped?: boolean
+  totalFound?: number
+  maxLinks?: number
+  /** Links not checked yet. The scan is partial until this is 0. */
+  pending?: number
+  partial?: boolean
+  stoppedBy?: 'budget' | 'deadline'
 }
-
 
 // ---------------------------------------------------------------------------
 // HoverPreview sub-component (C5)
@@ -1057,20 +1061,39 @@ function Logs404Tab() {
 // ---------------------------------------------------------------------------
 // ExternalLinksTab sub-component
 // ---------------------------------------------------------------------------
-type ExternalFilter = 'all' | 'broken' | 'ok'
+type ExternalFilter = 'all' | 'broken' | 'unverified' | 'ok'
+
+/** Which link states each filter shows. "Couldn't verify" also covers links the guard blocked. */
+const FILTER_STATES: Record<Exclude<ExternalFilter, 'all'>, readonly LinkState[]> = {
+  broken: ['broken', 'timeout', 'error'],
+  unverified: ['unverified', 'blocked'],
+  ok: ['ok'],
+}
+
+const LINK_STATE_TONE: Record<LinkState, Tone> = {
+  ok: 'success',
+  broken: 'danger',
+  timeout: 'warning',
+  error: 'danger',
+  blocked: 'warning',
+  unverified: 'neutral',
+}
+
+/** Stats pills: good first, then each kind of problem (zero counts are hidden except ok and broken). */
+const PILL_ORDER: readonly LinkState[] = ['ok', 'broken', 'timeout', 'error', 'blocked', 'unverified']
 
 function ExternalLinksTab() {
   const seoApi = useSeoApi()
   const t = useDashboardT()
   const [data, setData] = useState<ExternalLinksData | null>(null)
   const [loading, setLoading] = useState(false)
+  const [continuing, setContinuing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [continueError, setContinueError] = useState<string | null>(null)
   const [filter, setFilter] = useState<ExternalFilter>('all')
 
-  const handleScan = useCallback(async (forceRefresh = false) => {
-    setLoading(true)
-    setError(null)
-    try {
+  const postScan = useCallback(
+    async (forceRefresh: boolean): Promise<ExternalLinksData> => {
       const res = await fetch(seoApi('/external-links'), {
         method: 'POST',
         credentials: 'include',
@@ -1078,22 +1101,55 @@ function ExternalLinksTab() {
         body: JSON.stringify({ forceRefresh }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const json = await res.json()
-      setData(json)
+      return (await res.json()) as ExternalLinksData
+    },
+    [seoApi],
+  )
+
+  const handleScan = useCallback(
+    async (forceRefresh = false) => {
+      setLoading(true)
+      setError(null)
+      setContinueError(null)
+      try {
+        setData(await postScan(forceRefresh))
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : t.common.loadingError)
+      }
+      setLoading(false)
+    },
+    [postScan, t],
+  )
+
+  // A partial scan resumes from the checks the server saved: the same request without
+  // `forceRefresh` checks the next batch. The results stay on screen meanwhile.
+  const handleContinue = useCallback(async () => {
+    setContinuing(true)
+    setContinueError(null)
+    try {
+      setData(await postScan(false))
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : t.common.loadingError)
+      setContinueError(e instanceof Error ? e.message : t.common.loadingError)
     }
-    setLoading(false)
-  }, [t])
+    setContinuing(false)
+  }, [postScan, t])
+
+  // Counted from the results (not read from `data.stats`) so the buckets always add up to
+  // `total`, even for a response cached before a bucket existed.
+  const classified = useMemo(
+    () => (data ? data.results.map((r) => ({ ...r, state: classifyLink(r) })) : []),
+    [data],
+  )
+  const stats = useMemo(() => countLinkStates(classified), [classified])
 
   const handleExportCSV = useCallback(() => {
-    if (!data) return
-    const broken = data.results.filter((r) => !r.ok)
-    const rows: string[][] = [['URL', 'Statut', 'Erreur', 'Pages sources']]
-    for (const r of broken) {
+    const rows: string[][] = [['URL', 'Status', 'State', 'Error', 'Source pages']]
+    for (const r of classified) {
+      if (r.state === 'ok') continue
       rows.push([
         r.url,
         String(r.status),
+        r.state,
         r.error || '',
         r.sourcePages.map((p) => `/${p.slug} (${p.collection})`).join('; '),
       ])
@@ -1108,14 +1164,18 @@ function ExternalLinksTab() {
     a.download = `external-links-broken-${now}.csv`
     a.click()
     URL.revokeObjectURL(url)
-  }, [data])
+  }, [classified])
+
+  // The "Couldn't verify" filter is hidden when nothing is in it; a selection left over from an
+  // earlier scan then falls back to "All" instead of showing an empty table.
+  const unverifiableCount = stats.unverified + stats.blocked
+  const activeFilter: ExternalFilter = filter === 'unverified' && unverifiableCount === 0 ? 'all' : filter
 
   const filteredResults = useMemo(() => {
-    if (!data) return []
-    if (filter === 'broken') return data.results.filter((r) => !r.ok)
-    if (filter === 'ok') return data.results.filter((r) => r.ok)
-    return data.results
-  }, [data, filter])
+    if (activeFilter === 'all') return classified
+    const states = FILTER_STATES[activeFilter]
+    return classified.filter((r) => states.includes(r.state))
+  }, [classified, activeFilter])
 
   // Initial state: prompt to scan
   if (!data && !loading && !error) {
@@ -1153,48 +1213,103 @@ function ExternalLinksTab() {
 
   if (!data) return null
 
-  const { stats } = data
+  const stateLabel: Record<LinkState, string> = {
+    ok: t.common.ok,
+    broken: t.sitemapAudit.broken,
+    timeout: t.sitemapAudit.timeout,
+    error: t.sitemapAudit.unreachable,
+    blocked: t.sitemapAudit.blocked,
+    unverified: t.sitemapAudit.unverified,
+  }
+  const pending = data.pending ?? 0
+  const partial = data.partial === true || pending > 0
+  const checkedOf = stats.total + pending
+  const hasNotices = data.capped === true || partial || continueError !== null
 
   return (
     <ListCard count={data.results.length} title={t.sitemapAudit.externalLinks}>
-      {/* Stats bar */}
+      {hasNotices && (
+        <div className="seo-sitemap__notices">
+          {data.capped === true && (
+            <Banner type="default">
+              {t.sitemapAudit.externalCapped
+                .replace('{max}', String(data.maxLinks ?? stats.total + pending))
+                .replace('{total}', String(data.totalFound ?? ''))}
+            </Banner>
+          )}
+          {partial && (
+            <Banner type="warning">
+              <div className="seo-sitemap__notice">
+                <span>
+                  {t.sitemapAudit.externalPartial
+                    .replace('{checked}', String(stats.total))
+                    .replace('{total}', String(checkedOf))
+                    .replace('{pending}', String(pending))}
+                  {data.stoppedBy === 'budget' && ` ${t.sitemapAudit.externalStoppedBudget}`}
+                  {data.stoppedBy === 'deadline' && ` ${t.sitemapAudit.externalStoppedDeadline}`}
+                </span>
+                <Button
+                  buttonStyle="secondary"
+                  disabled={continuing}
+                  icon={<RefreshIcon />}
+                  iconPosition="left"
+                  margin={false}
+                  onClick={handleContinue}
+                >
+                  {continuing ? t.sitemapAudit.continuingScan : t.sitemapAudit.continueScan}
+                </Button>
+              </div>
+            </Banner>
+          )}
+          {continueError !== null && (
+            <Banner type="danger">
+              {t.common.loadingError}: {continueError}
+            </Banner>
+          )}
+        </div>
+      )}
+
+      {/* Stats bar: one pill per bucket, so they add up to the total */}
       <div className="seo-sitemap__toolbar">
         <div className="seo-row">
           <Pill size="small">
             {stats.total} {t.sitemapAudit.total}
           </Pill>
-          <TonePill tone="success">
-            {stats.ok} {t.common.ok}
-          </TonePill>
-          <TonePill tone="danger">
-            {stats.broken + stats.timeout} {t.sitemapAudit.broken}
-          </TonePill>
-          {stats.timeout > 0 && (
-            <TonePill tone="warning">
-              {stats.timeout} {t.sitemapAudit.timeout}
+          {PILL_ORDER.filter((s) => stats[s] > 0 || s === 'ok' || s === 'broken').map((s) => (
+            <TonePill key={s} tone={LINK_STATE_TONE[s]}>
+              {stats[s]} {stateLabel[s]}
             </TonePill>
-          )}
+          ))}
         </div>
         <div className="seo-row">
           {/* Filter toggles */}
-          {(['all', 'broken', 'ok'] as ExternalFilter[]).map((f) => {
-            const active = filter === f
-            const label = f === 'all' ? t.sitemapAudit.all : f === 'broken' ? t.sitemapAudit.brokenLabel : t.common.ok
-            return (
-              <Button
-                aria-pressed={active}
-                buttonStyle="pill"
-                key={f}
-                margin={false}
-                onClick={() => setFilter(f)}
-                selected={active}
-              >
-                {label}
-              </Button>
-            )
-          })}
-          {/* Export CSV (broken only) */}
-          {stats.broken + stats.timeout > 0 && (
+          {(['all', 'broken', 'unverified', 'ok'] as ExternalFilter[])
+            .filter((f) => f !== 'unverified' || unverifiableCount > 0)
+            .map((f) => {
+              const active = activeFilter === f
+              const label =
+                f === 'all'
+                  ? t.sitemapAudit.all
+                  : f === 'broken'
+                    ? t.sitemapAudit.brokenLabel
+                    : f === 'unverified'
+                      ? t.sitemapAudit.unverifiedLabel
+                      : t.common.ok
+              return (
+                <Button
+                  aria-pressed={active}
+                  buttonStyle="pill"
+                  key={f}
+                  margin={false}
+                  onClick={() => setFilter(f)}
+                  selected={active}
+                >
+                  {label}
+                </Button>
+              )
+            })}
+          {/* Export CSV (everything that isn't ok, with its state) */}
+          {stats.total - stats.ok > 0 && (
             <Button buttonStyle="secondary" margin={false} onClick={handleExportCSV}>
               {t.common.exportCsv}
             </Button>
@@ -1212,10 +1327,13 @@ function ExternalLinksTab() {
           </Button>
         </div>
       </div>
+      {stats.unverified > 0 && (
+        <p className="seo-text seo-text--small seo-text--secondary seo-sitemap__note">{t.sitemapAudit.unverifiedNote}</p>
+      )}
 
       {/* Results table */}
       {filteredResults.length === 0 ? (
-        <EmptyState title={filter === 'broken' ? t.sitemapAudit.noBrokenLinks : t.sitemapAudit.noExternalLinks} />
+        <EmptyState title={activeFilter === 'broken' ? t.sitemapAudit.noBrokenLinks : t.sitemapAudit.noExternalLinks} />
       ) : (
         <DataTable aria-label={t.sitemapAudit.externalLinks} bare>
           <thead>
@@ -1232,7 +1350,10 @@ function ExternalLinksTab() {
                 <td>
                   <div className="seo-sitemap__cell">
                     <a
-                      className={cx('seo-link seo-mono seo-truncate seo-sitemap__url', !result.ok && 'seo-sitemap__link--broken')}
+                      className={cx(
+                        'seo-link seo-mono seo-truncate seo-sitemap__url',
+                        FILTER_STATES.broken.includes(result.state) && 'seo-sitemap__link--broken',
+                      )}
                       href={result.url}
                       target="_blank"
                       rel="noopener noreferrer"
@@ -1252,14 +1373,18 @@ function ExternalLinksTab() {
                 </td>
                 <td className="seo-table__num">
                   {/* Status badge */}
-                  {result.ok ? (
+                  {result.state === 'ok' ? (
                     <Pill alignIcon="left" icon={<CheckIcon />} pillStyle="success" size="small">
                       {result.status}
                     </Pill>
                   ) : (
-                    <Pill pillStyle="error" size="small">
-                      {result.error ? result.error.toUpperCase() : result.status}
-                    </Pill>
+                    <TonePill tone={LINK_STATE_TONE[result.state]}>
+                      {result.state === 'blocked'
+                        ? stateLabel.blocked.toUpperCase()
+                        : result.error
+                          ? result.error.toUpperCase()
+                          : result.status}
+                    </TonePill>
                   )}
                 </td>
               </tr>

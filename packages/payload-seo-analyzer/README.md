@@ -61,7 +61,7 @@ The Cargo app (`apps/web`) runs this plugin on a deployed Worker. Each feature i
 | `performance` | on | **Verified.** Rows in `SEO_D1`. XLSX import needs `xlsx` mapped by the host |
 | `scoreHistory` | on | **Verified.** Rows in `SEO_D1` |
 | `seoLogs` (404 log) | on | **Verified.** Rows in `SEO_D1` |
-| `externalLinks` | on | **Verified.** Budgeted scans (100 links, 1,000 subrequests per call) that resume across calls |
+| `externalLinks` | on | **Verified.** Budgeted scans (100 links, 1,000 subrequests per call) that resume across calls. Each link is `ok`, `broken`, `timeout`, `error` (DNS, TLS, connection, redirect loop), `blocked` (SSRF guard) or `unverified` (401, 403, 429, 451 and 999: login walls, bot protection and rate limits, not broken links); `stats` add up to `total`. The External tab shows capped and partial scans and continues them |
 | `schemaBuilder` | on | **Verified.** URLs use `siteUrl`, then `SITE_URL`, then the request origin |
 | `alerts` | on | **Verified**: preview, send now and the scheduled `seoAlertsDigest` job, to a webhook. Nothing is sent until a channel is set. The webhook can't be another Worker on the same account's `workers.dev`, and email needs a Payload email adapter |
 | `aiFeatures` | on | **Verified** against OpenRouter (DeepSeek V4.1 Flash): all six endpoints, alt text read from R2, the sidebar's "Optimize with AI". Needs `OPENROUTER_API_KEY`; cap spend with a credit limit on the key |
