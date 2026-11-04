@@ -1,150 +1,224 @@
 # @cargo/payload-seo-analyzer
 
-> **Payload 4 fork** of [`@consilioweb/payload-seo-analyzer`](https://github.com/pOwn3d/payload-seo-analyzer) by ConsilioWEB (MIT).
->
-> Differences from upstream:
-> - Requires `payload` / `@payloadcms/ui` 4.x. No dependency on Next.js: admin views use `DefaultTemplate` from `@payloadcms/ui/rsc` and redirect through Payload's server adapter, so they run under any Payload 4 adapter (Next.js, TanStack Start).
-> - Runs on Cloudflare Workers: no timers at config time, background schedulers are skipped on serverless isolates, client IP prefers `cf-connecting-ip`.
-> - Plugin collections set `versions: false` (Payload 4 versions collections by default) and `admin.group: false` (managed from the SEO views, kept out of the sidebar).
-> - Admin UI rebuilt on `@payloadcms/ui` components and Payload 4 design tokens: native look in light and dark mode, SEO nav group that follows the feature flags. Conventions in [`src/ui/README.md`](src/ui/README.md).
->
-> Lives in the Cargo monorepo (`packages/payload-seo-analyzer`) and is consumed by `apps/web` as `"@cargo/payload-seo-analyzer": "workspace:*"`; it isn't published to npm. Read `@consilioweb/payload-seo-analyzer` as `@cargo/payload-seo-analyzer` in the upstream docs below; the Next.js setup steps don't apply.
->
-> Upstream fixes can be pulled from the repo root with
-> `git subtree pull --prefix=packages/payload-seo-analyzer https://github.com/pOwn3d/payload-seo-analyzer.git main` (expect conflicts in the ported files).
+An SEO toolkit for **Payload 4** that runs on **Cloudflare Workers** (D1 + R2) as well as on Node. It scores pages in the editor sidebar as you type (100+ checks, offline, no API key). It also adds a site-wide admin dashboard, redirects, generated `sitemap.xml` / `robots.txt` / `llms.txt` and JSON-LD, plus opt-in Search Console, AI and monitoring features.
 
-> An offline-first SEO toolkit for Payload CMS 3 + Next.js: on-page analysis in the editor sidebar, a nine-view admin dashboard, generated sitemaps and JSON-LD, plus opt-in Google Search Console and AI assists.
+It's a fork of [`@consilioweb/payload-seo-analyzer`](https://github.com/pOwn3d/payload-seo-analyzer) 4.2.2 by ConsilioWEB (MIT), which targets Payload 3 + Next.js. This fork:
 
-[![npm](https://img.shields.io/npm/v/@consilioweb/payload-seo-analyzer.svg)](https://www.npmjs.com/package/@consilioweb/payload-seo-analyzer)
-[![license](https://img.shields.io/npm/l/@consilioweb/payload-seo-analyzer.svg)](LICENSE)
-[![payload](https://img.shields.io/badge/payload-3.x-000000.svg)](https://payloadcms.com)
+- Requires Payload 4 and has **no Next.js dependency**. Admin views render through `DefaultTemplate` from `@payloadcms/ui/rsc` and redirect through Payload's server adapter, so they work under any Payload 4 adapter. The Cargo app uses TanStack Start.
+- Runs on **Workers**:
+  - The audit and the admin's caches persist in a store you provide (R2) and build in steps through `waitUntil`.
+  - Background work runs as Payload jobs on a Cron Trigger.
+  - Time-series data goes to a second D1 database (`SEO_D1`), with mandatory retention.
+  - Token crypto is WebCrypto, and the SSRF guard uses Workers DNS.
+- Has an admin UI rebuilt on `@payloadcms/ui` and Payload 4 design tokens. Its conventions are in [`src/ui/README.md`](src/ui/README.md) and are mandatory.
 
-## About
+It lives in the Cargo monorepo (`packages/payload-seo-analyzer`). `apps/web` consumes it as `"@cargo/payload-seo-analyzer": "workspace:*"`. It isn't published to npm. Port status, verification notes and the remaining work are in [`PLAN.md`](PLAN.md).
 
-Most SEO plugins either stop at meta fields or send your content to a paid third-party API. This one runs
-the whole analysis locally: 100+ deterministic checks across 20 rule groups, scored in the editor sidebar
-as you type, with no external call and no API key.
-
-It is aimed at Payload 3 sites that ship their own front end in Next.js. Beyond the analyzer it generates
-what the front end actually needs — `robots.txt`, four sitemap flavours, canonical URLs, Open Graph
-metadata and JSON-LD — and adds an admin dashboard for site-wide work: link graph, redirect manager,
-cannibalization, schema builder, keyword research. Google Search Console, AI assists, monitoring alerts
-and IndexNow are opt-in and use your own credentials.
-
-## Table of Contents
+## Contents
 
 - [Features](#features)
-- [Installation](#installation)
-- [Quick Start](#quick-start)
+- [Status on Cloudflare Workers](#status-on-cloudflare-workers)
+- [Install](#install)
+- [Quick start (Node)](#quick-start-node)
+- [Cloudflare Workers setup](#cloudflare-workers-setup)
+- [Frontend helpers](#frontend-helpers)
 - [Configuration](#configuration)
-- [API Endpoints](#api-endpoints)
-- [Admin Views](#admin-views)
+- [API endpoints](#api-endpoints)
+- [Admin views](#admin-views)
 - [Collections](#collections)
-- [Package Exports](#package-exports)
-- [Requirements](#requirements)
-- [Uninstall](#uninstall)
-- [Database and updates](#database-and-updates)
-- [Migration to 4.0](#migration-to-40)
-- [Migration to 3.0](#migration-to-30)
-- [Migration to 2.0](#migration-to-20)
+- [Package exports](#package-exports)
+- [Database and migrations](#database-and-migrations)
 - [Performance](#performance)
 - [Troubleshooting](#troubleshooting)
 - [Security](#security)
-- [Contributing](#contributing)
-- [Changelog](#changelog)
-- [Support](#support)
+- [Development](#development)
+- [Uninstall](#uninstall)
 - [License](#license)
 
 ## Features
 
-- **100+ on-page checks, offline.** 110 static rule ids across 20 groups — title, meta description, URL,
-  headings, content, images, linking, social, schema, readability, quality, secondary keywords,
-  cornerstone, freshness, technical, accessibility, e-commerce, E-E-A-T, GEO and hreflang.
-- **Live score in the editor.** A sidebar field analyses the document (including Lexical rich text and
-  layout blocks) and returns a 0–100 score plus a separate AI-readiness indicator built from the GEO,
-  E-E-A-T and schema-coverage checks.
-- **Nine admin views.** Site-wide audit, sitemap audit, settings, redirect manager, cannibalization,
-  performance, keyword research, schema builder and link graph.
-- **Generated output, not just advice.** `robots.txt`, `sitemap.xml`, news/image/video sitemaps, an
-  opt-in `llms.txt`, plus `buildSeoMetadata` / `buildJsonLd` helpers for your Next.js front end.
-- **Bilingual analysis.** Locale-adapted readability (Kandel-Moles for French, Flesch for English),
-  FR/EN dashboard translations extensible to any locale, and the 39 `plugin-seo` meta-field languages
-  from Payload.
-- **Opt-in integrations.** Google Search Console via OAuth, LLM assists through OpenRouter (meta
-  rewriting, alt text, content briefs), a monitoring digest over webhook/email, and IndexNow.
-- **Built for small hosts.** Single-flight background audit with tunable throttling, paginated document
-  loading with a memory cap, LRU-bounded cache and a build-time audit cache you can generate in CI.
+- **Offline analysis:** 110 rule ids across 20 groups (title, meta description, URL, headings, content, images, linking, social, schema, readability, quality, secondary keywords, cornerstone, freshness, technical, accessibility, e-commerce, E-E-A-T, GEO, hreflang).
+- **Live editor score:** a sidebar field analyses the document, including Lexical rich text and layout blocks. It gives a 0–100 score plus an AI-readiness indicator built from the GEO, E-E-A-T and schema checks.
+- **Admin views:** site audit with CSV/PDF export and bulk actions, sitemap and link audit, settings, redirect manager, Search Console performance, cannibalization, keyword research, schema builder and link graph. Each one follows its feature flag.
+- **Generated output:**
+  - `robots.txt`, `sitemap.xml`, news/image/video sitemaps and an opt-in `llms.txt`.
+  - JSON-LD (`buildJsonLd`) and the same URL rules for your frontend.
+- **Bilingual analysis:** French and English, with a locale-adapted readability formula (Kandel-Moles for French, Flesch for English). Dashboard strings can be extended to other admin languages.
+- **Opt-in integrations:** Google Search Console (OAuth), AI assists through OpenRouter (meta rewriting, alt text, content briefs), a monitoring digest over webhook or email, and IndexNow.
 
-## Installation
+## Status on Cloudflare Workers
 
-```bash
-npm install @consilioweb/payload-seo-analyzer
-# or
-pnpm add @consilioweb/payload-seo-analyzer
-# or
-yarn add @consilioweb/payload-seo-analyzer
+The Cargo app (`apps/web`) runs this plugin on a deployed Worker. Each feature is either verified there or still off, as listed below. Details and CPU numbers are in [`PLAN.md`](PLAN.md).
+
+| Feature | In `apps/web` | On Workers |
+|---|---|---|
+| `analyzer` (sidebar, `/validate`) | on | **Verified** on a deployed Worker |
+| `dashboard` | on | **Verified.** Persisted in R2, built in steps of 800 docs, capped at 5,000 |
+| `redirects` (+ the frontend 301/302) | on | **Verified** |
+| `sitemapAudit` | on | **Verified** |
+| `settings` | on | **Verified** |
+| `sitemap.xml`, `robots.txt`, `llms.txt` | on | **Verified**, served at the site root |
+| `performance` | on | **Verified.** Rows in `SEO_D1`. XLSX import needs `xlsx` mapped by the host |
+| `scoreHistory` | on | **Verified.** Rows in `SEO_D1` |
+| `seoLogs` (404 log) | on | **Verified.** Rows in `SEO_D1` |
+| `externalLinks` | on | **Verified.** Budgeted scans (100 links, 1,000 subrequests per call) that resume across calls |
+| `aiFeatures` | off | Passes in local workerd against a mock, and in Node with a real key. The deployed run is pending |
+| `gscApi` | off | Token crypto verified on a deployed Worker. The endpoints and the OAuth flow aren't checked yet |
+| `alerts` | off | Runs as the `seoAlertsDigest` job; not checked on Workers |
+| `indexNow` | off | Not checked on Workers |
+| `cannibalization`, `keywords`, `linkGraph`, `duplicateContent` | off | Whole-site scans in one request, not measured against Workers CPU limits |
+| `schemaBuilder` | off | Mostly client-side; not checked on Workers |
+| `warmCache` | off | **Unsupported on Workers** (skipped by design) |
+| `auditCacheFile` / `buildAuditToFile()` | n/a | **Node only.** Ignored with a warning when `cacheStore` is set or on Workers |
+
+## Install
+
+Inside this monorepo, add the workspace dependency:
+
+```json
+{ "dependencies": { "@cargo/payload-seo-analyzer": "workspace:*" } }
 ```
 
-`payload@^3` is the only required peer. `next`, `react`, `@payloadcms/next` and `@payloadcms/ui` are
-declared optional peers — a Payload 3 admin panel already has all four, so a normal install pulls
-nothing extra, but package managers will warn if your versions fall out of the supported ranges (see
-[Requirements](#requirements)).
+`payload` and `@payloadcms/ui` are peer dependencies (`>=4.0.0-beta.6 <5.0.0`, and `react ^19`). The app supplies them from the pnpm catalog in `pnpm-workspace.yaml`. Never pin them in this package: two copies of `payload` or `@payloadcms/ui` break the admin's React contexts.
 
-## Quick Start
+The package ships `dist/`. Build it with `pnpm --filter @cargo/payload-seo-analyzer build`, or `pnpm dev` from the root, which also watches it.
+
+## Quick start (Node)
+
+On a long-lived Node server the defaults work as-is:
 
 ```ts
 // payload.config.ts
 import { buildConfig } from 'payload'
-import { seoAnalyzerPlugin } from '@consilioweb/payload-seo-analyzer'
+import { seoAnalyzerPlugin } from '@cargo/payload-seo-analyzer'
 
 export default buildConfig({
-  // ...your db, collections, admin config
+  // ...db, collections, admin
   plugins: [
     seoAnalyzerPlugin({
       collections: ['pages', 'posts'],
       siteUrl: 'https://example.com',
+      locale: 'en',
     }),
   ],
 })
 ```
 
-The plugin injects React components into the admin panel, so regenerate the import map, then start:
+The plugin adds admin components, so regenerate the import map (`payload generate:importmap`) and create a migration for the fields and collections it adds (`payload migrate:create`). Open `/admin/seo`, or edit a page to see the score in the sidebar.
 
-```bash
-pnpm payload generate:importmap
-pnpm dev
-```
+On Node, the caches live in memory, background work runs on timers, and the time-series data lives in Payload collections in your main database.
 
-Open `/admin/seo` for the dashboard, or edit any page or post to see the score in the sidebar.
+## Cloudflare Workers setup
 
-### Frontend metadata and JSON-LD
+None of the Node defaults hold on Workers. Isolates share no memory, un-awaited work is cancelled, there are no timers, and D1 is capped at 10 GB. The plugin has an option for each of these. `apps/web` is the reference setup; its files are named below.
 
-The same URL rules the sitemap uses are exported as pure functions, safe to call from a Server Component
-or `generateMetadata`:
+### 1. Bindings (`wrangler.jsonc`)
+
+| Binding | Used for |
+|---|---|
+| `D1` | Payload's database: plugin collections (`seo-settings`, `seo-redirects`) and the fields it adds to your collections |
+| `SEO_D1` | A **second** D1 database for time-series data (score history, Search Console imports, rank history, 404 log). One site per database |
+| `R2` | The plugin's cache store, under `seo-analyzer/cache/` (expire it after 7 days with an R2 lifecycle rule; see `pnpm web r2:lifecycle`) |
+| `ratelimits` (optional) | Workers Rate Limiting bindings for the `expensive`, `audit-poll` and `ai-interactive` buckets |
+| `triggers.crons` | `*/5 * * * *`, to run the plugin's jobs |
+
+Run `pnpm web cf-typegen` after editing it.
+
+### 2. Plugin options
 
 ```ts
-import { buildSeoMetadata } from '@consilioweb/payload-seo-analyzer'
+import { createSqlSeoDataStore, seoAnalyzerPlugin } from '@cargo/payload-seo-analyzer'
+import { cloudflareEnv as cloudflare, waitUntil } from '#cloudflare-runtime'
+import { r2SeoCacheStore } from './plugins/seoCacheStore'
+import { workersSeoRateLimit } from './plugins/seoRateLimit'
 
-// `doc` is a Payload document you already fetched
-const metadata = buildSeoMetadata(doc, {
-  collection: 'posts',
-  siteUrl: 'https://example.com',
+seoAnalyzerPlugin({
+  collections: ['pages'],
+  collectionRoutes: { pages: '' },
+  locale: 'en',
+  siteUrl: process.env.SITE_URL || undefined, // falls back to SITE_URL, then the request origin
+  cacheStore: r2SeoCacheStore(cloudflare.R2), // get/put/delete of strings
+  waitUntil, // undefined under the Node dev server, which is fine
+  rateLimit: workersSeoRateLimit(cloudflare), // optional; falls back to in-memory per isolate
+  dataStore: createSqlSeoDataStore(cloudflare.SEO_D1),
+  jobs: true,
+  features: { warmCache: false /* plus the flags you want, see the status table */ },
 })
 ```
 
-```tsx
-import { buildJsonLd, serializeJsonLd } from '@consilioweb/payload-seo-analyzer'
+- **`cacheStore`** persists the dashboard audit, the indexation audit, the sitemap audit, redirect chains and external-link scans. Invalidation is a generation token per cache that every isolate reads. `apps/web/src/plugins/seoCacheStore.ts` is a 20-line R2 implementation.
+- **`waitUntil`** builds the audit in the background, in steps that fit the CPU limit (`SEO_AUDIT_STEP_DOCS`, 800 by default). The dashboard's polls run the next step, and the `seoAuditContinue` job finishes builds nobody is watching.
+- **`dataStore`** keeps time-series rows out of the main D1. With it set, the four time-series collections aren't registered. The SQL store creates and migrates its own tables (`SEO_STORE_MIGRATIONS`, recorded in `seo_store_migrations`). It applies pending migrations on first use; `migrateSeoStore(db)` applies them ahead of time (`pnpm web seo-store:migrate[:remote]`).
+- **`rateLimit`** maps the plugin's buckets (`SEO_RATE_LIMITS`) to Workers Rate Limiting. Those counts are eventually consistent, so treat them as a brake, not a hard cap. The hard cap on AI spend is a credit limit on the OpenRouter key.
+- **`jobs`** registers Payload tasks on the `seo` queue instead of starting timers. See [Background jobs](#background-jobs).
 
-const { jsonLd } = buildJsonLd(doc, { collection: 'posts', siteUrl: 'https://example.com' })
+`onInit` warns on Workers when `dashboard` lacks `cacheStore` or `waitUntil`, or when time-series features lack `dataStore`. It also warns when scheduled work lacks `jobs`.
 
-<script
-  type="application/ld+json"
-  dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }}
-/>
+### 3. Worker entry: run the jobs on the Cron Trigger
+
+```ts
+// src/server.ts (wrangler's `main`)
+import { runSeoJobs } from '@cargo/payload-seo-analyzer'
+
+export default {
+  ...entry, // TanStack Start's fetch handler
+  scheduled(controller, _env, ctx) {
+    ctx.waitUntil(
+      (async () => {
+        const { getPayload } = await import('payload')
+        const payload = await getPayload({ config: (await import('@payload-config')).default })
+        await runSeoJobs(payload) // queues the due tasks, then runs the queue
+      })(),
+    )
+  },
+}
 ```
 
-Use `serializeJsonLd` rather than `JSON.stringify` — it escapes `<`, `>`, `&`, U+2028 and U+2029, which
-`JSON.stringify` does not (see [Security](#security)).
+Jobs add Payload's `payload-jobs` collection, so run `migrate:create` once. A new or changed cron schedule can take a few minutes to start firing after a deploy.
+
+### 4. Root files, redirects and 404s
+
+- **`/sitemap.xml`, `/robots.txt`, `/llms.txt`:** the plugin serves them under `/api/seo-plugin/…`. `apps/web` re-serves them at the root by passing the request to Payload's API handler in-process (`src/utilities/servePluginFile.ts`). Never fetch them from the Worker's own origin, because those subrequests are unreliable.
+- **Redirects:** the app reads `seo-redirects` only when the page lookup misses, caches the table per isolate for 60 s, and checks targets with `validateRedirectTarget` from `@cargo/payload-seo-analyzer/shared` (`src/app/_frontend/redirects.functions.ts`).
+- **404 log:** call `recordSeoNotFound(payload, { url, referrer, userAgent })` from your not-found path and pass the promise to `waitUntil`. It never throws, and does nothing while `seoLogs` is off.
+
+### 5. Environment variables
+
+Varlock passes workerd only the variables declared in `apps/web/.env.schema`. A plugin variable does nothing on Workers until it's declared there; mark secrets `@sensitive`. `apps/web` declares `SITE_URL`, `SEO_LLMS_TXT`, the audit caps, the external-link caps, the GSC and OpenRouter variables. The full list is under [Environment variables](#environment-variables).
+
+## Frontend helpers
+
+The URL rules the sitemap uses are exported as pure functions, so the frontend produces the same canonical and JSON-LD URLs. `@cargo/payload-seo-analyzer/shared` has no package imports, which makes it safe in a route's `head()`:
+
+```ts
+import { buildJsonLd, serializeJsonLd } from '@cargo/payload-seo-analyzer/shared'
+
+const { jsonLd } = buildJsonLd(page, {
+  collection: 'pages',
+  collectionRoutes: { pages: '' }, // the same map you gave the plugin
+  siteUrl: 'https://example.com',
+  locale: 'en', // breadcrumb label "Home"; `homeLabel` overrides it
+})
+
+// TanStack Start route
+head: () => ({
+  scripts: [{ type: 'application/ld+json', children: serializeJsonLd(jsonLd) }],
+})
+```
+
+Use `serializeJsonLd`, not `JSON.stringify`. It escapes `<`, `>`, `&`, U+2028 and U+2029. `apps/web/src/utilities/pageJsonLd.ts` builds WebPage and BreadcrumbList for pages, and WebSite and Organization for home.
+
+| Function | Entry | Purpose |
+|---|---|---|
+| `buildJsonLd` | root, `/shared` | Schema.org object for a document; type auto-detected from the collection unless forced |
+| `serializeJsonLd` | root, `/shared` | XSS-safe JSON for a `<script type="application/ld+json">` |
+| `renderJsonLdScript` | root | The complete, escaped `<script>` tag as a string |
+| `validateRedirectTarget`, `normalizeFromPath` | root, `/shared` | The redirect policy the plugin enforces (no `//host`, dangerous schemes or CRLF) |
+| `buildDocPath`, `buildDocUrl` | root | The exact public path or URL the sitemap, canonical and JSON-LD use |
+| `buildSeoMetadata` | root | Title, description, canonical, robots, Open Graph and Twitter tags. The shape is Next.js `Metadata`; with TanStack Start, map it into `head().meta` yourself |
+| `analyzeSeo` | root | The whole analysis engine, outside Payload |
+
+There's no TanStack `head()` adapter for `buildSeoMetadata`. `apps/web` takes its meta tags from `@payloadcms/plugin-seo` instead.
 
 ## Configuration
 
@@ -154,105 +228,84 @@ Every field of `SeoPluginConfig`. All are optional.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `collections` | `string[]` | `['pages', 'posts']` | Collections that get SEO fields and are analyzed. |
-| `globals` | `string[]` | `[]` | Globals that get SEO fields and are analyzed. |
-| `siteUrl` | `string` | `NEXT_PUBLIC_SERVER_URL` / `PAYLOAD_PUBLIC_SERVER_URL` | Base URL for canonicals, sitemaps, JSON-LD and GSC. |
+| `collections` | `string[]` | `['pages', 'posts']` | Collections that get the SEO fields and are analyzed. |
+| `globals` | `string[]` | `[]` | Globals that get the SEO fields and are analyzed. |
+| `siteUrl` | `string` | `SITE_URL`, then the request origin | Base URL for canonicals, sitemaps, JSON-LD and the GSC redirect URI. Scheduled jobs have no request, so the rank snapshot needs this or `SITE_URL`. |
 | `siteName` | `string` | — | Used by the "brand duplicated in title" check. |
-| `locale` | `'fr' \| 'en'` | `'fr'` | Language of the analysis (readability, stop words, check messages), in the editor sidebar and on the dashboard alike. The plugin's own interface follows the Payload admin language instead. |
-| `localeMapping` | `Record<string, 'fr' \| 'en'>` | — | Maps your Payload locale codes onto the analysis locale. |
-| `collectionRoutes` | `Record<string, string>` | `{ posts: 'posts' }` | Public route prefix per collection, used by every URL the plugin generates. Set `{ posts: '' }` if posts are served flat at `/<slug>`. |
-| `knownRoutes` | `string[]` | `[]` | Dynamic routes with no matching document slug, so they are not reported as broken links or orphans. |
-| `features` | `SeoFeatures` | see below | Per-feature on/off switches. |
-| `disabledRules` | `RuleGroup[]` | `[]` | Rule groups to skip entirely. |
+| `locale` | `'fr' \| 'en'` | `'fr'` | Language of the analysis (readability, stop words, messages) and of the AI prompts. The plugin's interface follows the Payload admin language instead. |
+| `localeMapping` | `Record<string, 'fr' \| 'en'>` | — | Maps Payload locale codes onto the analysis locale. |
+| `collectionRoutes` | `Record<string, string>` | `{ posts: 'posts' }` | Public route prefix per collection, used by every URL the plugin generates. `''` serves at `/<slug>`. |
+| `knownRoutes` | `string[]` | `[]` | Routes with no matching document slug, so they aren't reported as broken links or orphans. |
+| `features` | `SeoFeatures` | see below | Per-feature switches. |
+| `disabledRules` | `RuleGroup[]` | `[]` | Rule groups to skip. |
 | `overrideWeights` | `Partial<Record<RuleGroup, number>>` | — | Force the weight of every check in a group. |
-| `thresholds` | `SeoThresholds` | constants | Numeric overrides (see below). |
-| `localSeoSlugs` | `string[]` | — | Extra slugs to treat as local-SEO pages. |
-| `endpointBasePath` | `string` | `'/seo-plugin'` | Path prefix for the REST endpoints, under `/api`. **Keep the default if you use the admin views or the editor sidebar:** apart from the meta fields' generate buttons, they still call `/api/seo-plugin`. |
-| `addDashboardView` | `boolean` | `true` | Set `false` to register no admin view at all. |
-| `addSitemapAuditView` | `boolean` | `true` | Set `false` to drop only `/admin/sitemap-audit`. |
-| `trackScoreHistory` | `boolean` | `true` | Adds `seo-score-history` plus the `afterChange` hook that feeds it. |
+| `thresholds` | `SeoThresholds` | constants | `titleLengthMin/Max`, `metaDescLengthMin/Max`, `minWordsGeneric`, `minWordsPost`, `keywordDensityMin/Max`, `fleschScorePass`, `slugMaxLength`. |
+| `localSeoSlugs` | `string[]` | — | Extra slugs treated as local-SEO pages. |
+| `endpointBasePath` | `string` | `'/seo-plugin'` | Prefix of the REST endpoints under the API route. The admin UI follows it (`useSeoApi`), but a host that re-serves the root files must use the same value (`servePluginFile.ts` assumes the default). |
+| `addDashboardView` | `boolean` | `true` | `false` registers no admin view at all. |
+| `addSitemapAuditView` | `boolean` | `true` | `false` drops only `/admin/sitemap-audit`. |
+| `trackScoreHistory` | `boolean` | `true` | `false` turns off the score snapshot hook even with `features.scoreHistory`. |
 | `redirectsCollection` | `string` | `'seo-redirects'` | Slug of the redirects collection; an existing collection with that slug is reused. |
-| `allowExternalRedirects` | `boolean` | `false` | Allow redirect destinations on another origin (absolute `http(s)` URLs). Off by default: an off-site 301 served from your own path carries your domain's authority. Redirects created before you upgraded stay editable — the gate only refuses a destination that *changes*. |
-| `uploadsCollection` | `string` | `'media'` | Upload collection used by `meta.image` and the AI alt-text endpoints. |
-| `autoCreateMetaFields` | `boolean` | `true` | Adds the `meta` group (title, description, image, preview) to target collections. |
-| `seoLogsSecret` | `string` | — | Shared secret for `POST /seo-logs`; when set, the caller sends `X-SEO-Secret` instead of a session. |
-| `auditCacheFile` | `string` | — | Path to a JSON audit produced by `buildAuditToFile()`, hydrated on a dashboard cache miss instead of rebuilding live. |
-| `generateTitle` | `(args) => string \| Promise<string>` | — | Backs the "auto-generate" button on the meta title. |
-| `generateDescription` | `(args) => string \| Promise<string>` | — | Same, for the meta description. |
-| `generateImage` | `(args) => string \| number \| Promise<…>` | — | Same, for the meta image (media id or URL). |
-| `generateURL` | `(args) => string \| Promise<string>` | — | Builds the document's public URL for previews. |
+| `allowExternalRedirects` | `boolean` | `false` | Allow destinations on another origin. Off by default: an off-site 301 from your path carries your domain's authority. Stored external destinations stay editable; only a changed destination is refused. |
+| `uploadsCollection` | `string` | `'media'` | Upload collection for `meta.image` and the alt-text endpoints. |
+| `autoCreateMetaFields` | `boolean` | `true` | Adds the `meta` group (title, description, image, preview). Skipped with a warning when the collection already has one, e.g. from `@payloadcms/plugin-seo`. |
+| `seoLogsSecret` | `string` | — | Shared secret for `POST /seo-logs` (`X-SEO-Secret`). Without it that route needs an SEO admin; in-process recording uses `recordSeoNotFound` instead. |
+| `cacheStore` | `SeoCacheStore` | in memory | Persistent store for the caches the admin polls. **Required on Workers.** |
+| `waitUntil` | `(promise) => void` | — | Keeps background work alive after the response and enables step builds. **Required on Workers.** |
+| `dataStore` | `SeoDataStore` | Payload collections | Where time-series rows live. `createSqlSeoDataStore(d1)` on Workers. See [Data store and retention](#data-store-and-retention). |
+| `rateLimit` | `SeoRateLimit` | in memory | `({ bucket, key }) => boolean \| undefined`. `undefined`, or a throw, falls back to the in-memory limiter. |
+| `jobs` | `boolean \| SeoJobsOptions` | — | Payload jobs instead of timers. See [Background jobs](#background-jobs). |
+| `retentionDays` | `Partial<Record<RetentionCollection, number>>` | `RETENTION_DEFAULTS` | Days to keep per dataset. |
+| `retentionMaxRows` | `Partial<Record<RetentionCollection, number>>` | `RETENTION_DEFAULTS` | Row cap per dataset, newest kept. |
+| `auditCacheFile` | `string` | — | **Node only.** A JSON audit from `buildAuditToFile()`, served on a cache miss instead of a live build. |
+| `generateTitle`, `generateDescription`, `generateImage`, `generateURL` | functions | — | Back the meta fields' generate buttons and previews. |
 | `fields` | `({ defaultFields }) => Field[]` | — | Rewrites the contents of the `meta` group. |
-| `tabbedUI` | `boolean` | `false` | Wraps collection fields in "Content" / "SEO" tabs. |
-| `interfaceName` | `string` | — | TypeScript interface name generated for the `meta` group. |
-| `customTranslations` | `Record<string, Partial<DashboardTranslations>>` | — | Dashboard strings for locales beyond FR/EN; missing keys fall back to English. |
-| `retentionDays` | `Partial<Record<'seo-rank-history' \| 'seo-score-history' \| 'seo-performance' \| 'seo-logs', number>>` | — | Days of history to keep, per time-series collection. Opt-in: without it nothing is ever deleted. See [Retention](#retention). |
-| `cacheStore` | `SeoCacheStore` | — | Async key/value store (`get`/`put`/`delete` of strings) for the caches the admin polls: dashboard audit, indexation audit, sitemap audit, redirect chains. Needed wherever processes don't share memory (Workers isolates); back it with R2 or KV. |
-| `waitUntil` | `(promise) => void` | — | Keeps background work alive after the response (Workers' `waitUntil`). With it, the dashboard audit builds in steps that fit a Worker's CPU limit. |
-| `rateLimit` | `SeoRateLimit` | — | Shared rate limiter for the limited endpoints (`SEO_RATE_LIMITS` lists the buckets). Return `true` / `false`, or `undefined` for the in-memory limiter. |
-| `jobs` | `boolean \| SeoJobsOptions` | — | Run background work as Payload jobs on a cron instead of in-process timers. See [Background jobs](#background-jobs). |
+| `tabbedUI` | `boolean` | `false` | Wraps collection fields in "Content" and "SEO" tabs. |
+| `interfaceName` | `string` | — | TypeScript interface name for the `meta` group. |
+| `customTranslations` | `Record<string, Partial<DashboardTranslations>>` | — | Dashboard strings for admin languages beyond FR/EN; missing keys fall back to English. |
 
-`thresholds` accepts `titleLengthMin`, `titleLengthMax`, `metaDescLengthMin`, `metaDescLengthMax`,
-`minWordsGeneric`, `minWordsPost`, `keywordDensityMin`, `keywordDensityMax`, `fleschScorePass` and
-`slugMaxLength`.
+### Feature flags
 
-```ts
-seoAnalyzerPlugin({
-  collections: ['posts'],
-  disabledRules: ['ecommerce'],
-  overrideWeights: { social: 1 },
-  thresholds: { titleLengthMax: 65, metaDescLengthMax: 165 },
-})
-```
+`features` gates collections, endpoints and admin views together. The analyzer sidebar, `/validate` and the meta fields are always on.
 
-### Retention
+| Flag | Default | Controls |
+|---|---|---|
+| `dashboard` | `true` | `/admin/seo`, `/audit` |
+| `sitemapAudit` | `true` | `/admin/sitemap-audit`, `/sitemap-audit`, `/sitemap-config` |
+| `settings` | `true` | `/admin/seo-config`, `/settings`, the `seo-settings` collection |
+| `redirects` | `true` | `/admin/redirects`, redirect endpoints, the `seo-redirects` collection |
+| `performance` | `true` | `/admin/performance`, `/performance`, `/core-web-vitals`, `/indexation-audit`, Search Console imports |
+| `scoreHistory` | `true` | Score snapshots on save, `/history` |
+| `seoLogs` | `true` | The 404 log and `/seo-logs` |
+| `externalLinks` | `true` | `/external-links` |
+| `aiFeatures` | `true` | The `ai-*` and `alt-text-audit` endpoints and the AI buttons |
+| `linkGraph`, `keywords`, `cannibalization`, `schemaBuilder`, `duplicateContent` | `true` | Their views and endpoints |
+| `warmCache` | `true` | Audit warm-up on start (Node only; set `false` on Workers) |
+| `gscApi` | **`false`** | Search Console OAuth, rank tracking, CTR opportunities, content grade, `seo-gsc-auth` |
+| `alerts` | **`false`** | Monitoring digest |
+| `indexNow` | **`false`** | IndexNow key file and submit endpoint |
 
-The four time-series collections are append-only: `seo-rank-history` gains a row per tracked query
-per day, `seo-score-history` one per document per save, `seo-performance` one per imported Search
-Console row, and `seo-logs` one per distinct 404 URL. Nothing trims them, so on a long-lived site
-they grow without bound. That is a database-size problem, not a privacy one — the only
-visitor-derived values are `referrer` and `userAgent` on `seo-logs`, and no IP address is stored
-anywhere.
+Most flags default to on, which suits a Node host. On Workers, turn on only what the [status table](#status-on-cloudflare-workers) marks verified, as `apps/web` does.
 
-`retentionDays` is **opt-in**. Without it, behaviour is exactly what it has always been: nothing is
-deleted.
+### Data store and retention
 
-```ts
-seoAnalyzerPlugin({
-  retentionDays: {
-    'seo-rank-history': 365,
-    'seo-score-history': 180,
-    'seo-performance': 400,
-    'seo-logs': 90,
-  },
-})
-```
+The time-series datasets are append-only: score history (a snapshot per document per save, throttled to one an hour), Search Console imports, rank history (a row per tracked query per day) and the 404 log. `dataStore` decides where they live:
 
-Naming at least one collection:
+- **`createSqlSeoDataStore(db)`** takes a D1 binding, or anything with D1's `prepare`/`bind`/`all`/`run`/`batch`. It owns its tables and migrations, batches bulk writes under D1's 100-parameter limit, and registers no Payload collections.
+- **Omitted:** the upstream collections (`seo-score-history`, `seo-performance`, `seo-rank-history`, `seo-logs`) in the main database (`createPayloadSeoDataStore`).
 
-- schedules a purge 5 minutes after boot and every 24 hours, deleting rows older than the window
-  (with [`jobs`](#background-jobs), the `seoRetentionPurge` task runs it instead);
-- registers `GET /api/seo-plugin/retention` (dry run — reports the cutoffs, deletes nothing) and
-  `POST /api/seo-plugin/retention` (run now), both **SEO-admin only**.
+**Retention is mandatory** for every enabled dataset. Windows default to `RETENTION_DEFAULTS`; `retentionDays` and `retentionMaxRows` override them.
 
-Details worth knowing:
+| Dataset | Days | Max rows | Pruned on |
+|---|---|---|---|
+| `seo-rank-history` | 400 | 100,000 | snapshot date |
+| `seo-score-history` | 365 | 50,000 | snapshot date |
+| `seo-performance` | 490 | 100,000 | row date |
+| `seo-logs` | 90 | 5,000 (`SEO_LOGS_MAX_ROWS`, also checked on each new URL) | last seen |
 
-- Each collection is trimmed on **its own date field** — `snapshotDate`, `date` or `lastSeen`, never
-  `createdAt`, which three of the four do not have (`timestamps: false`). `seo-logs` is keyed on
-  `lastSeen` so a 404 first recorded long ago but still being hit today is kept.
-- A value that is not a finite number of at least `1` is **ignored, not clamped**: `0` would mean
-  "delete everything".
-- Collections are purged one after another, never in parallel — parallel writes are what produce
-  `SQLITE_BUSY`.
-- The windows come from your config only. The `POST` endpoint reads no body, so no caller can pass
-  its own retention.
-- `purgeRetention`, `describeRetention` and `resolveRetention` are exported from the package root if
-  you would rather run the trim from your own cron.
+A value that isn't a finite number of at least 1 is ignored and the default applies; `0` never means "delete everything". The purge runs daily as the `seoRetentionPurge` job (or a timer on Node). `GET /retention` (dry run) and `POST /retention` (run now) are SEO-admin only. The windows come from config only: the `POST` reads no body. `purgeRetention`, `describeRetention` and `resolveRetention` are exported for a host that runs its own purge.
 
 ### Background jobs
-
-On a long-lived Node server, the plugin runs its background work on timers: the GSC rank snapshot,
-the alerts digest and the retention purge. Serverless hosts (Cloudflare Workers) have no
-long-lived process, so set `jobs` and run the work from a cron instead:
 
 ```ts
 seoAnalyzerPlugin({
@@ -260,466 +313,225 @@ seoAnalyzerPlugin({
 })
 ```
 
-The plugin then registers Payload tasks with schedules on the `seo` queue, and starts no timers:
+With `jobs`, the plugin registers scheduled Payload tasks and starts no timers. Without it, Node runs the same work on `setInterval`, and Workers skips it with a warning.
 
 | Task | Registered when | Schedule | Does |
 |---|---|---|---|
-| `seoAuditContinue` | `dashboard` | `auditCron` | Runs the next step of a dashboard audit that paused between steps. Never starts a build. |
-| `seoRankSnapshot` | `gscApi` | `dailyCron` | GSC position snapshot. |
-| `seoAlertsDigest` | `alerts` | `dailyCron` | Builds and sends the alerts digest. |
-| `seoRetentionPurge` | `retentionDays` | `dailyCron` | Retention purge. |
+| `seoAuditContinue` | `dashboard` | `auditCron` | Runs the next step of a paused dashboard audit. Never starts a build |
+| `seoRankSnapshot` | `gscApi` | `dailyCron` | Search Console position snapshot |
+| `seoAlertsDigest` | `alerts` | `dailyCron` | Builds and sends the digest |
+| `seoRetentionPurge` | any time-series dataset enabled | `dailyCron` | Retention purge |
 
-The host runs the queue. On Workers, call `runSeoJobs(payload)` from a `scheduled` handler (Cron
-Trigger) as often as `auditCron`; it queues the due tasks and runs them. Elsewhere, Payload's
-`jobs.autoRun` works too. Registering tasks adds Payload's `payload-jobs` collection and
-`payload-jobs-stats` global, so run `payload migrate:create` afterwards. Set
-`jobs.deleteJobOnComplete` (Payload's default) so finished jobs don't pile up.
+The host runs the queue: `runSeoJobs(payload)` from a Workers `scheduled` handler (see [step 3](#3-worker-entry-run-the-jobs-on-the-cron-trigger)), or Payload's `jobs.autoRun` on Node. A scheduled task is queued for the cron's *next* run time, so the first tick only queues and the second runs. Keep Payload's `deleteJobOnComplete` so finished jobs don't pile up.
 
-A scheduled task is queued for the cron's *next* run time, so the first one runs one tick after
-the first call; after that, every tick runs one.
-
-**Chunked audit builds.** With `waitUntil`, the dashboard audit builds in steps of
-`SEO_AUDIT_STEP_DOCS` docs (800 by default, about 8 s of CPU on a Worker). A step that runs out of
-budget saves its cursor and partial results in the `cacheStore` and pauses. While the dashboard is
-open, each of its polls runs the next step; `seoAuditContinue` finishes builds nobody is watching.
-A save during the build bumps the cache generation as before, so the finished audit is stored
-stale and the next request rebuilds.
-
-### Feature flags
-
-`features` gates collections, endpoints and admin views together — turning one off loads less. The core
-analyzer sidebar, the `validate` endpoint and the meta fields are always active.
-
-| Flag | Default | What it controls |
-|---|---|---|
-| `dashboard` | `true` | `/admin/seo`, `/audit` |
-| `sitemapAudit` | `true` | `/admin/sitemap-audit`, `/sitemap-audit`, `/sitemap-config` |
-| `settings` | `true` | `/admin/seo-config`, `/settings`, the `seo-settings` collection |
-| `redirects` | `true` | `/admin/redirects`, redirect CRUD, the `seo-redirects` collection |
-| `performance` | `true` | `/admin/performance`, `/performance`, `/core-web-vitals`, `/indexation-audit`, the `seo-performance` collection |
-| `linkGraph` | `true` | `/admin/link-graph`, `/link-graph` |
-| `keywords` | `true` | `/admin/keyword-research`, `/keyword-research` |
-| `cannibalization` | `true` | `/admin/cannibalization`, `/cannibalization` |
-| `schemaBuilder` | `true` | `/admin/schema-builder`, `/schema-generator` |
-| `scoreHistory` | `true` | `seo-score-history` collection, tracking hook, `/history` |
-| `seoLogs` | `true` | `seo-logs` collection and endpoints (404 tracking) |
-| `externalLinks` | `true` | `/external-links` |
-| `duplicateContent` | `true` | `/duplicate-content` |
-| `aiFeatures` | `true` | the seven `ai-*` / `alt-text-audit` endpoints |
-| `warmCache` | `true` | background cache warm-up on init and hourly — turn off on low-memory hosts |
-| `gscApi` | **`false`** | Google Search Console OAuth, rank tracking, CTR opportunities, content grade, `seo-gsc-auth` + `seo-rank-history` |
-| `alerts` | **`false`** | monitoring digest endpoints and scheduler |
-| `indexNow` | **`false`** | IndexNow key file and submit endpoint |
-| `analyzer` | `true` | always on; cannot be disabled |
+A step build stops after `SEO_AUDIT_STEP_DOCS` docs or `SEO_AUDIT_STEP_MS`, saves its cursor and partial results in `cacheStore`, and pauses. A pause with no new step for `SEO_AUDIT_PAUSED_STALE_MS` is abandoned. A save during a build makes the result stale, so on a site edited every few minutes a big audit may keep rebuilding (PLAN.md, P3 item 21).
 
 ### Environment variables
 
+The plugin reads no `NEXT_*` or `PAYLOAD_PUBLIC_*` variables. On Workers, declare the ones you use in `apps/web/.env.schema`.
+
 | Variable | Default | Description |
 |---|---|---|
-| `NEXT_PUBLIC_SERVER_URL` | — | Fallback base URL when `siteUrl` is not set (`PAYLOAD_PUBLIC_SERVER_URL` is tried next). |
-| `OPENROUTER_API_KEY` | — | Enables the AI assists (OpenRouter); without it they fall back to heuristics or return `no_api_key`. Put a credit limit on the key: that's the hard cap on spend. |
-| `SEO_AI_MODEL` | `deepseek/deepseek-v4.1-flash` | OpenRouter model used by `/ai-optimize`, `/ai-optimize-bulk`, `/ai-rewrite`, `/ai-content-brief` and `/ai-alt-text` (`/ai-generate` is purely heuristic). It must support structured outputs, and image input for alt text. |
-| `SEO_AI_BASE_URL` | `https://openrouter.ai/api/v1` | OpenRouter's API, or a proxy of it such as Cloudflare AI Gateway's OpenRouter endpoint. |
-| `SEO_AI_REASONING` | `none` | Reasoning effort sent to the model (`none`, `minimal`, `low`…). Raise it only for a model that can't turn reasoning off. |
-| `SEO_AI_DATA_COLLECTION` | `deny` | `deny` routes only to providers that don't store or train on prompts (page content, drafts included); `allow` lifts that. |
-| `SEO_MEDIA_ORIGIN` | — | Extra origin the AI alt-text endpoint may fetch images from, alongside `siteUrl`. Only used when Payload's own file route has no file for the upload (it is read in-process first). |
-| `SEO_REQUIRE_ADMIN_ROLE` | — | `1` disables the fail-open in `isSeoAdmin`, requiring an explicit `admin` role. |
-| `SEO_ADMIN_USER_COLLECTIONS` | `config.admin.user` | Comma-separated collection slugs accepted as admin-panel users. Only needed if several collections may reach the panel. |
-| `SEO_AUDIT_MIN_REFRESH_MS` | `300000` | Minimum delay between two manual (`?nocache=1`) rebuilds of the site-wide audit. |
-| `SEO_STRICT_READ_ACCESS` | — | `1` makes single-document reads honour the caller's collection and field-level ACL. |
-| `SEO_FETCH_MAX_DOCS` | `5000` | Cap on documents loaded by site-wide helpers. |
-| `SEO_AUDIT_MAX_DOCS` | `5000` | Cap on documents included in the dashboard audit. |
-| `SEO_INDEXATION_MAX_DOCS` | `1500` | Cap on documents scanned by `/indexation-audit` (one request; ~10 ms CPU per doc on Workers). |
-| `SEO_AUDIT_STEP_DOCS` | `800` | With `waitUntil` (Workers): docs analyzed per build step before the audit saves its progress and pauses. |
-| `SEO_AUDIT_STEP_MS` | `20000` | With `waitUntil`: wall-time budget of one build step. |
-| `SEO_AUDIT_PAUSED_STALE_MS` | `3600000` | A paused build with no new step for this long is abandoned and the next one starts over. |
-| `SEO_AUDIT_BATCH_SIZE` | `10` | Documents analysed per audit batch (capped at 100). |
-| `SEO_AUDIT_BATCH_DELAY_MS` | `100` | Pause between audit batches (capped at 5000). |
-| `SEO_AUDIT_DOC_DELAY_MS` | `10` | Pause after each document; `0` is fastest, raise it on rich content. |
-| `SEO_AUDIT_THROTTLE_RATIO` | `2` | Idle-to-work ratio applied while the audit builds. |
-| `SEO_AUDIT_DEPTH` | `0` | Payload `depth` used when loading documents for the audit. |
-| `SEO_AUDIT_FILE_CACHE` | — | `0` or `false` ignores `auditCacheFile` and forces a live build. |
-| `SEO_AUDIT_TRUST_FILE` | — | `1` serves `auditCacheFile` without the staleness check (for CI-prewarmed deployments). |
-| `SEO_SITEMAP_BATCH_SIZE` | `50` | Batch size for the news/image/video sitemaps (capped at 100). |
-| `SEO_SITEMAP_MAX_DOCS` | `5000` | Document cap for the news/image/video sitemaps. Counts every document **read**, filtered ones included. |
-| `SEO_LOGS_MAX_ROWS` | `5000` | Ceiling on the rows `POST /seo-logs` may create. Past it, known URLs keep incrementing but no new path is recorded. |
-| `SEO_LLMS_TXT` | — | `1` enables `/llms.txt`; it returns 404 otherwise. |
-| `SEO_INDEXNOW_KEY` | — | IndexNow key, served at `/indexnow-key.txt`. Required by the `indexNow` feature. |
-| `GSC_OAUTH_CLIENT_ID` / `GSC_OAUTH_CLIENT_SECRET` | — | Google Cloud OAuth client for the `gscApi` feature. |
-| `SEO_GSC_ENCRYPTION_KEY` | — | 32-byte key encrypting the stored GSC tokens (AES-256-GCM). Strongly recommended. |
-| `GOOGLE_PAGESPEED_API_KEY` / `PAGESPEED_API_KEY` | — | PageSpeed Insights key for Core Web Vitals; raises the quota. |
-| `SEO_ALERT_WEBHOOK_URL` / `SEO_ALERT_EMAIL` | — | Digest delivery for the `alerts` feature. |
-| `SEO_ALERT_SCORE_DROP` | `10` | Score drop, in points, that triggers an alert. |
-| `SEO_ALERT_POSITION_DROP` | `5` | SERP position drop that triggers an alert. |
-| `SEO_ALERT_WINDOW_HOURS` | `24` | Look-back window for the digest. |
-| `SEO_ALERT_INTERVAL_HOURS` | `24` | How often the scheduler runs (minimum 1). |
+| `SITE_URL` | — | Site origin when the `siteUrl` option isn't set. Without either, generated files use the request origin |
+| `SEO_LLMS_TXT` | — | `1` serves `/llms.txt`; 404 otherwise |
+| `SEO_AUDIT_MAX_DOCS` | `5000` | Docs in the dashboard audit |
+| `SEO_AUDIT_STEP_DOCS` | `800` | With `waitUntil`: docs per build step (~8 s CPU on a deployed Worker) |
+| `SEO_AUDIT_STEP_MS` | `20000` | With `waitUntil`: wall-time budget of a step |
+| `SEO_AUDIT_PAUSED_STALE_MS` | `3600000` | A paused build idle this long is abandoned |
+| `SEO_AUDIT_BUILD_STALE_MS` | `120000` | A build marker older than this counts as dead (cross-isolate single-flight) |
+| `SEO_AUDIT_MIN_REFRESH_MS` | `300000` | Minimum delay between two manual (`?nocache=1`) rebuilds |
+| `SEO_AUDIT_BATCH_SIZE` | `10` | Docs per audit batch (max 100) |
+| `SEO_AUDIT_BATCH_DELAY_MS`, `SEO_AUDIT_DOC_DELAY_MS`, `SEO_AUDIT_THROTTLE_RATIO` | `100`, `10`, `2` | Throttling of a Node build; dropped with `waitUntil` |
+| `SEO_AUDIT_DEPTH` | `0` | Payload `depth` for audit reads |
+| `SEO_AUDIT_FILE_CACHE`, `SEO_AUDIT_TRUST_FILE` | — | Node only: `0` ignores `auditCacheFile`; `1` serves it without the staleness check |
+| `SEO_INDEXATION_MAX_DOCS` | `1500` | Docs scanned by `/indexation-audit` (one request) |
+| `SEO_FETCH_MAX_DOCS` | `5000` | Docs loaded by other site-wide scans, `sitemap.xml` included |
+| `SEO_SITEMAP_MAX_DOCS`, `SEO_SITEMAP_BATCH_SIZE` | `5000`, `50` | News/image/video sitemaps; the cap counts every doc read |
+| `SEO_EXTERNAL_LINKS_MAX` | `100` | Unique external URLs per scan (the response says `capped`) |
+| `SEO_EXTERNAL_LINKS_MAX_SUBREQUESTS` | `1000` | Subrequests per call; a scan that doesn't fit resumes on the next call |
+| `SEO_LOGS_MAX_ROWS` | `5000` | Row cap of the 404 log |
+| `OPENROUTER_API_KEY` | — | Enables the AI calls. Without it, meta suggestions fall back to heuristics and alt text / briefs answer `no_api_key`. Put a credit limit on the key |
+| `SEO_AI_MODEL` | `deepseek/deepseek-v4.1-flash` | OpenRouter model. Must support structured outputs, and image input for alt text |
+| `SEO_AI_BASE_URL` | `https://openrouter.ai/api/v1` | OpenRouter, or a proxy such as Cloudflare AI Gateway |
+| `SEO_AI_REASONING` | `none` | Reasoning effort, for models that can't turn it off |
+| `SEO_AI_DATA_COLLECTION` | `deny` | `deny` routes only to providers that don't store or train on prompts; `allow` lifts it |
+| `SEO_MEDIA_ORIGIN` | — | Extra origin alt text may fetch from when Payload's file route has no file |
+| `GSC_OAUTH_CLIENT_ID`, `GSC_OAUTH_CLIENT_SECRET` | — | Google OAuth client for `gscApi`. Redirect URI: `<siteUrl>/api/seo-plugin/gsc/callback` |
+| `SEO_GSC_ENCRYPTION_KEY` | derived from `PAYLOAD_SECRET` | 32-byte key (hex or base64) for the stored GSC token. Changing it, or the secret it derives from, forces a reconnect |
+| `GOOGLE_PAGESPEED_API_KEY` / `PAGESPEED_API_KEY` | — | PageSpeed Insights key for Core Web Vitals |
+| `SEO_INDEXNOW_KEY` | — | IndexNow key, required by `indexNow` |
+| `SEO_ALERT_WEBHOOK_URL`, `SEO_ALERT_EMAIL` | — | Digest delivery for `alerts` |
+| `SEO_ALERT_SCORE_DROP`, `SEO_ALERT_POSITION_DROP`, `SEO_ALERT_WINDOW_HOURS`, `SEO_ALERT_INTERVAL_HOURS` | `10`, `5`, `24`, `24` | Digest thresholds; the interval only applies to the Node timer |
+| `SEO_REQUIRE_ADMIN_ROLE` | — | `1` requires an explicit `admin` role (no fail-open on role-less setups) |
+| `SEO_ADMIN_USER_COLLECTIONS` | `config.admin.user` | Comma-separated collections accepted as admin-panel users |
+| `SEO_STRICT_READ_ACCESS` | — | `1` makes single-document reads honour the caller's ACL |
 
-## API Endpoints
+## API endpoints
 
-All paths are relative to `/api/seo-plugin` (change the prefix with `endpointBasePath`, for API-only use — see [Plugin options](#plugin-options)). "Authenticated"
-means a logged-in **admin-panel** user — a session on another auth collection (front-office customers,
-members, subscribers) does **not** qualify, even though Payload populates `req.user` for it on every
-route. The panel collection is `config.admin.user`; widen it with `SEO_ADMIN_USER_COLLECTIONS` if
-several collections may reach the panel. "SEO admin" adds a role check on top — a user with
-`role: 'admin'` or an `admin` entry in `roles` — including when the host models roles as a
-single-value select or as a relationship the plugin can read a name from. It falls back to any
-admin-panel user only when the users collection declares **no** `role`/`roles` field at all; a field
-that exists but holds an unreadable value (an unpopulated relationship id) denies rather than
-promotes, and the plugin logs why. Set `SEO_REQUIRE_ADMIN_ROLE=1` to remove the fallback entirely.
+Paths are relative to `/api/seo-plugin` (`endpointBasePath`). "Authenticated" means a logged-in **admin-panel** user (`config.admin.user`, widened with `SEO_ADMIN_USER_COLLECTIONS`). A session on another auth collection doesn't qualify, even though Payload sets `req.user` for it.
 
-The plugin's **admin views** (`/admin/seo`, `/admin/redirects`, …) apply the same panel-session rule.
-Registering a custom view takes its route out of Payload's own `canAccessAdmin` redirect, so the
-views check it themselves and send a foreign session to `/admin/unauthorized`.
-
-The plugin's own collections (`seo-settings`, `seo-redirects`, `seo-gsc-auth`, `seo-performance`,
-`seo-logs`, `seo-score-history`, `seo-rank-history`) enforce the same rule through their `access`
-config, since Payload exposes a REST API for every collection.
+"SEO admin" adds a role check: `role: 'admin'` or an `admin` entry in `roles`, read from a string, an array, a select or a populated relationship. It falls back to any panel user only when the users collection has **no** `role`/`roles` field; `SEO_REQUIRE_ADMIN_ROLE=1` removes that fallback. The admin views and the plugin's collections apply the same rules.
 
 ### Always registered
 
 | Method | Path | Access | Purpose |
 |---|---|---|---|
-| `GET` `POST` | `/validate` | Authenticated | Full analysis of one document or global. |
-| `GET` | `/check-keyword` | Authenticated | Whether a focus keyword is already used elsewhere. |
-| `POST` | `/generate` | Authenticated | Runs your `generateTitle` / `generateDescription` / `generateImage` / `generateURL`. |
-| `POST` | `/suggest-links` | Authenticated | Internal-link suggestions; rate limited to 120/min, index cached 15 min. |
-| `GET` | `/breadcrumb` | Authenticated | Breadcrumb trail for a document. |
-| `GET` | `/health` | SEO admin | Module health and observability. |
-| `GET` | `/robots.txt` | Public | Generated `robots.txt`. |
-| `POST` | `/robots.txt` | SEO admin | Saves custom robots rules into `seo-settings`. |
-| `GET` | `/sitemap.xml` | Public | Main sitemap. |
-| `GET` | `/sitemap-news.xml` `/sitemap-images.xml` `/sitemap-video.xml` | Public | Specialised sitemaps. |
-| `GET` | `/llms.txt` | Public | AI-discoverability file; 404 unless `SEO_LLMS_TXT=1`. |
+| `GET` `POST` | `/validate` | Authenticated | Full analysis of one document or global |
+| `GET` | `/check-keyword` | Authenticated | Whether a focus keyword is used elsewhere (returns document ids) |
+| `POST` | `/generate` | Authenticated | Runs your `generate*` functions |
+| `POST` | `/suggest-links` | Authenticated | Internal-link suggestions |
+| `GET` | `/breadcrumb` | Authenticated | Breadcrumb trail for a document |
+| `GET` | `/health` | SEO admin | Module health |
+| `GET` | `/robots.txt`, `/sitemap.xml`, `/sitemap-news.xml`, `/sitemap-images.xml`, `/sitemap-video.xml`, `/llms.txt` | Public | Generated files (drafts and `noindex` documents excluded) |
+| `POST` | `/robots.txt` | SEO admin | Saves custom robots rules |
 
 ### Feature-gated
 
 | Method | Path | Access | Feature |
 |---|---|---|---|
-| `GET` | `/audit` | Authenticated | `dashboard` |
+| `GET` | `/audit` | Authenticated (`?nocache=1`: SEO admin, throttled) | `dashboard` |
 | `GET` | `/indexation-audit` | Authenticated | `performance` |
 | `GET` | `/history` | Authenticated | `scoreHistory` |
 | `GET` | `/sitemap-audit`, `/sitemap-config` | Authenticated | `sitemapAudit` |
-| `GET` `PATCH` | `/settings` | Authenticated (GET) / SEO admin (PATCH) | `settings` |
-| `GET` | `/redirects` | Authenticated | `redirects` |
-| `POST` `PATCH` `DELETE` | `/redirects` | SEO admin | `redirects` |
-| `POST` | `/create-redirect` | SEO admin | `redirects` |
-| `GET` | `/redirect-chains` | Authenticated | `redirects` |
-| `GET` | `/cannibalization` | Authenticated | `cannibalization` |
-| `POST` | `/external-links` | Authenticated | `externalLinks` |
-| `GET` | `/duplicate-content` | Authenticated | `duplicateContent` |
-| `GET` | `/link-graph` | Authenticated | `linkGraph` |
-| `GET` | `/keyword-research` | Authenticated | `keywords` |
-| `GET` | `/schema-generator` | Authenticated | `schemaBuilder` |
-| `GET` | `/performance` | Authenticated | `performance` |
-| `POST` | `/performance` | SEO admin | `performance` |
+| `GET` / `PATCH` | `/settings` | Authenticated / SEO admin | `settings` |
+| `GET` | `/redirects`, `/redirect-chains` | Authenticated | `redirects` |
+| `POST` `PATCH` `DELETE` | `/redirects`, `POST /create-redirect` | SEO admin | `redirects` |
+| `POST` | `/external-links` | Authenticated (`forceRefresh`: SEO admin) | `externalLinks` |
+| `GET` / `POST` | `/performance` | Authenticated / SEO admin | `performance` |
 | `GET` | `/core-web-vitals` | Authenticated | `performance` |
+| `GET` | `/cannibalization`, `/duplicate-content`, `/link-graph`, `/keyword-research`, `/schema-generator` | Authenticated | their flags |
 | `POST` | `/ai-generate`, `/ai-rewrite`, `/ai-optimize`, `/ai-content-brief` | Authenticated | `aiFeatures` |
-| `GET` | `/alt-text-audit` | SEO admin | `aiFeatures` |
-| `POST` | `/ai-alt-text`, `/ai-optimize-bulk` | SEO admin | `aiFeatures` |
-| `GET` | `/seo-logs` | Authenticated | `seoLogs` |
-| `POST` | `/seo-logs` | `X-SEO-Secret` header, or SEO admin when no `seoLogsSecret` is set | `seoLogs` |
-| `DELETE` | `/seo-logs` | SEO admin | `seoLogs` |
+| `GET` / `POST` | `/alt-text-audit` / `/ai-alt-text`, `/ai-optimize-bulk` | SEO admin | `aiFeatures` |
+| `GET` / `POST` / `DELETE` | `/seo-logs` | Authenticated / `X-SEO-Secret` or SEO admin / SEO admin | `seoLogs` |
 | `GET` | `/gsc/status` | Authenticated | `gscApi` |
-| `GET` | `/gsc/auth`, `/gsc/callback`, `/gsc/data` | SEO admin | `gscApi` |
-| `POST` | `/gsc/disconnect` | SEO admin | `gscApi` |
-| `POST` | `/rank-snapshot` | SEO admin | `gscApi` |
+| `GET` / `POST` | `/gsc/auth`, `/gsc/callback`, `/gsc/data` / `/gsc/disconnect`, `/rank-snapshot` | SEO admin | `gscApi` |
 | `GET` | `/rank-history`, `/ctr-opportunities`, `/content-grade` | SEO admin | `gscApi` |
-| `GET` | `/alerts-digest` | SEO admin | `alerts` |
-| `POST` | `/alerts-run` | SEO admin | `alerts` |
-| `GET` | `/indexnow-key.txt` | Public (search engines verify it) | `indexNow` |
-| `POST` | `/indexnow-submit` | SEO admin | `indexNow` |
-| `GET` | `/retention` | SEO admin | registered only when `retentionDays` is set |
-| `POST` | `/retention` | SEO admin | registered only when `retentionDays` is set |
+| `GET` / `POST` | `/alerts-digest` / `/alerts-run` | SEO admin | `alerts` |
+| `GET` / `POST` | `/indexnow-key.txt` (public) / `/indexnow-submit` (SEO admin) | — | `indexNow` |
+| `GET` `POST` | `/retention` | SEO admin | any time-series dataset enabled, or named in `retentionDays` |
 
-Expensive endpoints are rate limited to 10 requests per minute, keyed by user id and falling back to the
-client IP; the polled ones (`/audit`, `/suggest-links`) get 120 per minute instead.
+Rate limits are per user (`collection:id`), falling back to the client IP. The buckets are in `SEO_RATE_LIMITS`: `expensive` (10/min: whole-site scans, bulk AI), `audit-poll` (120/min), `ai-interactive` (30/min: per-document AI clicks) and `seo-logs` (30/min).
 
-## Admin Views
+## Admin views
 
 | Path | View | Feature |
 |---|---|---|
-| `/admin/seo` | Site-wide dashboard and audit | `dashboard` |
-| `/admin/sitemap-audit` | Sitemap coverage, broken links, orphans | `sitemapAudit` |
+| `/admin/seo` | Site audit, filters, bulk actions, CSV/PDF export | `dashboard` |
+| `/admin/sitemap-audit` | Orphans, weak pages, hubs, broken links; 404 and External tabs follow `seoLogs` / `externalLinks` | `sitemapAudit` |
 | `/admin/seo-config` | Settings, thresholds, robots, sitemap options | `settings` |
-| `/admin/redirects` | Redirect manager (CRUD, CSV import, chain detection) | `redirects` |
+| `/admin/redirects` | Redirect manager: CRUD, CSV import/export, chain detection | `redirects` |
+| `/admin/performance` | Search Console imports, Core Web Vitals and the panels built on them | `performance` |
 | `/admin/cannibalization` | Pages competing on the same query | `cannibalization` |
-| `/admin/performance` | Search Console data and Core Web Vitals | `performance` |
-| `/admin/keyword-research` | Keyword research and coverage | `keywords` |
-| `/admin/schema-builder` | JSON-LD builder per document type | `schemaBuilder` |
+| `/admin/keyword-research` | Keyword research and content briefs | `keywords` |
+| `/admin/schema-builder` | JSON-LD builder | `schemaBuilder` |
 | `/admin/link-graph` | Internal link graph and crawl budget | `linkGraph` |
 
-A nav link to the dashboard is appended to `afterNavLinks`.
+An SEO nav group lists the enabled views. Admin links go through `formatAdminURL`, so a custom admin route works.
 
 ## Collections
 
-Created by the plugin, only when the matching feature is on.
+Registered only when their feature is on.
 
-| Slug | Role | Read | Write | Feature |
+| Slug | Holds | Read | Write | Feature |
 |---|---|---|---|---|
 | `seo-settings` | Thresholds, sitemap and robots configuration | Authenticated | SEO admin | `settings` |
 | `seo-redirects` | Redirect rules (slug configurable) | Authenticated | SEO admin | `redirects` |
-| `seo-score-history` | Score snapshots per document | Authenticated | Create: authenticated; update/delete: `role: 'admin'` | `scoreHistory` |
-| `seo-performance` | Imported Search Console rows | Authenticated | Authenticated | `performance` |
-| `seo-logs` | 404 tracking | Authenticated | SEO admin | `seoLogs` |
-| `seo-gsc-auth` | OAuth tokens, encrypted at rest and never readable through the API | Authenticated | SEO admin | `gscApi` |
-| `seo-rank-history` | Daily rank snapshots from GSC | Authenticated | `role: 'admin'` | `gscApi` |
+| `seo-gsc-auth` | Encrypted OAuth tokens, never readable through the API | Authenticated | SEO admin | `gscApi` |
+| `seo-score-history`, `seo-performance`, `seo-logs`, `seo-rank-history` | Time-series data | Authenticated | SEO admin | **only without `dataStore`** |
 
-If a collection with the `redirectsCollection` slug already exists in your config, the plugin uses yours
-instead of creating its own.
+Every plugin collection sets `versions: false` (Payload 4 versions collections by default) and stays out of the sidebar (`admin.group: false`). The plugin also adds `isCornerstone`, `focusKeyword` and the `focusKeywords` array to each collection in `collections`, plus the `meta` group unless one exists.
 
-## Package Exports
+## Package exports
 
 | Entry | Contents | Environment |
 |---|---|---|
-| `@consilioweb/payload-seo-analyzer` | `seoAnalyzerPlugin` (alias `seoPlugin`), `analyzeSeo`, the frontend helpers, field builders (`seoFields`, `metaFields`), endpoint handler factories, `buildAuditToFile`, the extraction helpers, the scoring constants and every type | Server / isomorphic |
-| `@consilioweb/payload-seo-analyzer/client` | The admin React components (`SeoAnalyzerField`, the nine views, meta field components, `SerpPreview`, `SeoNavLink`) | Client (`'use client'`) |
-| `@consilioweb/payload-seo-analyzer/views` | Server view wrappers that render each dashboard view inside Payload's `DefaultTemplate` | Server (RSC) |
+| `@cargo/payload-seo-analyzer` | `seoAnalyzerPlugin`, `analyzeSeo`, frontend helpers, `createSqlSeoDataStore` / `migrateSeoStore`, `runSeoJobs`, `recordSeoNotFound`, retention helpers, `SEO_RATE_LIMITS`, field builders, endpoint factories and every type | Server |
+| `@cargo/payload-seo-analyzer/shared` | `buildJsonLd`, `serializeJsonLd`, `validateRedirectTarget`, `normalizeFromPath`, with no package imports | Isomorphic |
+| `@cargo/payload-seo-analyzer/client` | Admin React components (sidebar field, views, meta fields, `SerpPreview`, `SeoNavLink`) | Client (`'use client'`) |
+| `@cargo/payload-seo-analyzer/client.css` | Admin styles. The ESM client bundle already imports them | Client |
+| `@cargo/payload-seo-analyzer/views` | Server view wrappers rendered inside Payload's `DefaultTemplate` | Server (RSC) |
 
-Both ESM and CJS builds ship, with their own type declarations. `sideEffects` is limited to the client
-bundle, so the root and `views` entries tree-shake.
+ESM and CJS builds ship with type declarations. `xlsx` (Search Console XLSX import) is optional and loaded through a non-literal import; map it in the host if you need it.
 
-### Frontend helpers
+## Database and migrations
 
-| Function | Signature | Purpose |
-|---|---|---|
-| `buildSeoMetadata` | `(doc, options?) => SeoMetadata` | Title, description, canonical, robots, Open Graph and Twitter tags. Shape-compatible with Next.js `Metadata`. |
-| `buildJsonLd` | `(doc, options?) => { type, jsonLd }` | Schema.org object for the document, type auto-detected from the collection unless forced. |
-| `renderJsonLdScript` | `(doc, options?) => string` | The complete `<script type="application/ld+json">` tag, already escaped. |
-| `serializeJsonLd` | `(jsonLd) => string` | XSS-safe JSON for `dangerouslySetInnerHTML`. |
-| `buildDocPath` / `buildDocUrl` | `(…, collection?, collectionRoutes?)` | The exact public path or URL the sitemap, canonical and JSON-LD use. |
-| `analyzeSeo` | `(input, config?) => SeoAnalysis` | Runs the whole engine outside Payload. |
+- **Payload migrations belong to the host.** Payload reads one migrations directory, in the app, never in a dependency. After adding a slug to `collections`, or turning on `settings`, `redirects`, `gscApi`, `jobs` or (without `dataStore`) a time-series feature, run `payload migrate:create` and commit the migration. In `apps/web`: `pnpm web migrate:create <name>`. CI fails when the schema and migrations disagree.
+- **The SQL data store migrates itself.** `SEO_STORE_MIGRATIONS` is append-only and every statement is safe to run twice. Run `migrateSeoStore(db)` at deploy time (`pnpm web seo-store:migrate:remote`, part of `pnpm web run deploy`) so the first request doesn't pay for it.
+- **Fields the plugin adds to your tables** (`isCornerstone`, `focusKeyword`, `focusKeywords`, `meta`) are editorial content. Don't drop them blindly; the `meta` group may belong to `@payloadcms/plugin-seo`.
 
-`buildSeoMetadata` and `buildJsonLd` both take `collection` and `collectionRoutes`; pass the same
-`collectionRoutes` you gave the plugin, or the URLs they produce will not match the sitemap.
-
-The second argument of `analyzeSeo` is a `SeoConfig`, the analyzer's own config type. `siteUrl`,
-`siteName`, `locale`, `disabledRules`, `overrideWeights`, `thresholds`, `localSeoSlugs` and
-`collectionRoutes` behave exactly as in [Plugin options](#plugin-options) — the plugin forwards them
-for you. Two fields exist only here, so they are reachable only by calling `analyzeSeo` directly:
-
-| Field | Type | Default | Purpose |
-|---|---|---|---|
-| `stopWordCompounds` | `Array<readonly [string, string]>` | built-in FR/EN list | Extra compound expressions whose stop words are tolerated in a slug; appended to the defaults. |
-| `maxRecursionDepth` | `number` | `50` | Depth limit when walking a Lexical tree to extract text. |
-
-## Requirements
-
-| Dependency | Range | Required |
-|---|---|---|
-| `payload` | `^3.0.0` | Yes |
-| `next` | `^15.2.0 \|\| ^16.0.0` | Optional peer (needed by the admin components) |
-| `react` | `^18.0.0 \|\| ^19.0.0` | Optional peer |
-| `@payloadcms/next` | `^3.0.0` | Optional peer |
-| `@payloadcms/ui` | `^3.0.0` | Optional peer |
-| Node.js | `^20.19.0 \|\| >=22.12.0` | Yes (`engines`) |
-
-Node 18 is not supported from 2.0.0 on. CI runs the suite on Node 20 and 22.
-
-## Uninstall
-
-```bash
-npx seo-analyzer-uninstall
-```
-
-The script runs three steps: it removes the package's imports and `seoAnalyzerPlugin(...)` calls from
-your source files, runs the removal command for your package manager, then regenerates the import map.
-It exits with code `1` and lists the failing commands if either of the last two did not complete.
-
-**It never touches your database**, and it prints what is left behind:
-
-- The seven plugin tables you may drop (`seo-gsc-auth`, `seo-settings`, `seo-redirects`,
-  `seo-score-history`, `seo-performance`, `seo-logs`, `seo-rank-history`). Drop **`seo-gsc-auth`
-  first**: it holds an encrypted Google OAuth refresh token and the connected account's email, and
-  removing the package does not revoke that grant — do that at
-  [myaccount.google.com/permissions](https://myaccount.google.com/permissions) too. `seo-logs` holds
-  visitor `referrer` and `userAgent` strings (no IP addresses).
-- The fields the plugin injected into **your** collections, which are *not* dropped and should not be
-  dropped blindly: `isCornerstone`, `focusKeyword`, the `focusKeywords` array table, and the `meta`
-  group. `meta.title` / `meta.description` are editorial content your editors wrote, and the group may
-  belong to `@payloadcms/plugin-seo` rather than to this plugin — see
-  [Database and updates](#database-and-updates). Removing any of them is a schema change:
-  `payload migrate:create`, then `payload migrate`.
-
-## Database and updates
-
-- This plugin adds collections and fields to your Payload config. It does not own the schema — your
-  app does.
-- **Payload does not let a plugin ship migrations.** `payload migrate` reads a single directory, and
-  it resolves it in the host app, never in a dependency (`payload/dist/database/migrations/readMigrationFiles.js`,
-  `findMigrationDir.js`). A migration file published inside an npm package is dead code.
-- **In development**, `push` syncs the schema for you — there is nothing to run.
-- **In production**, run `payload migrate:create` then `payload migrate`. Never `push`: it is skipped
-  as soon as `NODE_ENV=production`, and mixing it with migrations raises a data-loss warning
-  (`@payloadcms/drizzle/dist/migrate.js`).
-- Every release of this plugin states in its own migration section below whether it changes the
-  schema. None has since 1.19.0.
-
-### What this plugin writes into *your* tables
-
-The [collections listed above](#collections) are the plugin's own tables. But the analyzer fields
-(`isCornerstone` checkbox, `focusKeyword` text, `focusKeywords` array, `src/fields.ts`) and the `meta`
-group (`meta.title` text, `meta.description` textarea, `meta.image` upload, `src/metaFields.ts`) are
-injected into **every collection listed in the `collections` option**. Each slug you add to that list
-creates real columns in one of your own tables — plus a real array table for `focusKeywords` — exactly
-as if you had declared the fields by hand.
-
-So the migration you owe is triggered by *your* config, not by a version bump: after adding a slug to
-`collections`, run `payload migrate:create` + `payload migrate` in production.
-
-If the collection already carries a `meta` group — from `@payloadcms/plugin-seo`, or your own field —
-the plugin detects it, logs a warning and skips the group instead of adding a second one. Set
-`autoCreateMetaFields: false` to skip it unconditionally.
-
-These two field definitions are byte-identical to their 1.19.0 versions, so no upgrade of this plugin
-has ever owed you a migration by itself.
-
-## Migration to 4.0
-
-**No schema change.** 4.0.0 only changes access rules, validation and view guards. Do not generate a
-migration for it.
-
-The full account is in [CHANGELOG.md](CHANGELOG.md). What can change for you at runtime:
-
-1. **Sessions from an auth collection other than the admin panel's lose the nine admin views.** They
-   are redirected to `/admin/unauthorized`; anonymous visitors go to your real login route instead of
-   a hard-coded `/admin/login`. Only relevant if your config declares more than one `auth` collection.
-2. **Panel users promoted by the old RBAC fail-open lose their SEO-admin rights.** The fallback now
-   asks whether a role field is *present*, not whether it has a shape the plugin recognises. If your
-   users collection models `role` / `roles` as anything other than a plain string or an array of
-   strings, check who still writes to `seo-settings`, `seo-redirects` and `seo-gsc-auth`.
-3. **`POST /seo-logs` requires an SEO admin when no `seoLogsSecret` is configured**, and stops
-   creating rows past `SEO_LOGS_MAX_ROWS` (default 5000).
-4. **`peerDependencies` require Payload `>=3.79.1 <4.0.0`** for `payload`, `@payloadcms/next` and
-   `@payloadcms/ui`.
-
-## Migration to 3.0
-
-**No schema change.** 3.0.0 only changes access rules, validation and rate limiting. Do not generate a
-migration for it.
-
-The full account is in [CHANGELOG.md](CHANGELOG.md). The one item that leaves data behind:
-
-**External redirect destinations are refused unless you opt in** (`allowExternalRedirects`, default
-`false`). Rows stored *before* the upgrade stay editable — the gate only refuses a destination that
-actually **changes**, so an existing external redirect can still have its source path or its 301/302
-type edited (`src/collections/SeoRedirects.ts`, `src/helpers/redirectSafety.ts`). Nothing is rewritten
-or deleted for you; the legacy value simply survives. To review what you are grandfathering, list the
-rows whose destination is absolute:
-
-```bash
-# adjust the table name to your redirectsCollection slug
-sqlite3 your.db "SELECT id, \"from\", \"to\" FROM seo_redirects WHERE \"to\" LIKE 'http%';"
-```
-
-```sql
--- Postgres
-SELECT id, "from", "to" FROM seo_redirects WHERE "to" LIKE 'http%';
-```
-
-Set `allowExternalRedirects: true` if you genuinely rely on cross-origin redirects; otherwise fix the
-rows the query returns, since any edit that touches their destination will now be refused.
-
-Other 3.0.0 changes that alter behaviour without touching data: the site-wide aggregation endpoints no
-longer publish drafts to any authenticated account, `seo-performance` / `seo-logs` /
-`seo-score-history` are no longer writable through the collection API by a plain panel user,
-`sitemap.xml` excludes `noindex` documents, and `?nocache=1` is ignored for a panel user without the
-admin role.
-
-## Migration to 2.0
-
-Three breaking changes; the full account is in [CHANGELOG.md](CHANGELOG.md).
-
-1. **Generated URLs now carry the collection route prefix.** A `posts` document resolves to
-   `/posts/<slug>` instead of `/<slug>`, across `sitemap.xml`, the canonical, the Open Graph URL, the
-   JSON-LD `@id` / `url` and IndexNow. If your posts are served flat, restore the old URLs with
-   `seoAnalyzerPlugin({ collectionRoutes: { posts: '' } })`, and pass the same map to
-   `buildSeoMetadata` / `buildJsonLd` where you call them yourself. A document slugged `home` now
-   resolves to the site root rather than `/home`.
-2. **`seo-settings`, `seo-redirects` and `seo-gsc-auth` are writable by SEO admins only.** On a
-   role-less install nothing changes; on one with roles, a non-admin editor loses write access to those
-   three collections.
-3. **`POST /ai-alt-text` no longer accepts a `collection` in the body** — the target is always
-   `uploadsCollection`, and any other value gets a 403.
-
-Also: Node 18 is dropped, and `next` became a declared (optional) peer dependency.
+Upgrade notes for upstream releases up to 4.2.2 (Payload 3) are in [`CHANGELOG.md`](CHANGELOG.md). Fork changes are in `git log -- packages/payload-seo-analyzer` and [`PLAN.md`](PLAN.md).
 
 ## Performance
 
-Characteristics, not benchmarks — the numbers depend on your content volume and host.
+Measured on a deployed Worker with 1,500 pages (Workers Observability `cpuTimeMs`):
 
-| Concern | Approach |
-|---|---|
-| Site-wide audit | Built in the background, single-flight per locale, batched and throttled through the `SEO_AUDIT_*` variables. |
-| Very small hosts | Pre-compute the audit in CI with `buildAuditToFile()` and point `auditCacheFile` at the result. |
-| Document loading | Paginated, with a hard cap (`SEO_FETCH_MAX_DOCS`) and an optional field projection. |
-| Caching | LRU-bounded with locale-aware invalidation; Core Web Vitals are cached to protect the PageSpeed quota. |
-| Heavy endpoints | Rate limited by user id, with periodic event-loop yielding during long loops. |
-| External APIs | LLM and HTTP calls carry timeouts and retry with backoff. |
+| Work | CPU | Notes |
+|---|---|---|
+| Dashboard audit | ~10 ms per doc | Built in steps of 800 docs through `waitUntil`; the Cron Trigger finishes paused builds |
+| `/indexation-audit` | 12.7 s at 1,500 docs | One request, hence `SEO_INDEXATION_MAX_DOCS=1500` |
+| Uncached `sitemap-audit` / `sitemap.xml` | 1.2 s / 0.9 s | Cached afterwards (shared cache, invalidated on save) |
+| Cached reads, `/validate`, admin views | ≤ 0.2 s | |
+| External links scan | ≤ 65 ms per call | 5 links at a time, 5 s per request, resumes across calls |
+| Cron tick (jobs) | 60–175 ms | Wall time is mostly Payload start-up |
+
+The default Workers CPU limit is 30 s per invocation. The whole-site scans that are still off (link graph, keywords, cannibalization, duplicate content) run in one request and haven't been measured.
 
 ## Troubleshooting
 
-**Admin components do not update.** Regenerate the import map: `pnpm payload generate:importmap`.
-
-**Generated URLs do not match my routes.** Declare the public prefix of each collection:
-
-```ts
-seoAnalyzerPlugin({ collectionRoutes: { posts: '', projects: 'work' } })
-```
-
-Pass the same map to `buildSeoMetadata` and `buildJsonLd` in your front end.
-
-**`SQLITE_BUSY` during imports.** The plugin serializes its own writes, including the bulk redirect
-import. Make sure your own seed and import scripts write sequentially too.
-
-**The audit is heavy on a small host.** Raise `SEO_AUDIT_BATCH_DELAY_MS` and `SEO_AUDIT_DOC_DELAY_MS`,
-lower `SEO_AUDIT_MAX_DOCS`, set `features: { warmCache: false }`, or move the build to CI with
-`buildAuditToFile()` and `auditCacheFile`.
+- **Admin components don't update:** regenerate the import map (`pnpm web generate:importmap`).
+- **The dashboard says "building" forever on Workers:** `cacheStore` or `waitUntil` is missing (`onInit` warns), or no Cron Trigger runs `runSeoJobs`.
+- **A plugin env var has no effect on Workers:** declare it in `apps/web/.env.schema`. `--var` on deploy is silently replaced by the schema's value; set it in the shell instead (`SEO_AUDIT_STEP_DOCS=1 varlock-wrangler deploy`).
+- **Admin login fails on a deployed Worker but works locally:** Payload 4 hashes with 600,000 PBKDF2 iterations and Workers reject more than 100,000. The repo patches `payload` (`patches/`); keep the patch when bumping it.
+- **HTTP 429 in automated checks:** the expensive endpoints allow 10 calls a minute per user.
+- **`index … already exists` on the first dev request after adding collections:** a drizzle/SQLite push quirk; the next request works.
+- **Payload's dev push stops at a "data loss" prompt:** your local D1 has plugin tables that the current config doesn't. Restore the config, or migrate a fresh `.wrangler/state`.
+- **Generated URLs don't match your routes:** set `collectionRoutes`, and pass the same map to `buildJsonLd` / `buildDocUrl`.
 
 ## Security
 
-Secrets are read from environment variables only, never from the database. GSC tokens are encrypted at
-rest with AES-256-GCM when `SEO_GSC_ENCRYPTION_KEY` is set, and the token fields carry
-`read: () => false` so they never leave through the API. The one GSC route open to any authenticated
-panel user is `GET /gsc/status`, which reports the connected account email, the property URL and the
-redirect URI — never a token. Redirect targets are validated against
-open-redirect patterns, `robots.txt` rules are sanitized on write, and outbound fetches are guarded
-against SSRF with a private-IP denylist, DNS-rebinding resolution checks and manual per-hop redirect
-re-validation. JSON-LD is serialized through `serializeJsonLd`, which escapes the characters
-`JSON.stringify` leaves alone.
+The threat model is in [`docs/THREAT-MODEL.md`](docs/THREAT-MODEL.md). In short:
 
-In production, set `SEO_GSC_ENCRYPTION_KEY`, set `SEO_REQUIRE_ADMIN_ROLE=1` if your users collection has
-a role field, and keep a rate limit at your reverse proxy.
+- Every endpoint needs an admin-panel session, except the public generated files.
+- Secrets come from environment variables only.
+- The GSC refresh token is encrypted with AES-256-GCM (WebCrypto, key from HKDF) and is never readable through the API.
+- Redirect targets go through one policy (`redirectSafety.ts`), and robots rules are sanitized.
+- Outbound fetches of user URLs go through an SSRF guard that blocks private addresses, odd IP encodings and redirects to them. The guard resolves DNS with `resolve4`/`resolve6` on Workers.
+- JSON-LD is escaped by `serializeJsonLd`, and CSV exports are protected against formula injection.
 
-Report vulnerabilities to `contact@consilioweb.fr` rather than in a public issue.
+In production:
 
-## Contributing
+- Set `SEO_GSC_ENCRYPTION_KEY` if you enable `gscApi`.
+- Set `SEO_REQUIRE_ADMIN_ROLE=1` if your users have roles.
+- Put a credit limit on the OpenRouter key.
 
-1. Fork the repository and branch from `main`.
-2. Run the checks before opening a pull request:
+## Development
 
-```bash
-pnpm typecheck && pnpm test && pnpm build
+From the repo root:
+
+```sh
+pnpm dev                                                # tsup --watch for the plugin + the app on :3000
+pnpm --filter @cargo/payload-seo-analyzer test          # ~950 vitest tests (jsdom for components)
+pnpm --filter @cargo/payload-seo-analyzer typecheck
+pnpm build                                              # the plugin, then the production Worker
+PAYLOAD_SECRET=test-secret pnpm web test:int            # app integration tests
+E2E_PORT=3021 pnpm web test:e2e                         # Playwright, SEO views included
 ```
 
-The suite is 473 unit tests plus a Playwright harness for the admin views under `e2e/`
-(`pnpm test:e2e:ui:setup` once, then `pnpm test:e2e:ui`).
+- CI (`.github/workflows/ci.yml`) runs lint, typecheck, these tests, the build, a migration and generated-files drift check, and the e2e suite on every PR.
+- Ground rules are in [`PLAN.md`](PLAN.md#working-on-it): catalog versions, `versions: false` on collections, no literal dynamic `import()` of optional dependencies, the `@payloadcms/ui` test stub, append-only store migrations.
+- Admin UI changes follow [`src/ui/README.md`](src/ui/README.md).
+- Pull upstream fixes from the repo root with `git subtree pull --prefix=packages/payload-seo-analyzer https://github.com/pOwn3d/payload-seo-analyzer.git main`. Expect conflicts in `components/*`, `views/*`, `plugin.ts`, `rateLimiter.ts` and the collections.
+- `e2e/` holds upstream's Next.js 16 + Payload 3 harness. It isn't a workspace member and doesn't run; the app's Playwright specs replace it.
 
-## Changelog
+## Uninstall
 
-See [CHANGELOG.md](CHANGELOG.md). Releases from 2.0.0 on are published with npm provenance attestation.
+The `seo-analyzer-uninstall` script (`scripts/uninstall.mjs`) is upstream's. It removes the plugin from your source files and package manager, then regenerates the import map, but it hasn't been checked against Payload 4 or D1. By hand:
 
-## Support
-
-If this plugin saves you time, consider buying me a coffee.
-
-<a href="https://buymeacoffee.com/pown3d">
-  <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" width="217" />
-</a>
-
-- [Documentation](https://github.com/pOwn3d/payload-seo-analyzer#readme)
-- [Issues](https://github.com/pOwn3d/payload-seo-analyzer/issues)
-- [Discussions](https://github.com/pOwn3d/payload-seo-analyzer/discussions)
+1. Remove `seoAnalyzerPlugin(...)` and the app glue (`servePluginFile`, the redirect and 404 hooks, the `scheduled` jobs call).
+2. Run `generate:importmap` and `migrate:create`.
+3. Drop `seo-gsc-auth` first if it exists: it holds an encrypted Google refresh token. Revoke the grant at [myaccount.google.com/permissions](https://myaccount.google.com/permissions) too.
+4. Delete the `SEO_D1` database and the R2 prefix `seo-analyzer/cache/`.
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Built and maintained by [ConsilioWEB](https://consilioweb.fr/services/developpement-web/payload-cms).
+MIT, see [LICENSE](LICENSE). Based on [`@consilioweb/payload-seo-analyzer`](https://github.com/pOwn3d/payload-seo-analyzer) by [ConsilioWEB](https://consilioweb.fr). Report upstream bugs there, and fork-specific ones in this repository.

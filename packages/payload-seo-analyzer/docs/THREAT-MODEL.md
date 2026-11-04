@@ -1,20 +1,20 @@
-# Threat model — `@consilioweb/payload-seo-analyzer`
+# Threat model — `@cargo/payload-seo-analyzer`
 
-The plugin's security model and deliberate design choices.
+The plugin's security model and deliberate design choices. Inherited from upstream `@consilioweb/payload-seo-analyzer`, updated for the Payload 4 + Cloudflare Workers fork; the Workers-specific parts are in *Workers deployment* at the end.
 
 ## Surface & posture
 
 - Every plugin endpoint requires an **admin-panel session** — not merely `req.user`. No mutating endpoint is anonymous.
   > A Payload app may expose several auth collections (staff `users` **and** front-office `customers`, members, subscribers…). Any of them populates `req.user` on every route, this plugin's endpoints included. `!!req.user` therefore never meant "an admin is calling". The gate is `helpers/isAdmin.ts::isSeoPanelUser`, which compares `req.user.collection` with `req.payload.config.admin.user`.
 - Intentionally **public**, read-only, non-sensitive endpoints: `/robots.txt`, `/sitemap.xml`, `/sitemap-*.xml`, and the opt-in `/llms.txt`. These are deliberately **not** rate-limited (to avoid blocking Googlebot); the shared cache is what bounds their cost instead — see *Public endpoints* below.
-- The plugin's **admin views** (`/admin/seo`, `/admin/redirects`, …) enforce the same admin-panel rule as the endpoints, in `helpers/viewAccess.ts`. Declaring a custom view with a non-root `path` takes its route OUT of Payload's own `canAccessAdmin` redirect (`@payloadcms/next::isCustomAdminView` matches on the path and never reads `view.public`), so a `!!req.user` check there would have let a front-office session into the admin shell — and the layout serializes the whole `clientConfig` to whoever renders it. A foreign session is sent to `/admin/unauthorized`, an anonymous one to `/admin/login`.
+- The plugin's **admin views** (`/admin/seo`, `/admin/redirects`, …) enforce the same admin-panel rule as the endpoints, in `helpers/viewAccess.ts`. Declaring a custom view with a non-root `path` takes its route OUT of Payload's own `canAccessAdmin` redirect (Payload matches custom views on the path and never reads `view.public`), so a `!!req.user` check there would have let a front-office session into the admin shell — and the layout serializes the whole `clientConfig` to whoever renders it. A foreign session is sent to `/admin/unauthorized`, an anonymous one to `/admin/login`.
 
 ## Access control (RBAC)
 
 - Two layers, both mandatory, in `helpers/isAdmin.ts`:
   1. `isSeoPanelUser(req)` — the session must come from the host's admin-panel collection (`config.admin.user`). Hosts with several admin-capable collections widen it with `SEO_ADMIN_USER_COLLECTIONS=users,staff`. When neither the user's collection nor the host's admin collection is known (mocks, non-sanitized config), the legacy authenticated-only behaviour applies — we never lock an admin out on missing information.
   2. `isSeoAdmin(user)` — the role check below. `isSeoAdminRequest(req)` is layer 1 + layer 2 and is what endpoints and collection `access` rules call.
-- The same two layers apply to the plugin's **collections** (`seo-settings`, `seo-redirects`, `seo-gsc-auth`, `seo-performance`, `seo-logs`, `seo-score-history`, `seo-rank-history`): Payload auto-exposes their REST API, so an endpoint-only gate is bypassable.
+- The same two layers apply to the plugin's **collections** (`seo-settings`, `seo-redirects`, `seo-gsc-auth`, and, without a `dataStore`, `seo-performance`, `seo-logs`, `seo-score-history`, `seo-rank-history`): Payload auto-exposes their REST API, so an endpoint-only gate is bypassable. With a `dataStore` the time-series data has no collection, hence no REST API: only the plugin's gated endpoints reach it.
 - **Fail-open by default** on a role-less Payload setup (a `users` collection with no `role`/`roles` field): any admin-panel user is treated as privileged — otherwise legitimate admins would be locked out. The test is the **presence** of the field, not its shape: a `role` relationship (a number at `auth.depth: 0`, an object once populated) or a single-value `roles` select is a role scheme, and closes the fallback. `admin` is recognised through all of those shapes — string, array, populated relationship (`name`/`slug`/`value`/`role`/`label`/`title`) — so a real admin still passes. A role field that yields no readable name at all denies, and logs once per collection to say so.
 - **Opt-in strict mode**: `SEO_REQUIRE_ADMIN_ROLE=1` rejects users without an explicit `admin` role. Recommended for multi-user setups with roles.
 - **Admin-only** endpoints (redirects CRUD, settings, robots, seo-logs `POST`/`DELETE`, GSC disconnect, IndexNow, alerts) are gated by `isSeoAdminRequest`. `POST /seo-logs` writes a collection whose ACL is `create: isSeoAdminRequest`, so a panel session alone is not enough; a host that wants anonymous 404 middleware to log must configure `seoLogsSecret`. Row creation is capped by `SEO_LOGS_MAX_ROWS` — increments of known URLs continue past the cap, so the report keeps working.
@@ -51,17 +51,19 @@ The auto-redirect hook treats the new **slug** with `normalizeFromPath`, never `
   - parses IPv6 properly (8 expanded groups) instead of `startsWith`, so `http://[::ffff:169.254.169.254]/` — normalized by `new URL()` to `[::ffff:a9fe:a9fe]` — is recognised. Embedded IPv4 (`::ffff:` mapped, `::` compatible, 6to4 `2002::/16`, NAT64 `64:ff9b::/96`) is re-checked with the IPv4 rules;
   - covers 0/8, 10/8, 127/8, 100.64/10 (CGNAT), 169.254/16, 172.16/12, 192.0.0/24, 192.168/16, 198.18/15, 224/4 and 240/4, plus `::`, `::1`, `fc00::/7`, `fe80::/10`, `ff00::/8`;
   - allows only ports 80/443 and the http/https schemes (no internal port scanning);
-  - anti-DNS-rebinding checks **every** address returned by `dns.lookup(host, { all: true })`, not just the first.
+  - checks **every** address a host resolves to, not just the first. The resolver is pluggable: `resolve4` + `resolve6` on Workers (where `dns.lookup` is documented as not implemented), `dns.lookup(host, { all: true })` on Node. Non-IP answers (CNAME targets mixed into workerd's results) never count as public, a failed AAAA query fails the lookup instead of hiding a private IPv6 address, and IP literals (decimal and octal forms normalised first) skip DNS;
+  - **residual gap on Node:** `fetch` re-resolves the host, so the guard can't pin the address it checked (DNS rebinding). On Workers, `fetch` can't reach private networks anyway.
+- Every block carries a reason (`private-address`, `dns-not-found`, `dns-timeout`, …), and a scan is bounded: 100 unique URLs, 1,000 subrequests per call, 5 s per request, 5 redirect hops.
 
 ## Secrets
 
-- GSC OAuth tokens: encrypted at rest (AES-256-GCM, random IV, auth tag), `read: () => false` field, never logged. Key: `SEO_GSC_ENCRYPTION_KEY` (recommended in production), otherwise derived from `payload.secret`.
+- GSC OAuth tokens: encrypted at rest with WebCrypto AES-256-GCM (random salt and IV, auth tag; format `v2:`), `read: () => false` field, never logged. The key comes from HKDF-SHA-256 over `SEO_GSC_ENCRYPTION_KEY` (32 bytes, recommended in production) or, without it, `payload.secret`. Legacy `v1:` tokens (scrypt) still decrypt through a lazy `node:crypto` import. A wrong key or tampered ciphertext throws an explicit error; the token and key never reach the log.
 - API keys (OpenRouter, PageSpeed, IndexNow): read **only** from environment variables, never stored in the DB.
 - LLM prompts carry page content (drafts included). `SEO_AI_DATA_COLLECTION=deny` (default) has OpenRouter route only to providers that don't store or train on prompts.
 
 ## Rate limiting
 
-- `rateLimiter.ts` (in-memory, best-effort). Key = **`user.collection` + `user.id`** when authenticated (not spoofable); falls back to IP (`X-Forwarded-For`, best-effort) for public endpoints.
+- `rateLimiter.ts`: buckets in `SEO_RATE_LIMITS`, backed by the host's `rateLimit` option (Workers Rate Limiting bindings in `apps/web`) with an in-memory limiter per isolate as the fallback (also when the host's limiter throws, logged once). Workers Rate Limiting counts per machine and syncs eventually, so these limits are a brake, not a hard cap. Key = **`user.collection` + `user.id`** when authenticated (not spoofable); falls back to IP (`cf-connecting-ip` first, then `X-Forwarded-For`, best-effort) for public endpoints.
 - Applied to expensive endpoints: crawls, audit (poll-friendly), sitemap-audit, link-graph, performance, keyword-research, duplicate-content, cannibalization, external-links.
 - LLM endpoints: `/ai-alt-text`, `/ai-content-brief` and `/ai-optimize-bulk` are on the 10 req/min expensive limiter. `/ai-rewrite` and `/ai-optimize` used to be registered with **no limiter at all**; they are driven one document at a time by a human click, so they run on a dedicated 30 req/min bucket — enough for a legitimate pass over a list. On Workers the shared limiter is approximate, so the hard cap on spend is a credit limit on the OpenRouter key.
 - A rate limit alone did not bound the site-wide audit: `/audit?nocache=1` dropped the cache and restarted a full rebuild as soon as the previous one finished. The manual refresh is now **admin-only** and throttled to one full rebuild per `SEO_AUDIT_MIN_REFRESH_MS` (default 5 min) per locale; a refused refresh returns the cached audit with `refreshThrottled: true`, not an error.
@@ -117,3 +119,13 @@ keyword, slug) and an admin later opens. Plain numbers are left numeric.
 `overrideAccess: true` means these endpoints are **not** an access-control boundary:
 a collection whose `read` is restricted to a subset of users must not be listed in
 `targetCollections`.
+
+## Workers deployment
+
+What changes when the plugin runs on Cloudflare Workers, as in `apps/web`:
+
+- **Data placement.** Time-series rows (score history, Search Console imports, rank history, 404 log) live in a separate D1 database (`SEO_D1`) through `dataStore`, with mandatory retention, so they can't grow the main database. `seo-gsc-auth` stays in the main D1.
+- **The cache store holds audit data.** `cacheStore` objects (`seo-analyzer/cache/` in R2) contain the site audit, sitemap audit and external-link results: titles, slugs, scores and URLs of every analyzed document. `apps/web` keeps them in the media bucket, which must stay private (served only through Payload's file route). Before giving that bucket a public domain or `r2.dev` access, move the cache to its own bucket. Objects expire after 7 days (R2 lifecycle rule).
+- **404 recording is in-process.** `recordSeoNotFound` writes from the frontend's not-found path without going through `POST /seo-logs`, so it skips that route's rate limit. Growth is bounded by the row cap (`SEO_LOGS_MAX_ROWS`) and the 90-day retention; the query string is stripped before storage.
+- **Secrets.** On Workers, env vars reach the plugin only when declared in `apps/web/.env.schema`; secrets are marked `@sensitive`, and uploaded as Worker secrets by `varlock-wrangler`. `OPENROUTER_API_KEY` needs a credit limit at OpenRouter: that, not the rate limiter, is the cap on AI spend.
+- **Same-origin fetches.** The plugin never fetches the Worker's own origin: the root files are served by calling Payload's API handler in-process, and AI alt text reads uploads through Payload's file route in-process, with the caller's credentials.
