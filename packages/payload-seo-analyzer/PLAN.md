@@ -1,6 +1,6 @@
 # SEO analyzer: port status and plan
 
-Handoff for whoever continues porting `@cargo/payload-seo-analyzer`. Last updated 2026-11-04 (after P0 + P1, their leftovers, and P2 items 9, 10, 12 and 13).
+Handoff for whoever continues porting `@cargo/payload-seo-analyzer`. Last updated 2026-11-04 (after P0 + P1, their leftovers, P2 items 9, 10, 12 and 13, and the deployed check of 10, 12 and 13).
 
 ## TL;DR
 
@@ -13,9 +13,9 @@ Handoff for whoever continues porting `@cargo/payload-seo-analyzer`. Last update
 - **Verified on a deployed Worker** (2026-11-03, `cargo-template.pedrsntana.workers.dev`, 1,500 seeded pages): every enabled feature works. See "Deployed Worker check" below.
   - Admin login on Workers needed a Payload patch (`patches/payload@4.0.0-beta.6.patch`): Payload 4 hashes passwords with 600,000 PBKDF2 iterations, and deployed Workers reject anything above 100,000 (local workerd doesn't, so `pnpm web preview` hides it).
 - **Background work runs as Payload jobs on a Cron Trigger** (P2 item 9, verified on the deployed Worker). The dashboard audit builds in steps, so big sites no longer need to fit one request.
-- **Time-series data lives in a second D1 database** (P2 item 10): score history, Search Console imports, rank history and 404 logs go to `SEO_D1` through the plugin's `dataStore` option, with retention mandatory. Checked in local workerd; the production database doesn't exist yet (placeholder `database_id` in `wrangler.jsonc`).
-- **GSC token crypto is WebCrypto** (P2 item 12) and **the external links checker fits Workers limits** (P2 item 13). Both checked in local workerd only.
-- These features are still **turned off** in `apps/web` until they pass on a deployed Worker. The AI features (P2 item 11) are the last unported piece.
+- **Time-series data lives in a second D1 database** (P2 item 10): score history, Search Console imports, rank history and 404 logs go to `SEO_D1` through the plugin's `dataStore` option, with retention mandatory. **Verified on the deployed Worker** (2026-11-04, D1 `cargo-template-seo`).
+- **The external links checker fits Workers limits** (P2 item 13) and **GSC token crypto is WebCrypto** (P2 item 12). Both verified on deployed Workers.
+- `apps/web` now turns on `performance`, `scoreHistory`, `seoLogs` and `externalLinks`. `gscApi` stays off until a Google OAuth client exists. The AI features (P2 item 11) are the last unported piece.
 
 ## Where things are
 
@@ -43,7 +43,8 @@ After that, in this repo:
 - `fix/seo-analyzer-deployed-worker`: deployed Worker check, PBKDF2 patch
 - `fix/seo-analyzer-p1-leftovers`: the P0/P1 leftovers (see "Done on 2026-11-03 (P0/P1 leftovers)")
 - `feat/seo-analyzer-p2` (PR #10): P2 item 9, background jobs and chunked audit builds
-- `feat/seo-analyzer-p2-items-10-12-13`: P2 items 10, 12 and 13 (SEO_D1 data store, GSC on WebCrypto, external links checker)
+- `feat/seo-analyzer-p2-items-10-12-13` (PR #12): P2 items 10, 12 and 13 (SEO_D1 data store, GSC on WebCrypto, external links checker)
+- `feat/seo-analyzer-seo-d1-deploy`: the production SEO_D1 database, the deployed check of items 10, 12 and 13, and those features on in `apps/web`
 
 ## Working on it
 
@@ -126,16 +127,16 @@ Results are in "Done on 2026-11-03".
 | `linkGraph` | `/admin/link-graph`, crawl budget | off | UI done | renders with data | whole-site scan; client-side force simulation is fine |
 | `schemaBuilder` | `/admin/schema-builder` JSON-LD builder | off | UI done | renders | none (mostly client-side) |
 | `duplicateContent` | duplicate content endpoint | off | compiles | no | whole-site scan |
-| `externalLinks` | outbound link checker (SSRF-guarded) | off | done | no (local workerd instead) | **local workerd: pass** (P2 item 13). The guard uses `resolve4`/`resolve6` on Workers, `lookup` on Node. Capped at 100 links (`SEO_EXTERNAL_LINKS_MAX`) and 1000 subrequests per call (`SEO_EXTERNAL_LINKS_MAX_SUBREQUESTS`), 5 at a time; a scan that doesn't fit resumes from results saved in R2, and a finished scan is cached. The External tab doesn't show `capped`/`partial` yet |
+| `externalLinks` | outbound link checker (SSRF-guarded) | on | done | no (workerd instead) | **deployed: pass** (P2 item 13). The guard uses `resolve4`/`resolve6` on Workers, `lookup` on Node. Capped at 100 links (`SEO_EXTERNAL_LINKS_MAX`) and 1000 subrequests per call (`SEO_EXTERNAL_LINKS_MAX_SUBREQUESTS`), 5 at a time; a scan that doesn't fit resumes from results saved in R2, and a finished scan is cached. The External tab doesn't show `capped`/`partial` yet |
 | `aiFeatures` | generate meta, optimize, rewrite, alt text, content brief (Anthropic API via `fetch`) | off | compiles, UI done | no; buttons render, without a key it falls back to heuristics | needs `ANTHROPIC_API_KEY` as a Worker secret. **Default model `claude-sonnet-4-6` is outdated** (P2) |
-| `performance` | `seo-performance` collection, GSC CSV/JSON/XLSX import, `/admin/performance` + 9 panels (CWV, indexation, content grade, CTR, alt text, health…), `/indexation-audit` | off | UI done | renders with empty data | rows in SEO_D1 through `dataStore` (P2 item 10; local workerd: CSV import + read pass), pruned after 490 days / 100k rows. XLSX import only works if the host maps `xlsx`. `/indexation-audit` is cached and capped |
-| `scoreHistory` | score snapshot on every save + chart | off | done | no (local workerd instead) | rows in SEO_D1 through `dataStore` (P2 item 10; local workerd: snapshot on save + `/history` pass), pruned after 365 days / 50k rows. The snapshot write is kept alive with `waitUntil` |
-| `seoLogs` | 404 log, admin 404 tab | off | done | no (local workerd instead) | rows in SEO_D1 through `dataStore` (P2 item 10). `apps/web` records 404s in-process from `resolveRedirect` via `waitUntil`. Capped at 5k rows (`SEO_LOGS_MAX_ROWS`) and 90 days. Local workerd: record, list, ignore, delete pass |
-| `gscApi` | Google Search Console OAuth, rank tracker (`seo-gsc-auth`, `seo-rank-history`) | off | compiles | no | token crypto is WebCrypto (AES-GCM + HKDF), checked in local workerd; legacy `v1` tokens decrypt through a lazy `node:crypto`. The redirect URI uses `siteUrl`, then `SITE_URL`, then the request origin. Rank history rows go to SEO_D1 (400 days / 100k rows). `seo-gsc-auth` stays a collection in the main D1 and needs a migration when the feature is enabled. Not checked on a deployed Worker, and the OAuth flow hasn't been run against Google |
+| `performance` | `seo-performance` collection, GSC CSV/JSON/XLSX import, `/admin/performance` + 9 panels (CWV, indexation, content grade, CTR, alt text, health…), `/indexation-audit` | on | UI done | renders with empty data | **deployed: pass.** Rows in SEO_D1 through `dataStore` (P2 item 10; CSV import + read), pruned after 490 days / 100k rows. XLSX import only works if the host maps `xlsx`. `/indexation-audit` is cached and capped |
+| `scoreHistory` | score snapshot on every save + chart | on | done | no (workerd instead) | **deployed: pass.** Rows in SEO_D1 through `dataStore` (P2 item 10; snapshot on save + `/history`), pruned after 365 days / 50k rows. The snapshot write is kept alive with `waitUntil` |
+| `seoLogs` | 404 log, admin 404 tab | on | done | no (workerd instead) | **deployed: pass.** Rows in SEO_D1 through `dataStore` (P2 item 10). `apps/web` records 404s in-process from `resolveRedirect` via `waitUntil`. Capped at 5k rows (`SEO_LOGS_MAX_ROWS`) and 90 days. Record, repeat count, list, ignore, delete pass |
+| `gscApi` | Google Search Console OAuth, rank tracker (`seo-gsc-auth`, `seo-rank-history`) | off | compiles | no | token crypto is WebCrypto (AES-GCM + HKDF), **verified on a deployed Worker**; legacy `v1` tokens decrypt through a lazy `node:crypto`. The redirect URI uses `siteUrl`, then `SITE_URL`, then the request origin. Rank history rows go to SEO_D1 (400 days / 100k rows). `seo-gsc-auth` stays a collection in the main D1 and needs a migration when the feature is enabled. The endpoints haven't run on a deployed Worker, and the OAuth flow hasn't been run against Google (needs an OAuth client) |
 | `alerts` | digest via webhook/email | off | compiles | no | the digest runs as the `seoAlertsDigest` job (untested on Workers) |
 | `indexNow` | ping search engines on publish | off | compiles | no | needs `SEO_INDEXNOW_KEY` |
 | `warmCache` | pre-builds the audit on startup | off | **skipped on Workers by design** | n/a | not meaningful on Workers |
-| `retentionDays` (option) | daily purge of time-series data | not set (defaults apply) | done | no | **mandatory** for enabled time-series features (defaults in `RETENTION_DEFAULTS`, overridable with `retentionDays` / `retentionMaxRows`; an invalid value means the default, never "delete everything"). Runs as the daily `seoRetentionPurge` job against the store; local workerd: `POST /retention` purged all four datasets |
+| `retentionDays` (option) | daily purge of time-series data | not set (defaults apply) | done | no | **mandatory** for enabled time-series features (defaults in `RETENTION_DEFAULTS`, overridable with `retentionDays` / `retentionMaxRows`; an invalid value means the default, never "delete everything"). Runs as the daily `seoRetentionPurge` job against the store (04:00 UTC). Deployed: `POST /retention` deleted only the stale rows of each dataset, and the Cron Trigger queued the job |
 | meta fields (`autoCreateMetaFields`) | the plugin's own meta title/description/image/overview/SERP preview fields | not used (`@payloadcms/plugin-seo` owns the SEO tab) | UI done | jsdom tests only | none |
 
 ## Missing compared to the original plugin
@@ -257,7 +258,7 @@ Order agreed on 2026-11-03: foundations first: 9 (done) → 10 → 12 → 13 →
      | 23:20 | `queued 1, ran 1` (finished the paused build below) | 173 ms | 7.1 s |
 
      No exceptions. Wall time is mostly Payload start-up. Paused build: the site has 2 pages, so a temporary deploy set `SEO_AUDIT_STEP_DOCS=1` and `SEO_AUDIT_BATCH_SIZE=1`. One `?nocache=1` request returned 202, and the step stopped after 1 doc (`pausedAt`, `processed: 1`, progress at page 2 in R2). No requests followed. The 23:20 tick finished it: the marker kept only `lastBuildAt`, `progress/` was deleted, and a `noBuild=1` peek returned both pages (200). The master build was then redeployed without the test variables.
-10. **Keep D1 small. Done (2026-11-04, local workerd only).** Time-series data goes to a second D1 database (`SEO_D1`), never the main one.
+10. **Keep D1 small. Done (2026-11-04, verified on the deployed Worker).** Time-series data goes to a second D1 database (`SEO_D1`), never the main one.
     - **`dataStore` option** (`SeoDataStore`, `src/store/`): domain sub-stores `scoreHistory`, `performance`, `rankHistory`, `notFound`, plus `prune`. `createSqlSeoDataStore(db)` takes anything shaped like D1 (`prepare`/`bind`/`all`/`run`/`batch`); `apps/web` passes `cloudflare.SEO_D1`. Bulk writes are multi-row inserts under D1's 100-parameter cap, sent in batches.
     - With `dataStore` set, the four `seo-*` time-series collections aren't registered. Without it, the plugin falls back to them (`createPayloadSeoDataStore`), so Node hosts keep working unchanged; on Workers `onInit` logs a warning.
     - Every reader and writer goes through the store: the score hooks, `/history`, `/performance`, `/rank-snapshot`, `/rank-history`, `/seo-logs`, the alerts digest, the audit trend, cannibalization, `/health` and retention. Endpoints get the store explicitly; deep audit code and the host's 404 recorder find it through server-only `config.custom.seoAnalyzer.store` (a test checks it isn't in `admin.custom`).
@@ -266,24 +267,47 @@ Order agreed on 2026-11-03: foundations first: 9 (done) → 10 → 12 → 13 →
     - **404s stay in SQL**, not Analytics Engine: the admin needs to upsert, ignore, delete and sort by count.
     - Verified: 831 plugin tests at the time (14 new ones run the SQL store on `node:sqlite` behind a wrapper with D1's limits), app int tests, and `migrate:create --skip-empty` finds no main-D1 changes with `performance`, `scoreHistory` and `seoLogs` on. In local workerd, one write and one read per feature passed, the main D1 got none of the four tables, and a Cron tick queued the jobs without errors. Rank history rows were written with the store's `insertDaily` from Node, because `/rank-snapshot` needs a GSC account.
     - **Open:** the 404 recorder bypasses the `seo-logs` rate limit (growth is bounded by the row cap; each new URL costs one `COUNT(*)` over ≤5k rows). Consider filtering bots.
-    - **Deploy checklist:** create the `cargo-template-seo` D1 database, replace the placeholder `database_id` in `wrangler.jsonc` (until then `pnpm web run deploy` fails at `seo-store:migrate:remote`), deploy, then enable the flags and check them on the deployed Worker.
+    - **Production database:** `cargo-template-seo` (`bf11c24a-599f-42c8-b700-de5f56c3a377`, WEUR, no jurisdiction, like the main D1), created with `cf d1 create` on 2026-11-04. `pnpm web run deploy` applied the store's schema remotely (`seo_logs`, `seo_performance`, `seo_rank_history`, `seo_score_history`, `seo_store_migrations`).
+    - **Verified on the deployed Worker** (2026-11-04, versions `06d69b4b` with the four features on, then `42c48bb1` from this branch). Checked over REST with a temporary API-key user, deleted afterwards. All test rows were cleared.
+      - `scoreHistory`: a page save wrote a snapshot through `waitUntil`, and `/history` returned it.
+      - `seoLogs`: two frontend 404s were recorded (query stripped, referrer and user agent kept), a repeat hit raised the count to 2, and ignore and delete worked.
+      - `performance`: a CSV import (`imported: 2`) read back with its summary through `GET /performance`.
+      - The rows were in SEO_D1 (checked with `cf d1 query`). The main D1 has only the `seo_settings*` and `seo_redirects*` tables, and `migrate:create --skip-empty` finds no main-D1 changes with the four features on.
+      - Retention: stale rows inserted directly (2024 score and performance rows, a January 404) were the only ones `POST /retention` deleted, one per dataset. The first Cron tick queued `seoRetentionPurge` for 04:00 UTC, so the scheduled run itself wasn't observed.
+      - `/admin/performance`, `/admin/seo` and `/admin/sitemap-audit` return 200. Over the whole session `wrangler tail` showed no exceptions, errors or warnings (other than Payload's "no email adapter"). The new endpoints used at most 9 ms CPU, and Cron ticks 72–118 ms.
 11. **AI features.**
     - Update `DEFAULT_AI_MODEL` (`src/helpers/aiModel.ts`, currently `claude-sonnet-4-6`) to a current Claude model.
     - Check the request shapes against the current Messages API (`aiGenerate`, `aiOptimize`, `aiRewrite`, `aiAltText`, `aiContentBrief`, `aiOptimizeBulk`).
     - Declare `ANTHROPIC_API_KEY` / `SEO_AI_MODEL` in `.env.schema`.
-12. **GSC on Workers. Done (2026-11-04, local workerd only).**
+12. **GSC on Workers. Done (2026-11-04; the crypto is verified on a deployed Worker, the endpoints aren't).**
     - `node:crypto` `scryptSync` and AES-GCM work in local workerd (22 ms CPU per scrypt at N=16384, r=8, 16 MiB). They were dropped anyway: deployed limits can't be checked locally (see the PBKDF2 patch), and scrypt costs CPU on every call.
     - `helpers/tokenCrypto.ts` is WebCrypto: AES-256-GCM with a key from HKDF-SHA-256, format `v2:<salt>:<iv>:<ct+tag>`. The key comes from `SEO_GSC_ENCRYPTION_KEY` (32 bytes, hex or base64) or Payload's secret. Legacy `v1:` tokens decrypt through a lazy `import('node:crypto')`; without it, the error says to reconnect GSC. Wrong keys and tampering throw explicit errors, and `getGscAccessToken` logs the cause (never the token or key). The `v1` reader can go in a later major version.
     - `safeEqual` is a pure constant-time compare, and the OAuth state uses `crypto.getRandomValues`.
     - Redirect URI: `siteUrl` option → `SITE_URL` → the request origin (`resolveGscSiteUrl` / `getGscOAuthConfig` take an optional `req`), with paths from `routes.api` plus the plugin base path. There were no `NEXT_*` reads left.
     - `GSC_OAUTH_CLIENT_ID`, `GSC_OAUTH_CLIENT_SECRET` and `SEO_GSC_ENCRYPTION_KEY` are declared in `apps/web/.env.schema`.
-    - **Open:** run `GET /gsc/status` and a real connect on a deployed Worker when `gscApi` is enabled. With the origin fallback, the callback may store a request-derived origin as the default `propertyUrl`; a Search Console property may need `sc-domain:` or a trailing slash.
-13. **`externalLinks`. Done (2026-11-04, local workerd only).**
+    - **Token crypto on a deployed Worker** (2026-11-04): a throwaway Worker (`seo-check-token-crypto`, same compatibility date and `nodejs_compat` as the app, deleted afterwards) bundled `tokenCrypto.ts` and ran:
+      - v2 round trips with `SEO_GSC_ENCRYPTION_KEY` (read from `process.env`, populated from a Worker var) and with the secret.
+      - v2 tokens encrypted in Node decrypting on the Worker, both keyed and secret-derived.
+      - Wrong secret and tampered ciphertext throwing the explicit error.
+      - A legacy `v1` token (scrypt + `node:crypto`) decrypting through the lazy import, and its wrong-secret error.
+      - `safeEqual`.
+
+      Everything passed at 60–80 ms CPU for the whole set, including two scrypt derivations. Deployed Workers don't reject scrypt the way they reject PBKDF2 above 100k.
+    - **Open:** turning on `gscApi` needs a main-D1 migration for `seo-gsc-auth`. Deferred until a Google OAuth client exists. Then run `GET /gsc/status`, `GET /gsc/auth` and a real connect on a deployed Worker. With the origin fallback, the callback may store a request-derived origin as the default `propertyUrl`; a Search Console property may need `sc-domain:` or a trailing slash.
+13. **`externalLinks`. Done (2026-11-04, verified on the deployed Worker).**
     - `helpers/ssrfGuard.ts` has a pluggable resolver: `resolve4` + `resolve6` on Workers (documented as supported; `lookup` is documented as not implemented), `lookup` on Node. No direct DoH `fetch`: `node:dns` already does DoH on Workers and costs the same subrequests. If either query fails with anything but "no such record", the lookup fails, so a flaky AAAA can't hide a private IPv6 address.
     - Fixed in the guard: non-IP answer entries (CNAME targets) used to count as public; IP literals skip DNS (workerd's `resolve4` rejected them, so `https://1.1.1.1` failed closed). Every block carries a reason (`private-address`, `dns-not-found`, `dns-timeout`, `dns-error`, `dns-no-address`, `invalid-url`). Hosts resolve once per scan.
     - `helpers/linkChecker.ts`: 5 concurrent links (clamped to 6), HEAD then GET (bodies cancelled), 5 s per request, 12 s per link, 5 redirect hops, no new links after 25 s. Each call checks what fits its budget and saves results under `external-link-checks`; the next call resumes. A finished scan is cached as `external-links` and invalidated on saves. `forceRefresh` now bypasses the cache (SEO admins only). The response has `capped`, `totalFound`, `maxLinks`, `pending`, `partial`, `stoppedBy` and `subrequests`.
     - Verified in local workerd with 20 pages and 50 external links: private/odd addresses blocked (`localtest.me`, `*.nip.io`, decimal/octal/IPv6-mapped loopback, metadata IP), the dead domain reported as `dns`, a capped run, and a budget-limited scan finishing over three calls.
-    - **Open:** whether `resolve4`/`resolve6` and subrequest counting behave the same deployed, and whether a slow 25 s step fits through the edge. Show `capped`/`partial`/`pending` in the External tab and continue partial scans from the button; treat 429/999 as unverified, not broken. On Node the guard can't pin the resolved IP for `fetch` (DNS rebinding gap); on Workers `fetch` can't reach private networks anyway.
+    - **Verified on the deployed Worker** (2026-11-04) with a temporary page of 50 external links, deleted afterwards:
+      - Blocked as `blocked-private-ip`: `localhost`, `127.0.0.1`, `localtest.me`, `127.0.0.1.nip.io`, `[::ffff:127.0.0.1]`, `[::1]`, `169.254.169.254`, `10.0.0.1` and `192.168.1.1`.
+      - Decimal (`2130706433`) and octal (`0177.0.0.1`) loopback normalise to `127.0.0.1` before the check, so 48 unique links were found.
+      - The dead domain was reported as `dns`. A public IP literal (`https://1.1.1.1/`), a 2-hop redirect and normal sites returned 200, and real 404s were broken.
+      - A full scan took 92 subrequests and 1.4 s. The next call was `cached: true`. After a save it was rescanned from saved checks with 0 subrequests.
+      - A temporary deploy with `SEO_EXTERNAL_LINKS_MAX=20` and `SEO_EXTERNAL_LINKS_MAX_SUBREQUESTS=12` gave `capped: true` (48 found, 20 kept). It stopped at exactly 12 subrequests per call (`stoppedBy: "budget"`) and finished over 7 calls, then was cached.
+      - At most 65 ms CPU per call.
+    - **Stats gap:** `stats.ok`, `broken` and `timeout` don't count blocked and DNS failures, so they don't add up to `total` (5 + 33 + 0 of 48 in the run above). Add a `blocked` / `error` count.
+    - **Open:** whether a slow 25 s step fits through the edge (no slow hosts in the deployed test). Show `capped`/`partial`/`pending` in the External tab and continue partial scans from the button; treat 429/999 as unverified, not broken. On Node the guard can't pin the resolved IP for `fetch` (DNS rebinding gap); on Workers `fetch` can't reach private networks anyway.
 
 ### P3: quality and cleanup
 
@@ -304,9 +328,9 @@ Order agreed on 2026-11-03: foundations first: 9 (done) → 10 → 12 → 13 →
 
 ## Definition of done for "fully ported"
 
-- Every feature flag is either verified in a deployed Worker or explicitly marked unsupported on Workers in this file and in `README.md`. *(Enabled features: done on 2026-11-03, including the leftovers and P2 item 9.)*
+- Every feature flag is either verified in a deployed Worker or explicitly marked unsupported on Workers in this file and in `README.md`. *(Enabled features: done, including the leftovers, P2 item 9, and `performance` / `scoreHistory` / `seoLogs` / `externalLinks` on 2026-11-04.)*
 - No unpersisted background work and no module-level caches the UI depends on. *(Done for the enabled features.)*
-- No time-series data in the main D1. *(Done for `apps/web` through `dataStore`; needs the production SEO_D1 database.)*
+- No time-series data in the main D1. *(Done: `apps/web` uses `dataStore` with the production SEO_D1, verified on 2026-11-04.)*
 - No hard-coded `/api/seo-plugin` or `/admin` paths. *(Done.)*
 - No `NEXT_*` environment variables. *(Done in code; `README.md` and `e2e/` still mention them.)*
 - Redirects, `sitemap.xml` and `robots.txt` work on the live site. *(Done on the deployed Worker.)*
