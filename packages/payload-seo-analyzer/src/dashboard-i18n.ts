@@ -67,6 +67,8 @@ export interface DashboardTranslations {
     bulkConfirm: string
     optimizeSite: string
     optimizeSiteHint: string
+    optimizeSiteNothing: string
+    bulkPreviewFailed: string
     bulkPreviewTitle: string
     bulkApply: string
     bulkApplying: string
@@ -704,6 +706,8 @@ const en: DashboardTranslations = {
     bulkConfirm: 'Confirm?',
     optimizeSite: 'Optimize site',
     optimizeSiteHint: 'Auto-targets pages that need work (missing meta, no keyword, low score) → preview → apply',
+    optimizeSiteNothing: 'Nothing to optimize: every page has a meta title, a meta description, a focus keyword and a score of 70 or more. Select pages to optimize them anyway.',
+    bulkPreviewFailed: 'Couldn\'t get AI suggestions ({status}). Try again in a minute.',
     bulkPreviewTitle: 'Proposed meta corrections',
     bulkApply: 'Apply',
     bulkApplying: 'Applying…',

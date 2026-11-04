@@ -12,7 +12,7 @@ It's a fork of [`@consilioweb/payload-seo-analyzer`](https://github.com/pOwn3d/p
   - Token crypto is WebCrypto, and the SSRF guard uses Workers DNS.
 - Has an admin UI rebuilt on `@payloadcms/ui` and Payload 4 design tokens. Its conventions are in [`src/ui/README.md`](src/ui/README.md) and are mandatory.
 
-It lives in the Cargo monorepo (`packages/payload-seo-analyzer`). `apps/web` consumes it as `"@cargo/payload-seo-analyzer": "workspace:*"`. It isn't published to npm. Port status, verification notes and the remaining work are in [`PLAN.md`](PLAN.md).
+It lives in the Cargo monorepo (`packages/payload-seo-analyzer`). `apps/web` consumes it as `"@cargo/payload-seo-analyzer": "workspace:*"`. It isn't published to npm. Planned work is tracked in [GitHub issues](https://github.com/0xZ0uk/cargo-template/issues?q=is%3Aissue+is%3Aopen+seo-analyzer). Ground rules and gotchas for working on it are in [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
 
 ## Contents
 
@@ -48,7 +48,7 @@ It lives in the Cargo monorepo (`packages/payload-seo-analyzer`). `apps/web` con
 
 ## Status on Cloudflare Workers
 
-The Cargo app (`apps/web`) runs this plugin on a deployed Worker. Each feature is either verified there or still off, as listed below. Details and CPU numbers are in [`PLAN.md`](PLAN.md).
+The Cargo app (`apps/web`) runs this plugin on a deployed Worker. Each feature is either verified there or still off, as listed below. CPU numbers are under [Performance](#performance).
 
 | Feature | In `apps/web` | On Workers |
 |---|---|---|
@@ -470,7 +470,7 @@ ESM and CJS builds ship with type declarations. `xlsx` (Search Console XLSX impo
 - **The SQL data store migrates itself.** `SEO_STORE_MIGRATIONS` is append-only and every statement is safe to run twice. Run `migrateSeoStore(db)` at deploy time (`pnpm web seo-store:migrate:remote`, part of `pnpm web run deploy`) so the first request doesn't pay for it.
 - **Fields the plugin adds to your tables** (`isCornerstone`, `focusKeyword`, `focusKeywords`, `meta`) are editorial content. Don't drop them blindly; the `meta` group may belong to `@payloadcms/plugin-seo`.
 
-Upgrade notes for upstream releases up to 4.2.2 (Payload 3) are in [`CHANGELOG.md`](CHANGELOG.md). Fork changes are in `git log -- packages/payload-seo-analyzer` and [`PLAN.md`](PLAN.md).
+Upgrade notes for upstream releases up to 4.2.2 (Payload 3) are in [`CHANGELOG.md`](CHANGELOG.md). Fork changes are in `git log -- packages/payload-seo-analyzer` (the port's plan and verification notes are in the deleted `PLAN.md`, last at commit `265a4bf`).
 
 ## Performance
 
@@ -482,7 +482,7 @@ Measured on a deployed Worker with 1,500 pages (Workers Observability `cpuTimeMs
 | `/indexation-audit` | 12.7 s at 1,500 docs | One request, hence `SEO_INDEXATION_MAX_DOCS=1500` |
 | Uncached `sitemap-audit` / `sitemap.xml` | 1.2 s / 0.9 s | Cached afterwards (shared cache, invalidated on save) |
 | Cached reads, `/validate`, admin views | ≤ 0.2 s | |
-| External links scan | ≤ 65 ms per call | 5 links at a time, 5 s per request, resumes across calls |
+| External links scan | ≤ 65 ms per call | 5 links at a time, 5 s per request, resumes across calls. A step that ran into its 25 s deadline (slow hosts) still got through the edge (26 s wall) |
 | Cron tick (jobs) | 60–175 ms | Wall time is mostly Payload start-up |
 
 The default Workers CPU limit is 30 s per invocation. The whole-site scans that are still off (link graph, keywords, cannibalization, duplicate content) run in one request and haven't been measured.
@@ -529,7 +529,7 @@ E2E_PORT=3021 pnpm web test:e2e                         # Playwright, SEO views 
 ```
 
 - CI (`.github/workflows/ci.yml`) runs lint, typecheck, these tests, the build, a migration and generated-files drift check, and the e2e suite on every PR.
-- Ground rules are in [`PLAN.md`](PLAN.md#working-on-it): catalog versions, `versions: false` on collections, no literal dynamic `import()` of optional dependencies, the `@payloadcms/ui` test stub, append-only store migrations.
+- Ground rules, gotchas and how to check a change locally, in workerd and on a deployed Worker are in [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md): catalog versions, `versions: false` on collections, no literal dynamic `import()` of optional dependencies, the `@payloadcms/ui` test stub, append-only store migrations.
 - Admin UI changes follow [`src/ui/README.md`](src/ui/README.md).
 - Pull upstream fixes from the repo root with `git subtree pull --prefix=packages/payload-seo-analyzer https://github.com/pOwn3d/payload-seo-analyzer.git main`. Expect conflicts in `components/*`, `views/*`, `plugin.ts`, `rateLimiter.ts` and the collections.
 - The package has no e2e harness of its own. The Playwright specs for its admin views, page sidebar and redirects live in `apps/web/tests/e2e/` (`seo.e2e.spec.ts`, `seo-sidebar.e2e.spec.ts`, `seo-redirects.e2e.spec.ts`).

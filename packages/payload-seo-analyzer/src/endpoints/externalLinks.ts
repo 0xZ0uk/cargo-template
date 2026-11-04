@@ -3,7 +3,7 @@
  * Scans all pages/posts for external links, then verifies each URL (HEAD, GET fallback)
  * to detect broken external links.
  *
- * Workers limits (PLAN.md, P2 item 13): the scan stays inside the per-invocation subrequest
+ * Workers limits: the scan stays inside the per-invocation subrequest
  * budget and the 6 open connections, see `helpers/linkChecker.ts`. A scan is capped at
  * `SEO_EXTERNAL_LINKS_MAX` unique URLs (default 100) and, if links are slow, runs in steps:
  * each call checks what it can within `stepMs` / the subrequest budget, saves every result

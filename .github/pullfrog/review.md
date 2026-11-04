@@ -3,7 +3,7 @@ This repo is a Payload 4 + TanStack Start app on Cloudflare Workers (D1 + R2), p
 Workers runtime (`apps/web/src`, `packages/*/src`):
 - Node-only APIs without a Workers path (`fs`, `child_process`, `net`, sync `node:crypto` KDFs, `setInterval` background work), and PBKDF2 above 100,000 iterations.
 - Work that must finish after the response but isn't awaited or passed to `waitUntil`; module-level caches the admin UI depends on (they're per isolate).
-- Whole-site scans or loops over every document with no cap or step budget (Workers CPU limits; see the caps in `packages/payload-seo-analyzer/PLAN.md`).
+- Whole-site scans or loops over every document with no cap or step budget (Workers CPU limits; see Performance in `packages/payload-seo-analyzer/README.md`).
 - Outbound `fetch` of user-supplied URLs that skips `helpers/ssrfGuard.ts`; redirect targets that skip `validateRedirectTarget`.
 
 Data:

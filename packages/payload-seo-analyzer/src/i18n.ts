@@ -228,8 +228,8 @@ export interface RuleTranslations {
   readability: {
     fleschLabel: string
     fleschPass: (score: number) => string
-    fleschWarn: (score: number) => string
-    fleschFail: (score: number) => string
+    fleschWarn: (score: number, target: number) => string
+    fleschFail: (score: number, target: number) => string
     longSentencesLabelFail: string
     longSentencesLabelPass: string
     longSentencesFail: (long: number, total: number, pct: number, words: number, maxPct: number) => string
@@ -747,8 +747,8 @@ const rulesEn: RuleTranslations = {
   readability: {
     fleschLabel: 'Readability score',
     fleschPass: (score) => `Flesch score: ${score}/100 — Text is accessible.`,
-    fleschWarn: (score) => `Flesch score: ${score}/100 — Text is fairly difficult. Simplify sentences.`,
-    fleschFail: (score) => `Flesch score: ${score}/100 — Text is hard to read. Shorten sentences and simplify vocabulary.`,
+    fleschWarn: (score, target) => `Flesch score: ${score}/100 (aim for ${target}+) — Text is fairly difficult. Simplify sentences.`,
+    fleschFail: (score, target) => `Flesch score: ${score}/100 (aim for ${target}+) — Text is hard to read. Shorten sentences and simplify vocabulary.`,
     longSentencesLabelFail: 'Long sentences',
     longSentencesLabelPass: 'Sentence length',
     longSentencesFail: (long, total, pct, words, maxPct) =>
