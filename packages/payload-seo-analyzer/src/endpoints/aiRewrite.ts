@@ -1,20 +1,18 @@
 /**
  * AI Meta Rewrite endpoint.
- * Generates optimized meta title/description using either:
- * - Heuristic extraction (default, no API key needed)
- * - Claude AI API (when anthropicApiKey is provided)
+ * Generates an optimized meta title or description using either:
+ * - the LLM (OpenRouter, see helpers/aiClient) when OPENROUTER_API_KEY is set
+ * - heuristic extraction otherwise, or when the model gives no usable answer
  *
- * Accepts: collection, id, field (title|description), optional anthropicApiKey.
- *
- * NOTE: Rate limiting is not handled by this plugin. The consuming application
- * should implement rate limiting via its own middleware.
+ * Accepts: collection, id, field (title|description). The key never comes from the request.
+ * Rate limited by the plugin (`ai-interactive` bucket).
  */
 
 import type { PayloadHandler } from 'payload'
 import { readAccessOpts } from '../helpers/readAccess.js'
 import { extractDocContent as extractDocContentHelper } from '../helpers/extractDocContent.js'
 import { parseJsonBody } from '../helpers/parseBody.js'
-import { fetchWithRetry } from '../helpers/fetchWithRetry.js'
+import { aiApiKey, aiChat, aiModel } from '../helpers/aiClient.js'
 import {
   truncateWords,
   generateMetaTitle as heuristicTitle,
@@ -23,16 +21,17 @@ import {
 import { isSeoPanelUser } from '../helpers/isAdmin.js'
 
 // ---------------------------------------------------------------------------
-// Claude API call
+// LLM call — `null` when there's no usable answer
 // ---------------------------------------------------------------------------
 
-async function callClaudeApi(
+async function callAiRewrite(
   apiKey: string,
+  model: string,
   field: 'title' | 'description',
   pageTitle: string,
   pageContent: string,
   focusKeyword: string,
-): Promise<string> {
+): Promise<string | null> {
   const maxChars = field === 'title' ? 60 : 160
   const fieldLabel = field === 'title' ? 'meta title' : 'meta description'
 
@@ -51,35 +50,10 @@ Page content (first 2000 chars): ${pageContent.substring(0, 2000)}
 
 Generate the optimized ${fieldLabel}:`
 
-  const response = await fetchWithRetry('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 200,
-      messages: [
-        { role: 'user', content: userPrompt },
-      ],
-      system: systemPrompt,
-    }),
-  })
-
-  if (!response.ok) {
-    const errorBody = await response.text()
-    throw new Error(`Claude API error ${response.status}: ${errorBody}`)
-  }
-
-  const data = (await response.json()) as {
-    content: Array<{ type: string; text?: string }>
-  }
-
-  const text = data.content?.[0]?.text || ''
+  const text = await aiChat({ apiKey, model, system: systemPrompt, user: userPrompt, maxTokens: 200 })
+  if (!text) return null
   // Ensure it respects max length
-  return truncateWords(text.trim(), maxChars)
+  return truncateWords(text.replace(/^["']|["']$/g, '').trim(), maxChars) || null
 }
 
 // ---------------------------------------------------------------------------
@@ -104,7 +78,8 @@ export function createAiRewriteHandler(targetCollections?: string[]): PayloadHan
       const body = await parseJsonBody(req)
 
       const collection = typeof body.collection === 'string' ? body.collection.trim() : undefined
-      const id = typeof body.id === 'string' ? body.id.trim() : undefined
+      const id =
+        typeof body.id === 'string' || typeof body.id === 'number' ? String(body.id).trim() : undefined
       const field = (body.field as 'title' | 'description') || undefined
 
       if (!collection || !id || !field) {
@@ -145,32 +120,25 @@ export function createAiRewriteHandler(targetCollections?: string[]): PayloadHan
       const focusKeyword = (doc.focusKeyword as string) || ''
       const pageContent = extractDocContent(doc)
 
-      let result: string
-      let method: 'heuristic' | 'ai'
-
-      // Read API key from environment variable (never from client request)
-      const apiKey = process.env.ANTHROPIC_API_KEY
-
-      if (apiKey) {
-        // Use Claude API
-        try {
-          result = await callClaudeApi(apiKey, field, title, pageContent, focusKeyword)
-          method = 'ai'
-        } catch (error) {
-          req.payload.logger.error(`[seo] ai-rewrite Claude API error: ${error instanceof Error ? error.message : 'unknown'}`)
-          // Fallback to heuristic
-          result = field === 'title'
-            ? heuristicTitle(title, focusKeyword, slug)
-            : heuristicDescription(pageContent, focusKeyword, slug)
-          method = 'heuristic'
-        }
-      } else {
-        // Heuristic mode (no ANTHROPIC_API_KEY configured)
-        result = field === 'title'
+      const heuristic = (): string =>
+        field === 'title'
           ? heuristicTitle(title, focusKeyword, slug)
           : heuristicDescription(pageContent, focusKeyword, slug)
-        method = 'heuristic'
+
+      let result: string | null = null
+      let method: 'heuristic' | 'ai' = 'heuristic'
+
+      // Read API key from environment variable (never from client request)
+      const apiKey = aiApiKey()
+      if (apiKey) {
+        try {
+          result = await callAiRewrite(apiKey, aiModel(), field, title, pageContent, focusKeyword)
+          if (result) method = 'ai'
+        } catch (error) {
+          req.payload.logger.error(`[seo] ai-rewrite AI API error: ${error instanceof Error ? error.message : 'unknown'}`)
+        }
       }
+      if (!result) result = heuristic()
 
       return Response.json({
         field,

@@ -10,7 +10,8 @@
  *   - apply: true            → writes the optimized meta to the DB (payload.update)
  *
  * Meta only by design (title, description, focus keyword when empty/incoherent) — never body
- * content. Sequential + bounded (SQLite single-writer; avoids hammering the LLM). Admin only.
+ * content. Bounded: at most 100 pages per call, BULK_CONCURRENCY at a time (one LLM call
+ * takes seconds, so a serial run of 100 would take minutes). Admin only.
  */
 import type { PayloadHandler } from 'payload'
 import type { SeoConfig } from '../types.js'
@@ -18,6 +19,10 @@ import { parseJsonBody } from '../helpers/parseBody.js'
 import { loadMergedConfig } from '../helpers/loadMergedConfig.js'
 import { optimizeDocMeta } from './aiOptimize.js'
 import { truncateWords } from '../helpers/metaGeneration.js'
+import { aiApiKey, aiModel } from '../helpers/aiClient.js'
+
+/** Pages optimized in parallel (LLM calls in flight). */
+export const BULK_CONCURRENCY = 4
 
 const TITLE_MAX = 70
 const DESC_MAX = 160
@@ -121,15 +126,11 @@ export function createAiOptimizeBulkHandler(
         reqLocale: req.locale as string | undefined,
         localeMapping,
       })
-      const apiKey = process.env.ANTHROPIC_API_KEY
-      const model = process.env.SEO_AI_MODEL
+      const apiKey = aiApiKey()
+      const model = aiModel()
 
-      const results: BulkRow[] = []
       let applied = 0
-      let i = 0
-
-      for (const target of slice) {
-        i++
+      const optimizeOne = async (target: { collection: string; id: string }): Promise<BulkRow> => {
         try {
           const r = await optimizeDocMeta(req.payload, {
             collection: target.collection,
@@ -139,7 +140,7 @@ export function createAiOptimizeBulkHandler(
             model,
           })
           if (!r.ok || !r.current || !r.suggestions) {
-            results.push({
+            return {
               collection: target.collection,
               id: target.id,
               title: '',
@@ -148,8 +149,7 @@ export function createAiOptimizeBulkHandler(
               changed: false,
               applied: false,
               error: r.error || 'optimize_failed',
-            })
-            continue
+            }
           }
 
           const before = r.current
@@ -179,7 +179,7 @@ export function createAiOptimizeBulkHandler(
             }
           }
 
-          results.push({
+          return {
             collection: target.collection,
             id: target.id,
             title: r.title || '',
@@ -188,9 +188,9 @@ export function createAiOptimizeBulkHandler(
             changed,
             applied: didApply,
             method: r.method,
-          })
+          }
         } catch (e) {
-          results.push({
+          return {
             collection: target.collection,
             id: target.id,
             title: '',
@@ -199,11 +199,20 @@ export function createAiOptimizeBulkHandler(
             changed: false,
             applied: false,
             error: e instanceof Error ? e.message : 'error',
-          })
+          }
         }
-        // Yield to the event loop periodically to keep the server responsive.
-        if (i % 3 === 0) await new Promise((resolve) => setImmediate(resolve))
       }
+
+      // A small worker pool; results keep the request's order.
+      const results: BulkRow[] = new Array(slice.length)
+      let next = 0
+      const worker = async (): Promise<void> => {
+        while (next < slice.length) {
+          const index = next++
+          results[index] = await optimizeOne(slice[index])
+        }
+      }
+      await Promise.all(Array.from({ length: Math.min(BULK_CONCURRENCY, slice.length) }, worker))
 
       return Response.json(
         {

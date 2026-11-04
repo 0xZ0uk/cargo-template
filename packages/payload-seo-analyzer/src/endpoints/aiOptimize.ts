@@ -3,7 +3,7 @@
  *
  * One-click "scan → propose" flow:
  *  1. Runs the real SEO engine (analyzeSeo) on a page/post to detect failing/warning checks.
- *  2. Sends the content + detected issues to Claude (Anthropic API), instructing it to apply
+ *  2. Sends the content + detected issues to the LLM (OpenRouter, see helpers/aiClient), instructing it to apply
  *     the SAME SEO 2026 rules the engine enforces, and to return STRUCTURED suggestions
  *     (meta title, meta description, optional focus keyword + a short rationale).
  *  3. Validates/clamps the suggestions SERVER-SIDE before returning, so whatever the UI
@@ -14,15 +14,12 @@
  * 2026 analysis flags mass AI-generated BODY content as a spam/penalty risk, so this endpoint
  * never rewrites page content.
  *
- * The Claude API key is read ONLY from the ANTHROPIC_API_KEY environment variable (never from
- * the client request). Without a key, the endpoint falls back to the heuristic generators, so
- * the feature degrades gracefully.
+ * The API key is read ONLY from the OPENROUTER_API_KEY environment variable (never from the
+ * client request). Without a key, the endpoint falls back to the heuristic generators, so the
+ * feature degrades gracefully. Model and routing: see helpers/aiClient (SEO_AI_MODEL).
  *
- * Model: see helpers/aiModel (Sonnet 4.6 by default), overridable via SEO_AI_MODEL.
- *
- * NOTE: Rate limiting is not handled by this plugin. The consuming application should
- * implement rate limiting via its own middleware. Calls to the Anthropic API are billed to
- * the host's own API key.
+ * Rate limited by the plugin (`ai-interactive` bucket). Calls are billed to the host's own
+ * OpenRouter key; cap spend with a credit limit on that key.
  */
 
 import type { Payload, PayloadHandler } from 'payload'
@@ -30,7 +27,6 @@ import { analyzeSeo } from '../index.js'
 import { buildSeoInputFromDoc } from './validate.js'
 import { loadMergedConfig } from '../helpers/loadMergedConfig.js'
 import { parseJsonBody } from '../helpers/parseBody.js'
-import { fetchWithRetry } from '../helpers/fetchWithRetry.js'
 import { extractDocContent } from '../helpers/extractDocContent.js'
 import {
   truncateWords,
@@ -39,7 +35,7 @@ import {
 } from '../helpers/metaGeneration.js'
 import type { SeoConfig } from '../types.js'
 import { isSeoPanelUser } from '../helpers/isAdmin.js'
-import { DEFAULT_AI_MODEL } from '../helpers/aiModel.js'
+import { aiApiKey, aiChat, aiModel } from '../helpers/aiClient.js'
 
 // Server-side rule bounds — match the SEO engine's expectations so applied values are compliant.
 const TITLE_HARD_MAX = 70
@@ -56,10 +52,26 @@ interface AiSuggestions {
 }
 
 // ---------------------------------------------------------------------------
-// Claude API call — returns parsed, UNVALIDATED suggestions (validated by caller)
+// LLM call — returns parsed, UNVALIDATED suggestions (validated by caller)
 // ---------------------------------------------------------------------------
 
-async function callClaudeOptimize(
+/** The answer's shape, enforced by the provider (structured outputs) and re-checked on parse. */
+const SUGGESTIONS_SCHEMA = {
+  name: 'seo_meta_suggestions',
+  schema: {
+    type: 'object',
+    properties: {
+      metaTitle: { type: 'string' },
+      metaDescription: { type: 'string' },
+      focusKeyword: { type: 'string' },
+      rationale: { type: 'array', items: { type: 'string' } },
+    },
+    required: ['metaTitle', 'metaDescription', 'focusKeyword', 'rationale'],
+    additionalProperties: false,
+  },
+}
+
+async function callAiOptimize(
   apiKey: string,
   model: string,
   params: {
@@ -101,41 +113,16 @@ ${params.content.substring(0, 3000)}
 
 Return the optimized JSON now:`
 
-  const response = await fetchWithRetry('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: 1024,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: userPrompt }],
-    }),
+  const text = await aiChat({
+    apiKey,
+    model,
+    system: systemPrompt,
+    user: userPrompt,
+    maxTokens: 1024,
+    schema: SUGGESTIONS_SCHEMA,
   })
-
-  if (!response.ok) {
-    const errorBody = await response.text()
-    throw new Error(`Claude API error ${response.status}: ${errorBody}`)
-  }
-
-  const data = (await response.json()) as {
-    stop_reason?: string
-    content?: Array<{ type: string; text?: string }>
-  }
-
-  // Safety classifier declined — let the caller fall back to the heuristic generators.
-  if (data.stop_reason === 'refusal') {
-    return null
-  }
-
-  // Find the text block (robust whether or not thinking blocks are present).
-  const text = (data.content?.find((b) => b.type === 'text')?.text || '').trim()
-  if (!text) return null
-
-  return parseSuggestions(text)
+  // No usable answer (refusal, cut off…): the caller falls back to the heuristic generators.
+  return text ? parseSuggestions(text) : null
 }
 
 /** Defensively parse the model's JSON (strip accidental code fences, tolerate extra prose). */
@@ -245,9 +232,9 @@ export async function optimizeDocMeta(
   const currentMetaDescription = seoInput.metaDescription || ''
   const content = extractDocContent(doc).text
 
-  // 2. PROPOSE — Claude if configured, else heuristic fallback
+  // 2. PROPOSE — the LLM if configured, else heuristic fallback
   const apiKey = opts.apiKey
-  const model = opts.model || DEFAULT_AI_MODEL
+  const model = opts.model || aiModel()
 
   let suggestions: AiSuggestions
   let method: 'ai' | 'heuristic'
@@ -260,7 +247,7 @@ export async function optimizeDocMeta(
 
   if (apiKey) {
     try {
-      const aiResult = await callClaudeOptimize(apiKey, model, {
+      const aiResult = await callAiOptimize(apiKey, model, {
         pageTitle,
         slug,
         focusKeyword: currentFocusKeyword,
@@ -277,7 +264,7 @@ export async function optimizeDocMeta(
         method = 'heuristic'
       }
     } catch (error) {
-      payload.logger.error(`[seo] ai-optimize Claude API error: ${error instanceof Error ? error.message : 'unknown'}`)
+      payload.logger.error(`[seo] ai-optimize AI API error: ${error instanceof Error ? error.message : 'unknown'}`)
       suggestions = heuristicFallback()
       method = 'heuristic'
     }
@@ -338,8 +325,8 @@ export function createAiOptimizeHandler(
         collection,
         id,
         mergedConfig,
-        apiKey: process.env.ANTHROPIC_API_KEY,
-        model: process.env.SEO_AI_MODEL,
+        apiKey: aiApiKey(),
+        model: aiModel(),
       })
 
       if (!r.ok) {

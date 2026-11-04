@@ -21,7 +21,7 @@ const S = {
     words: 'Longueur recommandée',
     wordsUnit: 'mots',
     notes: 'Conseils',
-    noKey: 'Clé API Claude requise (ANTHROPIC_API_KEY).',
+    noKey: 'Clé API OpenRouter requise (OPENROUTER_API_KEY).',
     disabled: 'Fonction IA désactivée (features.aiFeatures).',
   },
   en: {
@@ -38,7 +38,7 @@ const S = {
     words: 'Recommended length',
     wordsUnit: 'words',
     notes: 'Tips',
-    noKey: 'Claude API key required (ANTHROPIC_API_KEY).',
+    noKey: 'OpenRouter API key required (OPENROUTER_API_KEY).',
     disabled: 'AI feature disabled (features.aiFeatures).',
   },
 } as const

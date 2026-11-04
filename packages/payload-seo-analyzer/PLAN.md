@@ -1,6 +1,6 @@
 # SEO analyzer: port status and plan
 
-Handoff for whoever continues porting `@cargo/payload-seo-analyzer`. Last updated 2026-11-04 (after P0 + P1, their leftovers, P2 items 9, 10, 12 and 13, and the deployed check of 10, 12 and 13).
+Handoff for whoever continues porting `@cargo/payload-seo-analyzer`. Last updated 2026-11-04 (after P0 + P1, their leftovers, P2 items 9–13, and the deployed check of 10, 12 and 13).
 
 ## TL;DR
 
@@ -15,7 +15,8 @@ Handoff for whoever continues porting `@cargo/payload-seo-analyzer`. Last update
 - **Background work runs as Payload jobs on a Cron Trigger** (P2 item 9, verified on the deployed Worker). The dashboard audit builds in steps, so big sites no longer need to fit one request.
 - **Time-series data lives in a second D1 database** (P2 item 10): score history, Search Console imports, rank history and 404 logs go to `SEO_D1` through the plugin's `dataStore` option, with retention mandatory. **Verified on the deployed Worker** (2026-11-04, D1 `cargo-template-seo`).
 - **The external links checker fits Workers limits** (P2 item 13) and **GSC token crypto is WebCrypto** (P2 item 12). Both verified on deployed Workers.
-- `apps/web` now turns on `performance`, `scoreHistory`, `seoLogs` and `externalLinks`. `gscApi` stays off until a Google OAuth client exists. The AI features (P2 item 11) are the last unported piece.
+- `apps/web` now turns on `performance`, `scoreHistory`, `seoLogs` and `externalLinks`. `gscApi` stays off until a Google OAuth client exists.
+- **AI features run on OpenRouter** (P2 item 11), DeepSeek V4.1 Flash by default. Checked in local workerd against a mock OpenRouter; `aiFeatures` stays off in `apps/web` until it passes on a deployed Worker with a real key.
 
 ## Where things are
 
@@ -44,7 +45,8 @@ After that, in this repo:
 - `fix/seo-analyzer-p1-leftovers`: the P0/P1 leftovers (see "Done on 2026-11-03 (P0/P1 leftovers)")
 - `feat/seo-analyzer-p2` (PR #10): P2 item 9, background jobs and chunked audit builds
 - `feat/seo-analyzer-p2-items-10-12-13` (PR #12): P2 items 10, 12 and 13 (SEO_D1 data store, GSC on WebCrypto, external links checker)
-- `feat/seo-analyzer-seo-d1-deploy`: the production SEO_D1 database, the deployed check of items 10, 12 and 13, and those features on in `apps/web`
+- `feat/seo-analyzer-seo-d1-deploy` (PR #13): the production SEO_D1 database, the deployed check of items 10, 12 and 13, and those features on in `apps/web`
+- `feat/seo-analyzer-ai-openrouter`: P2 item 11, the AI features on OpenRouter
 
 ## Working on it
 
@@ -128,7 +130,7 @@ Results are in "Done on 2026-11-03".
 | `schemaBuilder` | `/admin/schema-builder` JSON-LD builder | off | UI done | renders | none (mostly client-side) |
 | `duplicateContent` | duplicate content endpoint | off | compiles | no | whole-site scan |
 | `externalLinks` | outbound link checker (SSRF-guarded) | on | done | no (workerd instead) | **deployed: pass** (P2 item 13). The guard uses `resolve4`/`resolve6` on Workers, `lookup` on Node. Capped at 100 links (`SEO_EXTERNAL_LINKS_MAX`) and 1000 subrequests per call (`SEO_EXTERNAL_LINKS_MAX_SUBREQUESTS`), 5 at a time; a scan that doesn't fit resumes from results saved in R2, and a finished scan is cached. The External tab doesn't show `capped`/`partial` yet |
-| `aiFeatures` | generate meta, optimize, rewrite, alt text, content brief (Anthropic API via `fetch`) | off | compiles, UI done | no; buttons render, without a key it falls back to heuristics | needs `ANTHROPIC_API_KEY` as a Worker secret. **Default model `claude-sonnet-4-6` is outdated** (P2) |
+| `aiFeatures` | generate meta, optimize, rewrite, alt text, content brief (OpenRouter Chat Completions via `fetch`) | off | done | no (local workerd instead) | **local workerd: pass** against a mock OpenRouter (P2 item 11). Needs `OPENROUTER_API_KEY` as a Worker secret, with a credit limit on the key as the spend cap. Alt text reads the image through Payload's file route in-process (R2), not over the network |
 | `performance` | `seo-performance` collection, GSC CSV/JSON/XLSX import, `/admin/performance` + 9 panels (CWV, indexation, content grade, CTR, alt text, health…), `/indexation-audit` | on | UI done | renders with empty data | **deployed: pass.** Rows in SEO_D1 through `dataStore` (P2 item 10; CSV import + read), pruned after 490 days / 100k rows. XLSX import only works if the host maps `xlsx`. `/indexation-audit` is cached and capped |
 | `scoreHistory` | score snapshot on every save + chart | on | done | no (workerd instead) | **deployed: pass.** Rows in SEO_D1 through `dataStore` (P2 item 10; snapshot on save + `/history`), pruned after 365 days / 50k rows. The snapshot write is kept alive with `waitUntil` |
 | `seoLogs` | 404 log, admin 404 tab | on | done | no (workerd instead) | **deployed: pass.** Rows in SEO_D1 through `dataStore` (P2 item 10). `apps/web` records 404s in-process from `resolveRedirect` via `waitUntil`. Capped at 5k rows (`SEO_LOGS_MAX_ROWS`) and 90 days. Record, repeat count, list, ignore, delete pass |
@@ -237,7 +239,7 @@ Branch `fix/seo-analyzer-p1-leftovers`. Checked in local workerd (`vite preview`
 
 ### P2: before enabling the off-by-default features
 
-Order agreed on 2026-11-03: foundations first: 9 (done) → 10 → 12 → 13 → 11. Items 10, 12 and 13 shipped together in one PR (2026-11-04); 11 is left.
+Order agreed on 2026-11-03: foundations first: 9 (done) → 10 → 12 → 13 → 11. Items 10, 12 and 13 shipped together in one PR (2026-11-04), then 11 (OpenRouter).
 
 9. **Schedulers → Payload jobs + Cron Triggers. Done (PR #10, merged as `dfc8165`).**
    - New `jobs` plugin option (`src/jobs.ts`). It registers Payload tasks with schedules on the `seo` queue: `seoAuditContinue` (every 5 min), plus `seoRankSnapshot`, `seoAlertsDigest` and `seoRetentionPurge` (daily, only when their feature is on). With `jobs`, `onInit` starts no timers; without it, the Node `setInterval` path is unchanged. `runSeoJobs(payload)` queues the due tasks and runs the queue without access checks.
@@ -275,10 +277,20 @@ Order agreed on 2026-11-03: foundations first: 9 (done) → 10 → 12 → 13 →
       - The rows were in SEO_D1 (checked with `cf d1 query`). The main D1 has only the `seo_settings*` and `seo_redirects*` tables, and `migrate:create --skip-empty` finds no main-D1 changes with the four features on.
       - Retention: stale rows inserted directly (2024 score and performance rows, a January 404) were the only ones `POST /retention` deleted, one per dataset. The first Cron tick queued `seoRetentionPurge` for 04:00 UTC, so the scheduled run itself wasn't observed.
       - `/admin/performance`, `/admin/seo` and `/admin/sitemap-audit` return 200. Over the whole session `wrangler tail` showed no exceptions, errors or warnings (other than Payload's "no email adapter"). The new endpoints used at most 9 ms CPU, and Cron ticks 72–118 ms.
-11. **AI features.**
-    - Update `DEFAULT_AI_MODEL` (`src/helpers/aiModel.ts`, currently `claude-sonnet-4-6`) to a current Claude model.
-    - Check the request shapes against the current Messages API (`aiGenerate`, `aiOptimize`, `aiRewrite`, `aiAltText`, `aiContentBrief`, `aiOptimizeBulk`).
-    - Declare `ANTHROPIC_API_KEY` / `SEO_AI_MODEL` in `.env.schema`.
+11. **AI features on OpenRouter. Done (2026-11-04, local workerd only).** The Anthropic Messages API calls are replaced by OpenRouter's OpenAI-compatible Chat Completions, so any OpenRouter model works; Claude stays reachable as `anthropic/…`.
+    - **One client:** `helpers/aiClient.ts` (`aiChat`) is used by `/ai-optimize`, `/ai-optimize-bulk`, `/ai-rewrite`, `/ai-alt-text` and `/ai-content-brief` (`/ai-generate` stays heuristic). `helpers/aiModel.ts` is gone. `/ai-rewrite` no longer pins Haiku and now accepts numeric ids (D1).
+    - **Default model** `deepseek/deepseek-v4.1-flash` (`DEFAULT_AI_MODEL`): open weights, ~40 providers on OpenRouter, image input (alt text) and structured outputs, $0.045 / $0.50 per M tokens in/out at the time. Any override (`SEO_AI_MODEL`) must support structured outputs, and image input for alt text.
+    - **Request:** system + user messages; `reasoning: { enabled: false }` by default (`SEO_AI_REASONING` raises it, for models that can't turn it off); `provider.data_collection: 'deny'` by default (`SEO_AI_DATA_COLLECTION=allow` lifts it), since prompts carry page content, drafts included. Optimize and brief send a strict `json_schema` `response_format` with `provider.require_parameters: true`; the defensive parsers and the server-side clamps stay.
+    - **No usable answer** (refusal, `content_filter`, `length`, empty content) is `null`: meta endpoints fall back to the heuristics, alt text and briefs answer 502. HTTP and error-body failures throw `AiRequestError` (status kept, body truncated, never the key).
+    - **Alt text** reads the image through Payload's own `/<collection>/file/<filename>` route in-process (`handleEndpoints`, with the caller's cookie/authorization), so it comes from R2 on Workers and from disk on Node, never over the network (subrequests to the Worker's own origin are unreliable). Only when that route has no file does it fetch the URL, behind the origin allowlist, which now falls back to the request's origin. The image goes as an `image_url` data URL.
+    - **Bulk** runs 4 pages at a time (`BULK_CONCURRENCY`) instead of one by one; results keep the request's order. 100 pages at ~2 s per call is about a minute.
+    - **Spend cap:** the plugin's rate limits are approximate on Workers (see the deployed check above). The hard cap is a credit limit on the OpenRouter key, set in OpenRouter.
+    - **Env** (declared in `apps/web/.env.schema`): `OPENROUTER_API_KEY` (`@sensitive`), `SEO_AI_MODEL`, `SEO_AI_BASE_URL` (e.g. Cloudflare AI Gateway's OpenRouter endpoint, for logs and caching), `SEO_AI_REASONING`, `SEO_AI_DATA_COLLECTION`. UI strings, `/health` and the README/threat model now name OpenRouter.
+    - **Verified:** 17 new tests (`aiClient.test.ts`: config, request body, response parsing, errors, optimize fallback, alt text in-process read and fallback, bulk concurrency and order), 947 plugin tests in all. In local workerd (fresh D1, `aiFeatures` on, `SEO_AI_BASE_URL` pointed at a mock OpenRouter in Node): all five endpoints returned `method: "ai"` / model answers; alt text sent the full 7,858-byte PNG read from local R2 as a data URL with no network fetch of the image; optimize and brief sent their schemas with `require_parameters`; `/health` reported the key and model; `/admin/seo` and `/admin/performance` returned 200; no errors in the log. No `migrate:create` change: the feature adds no collections.
+    - **Open:**
+      - Run it against real OpenRouter on a deployed Worker: create a key with a credit limit, `wrangler secret put OPENROUTER_API_KEY` (or through varlock), turn on `aiFeatures`, then check all five endpoints, alt text on an R2 image, and CPU/wall time per call. Confirm DeepSeek V4.1 Flash routes with `data_collection: 'deny'` + `require_parameters` (many providers support structured outputs; a few, like StreamLake and Novita, don't and get skipped).
+      - Judge the output quality on real pages (French and English); the default providers include fp4 quantizations. If quality suffers, pin providers or quantizations through `provider` (not exposed yet).
+      - The alt-text system prompt only knows French and English (`seoConfig.locale`).
 12. **GSC on Workers. Done (2026-11-04; the crypto is verified on a deployed Worker, the endpoints aren't).**
     - `node:crypto` `scryptSync` and AES-GCM work in local workerd (22 ms CPU per scrypt at N=16384, r=8, 16 MiB). They were dropped anyway: deployed limits can't be checked locally (see the PBKDF2 patch), and scrypt costs CPU on every call.
     - `helpers/tokenCrypto.ts` is WebCrypto: AES-256-GCM with a key from HKDF-SHA-256, format `v2:<salt>:<iv>:<ct+tag>`. The key comes from `SEO_GSC_ENCRYPTION_KEY` (32 bytes, hex or base64) or Payload's secret. Legacy `v1:` tokens decrypt through a lazy `import('node:crypto')`; without it, the error says to reconnect GSC. Wrong keys and tampering throw explicit errors, and `getGscAccessToken` logs the cause (never the token or key). The `v1` reader can go in a later major version.

@@ -44,9 +44,9 @@ The auto-redirect hook treats the new **slug** with `normalizeFromPath`, never `
 
 ## SSRF
 
-- Outbound fetches target **fixed hosts** (api.anthropic.com, googleapis.com) — never a user-supplied host.
+- Outbound fetches target **fixed hosts** (OpenRouter, or the operator's `SEO_AI_BASE_URL`; googleapis.com) — never a user-supplied host.
 - `core-web-vitals`: origin restricted to the configured site.
-- `ai-alt-text`: origin allowlist + http/https only + 5 MB cap.
+- `ai-alt-text`: reads the image through Payload's own file route in-process (with the caller's cookie/authorization, so the caller's read access applies); only when that has no file does it fetch, behind an origin allowlist + http/https only. 5 MB cap.
 - `external-links`: `helpers/ssrfGuard.ts` + `redirect: 'manual'` with **per-hop re-validation** (a 302 to `169.254.169.254`/localhost is blocked). The guard:
   - parses IPv6 properly (8 expanded groups) instead of `startsWith`, so `http://[::ffff:169.254.169.254]/` — normalized by `new URL()` to `[::ffff:a9fe:a9fe]` — is recognised. Embedded IPv4 (`::ffff:` mapped, `::` compatible, 6to4 `2002::/16`, NAT64 `64:ff9b::/96`) is re-checked with the IPv4 rules;
   - covers 0/8, 10/8, 127/8, 100.64/10 (CGNAT), 169.254/16, 172.16/12, 192.0.0/24, 192.168/16, 198.18/15, 224/4 and 240/4, plus `::`, `::1`, `fc00::/7`, `fe80::/10`, `ff00::/8`;
@@ -56,13 +56,14 @@ The auto-redirect hook treats the new **slug** with `normalizeFromPath`, never `
 ## Secrets
 
 - GSC OAuth tokens: encrypted at rest (AES-256-GCM, random IV, auth tag), `read: () => false` field, never logged. Key: `SEO_GSC_ENCRYPTION_KEY` (recommended in production), otherwise derived from `payload.secret`.
-- API keys (Anthropic, PageSpeed, IndexNow): read **only** from environment variables, never stored in the DB.
+- API keys (OpenRouter, PageSpeed, IndexNow): read **only** from environment variables, never stored in the DB.
+- LLM prompts carry page content (drafts included). `SEO_AI_DATA_COLLECTION=deny` (default) has OpenRouter route only to providers that don't store or train on prompts.
 
 ## Rate limiting
 
 - `rateLimiter.ts` (in-memory, best-effort). Key = **`user.collection` + `user.id`** when authenticated (not spoofable); falls back to IP (`X-Forwarded-For`, best-effort) for public endpoints.
 - Applied to expensive endpoints: crawls, audit (poll-friendly), sitemap-audit, link-graph, performance, keyword-research, duplicate-content, cannibalization, external-links.
-- LLM endpoints: `/ai-alt-text`, `/ai-content-brief` and `/ai-optimize-bulk` are on the 10 req/min expensive limiter. `/ai-rewrite` and `/ai-optimize` used to be registered with **no limiter at all**; they are driven one document at a time by a human click, so they run on a dedicated 30 req/min bucket — enough for a legitimate pass over a list, still a hard cap on the owner's Anthropic bill.
+- LLM endpoints: `/ai-alt-text`, `/ai-content-brief` and `/ai-optimize-bulk` are on the 10 req/min expensive limiter. `/ai-rewrite` and `/ai-optimize` used to be registered with **no limiter at all**; they are driven one document at a time by a human click, so they run on a dedicated 30 req/min bucket — enough for a legitimate pass over a list. On Workers the shared limiter is approximate, so the hard cap on spend is a credit limit on the OpenRouter key.
 - A rate limit alone did not bound the site-wide audit: `/audit?nocache=1` dropped the cache and restarted a full rebuild as soon as the previous one finished. The manual refresh is now **admin-only** and throttled to one full rebuild per `SEO_AUDIT_MIN_REFRESH_MS` (default 5 min) per locale; a refused refresh returns the cached audit with `refreshThrottled: true`, not an error.
 - `?nocache=1` forces the site-wide recomputation the aggregation endpoints exist to cache. On `/audit` it is admin-only **and** throttled (above); on `/cannibalization`, `/core-web-vitals`, `/duplicate-content`, `/external-links`, `/keyword-research`, `/link-graph`, `/redirect-chains` and `/sitemap-audit` it is admin-only — a panel user without the role silently gets the cached result rather than a 403.
 - `/ai-content-brief` bounds its free-text `keyword` at 120 characters before it reaches the model — unbounded, it billed the site owner for arbitrary prompt length.
@@ -83,7 +84,7 @@ The auto-redirect hook treats the new **slug** with `normalizeFromPath`, never `
 | `SEO_FETCH_MAX_DOCS` | Memory cap on the documents loaded by aggregation endpoints, `sitemap.xml` included (default 5000). |
 | `SEO_SITEMAP_MAX_DOCS` | Same cap for the public sitemaps only (`sitemap.xml`, `sitemap-news/images/video.xml`); overrides `SEO_FETCH_MAX_DOCS` there. Counts every document **read**, not only those emitted. |
 | `SEO_LOGS_MAX_ROWS` | Ceiling on the rows `POST /seo-logs` may create (default 5000). |
-| `SEO_AI_MODEL` | LLM model override (default Sonnet; set `claude-opus-4-8` for max quality). |
+| `SEO_AI_MODEL` | OpenRouter model override (default `deepseek/deepseek-v4.1-flash`). |
 
 ## Public endpoints & content exposure
 

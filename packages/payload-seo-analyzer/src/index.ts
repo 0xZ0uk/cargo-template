@@ -99,6 +99,8 @@ export { buildAuditToFile } from './endpoints/audit.js'
 export type { SeoCacheStore, SeoWaitUntil } from './cache.js'
 export { SEO_RATE_LIMITS } from './rateLimiter.js'
 export type { SeoRateLimit, SeoRateLimitBucket } from './rateLimiter.js'
+// The AI client's defaults (OpenRouter, `features.aiFeatures`).
+export { DEFAULT_AI_BASE_URL, DEFAULT_AI_MODEL } from './helpers/aiClient.js'
 export { runSeoJobs, SEO_JOBS_QUEUE, SEO_TASK_SLUGS } from './jobs.js'
 export type { SeoJobsOptions } from './jobs.js'
 

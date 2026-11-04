@@ -70,8 +70,8 @@ and IndexNow are opt-in and use your own credentials.
 - **Bilingual analysis.** Locale-adapted readability (Kandel-Moles for French, Flesch for English),
   FR/EN dashboard translations extensible to any locale, and the 39 `plugin-seo` meta-field languages
   from Payload.
-- **Opt-in integrations.** Google Search Console via OAuth, Anthropic-powered assists (meta rewriting,
-  alt text, content briefs), a monitoring digest over webhook/email, and IndexNow.
+- **Opt-in integrations.** Google Search Console via OAuth, LLM assists through OpenRouter (meta
+  rewriting, alt text, content briefs), a monitoring digest over webhook/email, and IndexNow.
 - **Built for small hosts.** Single-flight background audit with tunable throttling, paginated document
   loading with a memory cap, LRU-bounded cache and a build-time audit cache you can generate in CI.
 
@@ -317,9 +317,12 @@ analyzer sidebar, the `validate` endpoint and the meta fields are always active.
 | Variable | Default | Description |
 |---|---|---|
 | `NEXT_PUBLIC_SERVER_URL` | — | Fallback base URL when `siteUrl` is not set (`PAYLOAD_PUBLIC_SERVER_URL` is tried next). |
-| `ANTHROPIC_API_KEY` | — | Enables the AI assists; without it they fall back to heuristics or return an error. |
-| `SEO_AI_MODEL` | `claude-sonnet-4-6` | Model used by `/ai-optimize`, `/ai-optimize-bulk`, `/ai-content-brief` and `/ai-alt-text`. `/ai-rewrite` is pinned to Haiku and `/ai-generate` is purely heuristic, so neither reads it. |
-| `SEO_MEDIA_ORIGIN` | — | Extra origin the AI alt-text endpoint may fetch images from, alongside `siteUrl`. |
+| `OPENROUTER_API_KEY` | — | Enables the AI assists (OpenRouter); without it they fall back to heuristics or return `no_api_key`. Put a credit limit on the key: that's the hard cap on spend. |
+| `SEO_AI_MODEL` | `deepseek/deepseek-v4.1-flash` | OpenRouter model used by `/ai-optimize`, `/ai-optimize-bulk`, `/ai-rewrite`, `/ai-content-brief` and `/ai-alt-text` (`/ai-generate` is purely heuristic). It must support structured outputs, and image input for alt text. |
+| `SEO_AI_BASE_URL` | `https://openrouter.ai/api/v1` | OpenRouter's API, or a proxy of it such as Cloudflare AI Gateway's OpenRouter endpoint. |
+| `SEO_AI_REASONING` | `none` | Reasoning effort sent to the model (`none`, `minimal`, `low`…). Raise it only for a model that can't turn reasoning off. |
+| `SEO_AI_DATA_COLLECTION` | `deny` | `deny` routes only to providers that don't store or train on prompts (page content, drafts included); `allow` lifts that. |
+| `SEO_MEDIA_ORIGIN` | — | Extra origin the AI alt-text endpoint may fetch images from, alongside `siteUrl`. Only used when Payload's own file route has no file for the upload (it is read in-process first). |
 | `SEO_REQUIRE_ADMIN_ROLE` | — | `1` disables the fail-open in `isSeoAdmin`, requiring an explicit `admin` role. |
 | `SEO_ADMIN_USER_COLLECTIONS` | `config.admin.user` | Comma-separated collection slugs accepted as admin-panel users. Only needed if several collections may reach the panel. |
 | `SEO_AUDIT_MIN_REFRESH_MS` | `300000` | Minimum delay between two manual (`?nocache=1`) rebuilds of the site-wide audit. |
