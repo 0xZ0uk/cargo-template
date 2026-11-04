@@ -109,12 +109,22 @@ describe('buildAlertWebhookBody', () => {
     const body = buildAlertWebhookBody('discord', digest(), 'https://site.test') as {
       content: string
       allowed_mentions: unknown
+      flags: number
     }
     expect(body.allowed_mentions).toEqual({ parse: [] })
+    // SUPPRESS_EMBEDS keeps the dashboard link from unfurling into a card.
+    expect(body.flags).toBe(4)
     expect(body.content).toContain('**SEO alert digest** — site.test')
     expect(body.content).toContain('**🔗 New 404s** (1)')
     expect(body.content).toContain('• `/gone` — 4×')
-    expect(body.content.endsWith('[Open the SEO dashboard](<https://site.test/admin/performance>)')).toBe(true)
+    expect(body.content.endsWith('[Open the SEO dashboard](https://site.test/admin/performance)')).toBe(true)
+  })
+
+  it("links under the host's admin route and percent-encodes the path", () => {
+    const { text } = buildAlertWebhookBody('slack', digest(), 'https://site.test', '/cms/') as { text: string }
+    expect(text).toContain('<https://site.test/cms/performance|')
+    const { content } = buildAlertWebhookBody('discord', digest(), 'https://site.test/my site)', '/admin') as { content: string }
+    expect(content).toContain('(https://site.test/my%20site%29/admin/performance)')
   })
 
   it('leaves out the link and the host when the site URL is unknown or not http(s)', () => {

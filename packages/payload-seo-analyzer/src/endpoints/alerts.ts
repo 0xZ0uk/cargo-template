@@ -210,6 +210,12 @@ export interface DeliveryResult {
   channels: { webhook: boolean; email: boolean }
 }
 
+/** The host's admin route (`config.routes.admin`), `/admin` when unset. */
+function adminRouteOf(payload: Payload): string {
+  const route = payload.config?.routes?.admin
+  return typeof route === 'string' && route ? route : '/admin'
+}
+
 export async function deliverAlertDigest(
   payload: Payload,
   digest: AlertDigest,
@@ -237,7 +243,7 @@ export async function deliverAlertDigest(
       const res = await fetch(cfg.webhookUrl, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(buildAlertWebhookBody(format, digest, siteUrl)),
+        body: JSON.stringify(buildAlertWebhookBody(format, digest, siteUrl, adminRouteOf(payload))),
         signal: AbortSignal.timeout(WEBHOOK_TIMEOUT_MS),
       })
       // A 4xx/5xx (revoked hook, wrong URL, payload rejected) is a failed delivery, not a sent one.

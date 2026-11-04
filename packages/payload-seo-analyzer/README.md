@@ -378,9 +378,9 @@ The plugin reads no `NEXT_*` or `PAYLOAD_PUBLIC_*` variables. On Workers, declar
 | --- | --- | --- |
 | `json` | `{ type: "seo-alert-digest", siteUrl, digest }` | The raw digest, for your own receiver. The default for any other host |
 | `slack` | `{ text }` | Slack incoming webhook; mrkdwn. At most 3,500 characters |
-| `discord` | `{ content, allowed_mentions: { parse: [] } }` | Discord webhook. At most 2,000 characters (Discord's limit); no `@everyone` or role can be pinged |
+| `discord` | `{ content, allowed_mentions: { parse: [] }, flags: 4 }` | Discord webhook. At most 2,000 characters (Discord's limit); no `@everyone` or role can be pinged, and the link doesn't unfurl (`SUPPRESS_EMBEDS`) |
 
-Slack and Discord messages list score drops, new 404s and ranking drops, then link to `<siteUrl>/admin/performance` when the site URL is known (the option or `SITE_URL` for the scheduled job, the request origin for "Send now"). Each section shows up to 10 rows, fewer when the message would exceed the limit, then "…and N more"; the section counts stay exact. Paths and queries come from visitors and Search Console, so they're always printed in code spans with markup-breaking characters removed or escaped.
+Slack and Discord messages list score drops, new 404s and ranking drops, then link to the performance view under the host's admin route (`<siteUrl>/admin/performance` by default) when the site URL is known (the option or `SITE_URL` for the scheduled job, the request origin for "Send now"). Each section shows up to 10 rows, fewer when the message would exceed the limit, then "…and N more"; the section counts stay exact. Paths and queries come from visitors and Search Console, so they're always printed in code spans with markup-breaking characters removed or escaped.
 
 ## API endpoints
 

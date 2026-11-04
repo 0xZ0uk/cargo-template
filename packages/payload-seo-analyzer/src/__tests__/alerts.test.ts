@@ -132,6 +132,15 @@ describe('deliverAlertDigest', () => {
     if (key !== 'type') expect(body[key]).toContain('/gone')
   })
 
+  it("links to the performance view under the host's admin route", async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(null, { status: 200 }))
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const payload = { logger: logger(), config: { routes: { admin: '/cms' } } } as any
+    await deliverAlertDigest(payload, digest, { ...cfg, webhookUrl: 'https://hooks.slack.com/services/T/B/X' }, 'https://site.test')
+    const { text } = JSON.parse(String(spy.mock.calls[0]![1]!.body))
+    expect(text).toContain('<https://site.test/cms/performance|')
+  })
+
   it('uses the plugin option, and the env var wins over it', async () => {
     const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(null, { status: 200 }))
     const payload = {
@@ -140,7 +149,7 @@ describe('deliverAlertDigest', () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any
     await deliverAlertDigest(payload, digest, { ...cfg, webhookUrl: 'https://hook.test/x' })
-    expect(Object.keys(JSON.parse(String(spy.mock.calls[0]![1]!.body)))).toEqual(['content', 'allowed_mentions'])
+    expect(Object.keys(JSON.parse(String(spy.mock.calls[0]![1]!.body)))).toEqual(['content', 'allowed_mentions', 'flags'])
     await deliverAlertDigest(payload, digest, { ...cfg, webhookUrl: 'https://hook.test/x', webhookFormat: 'slack' })
     expect(Object.keys(JSON.parse(String(spy.mock.calls[1]![1]!.body)))).toEqual(['text'])
   })

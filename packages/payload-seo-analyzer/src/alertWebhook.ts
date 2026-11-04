@@ -102,21 +102,34 @@ function utc(iso: string): string {
   return Number.isNaN(d.getTime()) ? plain(iso) : `${d.toISOString().slice(0, 16).replace('T', ' ')} UTC`
 }
 
-/** The site's `/admin/performance` URL, or `undefined` unless `siteUrl` is a plain http(s) URL. */
-function performanceUrl(siteUrl?: string): string | undefined {
+/**
+ * The plugin's performance view under the host's admin route (`config.routes.admin`,
+ * default `/admin`), or `undefined` unless `siteUrl` is a plain http(s) URL.
+ */
+function performanceUrl(siteUrl: string | undefined, adminRoute: string): string | undefined {
   if (!siteUrl) return undefined
   try {
     const url = new URL(siteUrl)
     if (url.protocol !== 'https:' && url.protocol !== 'http:') return undefined
-    // Link by origin plus any base path, never carrying a query, hash or credentials.
-    return `${url.origin}${url.pathname.replace(/\/+$/, '')}/admin/performance`
+    const admin = `/${adminRoute.replace(/^\/+|\/+$/g, '')}`.replace(/\/$/, '')
+    // Link by origin plus any base path, never carrying a query, hash or credentials. `URL`
+    // percent-encodes spaces; parentheses are encoded by hand so they can't end a markdown link.
+    return new URL(`${url.pathname.replace(/\/+$/, '')}${admin}/performance`, url.origin).href
+      .replace(/\(/g, '%28')
+      .replace(/\)/g, '%29')
   } catch {
     return undefined
   }
 }
 
-function renderMessage(flavor: Flavor, digest: AlertDigest, siteUrl: string | undefined, maxItems: number): string {
-  const adminUrl = performanceUrl(siteUrl)
+function renderMessage(
+  flavor: Flavor,
+  digest: AlertDigest,
+  siteUrl: string | undefined,
+  maxItems: number,
+  adminRoute: string,
+): string {
+  const adminUrl = performanceUrl(siteUrl, adminRoute)
   const site = adminUrl ? new URL(adminUrl).host : undefined
   const lines: string[] = [
     `${bold(flavor, 'SEO alert digest')}${site ? ` — ${flavor === 'slack' ? slackEscape(site) : site}` : ''}`,
@@ -139,11 +152,14 @@ function renderMessage(flavor: Flavor, digest: AlertDigest, siteUrl: string | un
   )
 
   if (adminUrl) {
-    // Discord: `<…>` keeps the link from unfurling into a preview card.
-    lines.push('', flavor === 'slack' ? `<${adminUrl}|Open the SEO dashboard>` : `[Open the SEO dashboard](<${adminUrl}>)`)
+    // Discord: a plain masked link; the body's `flags` keep it from unfurling into a card.
+    lines.push('', flavor === 'slack' ? `<${adminUrl}|Open the SEO dashboard>` : `[Open the SEO dashboard](${adminUrl})`)
   }
   return lines.join('\n')
 }
+
+/** Discord message flag `SUPPRESS_EMBEDS` (1 << 2), allowed on webhook executions. */
+const DISCORD_SUPPRESS_EMBEDS = 4
 
 /** Render the digest, listing fewer items per section until it fits `limit` characters. */
 export function renderAlertMessage(
@@ -151,10 +167,11 @@ export function renderAlertMessage(
   digest: AlertDigest,
   siteUrl: string | undefined,
   limit: number,
+  adminRoute = '/admin',
 ): string {
   let message = ''
   for (let items = MAX_ITEMS_PER_SECTION; items >= 0; items--) {
-    message = renderMessage(flavor, digest, siteUrl, items)
+    message = renderMessage(flavor, digest, siteUrl, items, adminRoute)
     if (message.length <= limit) return message
   }
   // Even the counts alone don't fit (an absurdly long site URL): cut, as a last resort.
@@ -162,13 +179,20 @@ export function renderAlertMessage(
 }
 
 /** The JSON body to POST for a format. */
-export function buildAlertWebhookBody(format: AlertWebhookFormat, digest: AlertDigest, siteUrl?: string): unknown {
-  if (format === 'slack') return { text: renderAlertMessage('slack', digest, siteUrl, SLACK_MAX_TEXT) }
+export function buildAlertWebhookBody(
+  format: AlertWebhookFormat,
+  digest: AlertDigest,
+  siteUrl?: string,
+  adminRoute = '/admin',
+): unknown {
+  if (format === 'slack') return { text: renderAlertMessage('slack', digest, siteUrl, SLACK_MAX_TEXT, adminRoute) }
   if (format === 'discord') {
     return {
-      content: renderAlertMessage('discord', digest, siteUrl, DISCORD_MAX_CONTENT),
+      content: renderAlertMessage('discord', digest, siteUrl, DISCORD_MAX_CONTENT, adminRoute),
       // A 404 path or query can spell `@everyone`; nothing in a digest may ping anyone.
       allowed_mentions: { parse: [] },
+      // SUPPRESS_EMBEDS: the dashboard link stays a link, not a preview card.
+      flags: DISCORD_SUPPRESS_EMBEDS,
     }
   }
   return { type: 'seo-alert-digest', siteUrl, digest }
