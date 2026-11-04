@@ -532,7 +532,7 @@ E2E_PORT=3021 pnpm web test:e2e                         # Playwright, SEO views 
 - Ground rules are in [`PLAN.md`](PLAN.md#working-on-it): catalog versions, `versions: false` on collections, no literal dynamic `import()` of optional dependencies, the `@payloadcms/ui` test stub, append-only store migrations.
 - Admin UI changes follow [`src/ui/README.md`](src/ui/README.md).
 - Pull upstream fixes from the repo root with `git subtree pull --prefix=packages/payload-seo-analyzer https://github.com/pOwn3d/payload-seo-analyzer.git main`. Expect conflicts in `components/*`, `views/*`, `plugin.ts`, `rateLimiter.ts` and the collections.
-- `e2e/` holds upstream's Next.js 16 + Payload 3 harness. It isn't a workspace member and doesn't run; the app's Playwright specs replace it.
+- The package has no e2e harness of its own. The Playwright specs for its admin views, page sidebar and redirects live in `apps/web/tests/e2e/` (`seo.e2e.spec.ts`, `seo-sidebar.e2e.spec.ts`, `seo-redirects.e2e.spec.ts`).
 
 ## Uninstall
 
