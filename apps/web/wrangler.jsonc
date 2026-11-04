@@ -31,10 +31,10 @@
       // the store also applies it on first use. Retention prunes it daily (Cron Trigger).
       "binding": "SEO_D1",
       "database_name": "cargo-template-seo",
-      // PLACEHOLDER: create the database (`wrangler d1 create cargo-template-seo`) and put
-      // its id here. Until then, deploys and `seo-store:migrate:remote` fail on this binding.
-      // Local dev and `pnpm preview` work with it as is (local D1 in `.wrangler/state`).
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      // The template's own database, like `D1` above. Replace it with yours
+      // (`wrangler d1 create <name>`). Local dev and `pnpm preview` use the local D1 in
+      // `.wrangler/state`.
+      "database_id": "bf11c24a-599f-42c8-b700-de5f56c3a377",
       "remote": true,
     },
   ],

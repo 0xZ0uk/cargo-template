@@ -146,10 +146,12 @@ export default buildConfig({
     }),
     // Content analysis on top of the plugin-seo fields: a score sidebar on Pages, a
     // site-wide dashboard at /admin/seo, redirects, and sitemap/robots endpoints under
-    // /api/seo-plugin. Time-series features (404 logs, score/rank history, performance
-    // imports) store their rows in the separate SEO_D1 database (`dataStore`); they stay
-    // off until that database exists in production. Whole-site scans (link graph,
-    // keywords, cannibalization…) stay off until they're tested against Workers CPU limits.
+    // /api/seo-plugin. Time-series features (404 logs, score history, performance imports)
+    // store their rows in the separate SEO_D1 database (`dataStore`), pruned daily, and
+    // the external link checker scans in budgeted steps; all four passed on a deployed
+    // Worker. GSC stays off until a Google OAuth client exists (it also needs a main-D1
+    // migration for `seo-gsc-auth`). Whole-site scans (link graph, keywords,
+    // cannibalization…) stay off until they're tested against Workers CPU limits.
     seoAnalyzerPlugin({
       collections: ['pages'],
       collectionRoutes: { pages: '' },
@@ -177,15 +179,15 @@ export default buildConfig({
         alerts: false,
         cannibalization: false,
         duplicateContent: false,
-        externalLinks: false,
+        externalLinks: true,
         gscApi: false,
         indexNow: false,
         keywords: false,
         linkGraph: false,
-        performance: false,
+        performance: true,
         schemaBuilder: false,
-        scoreHistory: false,
-        seoLogs: false,
+        scoreHistory: true,
+        seoLogs: true,
         warmCache: false,
       },
     }),
