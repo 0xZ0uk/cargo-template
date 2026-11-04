@@ -9,10 +9,12 @@
  */
 
 import type { PayloadHandler } from 'payload'
+import type { SeoConfig } from '../types.js'
+import { resolveAnalysisLocale } from '../helpers/resolveLocale.js'
 import { readAccessOpts } from '../helpers/readAccess.js'
 import { extractDocContent as extractDocContentHelper } from '../helpers/extractDocContent.js'
 import { parseJsonBody } from '../helpers/parseBody.js'
-import { aiApiKey, aiChat, aiModel } from '../helpers/aiClient.js'
+import { aiApiKey, aiChat, aiLanguageName, aiModel } from '../helpers/aiClient.js'
 import {
   truncateWords,
   generateMetaTitle as heuristicTitle,
@@ -31,6 +33,7 @@ async function callAiRewrite(
   pageTitle: string,
   pageContent: string,
   focusKeyword: string,
+  locale: string | undefined,
 ): Promise<string | null> {
   const maxChars = field === 'title' ? 60 : 160
   const fieldLabel = field === 'title' ? 'meta title' : 'meta description'
@@ -39,7 +42,7 @@ async function callAiRewrite(
 Rules:
 - Maximum ${maxChars} characters
 - Include the focus keyword naturally if provided
-- Write in the same language as the page content
+- Write in ${aiLanguageName(locale)}, whatever the language of the content
 - Be compelling and click-worthy
 - Do not use quotes around the result
 - Return ONLY the ${fieldLabel} text, nothing else`
@@ -68,7 +71,7 @@ function extractDocContent(doc: Record<string, unknown>): string {
 // Endpoint handler factory
 // ---------------------------------------------------------------------------
 
-export function createAiRewriteHandler(targetCollections?: string[]): PayloadHandler {
+export function createAiRewriteHandler(targetCollections?: string[], seoConfig?: SeoConfig): PayloadHandler {
   return async (req) => {
     try {
       if (!isSeoPanelUser(req)) {
@@ -120,10 +123,15 @@ export function createAiRewriteHandler(targetCollections?: string[]): PayloadHan
       const focusKeyword = (doc.focusKeyword as string) || ''
       const pageContent = extractDocContent(doc)
 
+      const locale = resolveAnalysisLocale({
+        reqLocale: req.locale as string | undefined,
+        pluginLocale: seoConfig?.locale,
+        customMapping: seoConfig?.localeMapping,
+      })
       const heuristic = (): string =>
         field === 'title'
-          ? heuristicTitle(title, focusKeyword, slug)
-          : heuristicDescription(pageContent, focusKeyword, slug)
+          ? heuristicTitle(title, focusKeyword, slug, locale)
+          : heuristicDescription(pageContent, focusKeyword, slug, locale)
 
       let result: string | null = null
       let method: 'heuristic' | 'ai' = 'heuristic'
@@ -132,7 +140,7 @@ export function createAiRewriteHandler(targetCollections?: string[]): PayloadHan
       const apiKey = aiApiKey()
       if (apiKey) {
         try {
-          result = await callAiRewrite(apiKey, aiModel(), field, title, pageContent, focusKeyword)
+          result = await callAiRewrite(apiKey, aiModel(), field, title, pageContent, focusKeyword, locale)
           if (result) method = 'ai'
         } catch (error) {
           req.payload.logger.error(`[seo] ai-rewrite AI API error: ${error instanceof Error ? error.message : 'unknown'}`)

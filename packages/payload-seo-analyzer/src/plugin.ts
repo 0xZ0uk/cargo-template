@@ -793,8 +793,8 @@ export const seoAnalyzerPlugin =
     // AI features (generate + rewrite + optimize)
     if (features.aiFeatures) {
       pluginEndpoints.push(
-        { path: `${basePath}/ai-generate`, method: 'post', handler: createAiGenerateHandler() },
-        { path: `${basePath}/ai-rewrite`, method: 'post', handler: withRateLimit(createAiRewriteHandler(targetCollections), aiInteractiveLimiter) },
+        { path: `${basePath}/ai-generate`, method: 'post', handler: createAiGenerateHandler(seoConfig) },
+        { path: `${basePath}/ai-rewrite`, method: 'post', handler: withRateLimit(createAiRewriteHandler(targetCollections, seoConfig), aiInteractiveLimiter) },
         { path: `${basePath}/ai-optimize`, method: 'post', handler: withRateLimit(createAiOptimizeHandler(targetCollections, seoConfig), aiInteractiveLimiter) },
         { path: `${basePath}/alt-text-audit`, method: 'get', handler: createAltTextAuditHandler(uploadsCollection) },
         { path: `${basePath}/ai-alt-text`, method: 'post', handler: withRateLimit(createAiAltTextHandler(uploadsCollection, seoConfig)) },

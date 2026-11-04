@@ -22,7 +22,7 @@ import type { PayloadHandler, PayloadRequest } from 'payload'
 import type { SeoConfig } from '../types.js'
 import { resolveGscSiteUrl } from '../helpers/gscClient.js'
 import { parseJsonBody } from '../helpers/parseBody.js'
-import { aiApiKey, aiChat, aiModel } from '../helpers/aiClient.js'
+import { aiApiKey, aiChat, aiLanguageName, aiModel } from '../helpers/aiClient.js'
 import { buildPayloadApiUrl, payloadApiRoute } from '../helpers/seoApiUrl.js'
 
 const ALT_MAX = 125
@@ -117,7 +117,7 @@ async function generateAltText(
 Rules:
 - Describe what is actually visible in the image.
 - Maximum ${ALT_MAX} characters.
-- Write in ${language === 'en' ? 'English' : 'French'}.
+- Write in ${aiLanguageName(language)}.
 - Do NOT start with "image of", "photo of", "picture of" or similar.
 - No quotes around the result. Return ONLY the alt text, nothing else.`
 

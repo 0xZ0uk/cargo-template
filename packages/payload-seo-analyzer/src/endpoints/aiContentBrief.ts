@@ -16,7 +16,7 @@ import type { SeoConfig } from '../types.js'
 import { parseJsonBody } from '../helpers/parseBody.js'
 import { extractDocContent } from '../helpers/extractDocContent.js'
 import { isSeoPanelUser } from '../helpers/isAdmin.js'
-import { aiApiKey, aiChat, aiModel } from '../helpers/aiClient.js'
+import { aiApiKey, aiChat, aiLanguageName, aiModel } from '../helpers/aiClient.js'
 
 export interface ContentBrief {
   outline: Array<{ level: 'h2' | 'h3'; text: string }>
@@ -117,7 +117,7 @@ async function callAiBrief(
 Produce a concise WRITING BRIEF for the target keyword so a writer can create a page that ranks AND is citable by AI engines.
 Rules:
 - Base the brief on genuine search intent for the keyword; cover entities and questions a complete page must address.
-- Be specific and non-generic; no filler. Write in ${language === 'en' ? 'English' : 'French'}.
+- Be specific and non-generic; no filler. Write in ${aiLanguageName(language)}.
 - Do not invent facts, brands, prices or statistics.
 Return ONLY a JSON object (no markdown, no prose) with EXACTLY this shape:
 {"outline":[{"level":"h2"|"h3","text":string}],"entities":[string],"questions":[string],"internalLinkIdeas":[string],"recommendedWordCount":number,"notes":[string]}

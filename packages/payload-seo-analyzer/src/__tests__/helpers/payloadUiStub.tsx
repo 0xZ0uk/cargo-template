@@ -35,6 +35,7 @@ export const stubConfig = {
 
 export const payloadUiStub = {
   useConfig: () => stubConfig,
+  useDocumentInfo: () => ({}),
   Banner: ({ children, type = 'default', className }: AnyProps) => (
     <div className={['banner', `banner--type-${type}`, className].filter(Boolean).join(' ')}>{children}</div>
   ),
