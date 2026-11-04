@@ -15,6 +15,7 @@
  */
 
 export type SchemaTypeKey =
+  | 'WebPage'
   | 'Article'
   | 'Product'
   | 'LocalBusiness'
@@ -44,6 +45,13 @@ export interface SchemaRequirement {
 }
 
 export const SCHEMA_REQUIREMENTS: Record<SchemaTypeKey, SchemaRequirement> = {
+  WebPage: {
+    // The default for home, service and generic pages (what `buildJsonLd` emits for them).
+    // No rich result of its own; a named, addressable page is all it needs.
+    required: ['name', 'url'],
+    recommended: ['description', 'image', 'breadcrumb'],
+    richResult: false,
+  },
   Article: {
     required: ['headline', 'image'],
     recommended: ['author', 'datePublished', 'dateModified', 'publisher'],

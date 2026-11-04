@@ -142,3 +142,23 @@ describe('buildJsonLd names', () => {
     expect(buildJsonLd(noTitle, { type: 'Article' }).jsonLd.headline).toBe('Coffee | Cargo Template')
   })
 })
+
+describe('Article authors and dates follow the detection signals', () => {
+  const opts = { collection: 'pages', siteUrl: 'https://s.test' }
+
+  it('emits the author from `authors` / `author` and the date from `datePublished`', () => {
+    for (const author of [{ authors: [{ name: 'Ada' }] }, { author: { name: 'Ada' } }, { author: 'Ada' }]) {
+      const { type, jsonLd } = buildJsonLd({ slug: 'essay', title: 'Essay', datePublished: '2026-01-01', ...author }, opts)
+      const article = (jsonLd['@graph'] as Record<string, unknown>[] | undefined)?.find((n) => n['@type'] === 'Article') ?? jsonLd
+      expect(type).toBe('Article')
+      expect(article.author).toEqual([{ '@type': 'Person', name: 'Ada' }])
+      expect(article.datePublished).toBe('2026-01-01')
+    }
+  })
+
+  it("doesn't call a page an Article when its author is an unpopulated id", () => {
+    expect(detectSchemaType('pages', { slug: 'essay', publishedAt: '2026-01-01', author: 42 })).toBe('WebPage')
+    expect(detectSchemaType('pages', { slug: 'essay', publishedAt: '2026-01-01', authors: ['64f0c0ffee0000000000abcd'] })).toBe('WebPage')
+    expect(detectSchemaType('pages', { slug: 'essay', publishedAt: '2026-01-01', author: '64f0c0ffee0000000000abcd' })).toBe('WebPage')
+  })
+})

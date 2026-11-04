@@ -71,8 +71,8 @@ function detectExpectedSchemaType(input: SeoInput, ctx: AnalysisContext): Schema
   if (ctx.pageType === 'local-seo') return 'LocalBusiness'
   if (ctx.pageType === 'agency') return 'Organization'
   if (ctx.pageType === 'legal' || ctx.pageType === 'contact' || ctx.pageType === 'form') return null
-  // home / service / resource / generic → Article/WebPage is a sensible default
-  return 'Article'
+  // home / service / resource / generic → WebPage, matching what `buildJsonLd` generates
+  return 'WebPage'
 }
 
 export function checkSchema(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {

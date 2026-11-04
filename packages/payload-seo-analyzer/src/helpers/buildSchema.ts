@@ -53,11 +53,41 @@ const isFaqBlock = (block: Record<string, unknown>): boolean =>
 const hasContent = (value: unknown): boolean =>
   Array.isArray(value) ? value.length > 0 : typeof value === 'string' ? value.trim().length > 0 : !!value
 
-/** A publication date together with an author: the two things that make a page an article. */
+/** A Mongo ObjectId or a UUID: an unpopulated relationship, not an author's name. */
+const RELATIONSHIP_ID = /^(?:[0-9a-f]{24}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i
+
+/**
+ * The document's authors as objects the Article builder can name: the first non-empty
+ * of `populatedAuthors`, `authors` and `author`, each a populated object or an array of
+ * them. A plain-text `author` field counts as a name. Unpopulated relationships (numeric
+ * or id-like values) are skipped: there's nothing to name.
+ */
+function resolveAuthors(doc: Record<string, unknown>): Record<string, unknown>[] {
+  for (const value of [doc.populatedAuthors, doc.authors, doc.author]) {
+    if (!hasContent(value)) continue
+    const authors = (Array.isArray(value) ? value : [value])
+      .map((a) =>
+        a === doc.author && typeof a === 'string' && a.trim() && !RELATIONSHIP_ID.test(a.trim())
+          ? { name: a.trim() }
+          : a,
+      )
+      .filter((a): a is Record<string, unknown> => !!a && typeof a === 'object')
+      .filter((a) => !!(a.name || a.firstName))
+    if (authors.length > 0) return authors
+  }
+  return []
+}
+
+/** The publication date the Article builder emits, when the document has one of its own. */
+const publicationDate = (doc: Record<string, unknown>): unknown => doc.publishedAt || doc.datePublished
+
+/**
+ * A publication date together with an author: the two things that make a page an article.
+ * Uses the same fields the Article builder emits, so a page detected this way never
+ * produces an Article without them.
+ */
 function looksLikeArticle(doc: Record<string, unknown>): boolean {
-  const published = !!(doc.publishedAt || doc.datePublished)
-  const author = [doc.populatedAuthors, doc.authors, doc.author].some(hasContent)
-  return published && author
+  return !!publicationDate(doc) && resolveAuthors(doc).length > 0
 }
 
 /**
@@ -184,7 +214,7 @@ function buildArticleSchema(doc: Record<string, unknown>, siteUrl: string, docUr
     '@type': 'Article',
     headline: doc.title || meta.title || '',
     description: meta.description || '',
-    datePublished: doc.publishedAt || doc.createdAt || undefined,
+    datePublished: publicationDate(doc) || doc.createdAt || undefined,
     dateModified: doc.updatedAt || undefined,
     mainEntityOfPage: {
       '@type': 'WebPage',
@@ -193,9 +223,8 @@ function buildArticleSchema(doc: Record<string, unknown>, siteUrl: string, docUr
   }
 
   if (imageUrl) schema.image = imageUrl
-  if (doc.populatedAuthors) {
-    schema.author = buildAuthors(doc.populatedAuthors as unknown[])
-  }
+  const authors = resolveAuthors(doc)
+  if (authors.length > 0) schema.author = buildAuthors(authors)
 
   // Topical entities (SEO 2026): `about` = primary subject(s), `mentions` = secondary
   // entities referenced. Both let AI/search engines disambiguate the page's topic.
@@ -615,8 +644,8 @@ export function buildJsonLd(
  * unaffected. U+2028 / U+2029 are escaped too, since they are raw line
  * terminators for a JS parser.
  */
-export function serializeJsonLd(jsonLd: unknown): string {
-  return JSON.stringify(jsonLd)
+export function serializeJsonLd(jsonLd: unknown, space?: number): string {
+  return JSON.stringify(jsonLd, null, space)
     .replace(/</g, '\\u003c')
     .replace(/>/g, '\\u003e')
     .replace(/&/g, '\\u0026')

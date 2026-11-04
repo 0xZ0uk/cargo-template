@@ -285,6 +285,16 @@ describe('checkSchema — schema-required-fields check', () => {
     expect(checks.find((x) => x.id === 'schema-required-fields')).toBeUndefined()
   })
 
+  it("expects a WebPage on home and generic pages, so it doesn't ask for an author or date", () => {
+    for (const pageType of ['home', 'generic'] as const) {
+      const checks = checkSchema(makeInput({ metaImage: { id: 1 } }), makeCtx({ pageType }))
+      expect(checks.find((x) => x.id === 'schema-coverage')?.message).toContain('WebPage')
+      const c = checks.find((x) => x.id === 'schema-required-fields')
+      expect(c?.status).toBe('pass')
+      expect(c?.message).not.toMatch(/author|datePublished/)
+    }
+  })
+
   it('does not affect the existing schema-coverage check', () => {
     const checks = checkSchema(makeInput({ isPost: true, metaImage: { id: 1 } }), makeCtx({ pageType: 'blog' }))
     const cov = checks.find((x) => x.id === 'schema-coverage')

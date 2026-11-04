@@ -9,6 +9,7 @@ const docs: Record<string, Record<string, unknown>> = {
   '2': page,
   '3': { id: 3, slug: 'home', title: 'Home', meta: { title: 'Home | Cargo Template' } },
   '4': { id: 4, slug: 'untitled', meta: { title: 'Untitled | Cargo Template' } },
+  '5': { id: 5, slug: 'xss', title: 'Hi </script><script>alert(1)</script>' },
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -119,5 +120,15 @@ describe('buildJsonLd BreadcrumbList', () => {
       ['Home', 'https://s.test'],
       ['Coffee', 'https://s.test/coffee'],
     ])
+  })
+
+  it("escapes the pasteable html so a title can't close the script tag", async () => {
+    const handler = createSchemaGeneratorHandler(['pages'], { locale: 'en', siteUrl: 'https://s.test' } as SeoConfig)
+    const { body } = await json(
+      await handler(req('https://cargo.example/api/seo-plugin/schema-generator?collection=pages&id=5')),
+    )
+    expect(body.html).not.toContain('</script><script>')
+    expect(body.html).toContain('\\u003c/script\\u003e')
+    expect(body.html.match(/<\/script>/g)).toHaveLength(1)
   })
 })
