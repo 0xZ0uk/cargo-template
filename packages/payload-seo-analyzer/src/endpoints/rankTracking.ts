@@ -19,8 +19,8 @@ import {
   isGscAdminRequest,
 } from '../helpers/gscClient.js'
 import { payloadApiRoute } from '../helpers/seoApiUrl.js'
+import { payloadStoreResolver, type RankSnapshot, type SeoDataStoreResolver } from '../store/index.js'
 
-const RANK_COLLECTION = 'seo-rank-history'
 const round1 = (n: number) => Math.round(n * 10) / 10
 
 export interface RankSnapshotResult {
@@ -42,6 +42,7 @@ export async function runRankSnapshot(
   basePath: string,
   seoConfig?: SeoConfig,
   opts?: { windowDays?: number; rowLimit?: number },
+  resolveStore: SeoDataStoreResolver = payloadStoreResolver,
 ): Promise<RankSnapshotResult> {
   const cfg = getGscOAuthConfig(basePath, seoConfig, payloadApiRoute(payload))
   if (!cfg) return { ok: false, reason: 'not_configured' }
@@ -78,43 +79,25 @@ export async function runRankSnapshot(
     return { ok: false, reason: e instanceof Error ? e.message : 'query_failed' }
   }
 
+  // One snapshot per query per day: re-running the same day stores nothing new.
   const todayKey = new Date().toISOString().slice(0, 10)
-  // Dedupe: skip queries already snapshotted today (one snapshot per query per day).
-  const existing = await payload.find({
-    collection: RANK_COLLECTION,
-    where: { dateKey: { equals: todayKey } },
-    limit: 2000,
-    depth: 0,
-    overrideAccess: true,
-  })
-  const already = new Set(existing.docs.map((d) => d.query as string))
-
-  let stored = 0
   const nowIso = new Date().toISOString()
-  // Sequential inserts — SQLite allows only one writer (no Promise.all).
+  const snapshots: RankSnapshot[] = []
   for (const r of rows) {
     const query = r.keys?.[0]
-    if (!query || already.has(query)) continue
-    try {
-      await payload.create({
-        collection: RANK_COLLECTION,
-        data: {
-          query,
-          position: round1(r.position),
-          clicks: r.clicks,
-          impressions: r.impressions,
-          ctr: r.ctr,
-          property,
-          dateKey: todayKey,
-          snapshotDate: nowIso,
-        },
-        overrideAccess: true,
-      })
-      stored++
-    } catch (e) {
-      payload.logger.warn(`[seo] rank-snapshot: skipped "${query}": ${e instanceof Error ? e.message : 'error'}`)
-    }
+    if (!query) continue
+    snapshots.push({
+      query,
+      position: round1(r.position),
+      clicks: r.clicks,
+      impressions: r.impressions,
+      ctr: r.ctr,
+      property,
+      dateKey: todayKey,
+      snapshotDate: nowIso,
+    })
   }
+  const stored = await resolveStore(payload).rankHistory.insertDaily(snapshots)
 
   return { ok: true, stored, scanned: rows.length, startDate, endDate }
 }
@@ -122,11 +105,15 @@ export async function runRankSnapshot(
 // ---------------------------------------------------------------------------
 // POST /rank-snapshot — manual trigger (admin)
 // ---------------------------------------------------------------------------
-export function createRankSnapshotHandler(basePath: string, seoConfig?: SeoConfig): PayloadHandler {
+export function createRankSnapshotHandler(
+  basePath: string,
+  seoConfig?: SeoConfig,
+  resolveStore: SeoDataStoreResolver = payloadStoreResolver,
+): PayloadHandler {
   return async (req) => {
     try {
       if (!isGscAdminRequest(req)) return Response.json({ error: 'Forbidden' }, { status: 403 })
-      const result = await runRankSnapshot(req.payload, basePath, seoConfig)
+      const result = await runRankSnapshot(req.payload, basePath, seoConfig, undefined, resolveStore)
       if (!result.ok) {
         const status = result.reason === 'not_connected' || result.reason === 'not_configured' ? 409 : 502
         return Response.json(result, { status, headers: { 'Cache-Control': 'no-store' } })
@@ -143,7 +130,7 @@ export function createRankSnapshotHandler(basePath: string, seoConfig?: SeoConfi
 // ---------------------------------------------------------------------------
 // GET /rank-history — per-query latest position + previous + delta (admin)
 // ---------------------------------------------------------------------------
-export function createRankHistoryHandler(): PayloadHandler {
+export function createRankHistoryHandler(resolveStore: SeoDataStoreResolver = payloadStoreResolver): PayloadHandler {
   return async (req) => {
     try {
       if (!isGscAdminRequest(req)) return Response.json({ error: 'Forbidden' }, { status: 403 })
@@ -152,20 +139,12 @@ export function createRankHistoryHandler(): PayloadHandler {
       const days = Math.min(180, Math.max(7, parseInt(url.searchParams.get('days') || '35', 10)))
       const since = new Date(Date.now() - days * 86_400_000).toISOString()
 
-      const all = await req.payload.find({
-        collection: RANK_COLLECTION,
-        where: { snapshotDate: { greater_than: since } },
-        sort: '-snapshotDate',
-        limit: 5000,
-        depth: 0,
-        overrideAccess: true,
-      })
+      const all = await resolveStore(req.payload).rankHistory.list({ since, limit: 5000 })
 
       // Group by query (docs already sorted newest-first globally).
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const byQuery = new Map<string, any[]>()
-      for (const d of all.docs) {
-        const q = d.query as string
+      const byQuery = new Map<string, RankSnapshot[]>()
+      for (const d of all) {
+        const q = d.query
         const arr = byQuery.get(q)
         if (arr) arr.push(d)
         else byQuery.set(q, [d])
@@ -175,12 +154,12 @@ export function createRankHistoryHandler(): PayloadHandler {
         const latest = snaps[0]
         const previous = snaps.find((s) => s.dateKey !== latest.dateKey) || null
         // Delta in ranking terms: positive = improved (moved UP the SERP = lower position).
-        const delta = previous ? round1((previous.position as number) - (latest.position as number)) : 0
+        const delta = previous ? round1(previous.position - latest.position) : 0
         return {
           query,
           page: latest.page || null,
-          position: latest.position as number,
-          previousPosition: previous ? (previous.position as number) : null,
+          position: latest.position,
+          previousPosition: previous ? previous.position : null,
           delta,
           clicks: latest.clicks ?? 0,
           impressions: latest.impressions ?? 0,
@@ -188,7 +167,7 @@ export function createRankHistoryHandler(): PayloadHandler {
           snapshotDate: latest.snapshotDate,
           history: snaps
             .slice(0, 30)
-            .map((s) => ({ date: s.dateKey, position: s.position as number }))
+            .map((s) => ({ date: s.dateKey, position: s.position }))
             .reverse(),
         }
       })
@@ -199,7 +178,7 @@ export function createRankHistoryHandler(): PayloadHandler {
       return Response.json(
         {
           count: movers.length,
-          lastSnapshot: all.docs[0]?.snapshotDate || null,
+          lastSnapshot: all[0]?.snapshotDate || null,
           movers,
         },
         { headers: { 'Cache-Control': 'no-store' } },

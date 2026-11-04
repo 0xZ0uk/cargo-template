@@ -167,15 +167,24 @@ function findField(fields: any[] = [], name: string): any {
   return undefined
 }
 
-describe('seoAnalyzerPlugin — retention purge (opt-in)', () => {
-  it('registers no retention route at all without the option', () => {
-    // The route does not exist rather than existing and refusing: a host that
-    // never asked for a purge has no delete endpoint on its API surface.
-    expect(paths(run({ collections: ['pages'] }))).not.toContain('/seo-plugin/retention')
+// Every time-series feature off, so retention has nothing to do unless asked.
+const NO_TIME_SERIES = { scoreHistory: false, performance: false, seoLogs: false, gscApi: false }
+
+describe('seoAnalyzerPlugin — retention purge (mandatory for time-series features)', () => {
+  it('registers no retention route when no time-series feature is on and nothing is named', () => {
+    // The route does not exist rather than existing and refusing.
+    expect(paths(run({ collections: ['pages'], features: NO_TIME_SERIES }))).not.toContain('/seo-plugin/retention')
+  })
+
+  it('registers the routes as soon as a time-series feature is on, without any option', () => {
+    for (const feature of ['scoreHistory', 'performance', 'seoLogs', 'gscApi']) {
+      const out = run({ collections: ['pages'], features: { ...NO_TIME_SERIES, [feature]: true } })
+      expect(paths(out)).toContain('/seo-plugin/retention')
+    }
   })
 
   it('registers a GET (dry run) and a POST (run now) once a window is set', () => {
-    const out = run({ collections: ['pages'], retentionDays: { 'seo-logs': 90 } })
+    const out = run({ collections: ['pages'], features: NO_TIME_SERIES, retentionDays: { 'seo-logs': 90 } })
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const routes = (out.endpoints || []).filter((e: any) => e.path === '/seo-plugin/retention')
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -186,16 +195,46 @@ describe('seoAnalyzerPlugin — retention purge (opt-in)', () => {
     // 0 and negatives are dropped by resolveRetention, so the config resolves to
     // no target — and the endpoints must follow.
     for (const days of [0, -1, Number.NaN]) {
-      const out = run({ collections: ['pages'], retentionDays: { 'seo-logs': days } })
+      const out = run({ collections: ['pages'], features: NO_TIME_SERIES, retentionDays: { 'seo-logs': days } })
       expect(paths(out)).not.toContain('/seo-plugin/retention')
     }
   })
 
   it('leaves the rest of the config untouched when retention is on', () => {
-    const withRetention = run({ collections: ['pages'], retentionDays: { 'seo-logs': 30 } })
-    const without = run({ collections: ['pages'] })
+    const withRetention = run({ collections: ['pages'], features: NO_TIME_SERIES, retentionDays: { 'seo-logs': 30 } })
+    const without = run({ collections: ['pages'], features: NO_TIME_SERIES })
     expect(slugs(withRetention)).toEqual(slugs(without))
     expect(paths(withRetention).filter((p) => p !== '/seo-plugin/retention')).toEqual(paths(without))
+  })
+})
+
+describe('seoAnalyzerPlugin — dataStore option', () => {
+  const ALL_ON = { scoreHistory: true, performance: true, seoLogs: true, gscApi: true }
+  const TIME_SERIES = ['seo-score-history', 'seo-performance', 'seo-logs', 'seo-rank-history']
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const fakeStore: any = { kind: 'fake' }
+
+  it('without a store, registers the upstream time-series collections', () => {
+    const s = slugs(run({ collections: ['pages'], features: ALL_ON }))
+    for (const slug of TIME_SERIES) expect(s).toContain(slug)
+  })
+
+  it('with a store, registers none of them, but keeps seo-gsc-auth and every endpoint', () => {
+    const withStore = run({ collections: ['pages'], features: ALL_ON, dataStore: fakeStore })
+    const without = run({ collections: ['pages'], features: ALL_ON })
+    const s = slugs(withStore)
+    for (const slug of TIME_SERIES) expect(s).not.toContain(slug)
+    expect(s).toContain('seo-gsc-auth')
+    expect(paths(withStore)).toEqual(paths(without))
+  })
+
+  it('leaves the store and the enabled datasets in server-only custom config', () => {
+    const out = run({ collections: ['pages'], features: { ...NO_TIME_SERIES, seoLogs: true }, dataStore: fakeStore })
+    const runtime = out.custom.seoAnalyzer.store
+    expect(runtime.enabled).toEqual(['seo-logs'])
+    expect(runtime.resolveStore({})).toBe(fakeStore)
+    // Not in the client config.
+    expect(JSON.stringify(out.admin.custom)).not.toContain('resolveStore')
   })
 })
 

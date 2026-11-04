@@ -8,6 +8,7 @@
  */
 import type { Payload } from 'payload'
 import { buildAlertDigest, deliverAlertDigest, getAlertConfig } from './endpoints/alerts.js'
+import type { SeoDataStoreResolver } from './store/index.js'
 
 const STARTUP_DELAY = 60 * 1000 // 1 min after init
 
@@ -15,14 +16,18 @@ let intervalId: ReturnType<typeof setInterval> | null = null
 let listenersAttached = false
 
 /** Build and deliver one alerts digest (also run by the `seoAlertsDigest` job). Never throws. */
-export async function runAlertsDigest(payload: Payload, siteUrl?: string): Promise<void> {
+export async function runAlertsDigest(
+  payload: Payload,
+  siteUrl?: string,
+  resolveStore?: SeoDataStoreResolver,
+): Promise<void> {
   try {
     const cfg = getAlertConfig()
     if (!cfg.webhookUrl && cfg.emails.length === 0) {
       // No delivery channel configured — nothing to do (don't spam logs).
       return
     }
-    const digest = await buildAlertDigest(payload, cfg)
+    const digest = await buildAlertDigest(payload, cfg, resolveStore)
     const delivery = await deliverAlertDigest(payload, digest, cfg, siteUrl)
     if (delivery.sent) {
       payload.logger.info(
@@ -34,7 +39,7 @@ export async function runAlertsDigest(payload: Payload, siteUrl?: string): Promi
   }
 }
 
-export function startAlertsScheduler(payload: Payload, siteUrl?: string): void {
+export function startAlertsScheduler(payload: Payload, siteUrl?: string, resolveStore?: SeoDataStoreResolver): void {
   // Idempotent — avoid leaking a previous interval / doubling the digest on re-init.
   stopAlertsScheduler()
 
@@ -42,11 +47,11 @@ export function startAlertsScheduler(payload: Payload, siteUrl?: string): void {
   const intervalMs = intervalHours * 60 * 60 * 1000
 
   setTimeout(() => {
-    void runAlertsDigest(payload, siteUrl)
+    void runAlertsDigest(payload, siteUrl, resolveStore)
   }, STARTUP_DELAY)
 
   intervalId = setInterval(() => {
-    void runAlertsDigest(payload, siteUrl)
+    void runAlertsDigest(payload, siteUrl, resolveStore)
   }, intervalMs)
 
   if (!listenersAttached) {

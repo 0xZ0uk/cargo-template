@@ -63,12 +63,42 @@ const getIndex = async () => {
 }
 
 /**
- * Looks up a redirect for a path that matched no page. Call it only after the page lookup
- * misses, so existing pages never pay for it.
+ * Records the 404 in the SEO analyzer's 404 log (the admin's sitemap audit, 404 tab), in the
+ * background. A no-op while the plugin's `seoLogs` feature is off. Rows go to the SEO_D1
+ * database, capped (`SEO_LOGS_MAX_ROWS`) and pruned by the retention job.
+ */
+const recordNotFound = async (pathname: string) => {
+  const [{ getPayload }, { recordSeoNotFound }, { getRequestHeader }, { waitUntil }] = await Promise.all([
+    import('payload'),
+    import('@cargo/payload-seo-analyzer'),
+    import('@tanstack/react-start/server'),
+    import('#cloudflare-runtime'),
+  ])
+  const payload = await getPayload({ config: (await import('@payload-config')).default })
+  // On a client-side navigation this is the page holding the broken link, which is what an
+  // editor needs to fix it.
+  const hit = recordSeoNotFound(payload, {
+    url: pathname,
+    referrer: getRequestHeader('referer'),
+    userAgent: getRequestHeader('user-agent'),
+  })
+
+  // Don't hold the 404 response for the write. `waitUntil` is undefined on Node, where the
+  // promise outlives the response anyway. `recordSeoNotFound` never throws.
+  if (waitUntil) waitUntil(hit)
+  else void hit
+}
+
+/**
+ * Looks up a redirect for a path that matched no page, and logs the 404 when there's none.
+ * Call it only after the page lookup misses, so existing pages never pay for it.
  */
 export const resolveRedirect = createServerFn({ method: 'GET' })
   .validator((data: ResolveRedirectInput): ResolveRedirectInput => data)
-  .handler(
-    async ({ data }): Promise<ResolvedRedirect | null> =>
-      matchRedirect(await getIndex(), data.pathname, data.search),
-  )
+  .handler(async ({ data }): Promise<ResolvedRedirect | null> => {
+    const target = matchRedirect(await getIndex(), data.pathname, data.search)
+
+    if (!target) await recordNotFound(data.pathname)
+
+    return target
+  })

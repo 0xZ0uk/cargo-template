@@ -1,16 +1,21 @@
 /**
  * Retention purge scheduler.
  *
- * Trims the four append-only time-series collections once a day so a long-lived
- * install does not accumulate them forever. Started from plugin onInit ONLY when
- * `retentionDays` names at least one collection with a valid window — with no
- * such option nothing here ever runs, and no existing install changes behaviour.
+ * Trims the four append-only time-series datasets once a day so a long-lived install
+ * does not accumulate them forever. Started from plugin onInit whenever a time-series
+ * feature is on (retention is mandatory for them) or `retentionDays` names a dataset.
  *
  * Same shape as rankTracker / alertsScheduler: idempotent start, one interval,
  * cleared on SIGTERM / SIGINT.
  */
 import type { Payload } from 'payload'
-import { purgeRetention, resolveRetention, type RetentionConfig } from './retention.js'
+import { purgeRetention, resolveRetention, type RetentionConfig, type RetentionOptions } from './retention.js'
+import type { SeoDataStoreResolver } from './store/index.js'
+
+/** What the purge needs besides `retentionDays`: enabled datasets, row caps and the store. */
+export interface RetentionRunOptions extends RetentionOptions {
+  resolveStore?: SeoDataStoreResolver
+}
 
 const PURGE_INTERVAL = 24 * 60 * 60 * 1000 // 24 hours
 // Later than the other two jobs: a purge is never urgent, and running it after
@@ -21,9 +26,16 @@ let intervalId: ReturnType<typeof setInterval> | null = null
 let listenersAttached = false
 
 /** One retention purge, logged (also run by the `seoRetentionPurge` job). Never throws. */
-export async function runRetentionPurge(payload: Payload, retention: RetentionConfig): Promise<void> {
+export async function runRetentionPurge(
+  payload: Payload,
+  retention: RetentionConfig | undefined,
+  options: RetentionRunOptions = {},
+): Promise<void> {
   try {
-    const result = await purgeRetention(payload, retention)
+    const result = await purgeRetention(payload, retention, {
+      ...options,
+      store: options.resolveStore?.(payload),
+    })
     if (!result.ran) return
     const failed = result.results.filter((r) => r.error)
     for (const entry of failed) {
@@ -43,19 +55,23 @@ export async function runRetentionPurge(payload: Payload, retention: RetentionCo
   }
 }
 
-export function startRetentionPurge(payload: Payload, retention: RetentionConfig | undefined): void {
+export function startRetentionPurge(
+  payload: Payload,
+  retention: RetentionConfig | undefined,
+  options: RetentionRunOptions = {},
+): void {
   // Idempotent — avoid leaking a previous interval / doubling the job on re-init.
   stopRetentionPurge()
 
-  const targets = resolveRetention(retention)
+  const targets = resolveRetention(retention, options)
   if (targets.length === 0) return
 
   setTimeout(() => {
-    void runRetentionPurge(payload, retention as RetentionConfig)
+    void runRetentionPurge(payload, retention, options)
   }, STARTUP_DELAY)
 
   intervalId = setInterval(() => {
-    void runRetentionPurge(payload, retention as RetentionConfig)
+    void runRetentionPurge(payload, retention, options)
   }, PURGE_INTERVAL)
 
   if (!listenersAttached) {

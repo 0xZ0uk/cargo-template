@@ -40,6 +40,15 @@ describe('jobs option', () => {
     expect(taskSlugs(out)).toEqual(['hostTask'])
   })
 
+  it('registers the retention purge whenever a time-series feature is on (it is mandatory)', () => {
+    const out = seoAnalyzerPlugin({
+      collections: ['pages'],
+      jobs: true,
+      features: { scoreHistory: false, performance: false, seoLogs: true },
+    })(baseConfig())
+    expect(taskSlugs(out)).toEqual(['hostTask', SEO_TASK_SLUGS.auditContinue, SEO_TASK_SLUGS.retentionPurge])
+  })
+
   it('registers one scheduled task per enabled background feature, next to the host tasks', () => {
     const out = seoAnalyzerPlugin({
       collections: ['pages'],
@@ -66,6 +75,7 @@ describe('jobs option', () => {
     const out = seoAnalyzerPlugin({
       collections: ['pages'],
       jobs: { queue: 'nightly', auditCron: '*/10 * * * *' },
+      features: { scoreHistory: false, performance: false, seoLogs: false },
     })(baseConfig())
     expect(taskSlugs(out)).toEqual(['hostTask', SEO_TASK_SLUGS.auditContinue])
     expect(out.jobs.tasks[1].schedule).toEqual([{ cron: '*/10 * * * *', queue: 'nightly' }])

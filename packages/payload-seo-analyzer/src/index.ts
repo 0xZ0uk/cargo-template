@@ -118,8 +118,38 @@ export { createAiRewriteHandler } from './endpoints/aiRewrite.js'
 
 // Retention — the purge helpers, for a host that would rather run the trim from
 // its own cron than let the plugin schedule it.
-export { purgeRetention, describeRetention, resolveRetention, RETENTION_TARGETS } from './retention.js'
-export type { RetentionConfig, RetentionCollection, PurgeResult } from './retention.js'
+export {
+  purgeRetention,
+  describeRetention,
+  resolveRetention,
+  RETENTION_TARGETS,
+  RETENTION_DEFAULTS,
+} from './retention.js'
+export type { RetentionConfig, RetentionCollection, RetentionMaxRows, PurgeResult } from './retention.js'
+
+// Time-series data store (`dataStore` plugin option): score history, performance imports,
+// rank history and 404 logs. `createSqlSeoDataStore` takes a D1 binding (or any D1-shaped
+// SQLite wrapper) and manages its own schema; `migrateSeoStore` applies it ahead of time.
+export {
+  createSqlSeoDataStore,
+  createPayloadSeoDataStore,
+  migrateSeoStore,
+  SEO_STORE_MIGRATIONS,
+  SEO_DATASETS,
+} from './store/index.js'
+export type {
+  SeoDataStore,
+  SeoDataset,
+  SeoSqlDatabase,
+  SeoSqlStatement,
+  ScoreSnapshot,
+  PerformanceRow,
+  RankSnapshot,
+  NotFoundEntry,
+  NotFoundHit,
+} from './store/index.js'
+// Record a 404 from the host's own frontend, in-process (needs `features.seoLogs`).
+export { recordSeoNotFound } from './endpoints/seoLogs.js'
 
 // Re-export dashboard i18n for custom locale registration
 export { registerDashboardTranslations, getDashboardT } from './dashboard-i18n.js'

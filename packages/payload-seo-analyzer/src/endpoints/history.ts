@@ -17,11 +17,12 @@
 
 import type { PayloadHandler } from 'payload'
 import { isSeoPanelUser } from '../helpers/isAdmin.js'
+import { payloadStoreResolver, type SeoDataStoreResolver } from '../store/index.js'
 
 /** Trend threshold — delta must exceed this to be considered improving/declining */
 const TREND_THRESHOLD = 3
 
-export function createHistoryHandler(): PayloadHandler {
+export function createHistoryHandler(resolveStore: SeoDataStoreResolver = payloadStoreResolver): PayloadHandler {
   return async (req) => {
     try {
       if (!isSeoPanelUser(req)) {
@@ -41,32 +42,17 @@ export function createHistoryHandler(): PayloadHandler {
       }
 
       // Fetch snapshots ordered by date (newest first)
-      const result = await req.payload.find({
-        collection: 'seo-score-history',
-        where: {
-          and: [
-            { documentId: { equals: documentId } },
-            { collection: { equals: collection } },
-          ],
-        },
-        sort: '-snapshotDate',
-        limit,
-        depth: 0,
-        overrideAccess: true,
-      })
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const snapshots = result.docs as any[]
+      const snapshots = await resolveStore(req.payload).scoreHistory.list({ collection, documentId, limit })
 
       // Build history array (chronological order — oldest first)
       const history = snapshots
         .map((snap) => ({
-          score: snap.score as number,
-          level: snap.level as string,
-          focusKeyword: (snap.focusKeyword as string) || '',
-          wordCount: (snap.wordCount as number) || 0,
+          score: snap.score,
+          level: snap.level ?? '',
+          focusKeyword: snap.focusKeyword || '',
+          wordCount: snap.wordCount || 0,
           checksSummary: snap.checksSummary || { pass: 0, warning: 0, fail: 0 },
-          snapshotDate: snap.snapshotDate as string,
+          snapshotDate: snap.snapshotDate,
         }))
         .reverse()
 

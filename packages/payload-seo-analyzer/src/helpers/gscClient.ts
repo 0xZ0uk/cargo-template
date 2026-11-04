@@ -10,7 +10,7 @@ import type { Payload } from 'payload'
 import type { SeoConfig } from '../types.js'
 import { decryptToken } from './tokenCrypto.js'
 import { isSeoAdmin, isSeoAdminRequest } from './isAdmin.js'
-import { resolveSiteUrl } from './siteUrl.js'
+import { requestOrigin, resolveSiteUrl } from './siteUrl.js'
 
 export const GSC_AUTH_COLLECTION = 'seo-gsc-auth'
 export const GSC_SCOPES = 'https://www.googleapis.com/auth/webmasters.readonly openid email'
@@ -23,8 +23,8 @@ export const isGscAdmin = isSeoAdmin
  */
 export const isGscAdminRequest = isSeoAdminRequest
 
-export function resolveGscSiteUrl(seoConfig?: SeoConfig): string | undefined {
-  return resolveSiteUrl(seoConfig?.siteUrl) || undefined
+export function resolveGscSiteUrl(seoConfig?: SeoConfig, req?: { url?: string | null }): string | undefined {
+  return resolveSiteUrl(seoConfig?.siteUrl, req ? requestOrigin(req) : undefined) || undefined
 }
 
 export interface GscOAuthConfig {
@@ -35,6 +35,12 @@ export interface GscOAuthConfig {
 }
 
 /**
+ * Site URL: the plugin's `siteUrl` option, then `SITE_URL`, then (when `req` is given) the
+ * request's origin, so a host that sets neither still gets a working redirect URI. The
+ * origin only ever feeds the OAuth redirect URI (Google rejects one that was not
+ * registered) and the default GSC property; it never gates an outgoing fetch.
+ * Callers without a request (scheduled jobs) need `siteUrl` / `SITE_URL`.
+ *
  * `apiRoute` is Payload's `routes.api` (`payload.config.routes.api`); it defaults
  * to `/api` for callers that have no Payload instance at hand.
  */
@@ -42,10 +48,11 @@ export function getGscOAuthConfig(
   basePath: string,
   seoConfig?: SeoConfig,
   apiRoute: string = '/api',
+  req?: { url?: string | null },
 ): GscOAuthConfig | null {
   const clientId = process.env.GSC_OAUTH_CLIENT_ID || ''
   const clientSecret = process.env.GSC_OAUTH_CLIENT_SECRET || ''
-  const siteUrl = resolveGscSiteUrl(seoConfig)
+  const siteUrl = resolveGscSiteUrl(seoConfig, req)
   if (!clientId || !clientSecret || !siteUrl) return null
   return { clientId, clientSecret, siteUrl, redirectUri: `${siteUrl}${apiRoute}${basePath}/gsc/callback` }
 }
@@ -92,9 +99,12 @@ export async function getGscAccessToken(
   const secret = (payload as unknown as { secret?: string }).secret || ''
   let refreshToken: string
   try {
-    refreshToken = decryptToken(authDoc.refreshTokenEnc as string, secret)
-  } catch {
-    throw new Error('decrypt_failed')
+    refreshToken = await decryptToken(authDoc.refreshTokenEnc as string, secret)
+  } catch (cause) {
+    // Keep the reason (wrong key, tampering, legacy format without node:crypto): never swallow it.
+    const reason = cause instanceof Error ? cause.message : String(cause)
+    payload.logger?.error?.(`[seo] gsc: could not decrypt the stored refresh token: ${reason}`)
+    throw new Error('decrypt_failed', { cause })
   }
   const tokens = await gscTokenRequest(cfg, { refresh_token: refreshToken, grant_type: 'refresh_token' })
   const accessToken = tokens.access_token as string | undefined

@@ -16,7 +16,8 @@ import { continuePausedAuditBuilds } from './endpoints/audit.js'
 import { runAlertsDigest } from './alertsScheduler.js'
 import { runRankSnapshotLogged } from './rankTracker.js'
 import { resolveRetention, type RetentionConfig } from './retention.js'
-import { runRetentionPurge } from './retentionScheduler.js'
+import { runRetentionPurge, type RetentionRunOptions } from './retentionScheduler.js'
+import type { SeoDataStoreResolver } from './store/index.js'
 import type { SeoConfig } from './types.js'
 
 /** Default queue of the plugin's scheduled tasks. */
@@ -67,6 +68,8 @@ export function seoJobTasks(args: {
   basePath: string
   gscSiteUrl?: string
   retentionDays?: RetentionConfig
+  retention?: RetentionRunOptions
+  resolveStore?: SeoDataStoreResolver
   cache: SeoSharedCache
 }): TaskConfig[] {
   const { jobs, features } = args
@@ -101,7 +104,7 @@ export function seoJobTasks(args: {
       retries: 0,
       schedule: daily,
       handler: async ({ req }) => {
-        await runRankSnapshotLogged(req.payload, args.basePath, args.seoConfig)
+        await runRankSnapshotLogged(req.payload, args.basePath, args.seoConfig, args.resolveStore)
         return { output: {} }
       },
     })
@@ -113,20 +116,19 @@ export function seoJobTasks(args: {
       retries: 0,
       schedule: daily,
       handler: async ({ req }) => {
-        await runAlertsDigest(req.payload, args.gscSiteUrl)
+        await runAlertsDigest(req.payload, args.gscSiteUrl, args.resolveStore)
         return { output: {} }
       },
     })
   }
-  if (resolveRetention(args.retentionDays).length > 0) {
-    const retention = args.retentionDays as RetentionConfig
+  if (resolveRetention(args.retentionDays, args.retention).length > 0) {
     tasks.push({
       slug: SEO_TASK_SLUGS.retentionPurge,
       label: 'SEO: retention purge',
       retries: 0,
       schedule: daily,
       handler: async ({ req }) => {
-        await runRetentionPurge(req.payload, retention)
+        await runRetentionPurge(req.payload, args.retentionDays, args.retention)
         return { output: {} }
       },
     })

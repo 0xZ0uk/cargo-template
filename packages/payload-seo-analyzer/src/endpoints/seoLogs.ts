@@ -4,13 +4,19 @@
  * - POST: Logs a new 404 hit (requires the secret header, or an SEO-admin session)
  * - DELETE: Clear/ignore logs
  *
- * NOTE: Rate limiting is not handled by this plugin. The consuming application
- * should implement rate limiting via its own middleware (e.g., express-rate-limit,
- * Next.js middleware, or a reverse proxy like Nginx/Caddy).
+ * Rows live in the plugin's data store (`dataStore` option), never necessarily in the
+ * main database. Hosts that render their own 404s record them in-process with
+ * `recordSeoNotFound(payload, hit)` instead of POSTing here.
+ *
+ * Growth: a new URL is created only while the log holds fewer than `SEO_LOGS_MAX_ROWS`
+ * (default 5,000) rows; a known URL only gets its counter bumped. The retention job trims
+ * the rest (90 days since the last hit by default).
  */
 
-import type { PayloadHandler, Where } from 'payload'
+import type { Payload, PayloadHandler } from 'payload'
 import { safeEqual } from '../helpers/tokenCrypto.js'
+import { seoLogsMaxRows, type RetentionMaxRows } from '../retention.js'
+import { payloadStoreResolver, seoStoreRuntime, type NotFoundHit, type NotFoundRecordResult, type NotFoundType, type SeoDataStoreResolver } from '../store/index.js'
 import { createBucketRateLimiter, rateLimitKey, type SeoRateLimit } from '../rateLimiter.js'
 import { parseJsonBody } from '../helpers/parseBody.js'
 
@@ -35,21 +41,6 @@ const VALID_LOG_TYPES = ['404', 'redirect', 'error']
  */
 export const MAX_LOG_TEXT_LENGTH = 500
 
-/**
- * Hard ceiling on the number of rows this endpoint may CREATE.
- *
- * Each POST carrying an unseen URL adds a row (up to 500 characters of url, referrer
- * and user agent each); an already-known URL only bumps its counter. Nothing bounded
- * the first case, so a caller feeding fresh paths grew the table for as long as they
- * kept going — on a SQLite host, the only plugin table with no cap at all. Past the
- * ceiling the endpoint stops creating rows and says so, but keeps incrementing the
- * ones already there: the 404 report the panel exists for goes on working.
- */
-function seoLogsMaxRows(): number {
-  const parsed = parseInt(process.env.SEO_LOGS_MAX_ROWS || '5000', 10)
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 5000
-}
-
 /** Trim, then cap — used for the two visitor-supplied text fields. */
 function cappedText(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined
@@ -57,7 +48,73 @@ function cappedText(value: unknown): string | undefined {
   return trimmed ? trimmed.slice(0, MAX_LOG_TEXT_LENGTH) : undefined
 }
 
-export function createSeoLogsHandler(seoLogsSecret?: string, rateLimit?: SeoRateLimit): PayloadHandler {
+/**
+ * Validate and normalise one hit: lower case, no query string or hash, text fields capped.
+ * Returns an error message for a hit that must not be stored.
+ */
+export function prepareNotFoundHit(raw: {
+  url?: unknown
+  type?: unknown
+  referrer?: unknown
+  userAgent?: unknown
+}): NotFoundHit | { error: string } {
+  const url = typeof raw.url === 'string' ? raw.url.trim() : undefined
+  const type = typeof raw.type === 'string' ? raw.type.trim() : '404'
+  if (!url) return { error: 'Missing url' }
+  if (url.length > MAX_LOG_TEXT_LENGTH) return { error: 'URL too long (max 500 chars)' }
+  if (!VALID_LOG_TYPES.includes(type)) {
+    return { error: `Invalid type. Must be one of: ${VALID_LOG_TYPES.join(', ')}` }
+  }
+  return {
+    url: url.toLowerCase().split('?')[0]!.split('#')[0]!,
+    type: type as NotFoundType,
+    referrer: cappedText(raw.referrer),
+    userAgent: cappedText(raw.userAgent),
+  }
+}
+
+/**
+ * Record a 404 from the host's own frontend, in-process (no HTTP round trip, no secret).
+ * A no-op returning `null` when the plugin's `seoLogs` feature is off. Never throws: a
+ * failed log must not turn a 404 page into a 500.
+ *
+ * @example
+ * await recordSeoNotFound(payload, { url: '/missing', referrer: request.headers.get('referer') })
+ */
+export async function recordSeoNotFound(
+  payload: Payload,
+  raw: { url: string; type?: NotFoundType; referrer?: string | null; userAgent?: string | null },
+): Promise<NotFoundRecordResult | null> {
+  const runtime = seoStoreRuntime(payload)
+  if (!runtime?.enabled.includes('seo-logs')) return null
+  const hit = prepareNotFoundHit(raw)
+  if ('error' in hit) return null
+  try {
+    const result = await runtime.resolveStore(payload).notFound.record(hit, seoLogsMaxRows(runtime.maxRows))
+    if (result === 'capped') warnCapped(payload, seoLogsMaxRows(runtime.maxRows))
+    return result
+  } catch (error) {
+    payload.logger.error(`[seo] recordSeoNotFound failed: ${error instanceof Error ? error.message : 'unknown'}`)
+    return null
+  }
+}
+
+let cappedWarned = false
+function warnCapped(payload: Payload, max: number) {
+  if (cappedWarned) return
+  cappedWarned = true
+  payload.logger.warn(
+    `[seo] seo-logs reached the ${max}-row cap — new 404 paths are no longer recorded. ` +
+      'Clear the panel or raise SEO_LOGS_MAX_ROWS.',
+  )
+}
+
+export function createSeoLogsHandler(
+  seoLogsSecret?: string,
+  rateLimit?: SeoRateLimit,
+  resolveStore: SeoDataStoreResolver = payloadStoreResolver,
+  maxRows?: RetentionMaxRows,
+): PayloadHandler {
   // Rate limiter for POST: 30 requests per 60 seconds per caller (user, else IP)
   const postLimiter = createBucketRateLimiter('seo-logs', rateLimit)
 
@@ -102,90 +159,16 @@ export function createSeoLogsHandler(seoLogsSecret?: string, rateLimit?: SeoRate
         }
 
         const body = await parseJsonBody(req)
+        const hit = prepareNotFoundHit(body)
+        if ('error' in hit) return Response.json({ error: hit.error }, { status: 400 })
 
-        const url = typeof body.url === 'string' ? body.url.trim() : undefined
-        const type = typeof body.type === 'string' ? body.type.trim() : '404'
-        const referrer = cappedText(body.referrer)
-        const userAgent = cappedText(body.userAgent)
-
-        if (!url) {
-          return Response.json({ error: 'Missing url' }, { status: 400 })
+        const max = seoLogsMaxRows(maxRows)
+        const action = await resolveStore(req.payload).notFound.record(hit, max)
+        if (action === 'capped') {
+          warnCapped(req.payload, max)
+          return Response.json({ success: false, action })
         }
-
-        // Validate url length
-        if (url.length > MAX_LOG_TEXT_LENGTH) {
-          return Response.json({ error: 'URL too long (max 500 chars)' }, { status: 400 })
-        }
-
-        // Validate type
-        if (!VALID_LOG_TYPES.includes(type)) {
-          return Response.json({ error: `Invalid type. Must be one of: ${VALID_LOG_TYPES.join(', ')}` }, { status: 400 })
-        }
-
-        // Normalize URL
-        const normalizedUrl = url.toLowerCase().split('?')[0].split('#')[0]
-
-        // Check if this URL is already logged (upsert: increment count)
-        try {
-          const existing = await req.payload.find({
-            collection: 'seo-logs',
-            where: { url: { equals: normalizedUrl } },
-            limit: 1,
-            depth: 0,
-            overrideAccess: true,
-          })
-
-          if (existing.docs.length > 0) {
-            const doc = existing.docs[0]
-            await req.payload.update({
-              collection: 'seo-logs',
-              id: doc.id,
-              data: {
-                count: ((doc as Record<string, unknown>).count as number || 0) + 1,
-                lastSeen: new Date().toISOString(),
-                ...(referrer && { referrer }),
-                ...(userAgent && { userAgent }),
-              },
-              overrideAccess: true,
-            })
-            return Response.json({ success: true, action: 'incremented' })
-          }
-        } catch {
-          // Collection might not exist yet
-        }
-
-        // Growth cap: only the CREATE path grows the table, so it is the only one gated.
-        // `count` may be missing on exotic adapters — a failure here must not drop the log.
-        try {
-          const max = seoLogsMaxRows()
-          const total = await req.payload.count?.({ collection: 'seo-logs', overrideAccess: true })
-          if (typeof total?.totalDocs === 'number' && total.totalDocs >= max) {
-            req.payload.logger.warn(
-              `[seo] seo-logs reached the ${max}-row cap — new 404 paths are no longer recorded. ` +
-                'Clear the panel or raise SEO_LOGS_MAX_ROWS.',
-            )
-            return Response.json({ success: false, action: 'capped' })
-          }
-        } catch {
-          // count unavailable — fall through rather than lose the 404 report
-        }
-
-        // Create new log entry
-        await req.payload.create({
-          collection: 'seo-logs',
-          data: {
-            url: normalizedUrl,
-            type,
-            count: 1,
-            lastSeen: new Date().toISOString(),
-            referrer: referrer || '',
-            userAgent: userAgent || '',
-            ignored: false,
-          },
-          overrideAccess: true,
-        })
-
-        return Response.json({ success: true, action: 'created' })
+        return Response.json({ success: true, action })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to log'
         req.payload.logger.error(`[seo] seo-logs POST error: ${message}`)
@@ -208,32 +191,15 @@ export function createSeoLogsHandler(seoLogsSecret?: string, rateLimit?: SeoRate
         const id = urlObj.searchParams.get('id')
         const action = urlObj.searchParams.get('action') || 'delete'
 
+        const store = resolveStore(req.payload).notFound
         if (id) {
-          if (action === 'ignore') {
-            await req.payload.update({
-              collection: 'seo-logs',
-              id,
-              data: { ignored: true },
-              overrideAccess: true,
-            })
-            return Response.json({ success: true })
-          }
-
-          await req.payload.delete({
-            collection: 'seo-logs',
-            id,
-            overrideAccess: true,
-          })
+          if (action === 'ignore') await store.ignore(id)
+          else await store.remove(id)
           return Response.json({ success: true })
         }
 
         // Clear all non-ignored logs in a single bulk delete operation
-        const deleteResult = await req.payload.delete({
-          collection: 'seo-logs',
-          where: { ignored: { not_equals: true } },
-          overrideAccess: true,
-        })
-        const deletedCount = Array.isArray(deleteResult.docs) ? deleteResult.docs.length : 0
+        const deletedCount = await store.clear()
         return Response.json({ success: true, deleted: deletedCount })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to delete'
@@ -247,32 +213,7 @@ export function createSeoLogsHandler(seoLogsSecret?: string, rateLimit?: SeoRate
       const urlObj = new URL(req.url as string)
       const showIgnored = urlObj.searchParams.get('ignored') === '1'
 
-      const where: Where = showIgnored ? {} : { ignored: { not_equals: true } }
-
-      const result = await req.payload.find({
-        collection: 'seo-logs',
-        where,
-        sort: '-count',
-        limit: 500,
-        depth: 0,
-        overrideAccess: true,
-      })
-
-      const logs = result.docs.map((doc) => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const d = doc as any
-        return {
-          id: d.id,
-          url: d.url,
-          type: d.type,
-          count: d.count,
-          lastSeen: d.lastSeen,
-          referrer: d.referrer,
-          userAgent: d.userAgent,
-          ignored: d.ignored,
-          createdAt: d.createdAt,
-        }
-      })
+      const logs = await resolveStore(req.payload).notFound.list({ includeIgnored: showIgnored, limit: 500 })
 
       const stats = {
         total: logs.length,

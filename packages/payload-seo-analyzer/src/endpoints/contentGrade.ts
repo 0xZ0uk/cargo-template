@@ -533,7 +533,7 @@ export function createContentGradeHandler(
       const slug = typeof doc.slug === 'string' ? doc.slug : ''
 
       // --- GSC connection — clean 200 + gscConnected:false when unavailable (never raw 404/500) ---
-      const cfg = getGscOAuthConfig(basePath, seoConfig, payloadApiRoute(req.payload))
+      const cfg = getGscOAuthConfig(basePath, seoConfig, payloadApiRoute(req.payload), req)
       if (!cfg) {
         return Response.json(
           {

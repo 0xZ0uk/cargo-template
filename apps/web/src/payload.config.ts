@@ -1,4 +1,4 @@
-import { seoAnalyzerPlugin } from '@cargo/payload-seo-analyzer'
+import { createSqlSeoDataStore, seoAnalyzerPlugin } from '@cargo/payload-seo-analyzer'
 import { sqliteD1Adapter } from '@payloadcms/db-d1-sqlite'
 import { mcpPlugin } from '@payloadcms/plugin-mcp'
 import { seoPlugin } from '@payloadcms/plugin-seo'
@@ -146,10 +146,10 @@ export default buildConfig({
     }),
     // Content analysis on top of the plugin-seo fields: a score sidebar on Pages, a
     // site-wide dashboard at /admin/seo, redirects, and sitemap/robots endpoints under
-    // /api/seo-plugin. Features that keep growing tables in D1 (404 logs, score/rank
-    // history, performance imports) or need background timers stay off; whole-site
-    // scans (link graph, keywords, cannibalization…) stay off until they're tested
-    // against Workers CPU limits.
+    // /api/seo-plugin. Time-series features (404 logs, score/rank history, performance
+    // imports) store their rows in the separate SEO_D1 database (`dataStore`); they stay
+    // off until that database exists in production. Whole-site scans (link graph,
+    // keywords, cannibalization…) stay off until they're tested against Workers CPU limits.
     seoAnalyzerPlugin({
       collections: ['pages'],
       collectionRoutes: { pages: '' },
@@ -164,8 +164,13 @@ export default buildConfig({
       waitUntil,
       // Rate limits shared across isolates (Workers Rate Limiting bindings).
       rateLimit: workersSeoRateLimit(cloudflare),
+      // Score history, Search Console imports, rank history and 404 logs go to a second D1
+      // database, never the main one (AGENTS.md). The plugin creates and migrates its tables
+      // there, registers no collections for them, and prunes them daily (retention job).
+      dataStore: createSqlSeoDataStore(cloudflare.SEO_D1),
       // Background work as Payload jobs, run by the Cron Trigger (`scheduled` in src/server.ts).
-      // With the features below, that's continuing a dashboard audit that paused between steps.
+      // With the features below, that's continuing a dashboard audit that paused between steps
+      // (plus the retention purge of SEO_D1 once a time-series feature is on).
       jobs: true,
       features: {
         aiFeatures: false,

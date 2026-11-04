@@ -24,6 +24,19 @@
       // opt out of remote bindings, so they keep using the local D1 in `.wrangler/state`.
       "remote": true,
     },
+    {
+      // The SEO analyzer's time-series data (score history, Search Console imports, rank
+      // history, 404 logs), kept out of the main database. The plugin owns the schema:
+      // `pnpm seo-store:migrate` (local) / `pnpm seo-store:migrate:remote` apply it, and
+      // the store also applies it on first use. Retention prunes it daily (Cron Trigger).
+      "binding": "SEO_D1",
+      "database_name": "cargo-template-seo",
+      // PLACEHOLDER: create the database (`wrangler d1 create cargo-template-seo`) and put
+      // its id here. Until then, deploys and `seo-store:migrate:remote` fail on this binding.
+      // Local dev and `pnpm preview` work with it as is (local D1 in `.wrangler/state`).
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "remote": true,
+    },
   ],
   "r2_buckets": [
     {

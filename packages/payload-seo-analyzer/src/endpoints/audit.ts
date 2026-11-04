@@ -9,6 +9,7 @@
  */
 
 import type { Payload, PayloadHandler } from 'payload'
+import { getSeoDataStore, seoDatasetEnabled } from '../store/index.js'
 import { analyzeSeo } from '../index.js'
 import type { SeoConfig } from '../types.js'
 import { buildSeoInputFromDoc } from './validate.js'
@@ -322,29 +323,25 @@ async function finalizeAudit(
   }
 
   // Fetch previous scores from history for trend indicator. Bounded to avoid loading an
-  // unbounded history table into memory on sites with long score history.
+  // unbounded history into memory on sites with long score history.
   const previousScoreMap = new Map<string, number>()
-  try {
-    const historyResults = await payload.find({
-      collection: 'seo-score-history',
-      limit: Math.min(allResults.length * 2, 3000),
-      sort: '-snapshotDate',
-      depth: 0,
-      overrideAccess: true,
-    })
-    const seen = new Set<string>()
-    for (const h of historyResults.docs) {
-      const key = `${h.documentId}::${h.collection}`
-      if (!seen.has(key)) {
-        seen.add(key)
-        continue
+  if (seoDatasetEnabled(payload, 'seo-score-history')) {
+    try {
+      const history = await getSeoDataStore(payload).scoreHistory.list({
+        limit: Math.min(allResults.length * 2, 3000),
+      })
+      const seen = new Set<string>()
+      for (const h of history) {
+        const key = `${h.documentId}::${h.collection}`
+        if (!seen.has(key)) {
+          seen.add(key)
+          continue
+        }
+        if (!previousScoreMap.has(key)) previousScoreMap.set(key, h.score)
       }
-      if (!previousScoreMap.has(key)) {
-        previousScoreMap.set(key, h.score as number)
-      }
+    } catch {
+      // no score history (feature off, or the store is unreachable): no trend
     }
-  } catch {
-    // seo-score-history might not exist
   }
 
   // Enrich results with previous score for trend display
