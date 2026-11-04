@@ -23,6 +23,47 @@ const passthrough = (tag: keyof React.JSX.IntrinsicElements, className: string) 
 const Icon = () => <svg aria-hidden="true" />
 
 /**
+ * A small modal registry behind `useModal`, so a test can open a dialog and close it again
+ * (the real one is faceless-ui's ModalProvider, which needs the admin's providers). Call
+ * `resetModalStub()` between tests.
+ */
+const openModals = new Set<string>()
+const modalListeners = new Set<() => void>()
+let modalSnapshot: Record<string, { isOpen: boolean }> = {}
+const publishModals = () => {
+  modalSnapshot = Object.fromEntries([...openModals].map((slug) => [slug, { isOpen: true }]))
+  modalListeners.forEach((listener) => listener())
+}
+const modalApi = {
+  openModal: (slug: string) => {
+    openModals.add(slug)
+    publishModals()
+  },
+  closeModal: (slug: string) => {
+    openModals.delete(slug)
+    publishModals()
+  },
+  toggleModal: (slug: string) => (openModals.has(slug) ? modalApi.closeModal(slug) : modalApi.openModal(slug)),
+  isModalOpen: (slug: string) => openModals.has(slug),
+}
+export const resetModalStub = () => {
+  openModals.clear()
+  publishModals()
+}
+const useModalStub = () => {
+  const modalState = React.useSyncExternalStore(
+    (listener) => {
+      modalListeners.add(listener)
+      return () => modalListeners.delete(listener)
+    },
+    () => modalSnapshot,
+  )
+  return { ...modalApi, modalState }
+}
+
+const DialogContext = React.createContext<{ slug: string } | null>(null)
+
+/**
  * Default `useConfig()`: what the admin provides. A test that needs other values
  * (a custom `routes.api`, feature flags, no provider) overrides `useConfig` after the spread.
  */
@@ -180,7 +221,56 @@ export const payloadUiStub = {
   SortUpIcon: Icon,
   ThreeDotsIcon: Icon,
   WriteIcon: Icon,
-  useModal: () => ({ openModal: () => {}, closeModal: () => {}, isModalOpen: () => false, toggleModal: () => {} }),
+  useModal: useModalStub,
+  // Payload's Dialog family: DialogModal is a Modal with a focus trap, a heading that takes
+  // focus and an Escape that closes it (unless `closeOnEsc` is false). The stub keeps the
+  // semantics a test can see: it only renders while open, and Escape and the header's close
+  // button behave like the real ones.
+  DialogModal: function DialogModalStub({ children, slug, closeOnEsc = true, focusTrapOptions }: AnyProps) {
+    const { modalState, closeModal } = useModalStub()
+    const isOpen = Boolean(modalState[slug]?.isOpen)
+    const ref = React.useRef<HTMLDivElement>(null)
+    React.useEffect(() => {
+      if (!isOpen) return
+      // Like focus-trap: remember the opener, hand focus back to it (or to what
+      // `focusTrapOptions.setReturnFocus` picks) once the dialog closes.
+      const opener = document.activeElement as HTMLElement | null
+      const onKeyDown = (event: KeyboardEvent) => {
+        if (event.key !== 'Escape') return
+        if (closeOnEsc) closeModal(slug)
+        else event.stopImmediatePropagation()
+      }
+      document.addEventListener('keydown', onKeyDown, true)
+      ref.current?.querySelector<HTMLElement>('h1, h2, h3, h4, h5, h6')?.focus()
+      return () => {
+        document.removeEventListener('keydown', onKeyDown, true)
+        const target = focusTrapOptions?.setReturnFocus ? focusTrapOptions.setReturnFocus(opener) : opener
+        if (target) (target as HTMLElement).focus()
+      }
+    }, [isOpen, closeOnEsc, closeModal, slug, focusTrapOptions])
+    if (!isOpen) return null
+    return (
+      <DialogContext.Provider value={{ slug }}>
+        <div aria-modal="true" ref={ref} role="dialog">
+          {children}
+        </div>
+      </DialogContext.Provider>
+    )
+  },
+  DialogHeader: function DialogHeaderStub({ title, showClose, onClose }: AnyProps) {
+    const ctx = React.useContext(DialogContext)
+    const { closeModal } = useModalStub()
+    return (
+      <div>
+        {title ? <h4 tabIndex={-1}>{title}</h4> : null}
+        {showClose ? (
+          <button aria-label="Close" onClick={() => (onClose ? onClose({ modalSlug: ctx?.slug }) : closeModal(ctx!.slug))} type="button" />
+        ) : null}
+      </div>
+    )
+  },
+  DialogBody: passthrough('div', 'dialog__body'),
+  DialogFooter: passthrough('div', 'dialog__footer'),
   toast: Object.assign(() => {}, { success: () => {}, error: () => {}, info: () => {}, warning: () => {} }),
   usePathname: () => '/admin',
 }

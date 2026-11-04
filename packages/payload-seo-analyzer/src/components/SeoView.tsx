@@ -6,6 +6,10 @@ import {
   Button,
   CheckIcon,
   ChevronIcon,
+  DialogBody,
+  DialogFooter,
+  DialogHeader,
+  DialogModal,
   EditIcon,
   Link,
   RefreshIcon,
@@ -14,6 +18,7 @@ import {
   SortUpIcon,
   XIcon,
   useConfig,
+  useModal,
 } from '@payloadcms/ui'
 import { formatAdminURL } from 'payload/shared'
 import { ContentDecaySection } from './ContentDecaySection.js'
@@ -467,6 +472,9 @@ function TableRow({
   )
 }
 
+/** Slug of the bulk-preview dialog (Payload's modal registry is keyed by it). */
+const BULK_PREVIEW_MODAL_SLUG = 'seo-bulk-preview'
+
 // ---------------------------------------------------------------------------
 // Bulk AI optimize — one preview row (before → after)
 interface BulkPreviewRow {
@@ -573,6 +581,31 @@ export function SeoView() {
   const [bulkApplying, setBulkApplying] = useState(false)
   const [bulkApplied, setBulkApplied] = useState(false)
   const [bulkPreview, setBulkPreview] = useState<{ results: BulkPreviewRow[]; capped: boolean; total: number } | null>(null)
+  const { openModal, closeModal, modalState } = useModal()
+  const bulkPreviewOpen = Boolean(modalState[BULK_PREVIEW_MODAL_SLUG]?.isOpen)
+  // The buttons that start a preview are disabled while it loads, and a browser drops focus from
+  // a button that becomes disabled. Remember it when the preview starts, so closing the dialog
+  // can hand focus back (Payload's own return target would be the page body).
+  const bulkPreviewOpenerRef = useRef<HTMLElement | null>(null)
+  const bulkPreviewFocusTrap = useMemo(
+    () => ({
+      setReturnFocus: () => {
+        const opener = bulkPreviewOpenerRef.current
+        return opener?.isConnected && !opener.matches(':disabled') ? opener : false
+      },
+    }),
+    [],
+  )
+  const closeBulkPreview = useCallback(() => {
+    setBulkPreview(null)
+    closeModal(BULK_PREVIEW_MODAL_SLUG)
+  }, [closeModal])
+  // Escape and the header's close button close the modal on their own: drop the data with it.
+  const wasBulkPreviewOpen = useRef(false)
+  useEffect(() => {
+    if (wasBulkPreviewOpen.current && !bulkPreviewOpen) setBulkPreview(null)
+    wasBulkPreviewOpen.current = bulkPreviewOpen
+  }, [bulkPreviewOpen])
   const PAGE_SIZE = 50
 
   // Freshness of the shown audit: set while an older audit is shown during a rebuild.
@@ -920,6 +953,7 @@ export function SeoView() {
   const runBulkPreview = useCallback(async (ids: string[]) => {
     const clean = ids.filter((k) => !k.startsWith('global:'))
     if (clean.length === 0) return
+    bulkPreviewOpenerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
     setBulkOptimizing(true)
     setBulkPreview(null)
     try {
@@ -933,12 +967,13 @@ export function SeoView() {
         const data = await res.json()
         const changed = ((data.results || []) as BulkPreviewRow[]).filter((r) => r.changed && !r.error)
         setBulkPreview({ results: changed, capped: !!data.capped, total: data.processed || 0 })
+        openModal(BULK_PREVIEW_MODAL_SLUG)
       }
     } catch {
       /* ignore */
     }
     setBulkOptimizing(false)
-  }, [])
+  }, [openModal, seoApi])
 
   // Selection-driven bulk optimize.
   const handleBulkOptimizeMeta = useCallback(
@@ -980,13 +1015,13 @@ export function SeoView() {
       /* ignore */
     }
     setBulkApplying(false)
-    setBulkPreview(null)
+    closeBulkPreview()
     setSelectedIds(new Set())
     // Do NOT auto-rebuild the audit here: on a large/constrained site, forcing a full rebuild after
     // every applied batch is what saturates the server. The changes are written; the user refreshes
     // once (via "Refresh") when done with all batches.
     setBulkApplied(true)
-  }, [bulkPreview])
+  }, [bulkPreview, closeBulkPreview, seoApi])
 
   // Export the proposed before→after corrections as CSV (review offline before applying).
   const handleExportBulkPreviewCsv = useCallback(() => {
@@ -1695,21 +1730,25 @@ export function SeoView() {
         />
 
         {/* Bulk AI optimize — before → after preview (review + export before writing) */}
-        {bulkPreview && (
-          <div
-            className="seo-audit__overlay"
-            onClick={() => { if (!bulkApplying) setBulkPreview(null) }}
-          >
-            <div className="seo-audit__modal" onClick={(e) => e.stopPropagation()}>
-              <div className="seo-audit__modal-header">
-                <h2 className="seo-heading">{t.seoView.bulkPreviewTitle}</h2>
+        <DialogModal
+          closeOnEsc={!bulkApplying}
+          focusTrapOptions={bulkPreviewFocusTrap}
+          size="large"
+          slug={BULK_PREVIEW_MODAL_SLUG}
+        >
+          {bulkPreview && (
+            <>
+              <DialogHeader
+                onClose={() => { if (!bulkApplying) closeBulkPreview() }}
+                showClose
+                title={t.seoView.bulkPreviewTitle}
+              />
+
+              <DialogBody>
                 <p className="seo-text seo-text--small seo-text--secondary">
                   {bulkPreview.results.length} / {bulkPreview.total}
                   {bulkPreview.capped ? ` · ${t.seoView.bulkCappedNote}` : ''}
                 </p>
-              </div>
-
-              <div className="seo-audit__modal-body">
                 {bulkPreview.results.length === 0 && <EmptyState title={t.seoView.bulkNoChanges} />}
                 {bulkPreview.results.map((r) => {
                   const fields: Array<{ label: string; before: string; after: string }> = []
@@ -1734,32 +1773,31 @@ export function SeoView() {
                     </div>
                   )
                 })}
-              </div>
+              </DialogBody>
 
-              <div className="seo-audit__modal-footer">
+              <DialogFooter>
                 <Button
                   buttonStyle="secondary"
+                  className="seo-audit__dialog-export"
                   disabled={bulkPreview.results.length === 0}
                   onClick={handleExportBulkPreviewCsv}
                 >
                   {t.seoView.bulkExport}
                 </Button>
-                <div className="seo-row">
-                  <Button buttonStyle="secondary" disabled={bulkApplying} onClick={() => setBulkPreview(null)}>
-                    {t.seoView.bulkCancel}
-                  </Button>
-                  <Button
-                    buttonStyle="primary"
-                    disabled={bulkApplying || bulkPreview.results.length === 0}
-                    onClick={handleBulkApplyPreview}
-                  >
-                    {bulkApplying ? t.seoView.bulkApplying : `${t.seoView.bulkApply} (${bulkPreview.results.length})`}
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+                <Button buttonStyle="secondary" disabled={bulkApplying} onClick={closeBulkPreview}>
+                  {t.seoView.bulkCancel}
+                </Button>
+                <Button
+                  buttonStyle="primary"
+                  disabled={bulkApplying || bulkPreview.results.length === 0}
+                  onClick={handleBulkApplyPreview}
+                >
+                  {bulkApplying ? t.seoView.bulkApplying : `${t.seoView.bulkApply} (${bulkPreview.results.length})`}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogModal>
       </ViewBody>
     </>
   )
