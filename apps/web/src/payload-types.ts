@@ -170,6 +170,7 @@ export interface Config {
   jobs: {
     tasks: {
       seoAuditContinue: TaskSeoAuditContinue;
+      seoAlertsDigest: TaskSeoAlertsDigest;
       seoRetentionPurge: TaskSeoRetentionPurge;
       inline: {
         input: unknown;
@@ -694,7 +695,7 @@ export interface PayloadJob {
     | {
         executedAt: string;
         completedAt: string;
-        taskSlug: 'inline' | 'seoAuditContinue' | 'seoRetentionPurge';
+        taskSlug: 'inline' | 'seoAuditContinue' | 'seoAlertsDigest' | 'seoRetentionPurge';
         taskID: string;
         input:
           | {
@@ -725,13 +726,13 @@ export interface PayloadJob {
           | boolean
           | null;
         parent?: {
-          taskSlug?: ('inline' | 'seoAuditContinue' | 'seoRetentionPurge') | null;
+          taskSlug?: ('inline' | 'seoAuditContinue' | 'seoAlertsDigest' | 'seoRetentionPurge') | null;
           taskID?: string | null;
         };
         id?: string | null;
       }[]
     | null;
-  taskSlug?: ('inline' | 'seoAuditContinue' | 'seoRetentionPurge') | null;
+  taskSlug?: ('inline' | 'seoAuditContinue' | 'seoAlertsDigest' | 'seoRetentionPurge') | null;
   queue?: string | null;
   waitUntil?: string | null;
   processingUntil?: string | null;
@@ -1431,6 +1432,14 @@ export interface UploadDropzoneWidget {
  * via the `definition` "TaskSeoAuditContinue".
  */
 export interface TaskSeoAuditContinue {
+  input?: unknown;
+  output?: unknown;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TaskSeoAlertsDigest".
+ */
+export interface TaskSeoAlertsDigest {
   input?: unknown;
   output?: unknown;
 }

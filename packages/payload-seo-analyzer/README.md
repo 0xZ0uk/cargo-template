@@ -62,12 +62,12 @@ The Cargo app (`apps/web`) runs this plugin on a deployed Worker. Each feature i
 | `scoreHistory` | on | **Verified.** Rows in `SEO_D1` |
 | `seoLogs` (404 log) | on | **Verified.** Rows in `SEO_D1` |
 | `externalLinks` | on | **Verified.** Budgeted scans (100 links, 1,000 subrequests per call) that resume across calls |
+| `schemaBuilder` | on | **Verified.** URLs use `siteUrl`, then `SITE_URL`, then the request origin |
+| `alerts` | on | **Verified**: preview, send now and the scheduled `seoAlertsDigest` job, to a webhook. Nothing is sent until a channel is set. The webhook can't be another Worker on the same account's `workers.dev`, and email needs a Payload email adapter |
 | `aiFeatures` | on | **Verified** against OpenRouter (DeepSeek V4.1 Flash): all six endpoints, alt text read from R2, the sidebar's "Optimize with AI". Needs `OPENROUTER_API_KEY`; cap spend with a credit limit on the key |
 | `gscApi` | off | Token crypto verified on a deployed Worker. The endpoints and the OAuth flow aren't checked yet |
-| `alerts` | off | Runs as the `seoAlertsDigest` job; not checked on Workers |
-| `indexNow` | off | Not checked on Workers |
+| `indexNow` | off | Not checked on Workers yet (deferred until there's a real site: it pings search engines on publish) |
 | `cannibalization`, `keywords`, `linkGraph`, `duplicateContent` | off | Whole-site scans in one request, not measured against Workers CPU limits yet (deferred until there's a real site to measure) |
-| `schemaBuilder` | off | Mostly client-side; not checked on Workers |
 | `warmCache` | off | **Unsupported on Workers** (skipped by design) |
 | `auditCacheFile` / `buildAuditToFile()` | n/a | **Node only.** Ignored with a warning when `cacheStore` is set or on Workers |
 
@@ -184,7 +184,7 @@ Jobs add Payload's `payload-jobs` collection, so run `migrate:create` once. A ne
 
 ### 5. Environment variables
 
-Varlock passes workerd only the variables declared in `apps/web/.env.schema`. A plugin variable does nothing on Workers until it's declared there; mark secrets `@sensitive`. `apps/web` declares `SITE_URL`, `SEO_LLMS_TXT`, the audit caps, the external-link caps, the GSC and OpenRouter variables. The full list is under [Environment variables](#environment-variables).
+Varlock passes workerd only the variables declared in `apps/web/.env.schema`. A plugin variable does nothing on Workers until it's declared there; mark secrets `@sensitive`. `apps/web` declares `SITE_URL`, `SEO_LLMS_TXT`, the audit caps, the external-link caps, the GSC, OpenRouter and alert variables. The full list is under [Environment variables](#environment-variables).
 
 ## Frontend helpers
 
@@ -360,7 +360,7 @@ The plugin reads no `NEXT_*` or `PAYLOAD_PUBLIC_*` variables. On Workers, declar
 | `SEO_GSC_ENCRYPTION_KEY` | derived from `PAYLOAD_SECRET` | 32-byte key (hex or base64) for the stored GSC token. Changing it, or the secret it derives from, forces a reconnect |
 | `GOOGLE_PAGESPEED_API_KEY` / `PAGESPEED_API_KEY` | — | PageSpeed Insights key for Core Web Vitals |
 | `SEO_INDEXNOW_KEY` | — | IndexNow key, required by `indexNow` |
-| `SEO_ALERT_WEBHOOK_URL`, `SEO_ALERT_EMAIL` | — | Digest delivery for `alerts` |
+| `SEO_ALERT_WEBHOOK_URL`, `SEO_ALERT_EMAIL` | — | Digest delivery for `alerts`. The webhook gets a JSON POST, `{ type: "seo-alert-digest", siteUrl, digest }`; a non-2xx answer counts as failed. The scheduled digest only knows `siteUrl` from the option or `SITE_URL` |
 | `SEO_ALERT_SCORE_DROP`, `SEO_ALERT_POSITION_DROP`, `SEO_ALERT_WINDOW_HOURS`, `SEO_ALERT_INTERVAL_HOURS` | `10`, `5`, `24`, `24` | Digest thresholds; the interval only applies to the Node timer |
 | `SEO_REQUIRE_ADMIN_ROLE` | — | `1` requires an explicit `admin` role (no fail-open on role-less setups) |
 | `SEO_ADMIN_USER_COLLECTIONS` | `config.admin.user` | Comma-separated collections accepted as admin-panel users |

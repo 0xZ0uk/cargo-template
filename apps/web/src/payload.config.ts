@@ -150,9 +150,10 @@ export default buildConfig({
     // store their rows in the separate SEO_D1 database (`dataStore`), pruned daily, and
     // the external link checker scans in budgeted steps; all four passed on a deployed
     // Worker. AI features call OpenRouter (`OPENROUTER_API_KEY`, capped by the key's credit
-    // limit in OpenRouter). GSC stays off until a Google OAuth client exists (it also needs a main-D1
+    // limit in OpenRouter). The alerts digest sends nothing until SEO_ALERT_WEBHOOK_URL or
+    // SEO_ALERT_EMAIL is set. GSC stays off until a Google OAuth client exists (it also needs a main-D1
     // migration for `seo-gsc-auth`). Whole-site scans (link graph, keywords,
-    // cannibalization…) stay off until they're tested against Workers CPU limits.
+    // cannibalization…) and IndexNow stay off until the real site exists (PLAN.md items 22–23).
     seoAnalyzerPlugin({
       collections: ['pages'],
       collectionRoutes: { pages: '' },
@@ -177,7 +178,7 @@ export default buildConfig({
       jobs: true,
       features: {
         aiFeatures: true,
-        alerts: false,
+        alerts: true,
         cannibalization: false,
         duplicateContent: false,
         externalLinks: true,
@@ -186,7 +187,7 @@ export default buildConfig({
         keywords: false,
         linkGraph: false,
         performance: true,
-        schemaBuilder: false,
+        schemaBuilder: true,
         scoreHistory: true,
         seoLogs: true,
         warmCache: false,

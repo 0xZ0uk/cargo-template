@@ -22,6 +22,7 @@ import type { Payload, PayloadHandler } from 'payload'
 
 import { isSeoAdminRequest as isAdmin } from '../helpers/isAdmin.js'
 import { escapeHtml } from '../helpers/escapeHtml.js'
+import { requestOrigin } from '../helpers/siteUrl.js'
 import { payloadStoreResolver, type RankSnapshot, type ScoreSnapshot, type SeoDataStoreResolver } from '../store/index.js'
 
 export interface AlertConfig {
@@ -189,6 +190,9 @@ function digestToHtml(digest: AlertDigest, siteUrl?: string): string {
 </div>`
 }
 
+/** A webhook that hasn't answered by then counts as failed (a scheduled run must not hang). */
+const WEBHOOK_TIMEOUT_MS = 10_000
+
 export interface DeliveryResult {
   sent: boolean
   reason?: string
@@ -209,12 +213,17 @@ export async function deliverAlertDigest(
 
   if (cfg.webhookUrl) {
     try {
-      await fetch(cfg.webhookUrl, {
+      const res = await fetch(cfg.webhookUrl, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ type: 'seo-alert-digest', siteUrl, digest }),
+        signal: AbortSignal.timeout(WEBHOOK_TIMEOUT_MS),
       })
-      channels.webhook = true
+      // A 4xx/5xx (revoked hook, wrong URL, payload rejected) is a failed delivery, not a sent one.
+      if (res.ok) channels.webhook = true
+      else payload.logger.warn(`[seo] alerts: webhook delivery failed: HTTP ${res.status}`)
+      // Release the connection; the body is never used.
+      await res.body?.cancel().catch(() => {})
     } catch (e) {
       payload.logger.warn(`[seo] alerts: webhook delivery failed: ${e instanceof Error ? e.message : 'error'}`)
     }
@@ -233,11 +242,14 @@ export async function deliverAlertDigest(
       } catch (e) {
         payload.logger.warn(`[seo] alerts: email delivery failed: ${e instanceof Error ? e.message : 'error'}`)
       }
+    } else {
+      payload.logger.warn('[seo] alerts: SEO_ALERT_EMAIL is set but Payload has no email adapter')
     }
   }
 
   const sent = channels.webhook || channels.email
-  return { sent, reason: sent ? undefined : 'no_channel_configured', channels }
+  const configured = !!cfg.webhookUrl || cfg.emails.length > 0
+  return { sent, reason: sent ? undefined : configured ? 'delivery_failed' : 'no_channel_configured', channels }
 }
 
 // ---------------------------------------------------------------------------
@@ -282,7 +294,9 @@ export function createAlertsRunHandler(
       if (!isAdmin(req)) return Response.json({ error: 'Forbidden' }, { status: 403 })
       const cfg = getAlertConfig()
       const digest = await buildAlertDigest(req.payload, cfg, resolveStore)
-      const delivery = await deliverAlertDigest(req.payload, digest, cfg, siteUrl)
+      // A configured site URL wins; otherwise the request's origin, so the receiver can tell
+      // which site sent it. (The scheduled digest has no request: it needs `siteUrl` / SITE_URL.)
+      const delivery = await deliverAlertDigest(req.payload, digest, cfg, siteUrl || requestOrigin(req))
       return Response.json({ digest, delivery }, { headers: { 'Cache-Control': 'no-store' } })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Internal server error'

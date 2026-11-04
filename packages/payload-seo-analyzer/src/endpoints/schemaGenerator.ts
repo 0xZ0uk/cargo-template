@@ -13,6 +13,7 @@ import type { PayloadHandler } from 'payload'
 import type { SeoConfig } from '../types.js'
 import { readAccessOpts } from '../helpers/readAccess.js'
 import { buildJsonLd, SCHEMA_TYPES, type SchemaType } from '../helpers/buildSchema.js'
+import { requestOrigin, resolveSiteUrl } from '../helpers/siteUrl.js'
 import { isSeoPanelUser } from '../helpers/isAdmin.js'
 
 export function createSchemaGeneratorHandler(
@@ -57,7 +58,15 @@ export function createSchemaGeneratorHandler(
         return Response.json({ error: `Document not found: ${collection}/${id}` }, { status: 404 })
       }
 
-      const { type, jsonLd } = buildJsonLd(doc, { collection, type: typeOverride, siteUrl: seoConfig?.siteUrl, locale: seoConfig?.locale })
+      // Without a configured site URL, use the request's origin (like /breadcrumb), never
+      // buildJsonLd's localhost default: the output is meant to be pasted into the site.
+      const { type, jsonLd } = buildJsonLd(doc, {
+        collection,
+        type: typeOverride,
+        siteUrl: resolveSiteUrl(seoConfig?.siteUrl, requestOrigin(req)),
+        collectionRoutes: seoConfig?.collectionRoutes,
+        locale: seoConfig?.locale,
+      })
 
       return Response.json({
         type,

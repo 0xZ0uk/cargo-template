@@ -12,6 +12,8 @@ const S = {
     subtitle: 'Digest périodique : régressions de score, nouveaux 404, chutes de position (webhook / email).',
     notConfigured:
       "Aucun canal configuré. Définissez SEO_ALERT_WEBHOOK_URL et/ou SEO_ALERT_EMAIL côté serveur, puis activez features.alerts.",
+    noChannel:
+      "Aucun canal configuré : le digest n'est envoyé nulle part. Définissez SEO_ALERT_WEBHOOK_URL et/ou SEO_ALERT_EMAIL côté serveur.",
     webhook: 'Webhook',
     email: 'Email',
     configured: 'configuré',
@@ -26,6 +28,7 @@ const S = {
     rankDrops: 'Chutes de position',
     sent: 'Digest envoyé',
     nothingToSend: 'Rien à envoyer (aucun problème).',
+    deliveryFailed: "L'envoi a échoué : vérifiez l'URL du webhook ou l'adaptateur e-mail (détails dans les logs).",
     issues: 'problème(s)',
   },
   en: {
@@ -33,6 +36,7 @@ const S = {
     subtitle: 'Periodic digest: score regressions, new 404s, ranking drops (webhook / email).',
     notConfigured:
       'No channel configured. Set SEO_ALERT_WEBHOOK_URL and/or SEO_ALERT_EMAIL on the server, then enable features.alerts.',
+    noChannel: 'No channel configured, so the digest goes nowhere. Set SEO_ALERT_WEBHOOK_URL and/or SEO_ALERT_EMAIL on the server.',
     webhook: 'Webhook',
     email: 'Email',
     configured: 'configured',
@@ -47,6 +51,7 @@ const S = {
     rankDrops: 'Ranking drops',
     sent: 'Digest sent',
     nothingToSend: 'Nothing to send (no issues).',
+    deliveryFailed: 'Delivery failed: check the webhook URL or the email adapter (details in the logs).',
     issues: 'issue(s)',
   },
 } as const
@@ -124,7 +129,8 @@ export function AlertsPanel({ locale }: { locale: 'fr' | 'en' }) {
         setError(json.error || `Error ${res.status}`)
         return
       }
-      setNotice(json.delivery?.sent ? s.sent : s.nothingToSend)
+      if (json.delivery?.reason === 'delivery_failed') setError(s.deliveryFailed)
+      else setNotice(json.delivery?.sent ? s.sent : s.nothingToSend)
       if (json.digest) setDigest(json.digest as Digest)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Network error')
@@ -187,7 +193,8 @@ export function AlertsPanel({ locale }: { locale: 'fr' | 'en' }) {
         </div>
       )}
 
-      {!loading && !hasChannel && <Banner type="default">{s.notConfigured}</Banner>}
+      {/* A digest means the endpoint answered, so the feature is on: only the channel is missing. */}
+      {!loading && !hasChannel && <Banner type="default">{digest ? s.noChannel : s.notConfigured}</Banner>}
 
       {loading && <LoadingState label={s.loading} />}
 
