@@ -1,0 +1,664 @@
+.socials-composer {
+  --socials-border: var(--theme-elevation-150);
+  border: 1px solid var(--socials-border);
+  border-radius: var(--style-radius-m, 8px);
+  margin-block: 1rem;
+  padding: clamp(1rem, 2vw, 1.5rem);
+
+  h3,
+  p {
+    margin-top: 0;
+  }
+
+  label {
+    display: grid;
+    gap: 0.4rem;
+  }
+
+  input,
+  select,
+  textarea {
+    background: var(--theme-input-bg);
+    border: 1px solid var(--theme-elevation-250);
+    border-radius: var(--style-radius-s, 4px);
+    color: var(--theme-text);
+    font: inherit;
+    padding: 0.65rem 0.75rem;
+    width: 100%;
+  }
+
+  textarea {
+    resize: vertical;
+  }
+}
+
+.socials-composer__header {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.socials-composer__header p,
+.socials-composer__count,
+.socials-composer__preview em {
+  color: var(--theme-elevation-600);
+  font-size: 0.85rem;
+}
+
+/* Segmented control tabs */
+.socials-composer__tabs {
+  border: 1px solid var(--socials-border);
+  border-radius: var(--style-radius-s, 4px);
+  display: grid;
+  grid-auto-columns: 1fr;
+  grid-auto-flow: column;
+  overflow: hidden;
+}
+
+.socials-composer__tabs button {
+  background: var(--theme-elevation-50);
+  border: none;
+  border-inline-end: 1px solid var(--socials-border);
+  color: var(--theme-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  padding: 0.65rem 0.5rem;
+  position: relative;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.socials-composer__tabs button:last-child {
+  border-inline-end: none;
+}
+
+.socials-composer__tabs button:hover:not([aria-selected='true']) {
+  background: var(--theme-elevation-100);
+}
+
+.socials-composer__tabs button[aria-selected='true'] {
+  background: var(--theme-elevation-0);
+  color: var(--theme-text);
+  font-weight: 600;
+}
+
+/* Platform brand accent: 3px bottom border on active segment only */
+.socials-composer__tabs button[aria-selected='true'][data-platform='pinterest'] {
+  border-bottom: 3px solid #e60023;
+}
+
+.socials-composer__tabs button[aria-selected='true'][data-platform='instagram'] {
+  border-bottom: 3px solid #e1306c;
+}
+
+.socials-composer__tabs button[aria-selected='true'][data-platform='facebook'] {
+  border-bottom: 3px solid #1877f2;
+}
+
+.socials-composer__tabs button[aria-selected='true'][data-platform='gbp'] {
+  border-bottom: 3px solid #4285f4;
+}
+
+.socials-composer__layout {
+  display: grid;
+  gap: clamp(1rem, 3vw, 2rem);
+  grid-template-columns: minmax(0, 3fr) minmax(240px, 2fr);
+  margin-top: 1.5rem;
+}
+.socials-composer__fields {
+  display: grid;
+  gap: 1rem;
+}
+.socials-composer__row {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.socials-composer__check {
+  align-items: center;
+  display: flex !important;
+}
+.socials-composer__check input {
+  width: auto;
+}
+.socials-composer__count {
+  justify-self: end;
+}
+.socials-composer__count--error,
+.socials-composer__error,
+.socials-composer__issue--error {
+  color: var(--theme-error-750);
+}
+.socials-composer__issue--warning {
+  color: var(--theme-warning-500);
+}
+.socials-composer__success,
+.socials-composer__valid {
+  color: var(--theme-success-500);
+}
+
+.socials-composer__media {
+  border: 1px solid var(--socials-border);
+  border-radius: 6px;
+  padding: 0.75rem;
+}
+.socials-composer__media-grid {
+  display: grid;
+  gap: 0.6rem;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+}
+.socials-composer__asset {
+  aspect-ratio: 1;
+  background: var(--theme-elevation-50);
+  border: 2px solid transparent;
+  border-radius: 5px;
+  cursor: pointer;
+  overflow: hidden;
+  padding: 0;
+  position: relative;
+}
+.socials-composer__asset--selected {
+  border-color: var(--theme-success-500);
+  box-shadow: 0 0 0 2px var(--theme-elevation-0);
+}
+.socials-composer__asset--disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+  pointer-events: none;
+}
+.socials-composer__asset img,
+.socials-composer__asset video {
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+.socials-composer__asset--draggable {
+  cursor: grab;
+}
+/* Keep the media label clear of the order badge and controls. */
+.socials-composer__asset-kind {
+  background: #000b;
+  border-radius: 3px;
+  color: #fff;
+  font-size: 0.65rem;
+  inset-block-start: 0.25rem;
+  inset-inline-end: 0.25rem;
+  padding: 0.1rem 0.3rem;
+  pointer-events: none;
+  position: absolute;
+}
+/* The wrapping element hosts sibling controls without nesting buttons. */
+.socials-composer__asset-toggle {
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  inset: 0;
+  padding: 0;
+  position: absolute;
+}
+.socials-composer__asset-toggle:disabled {
+  cursor: not-allowed;
+}
+.socials-composer__asset-order {
+  align-items: center;
+  background: var(--theme-success-500);
+  border-radius: 50%;
+  color: var(--theme-base-0, #fff);
+  display: flex;
+  font-size: 0.7rem;
+  font-weight: 700;
+  height: 1.35rem;
+  inset-block-start: 0.25rem;
+  inset-inline-start: 0.25rem;
+  justify-content: center;
+  pointer-events: none;
+  position: absolute;
+  width: 1.35rem;
+}
+.socials-composer__asset-arrows {
+  bottom: 0;
+  display: flex;
+  inset-inline: 0;
+  justify-content: space-between;
+  opacity: 0;
+  position: absolute;
+  transition: opacity 0.12s ease-in-out;
+}
+.socials-composer__asset:hover .socials-composer__asset-arrows,
+.socials-composer__asset:focus-within .socials-composer__asset-arrows {
+  opacity: 1;
+}
+.socials-composer__asset-arrows button {
+  background: #000b;
+  border: 0;
+  color: #fff;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0.2rem 0.45rem;
+}
+.socials-composer__asset-arrows button:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+.socials-composer__video-placeholder {
+  align-items: center;
+  background: var(--theme-elevation-100);
+  color: var(--theme-elevation-500);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  height: 100%;
+  justify-content: center;
+  padding: 0.4rem;
+  text-align: center;
+  width: 100%;
+}
+.socials-composer__video-glyph {
+  block-size: 2rem;
+  inline-size: 2rem;
+}
+.socials-composer__video-filename {
+  font-size: 0.65rem;
+  line-height: 1.2;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Big-preview load-on-demand card: placeholder + "Load video preview" button. */
+.socials-composer__video-loadable {
+  align-items: center;
+  aspect-ratio: 1;
+  background: var(--theme-elevation-100);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+}
+.socials-composer__video-loadable img,
+.socials-composer__video-loadable .socials-composer__video-placeholder {
+  border-radius: 6px;
+  inset: 0;
+  object-fit: cover;
+  position: absolute;
+}
+.socials-composer__video-load {
+  background: var(--theme-elevation-0);
+  border: 1px solid var(--socials-border);
+  border-radius: 4px;
+  color: var(--theme-text);
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 0.35rem 0.75rem;
+  position: relative;
+  z-index: 1;
+}
+.socials-composer__video-load:hover {
+  background: var(--theme-elevation-50);
+}
+
+/* Add media row */
+.socials-composer__add-media {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.socials-composer__add-media-url {
+  align-items: center;
+  display: flex;
+  flex: 1;
+  gap: 0.4rem;
+  min-width: 200px;
+}
+
+.socials-composer__add-media-url input {
+  flex: 1;
+}
+
+.socials-composer__add-media-url select {
+  width: auto;
+}
+
+.socials-composer__preview {
+  align-self: start;
+  background: var(--theme-elevation-50);
+  border: 1px solid var(--socials-border);
+  border-radius: 10px;
+  display: grid;
+  gap: 0.75rem;
+  overflow: hidden;
+  padding: 1rem;
+  position: sticky;
+  top: 1rem;
+}
+.socials-composer__preview img,
+.socials-composer__preview video {
+  aspect-ratio: 1;
+  border-radius: 6px;
+  object-fit: cover;
+  width: 100%;
+}
+.socials-composer__preview p {
+  white-space: pre-wrap;
+}
+.socials-composer__preview-platform {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.socials-composer__preview em {
+  font-style: normal;
+}
+.socials-composer__history {
+  border-top: 1px solid var(--socials-border);
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+}
+
+/* Standalone composer admin view tabs */
+.socials-admin__tabs {
+  border-bottom: 2px solid var(--socials-border);
+  display: flex;
+  gap: 0;
+  margin-bottom: 1.5rem;
+}
+
+.socials-admin__tabs button {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--theme-elevation-600);
+  cursor: pointer;
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 500;
+  margin-bottom: -2px;
+  padding: 0.75rem 1.25rem;
+  transition:
+    color 150ms ease,
+    border-color 150ms ease;
+}
+
+.socials-admin__tabs button:hover {
+  color: var(--theme-text);
+}
+
+.socials-admin__tabs button[aria-selected='true'] {
+  border-bottom-color: var(--theme-text);
+  color: var(--theme-text);
+  font-weight: 600;
+}
+
+/* Standalone channel chips */
+.socials-composer__channels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.socials-composer__channel-chip {
+  align-items: center;
+  background: var(--theme-elevation-50);
+  border: 1px solid var(--socials-border);
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  gap: 0.4rem;
+  padding: 0.4rem 0.8rem;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease;
+}
+
+.socials-composer__channel-chip:hover {
+  background: var(--theme-elevation-100);
+}
+
+.socials-composer__channel-chip--active {
+  background: var(--theme-elevation-200);
+  border-color: var(--theme-elevation-400);
+}
+
+.socials-composer__channel-chip input[type='checkbox'] {
+  margin: 0;
+  width: auto;
+}
+
+/* Standalone results */
+.socials-composer__results {
+  display: grid;
+  gap: 0.5rem;
+  list-style: none;
+  margin-top: 1rem;
+  padding: 0;
+}
+
+.socials-composer__result-item {
+  align-items: center;
+  border: 1px solid var(--socials-border);
+  border-radius: 5px;
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.6rem 0.75rem;
+}
+
+.socials-composer__result-ok {
+  border-color: var(--theme-success-500);
+}
+
+.socials-composer__result-err {
+  border-color: var(--theme-error-500);
+}
+
+@media (max-width: 800px) {
+  .socials-composer__layout {
+    grid-template-columns: 1fr;
+  }
+  .socials-composer__preview {
+    position: static;
+  }
+}
+
+@media (max-width: 520px) {
+  .socials-composer__row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Social template field builder (stfb)
+ * ------------------------------------------------------------------------- */
+
+.stfb {
+  background: var(--theme-elevation-50);
+  border: 1px solid var(--theme-elevation-150);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+  padding: 0.75rem;
+}
+
+.stfb__toolbar {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.stfb__field-label {
+  color: var(--theme-text);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.stfb__raw-toggle,
+.stfb__filter-apply,
+.stfb__token-chip {
+  background: var(--theme-elevation-100);
+  border: 1px solid var(--theme-elevation-250);
+  border-radius: 3px;
+  color: var(--theme-text);
+  cursor: pointer;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  padding: 0.15rem 0.5rem;
+}
+
+.stfb__raw-toggle:hover,
+.stfb__filter-apply:hover,
+.stfb__token-chip:hover {
+  background: var(--theme-elevation-200);
+}
+
+.stfb__raw-toggle--active {
+  background: var(--theme-elevation-800);
+  color: var(--theme-elevation-0);
+}
+
+.stfb__token-chip--meta {
+  border-style: dashed;
+}
+
+.stfb__token-picker,
+.stfb__filter-menu {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.stfb__token-picker-label,
+.stfb__filter-label,
+.stfb__token-picker-sep,
+.stfb__preview-label-text {
+  color: var(--theme-elevation-500);
+  font-size: 0.72rem;
+}
+
+.stfb__token-hint,
+.stfb__scope-hint {
+  color: var(--theme-elevation-500);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  width: 100%;
+}
+
+.stfb__raw-area,
+.stfb__raw-input,
+.stfb__builder textarea,
+.stfb__builder input[type='text'] {
+  background: var(--theme-input-bg, var(--theme-elevation-0));
+  border: 1px solid var(--theme-elevation-250);
+  border-radius: 3px;
+  color: var(--theme-text);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.8rem;
+  padding: 0.5rem;
+  width: 100%;
+}
+
+.stfb__raw-area {
+  min-height: 5.5rem;
+  resize: vertical;
+}
+
+.stfb__filter-select,
+.stfb__filter-arg,
+.stfb__preview-select,
+.stfb__preview-id {
+  background: var(--theme-input-bg, var(--theme-elevation-0));
+  border: 1px solid var(--theme-elevation-250);
+  border-radius: 3px;
+  color: var(--theme-text);
+  font-size: 0.75rem;
+  padding: 0.2rem 0.4rem;
+}
+
+.stfb__char-count {
+  align-self: flex-end;
+  color: var(--theme-elevation-500);
+  font-size: 0.72rem;
+}
+
+.stfb__char-count--over {
+  color: var(--theme-error-500, #d93025);
+  font-weight: 600;
+}
+
+.stfb__preview-section {
+  border-top: 1px solid var(--theme-elevation-150);
+  padding-top: 0.5rem;
+}
+
+.stfb__preview-summary {
+  color: var(--theme-elevation-600);
+  cursor: pointer;
+  font-size: 0.78rem;
+}
+
+.stfb__preview-controls {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.5rem 0;
+}
+
+.stfb__preview-output,
+.stfb__preview-text {
+  background: var(--theme-elevation-0);
+  border: 1px solid var(--theme-elevation-150);
+  border-radius: 3px;
+  color: var(--theme-text);
+  font-size: 0.8rem;
+  margin: 0;
+  padding: 0.5rem;
+  white-space: pre-wrap;
+}
+
+.stfb__preview-error {
+  color: var(--theme-error-500, #d93025);
+  font-size: 0.75rem;
+}
+
+/* The media pool can hold a whole catalog of related records: keep each item
+   identifiable by its label and show it uncropped. */
+.socials-composer__media-search {
+  display: grid;
+  gap: 0.35rem;
+  margin-block: 0.5rem;
+}
+
+.socials-composer__asset-caption {
+  background: #000c;
+  color: #fff;
+  font-size: 0.7rem;
+  inset-block-end: 0;
+  inset-inline: 0;
+  line-height: 1.25;
+  max-height: 2.8em;
+  overflow: hidden;
+  padding: 0.25rem 0.35rem;
+  pointer-events: none;
+  position: absolute;
+}
+
+.socials-composer__asset:has(.socials-composer__asset-caption) img {
+  object-fit: contain;
+}
+
+/* Keep the label clear of the reorder controls on a selected multi-media tile. */
+.socials-composer__asset--draggable .socials-composer__asset-caption {
+  inset-block-end: 1.7rem;
+}
