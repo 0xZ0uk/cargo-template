@@ -210,7 +210,7 @@ Use `serializeJsonLd`, not `JSON.stringify`. It escapes `<`, `>`, `&`, U+2028 an
 
 | Function | Entry | Purpose |
 |---|---|---|
-| `buildJsonLd` | root, `/shared` | Schema.org object for a document; type auto-detected from the collection unless forced |
+| `buildJsonLd` | root, `/shared` | Schema.org object for a document, as `{ type, jsonLd, warnings }`. The type is auto-detected unless forced: `Article` for a posts-like collection or a publication date plus an author, `FAQPage` with at least one question and answer, `Product`, `LocalBusiness`, else `WebPage` (always for the home page). A forced `FAQPage` without Q&A falls back to the detected type and says so in `warnings`. Names use the document's `title`, else `meta.title` minus `siteName` |
 | `serializeJsonLd` | root, `/shared` | XSS-safe JSON for a `<script type="application/ld+json">` |
 | `renderJsonLdScript` | root | The complete, escaped `<script>` tag as a string |
 | `validateRedirectTarget`, `normalizeFromPath` | root, `/shared` | The redirect policy the plugin enforces (no `//host`, dangerous schemes or CRLF) |
