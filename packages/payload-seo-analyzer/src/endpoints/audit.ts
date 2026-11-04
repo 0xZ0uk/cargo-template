@@ -508,12 +508,13 @@ async function ensureAuditBuild(
   seoConfig: SeoConfig | undefined,
   cacheKey: string,
   reqLocale?: string,
-): Promise<void> {
+): Promise<boolean> {
   const claim = await cache.tryStartBuildStep(cacheKey)
-  if (!claim.claimed) return
+  if (!claim.claimed) return false
   cache.runInBackground(
     runClaimedAuditStep(cache, payload, collections, globals, seoConfig, cacheKey, reqLocale, claim.resumed),
   )
+  return true
 }
 
 /** Hash of the config that shapes the audit; part of persisted keys. */
@@ -684,8 +685,8 @@ export function createAuditHandler(
       const reqLocale = safeCacheLocale(req)
       const cacheKey = auditCacheKey(cache, configHash, reqLocale)
 
-      // Manual refresh — drop the stale cache so the next poll waits for the fresh build.
-      // (Skip if a build is already running: it will repopulate the cache shortly anyway.)
+      // Manual refresh: start a rebuild now. The current audit keeps being served (marked
+      // `refreshing`) until the new one replaces it.
       //
       // Gated twice, because forcing a site-wide rebuild is the most expensive thing any
       // caller can ask of this plugin:
@@ -696,6 +697,7 @@ export function createAuditHandler(
       // A refused refresh is NOT an error: the caller gets the cached audit with
       // `refreshThrottled: true` so the UI can say "showing cached results".
       let refreshThrottled = false
+      let forceRebuild = false
       const build = await cache.buildStatus(cacheKey)
       if (noCache && !build.building) {
         if (!isSeoAdminRequest(req)) {
@@ -703,14 +705,21 @@ export function createAuditHandler(
         } else if (Date.now() - build.lastBuildAt < minRefreshIntervalMs()) {
           refreshThrottled = true
         } else {
-          await cache.invalidateKey(CACHE_KEY, cacheKey)
+          forceRebuild = true
         }
       }
 
-      let cached = await cache.get<CachedAudit>(CACHE_KEY, cacheKey)
-      // Peek mode: opening the dashboard must NOT auto-trigger the (heavy) build on a big/rich
-      // site. With `noBuild=1` we return cached results if present, or "not built" otherwise —
-      // the build starts only when the user explicitly requests it (a poll WITHOUT noBuild).
+      // `allowStale`: after a save the last finished audit is still returned, flagged `stale`, so
+      // the dashboard keeps showing it while the next build runs. An audit past its TTL with no
+      // save since is served as current: nothing it depends on changed, so no rebuild starts.
+      const lookup = await cache.lookup<CachedAudit>(CACHE_KEY, cacheKey, { allowStale: true })
+      let cached = lookup.data
+      let stale = !!lookup.stale
+      // Peek mode (`noBuild=1`): the request itself never starts a build; it returns cached
+      // results if present, or "not built" otherwise, and runs the next step of a build that's
+      // already running. A first build is opt-in (the user asks for it). When the peek finds a
+      // stale audit (a save since it was built), the dashboard follows up with a normal poll,
+      // which starts the rebuild while the old audit stays on screen.
       const noBuild = url.searchParams.get('noBuild') === '1'
 
       // Build-time file cache: on a miss, hydrating from the pre-computed JSON is cheap (a file
@@ -727,33 +736,40 @@ export function createAuditHandler(
       // garantie par le prewarm de CI, qui régénère le fichier à chaque déploiement.
       const fichierFaitFoi = process.env.SEO_AUDIT_TRUST_FILE === '1'
       if (
-        !cached &&
+        (!cached || stale) &&
         fileCache &&
         !fileCacheOff &&
         (await tryHydrateAuditFromFile(fileCache, !fichierFaitFoi))
       ) {
-        cached = seoCache.get<CachedAudit>(cacheKey)
+        const hydrated = seoCache.get<CachedAudit>(cacheKey)
+        if (hydrated) {
+          cached = hydrated
+          stale = false
+        }
       }
 
+      // Start (or continue) a build when one is needed: the audit is missing or stale (unless
+      // this is a peek), a refresh was asked for, or a chunked build is waiting for its next step.
+      const wantsBuild = forceRebuild || build.building || (!noBuild && (!cached || stale))
+      const started = wantsBuild
+        ? await ensureAuditBuild(cache, req.payload, collections, globals, seoConfig, cacheKey, reqLocale)
+        : false
+      const refreshing = build.building || started
+      // Docs analyzed so far by a chunked build (absent before its first pause).
+      const progress = refreshing && typeof build.processed === 'number' ? { processed: build.processed } : {}
+
       if (!cached) {
-        if (noBuild && !build.building) {
+        if (noBuild && !refreshing) {
           return Response.json(
             { building: false, notBuilt: true, results: [], stats: null },
             { status: 200, headers: { 'Cache-Control': 'no-store' } },
           )
         }
         // Cache miss — never build synchronously on the request path (that's what OOM-killed
-        // the process on low-memory hosts). Start a single-flight background build and tell
-        // the client to poll. The 202 response is tiny and returns immediately.
-        await ensureAuditBuild(cache, req.payload, collections, globals, seoConfig, cacheKey, reqLocale)
+        // the process on low-memory hosts). The single-flight background build was started
+        // above; tell the client to poll. The 202 response is tiny and returns immediately.
         return Response.json(
-          {
-            building: true,
-            results: [],
-            stats: null,
-            // Docs analyzed so far by a chunked build (absent before its first pause).
-            ...(typeof build.processed === 'number' ? { processed: build.processed } : {}),
-          },
+          { building: true, results: [], stats: null, ...progress },
           { status: 202, headers: { 'Cache-Control': 'no-store' } },
         )
       }
@@ -778,6 +794,12 @@ export function createAuditHandler(
         },
         cached: true,
         capped,
+        // When this audit was built (absent for one hydrated from the build-time file).
+        ...(typeof lookup.builtAt === 'number' && cached === lookup.data ? { builtAt: lookup.builtAt } : {}),
+        // Out of date: content or settings changed since it was built.
+        ...(stale ? { stale: true } : {}),
+        // A newer audit is being built; poll again to get it.
+        ...(refreshing ? { refreshing: true, ...progress } : {}),
       }, { headers: { 'Cache-Control': 'no-store' } })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Internal server error'

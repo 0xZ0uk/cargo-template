@@ -86,6 +86,18 @@ async function auditUntilDone(s: ReturnType<typeof setup>) {
   throw new Error('audit never finished')
 }
 
+async function auditUntilFresh(s: ReturnType<typeof setup>) {
+  for (let i = 0; i < 20; i++) {
+    const { status, body } = await s.call()
+    if (status === 200 && !(body as { refreshing?: boolean }).refreshing) return { body }
+    await s.flush()
+    for (let j = 0; j < 50 && (await s.cache.buildStatus(BUILD_KEY(s))).building; j++) {
+      await new Promise((r) => setTimeout(r, 5))
+    }
+  }
+  throw new Error('audit never became current')
+}
+
 const ENV = {
   SEO_AUDIT_STEP_DOCS: '40',
   // The unchunked (Node) build pauses after each doc by default; not needed here.
@@ -151,19 +163,82 @@ describe('chunked audit build', () => {
     expect(body.pagination?.totalDocs).toBe(130)
   })
 
-  it('stores a build that overlapped a save as stale, so the next request rebuilds', async () => {
+  it('serves a build that overlapped a save (marked stale) while the next one runs', async () => {
     const s = setup({ chunked: true })
     await s.call()
     await s.flush()
     // A save between two steps.
     await s.cache.invalidate(['audit'])
-    for (let i = 0; i < 3; i++) {
-      await s.call()
+    let res = await s.call()
+    for (let i = 0; i < 5 && res.status === 202; i++) {
+      await s.flush()
+      res = await s.call()
+    }
+    // The first build finished stamped with the old generation: it's served, stale, and the
+    // request that found it started the next build.
+    expect(res.status).toBe(200)
+    expect(res.body).toMatchObject({ stale: true, refreshing: true })
+    expect(res.body.pagination?.totalDocs).toBe(130)
+
+    // A save during that rebuild too: its result still replaces the shown one when it lands.
+    const firstBuiltAt = (res.body as { builtAt?: number }).builtAt
+    await s.flush() // first step of the rebuild (paused)
+    await s.cache.invalidate(['audit'])
+    for (let i = 0; i < 5; i++) {
+      res = await s.call()
       await s.flush()
     }
-    // The first build finished stamped with the old generation; a fresh one started.
-    const { status } = await s.call()
-    expect(status).toBe(202)
+    expect(res.status).toBe(200)
+    expect((res.body as { builtAt?: number }).builtAt).toBeGreaterThanOrEqual(firstBuiltAt ?? 0)
+
+    // Eventually a build with no save meanwhile is current again.
+    for (let i = 0; i < 10 && (res.body as { stale?: boolean; refreshing?: boolean }).refreshing; i++) {
+      await s.flush()
+      res = await s.call()
+    }
+    expect(res.body).not.toHaveProperty('stale')
+    expect(res.body).not.toHaveProperty('refreshing')
+  })
+
+  it('with no cacheStore at all (Node), a save serves the last audit stale while it rebuilds', async () => {
+    const cache = new SeoSharedCache({ memory: new SeoCache() })
+    const payload = fakePayload()
+    const handler = createAuditHandler(['pages'], { locale: 'en' }, [], undefined, cache)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const req = { user: { id: 1, collection: 'users' }, url: 'http://localhost/api/seo-plugin/audit?limit=500', payload } as any
+    const call = async () => {
+      const res = await handler(req)
+      return { status: res.status, body: (await res.json()) as AuditBody & { stale?: boolean; refreshing?: boolean } }
+    }
+    const settle = async () => {
+      for (let j = 0; j < 200 && (await cache.buildStatus('audit')).building; j++) {
+        await new Promise((r) => setTimeout(r, 5))
+      }
+    }
+    expect((await call()).status).toBe(202)
+    await settle()
+    expect((await call()).status).toBe(200)
+
+    await cache.invalidate(['audit'])
+    const during = await call()
+    expect(during.status).toBe(200)
+    expect(during.body).toMatchObject({ stale: true, refreshing: true })
+    expect(during.body.pagination?.totalDocs).toBe(130)
+    await settle()
+    const after = await call()
+    expect(after.body.stale).toBeUndefined()
+    expect(after.body.refreshing).toBeUndefined()
+  })
+
+  it('without waitUntil (Node), a save serves the last audit stale while it rebuilds', async () => {
+    const s = setup({ chunked: false })
+    await auditUntilDone(s)
+    await s.cache.invalidate(['audit'])
+    const res = await s.call()
+    expect(res.status).toBe(200)
+    expect(res.body).toMatchObject({ stale: true, refreshing: true })
+    const { body } = await auditUntilFresh(s)
+    expect(body.pagination?.totalDocs).toBe(130)
   })
 
   it('starts over when the saved progress belongs to an abandoned build', async () => {
