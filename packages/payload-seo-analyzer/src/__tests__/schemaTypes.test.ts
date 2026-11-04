@@ -162,3 +162,13 @@ describe('Article authors and dates follow the detection signals', () => {
     expect(detectSchemaType('pages', { slug: 'essay', publishedAt: '2026-01-01', author: '64f0c0ffee0000000000abcd' })).toBe('WebPage')
   })
 })
+
+it('a WebPage carries `datePublished` when the document only has that field', () => {
+  const { type, jsonLd } = buildJsonLd(
+    { slug: 'about', title: 'About', datePublished: '2026-02-02' },
+    { collection: 'pages', siteUrl: 'https://s.test' },
+  )
+  const node = (jsonLd['@graph'] as Record<string, unknown>[] | undefined)?.find((n) => n['@type'] === 'WebPage') ?? jsonLd
+  expect(type).toBe('WebPage')
+  expect(node.datePublished).toBe('2026-02-02')
+})

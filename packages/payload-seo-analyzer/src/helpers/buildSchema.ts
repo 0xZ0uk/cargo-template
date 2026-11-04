@@ -199,7 +199,7 @@ function buildWebPageSchema(doc: Record<string, unknown>, siteUrl: string, docUr
     description: meta.description || undefined,
     url: docUrl,
     image: imageUrl,
-    datePublished: doc.publishedAt || undefined,
+    datePublished: publicationDate(doc) || undefined,
     dateModified: doc.updatedAt || undefined,
   }
 }
