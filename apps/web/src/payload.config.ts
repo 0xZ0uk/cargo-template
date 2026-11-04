@@ -149,7 +149,8 @@ export default buildConfig({
     // /api/seo-plugin. Time-series features (404 logs, score history, performance imports)
     // store their rows in the separate SEO_D1 database (`dataStore`), pruned daily, and
     // the external link checker scans in budgeted steps; all four passed on a deployed
-    // Worker. GSC stays off until a Google OAuth client exists (it also needs a main-D1
+    // Worker. AI features call OpenRouter (`OPENROUTER_API_KEY`, capped by the key's credit
+    // limit in OpenRouter). GSC stays off until a Google OAuth client exists (it also needs a main-D1
     // migration for `seo-gsc-auth`). Whole-site scans (link graph, keywords,
     // cannibalization…) stay off until they're tested against Workers CPU limits.
     seoAnalyzerPlugin({
@@ -175,7 +176,7 @@ export default buildConfig({
       // (plus the retention purge of SEO_D1 once a time-series feature is on).
       jobs: true,
       features: {
-        aiFeatures: false,
+        aiFeatures: true,
         alerts: false,
         cannibalization: false,
         duplicateContent: false,

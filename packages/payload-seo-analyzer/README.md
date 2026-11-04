@@ -62,11 +62,11 @@ The Cargo app (`apps/web`) runs this plugin on a deployed Worker. Each feature i
 | `scoreHistory` | on | **Verified.** Rows in `SEO_D1` |
 | `seoLogs` (404 log) | on | **Verified.** Rows in `SEO_D1` |
 | `externalLinks` | on | **Verified.** Budgeted scans (100 links, 1,000 subrequests per call) that resume across calls |
-| `aiFeatures` | off | Passes in local workerd against a mock, and in Node with a real key. The deployed run is pending |
+| `aiFeatures` | on | **Verified** against OpenRouter (DeepSeek V4.1 Flash): all six endpoints, alt text read from R2, the sidebar's "Optimize with AI". Needs `OPENROUTER_API_KEY`; cap spend with a credit limit on the key |
 | `gscApi` | off | Token crypto verified on a deployed Worker. The endpoints and the OAuth flow aren't checked yet |
 | `alerts` | off | Runs as the `seoAlertsDigest` job; not checked on Workers |
 | `indexNow` | off | Not checked on Workers |
-| `cannibalization`, `keywords`, `linkGraph`, `duplicateContent` | off | Whole-site scans in one request, not measured against Workers CPU limits |
+| `cannibalization`, `keywords`, `linkGraph`, `duplicateContent` | off | Whole-site scans in one request, not measured against Workers CPU limits yet (deferred until there's a real site to measure) |
 | `schemaBuilder` | off | Mostly client-side; not checked on Workers |
 | `warmCache` | off | **Unsupported on Workers** (skipped by design) |
 | `auditCacheFile` / `buildAuditToFile()` | n/a | **Node only.** Ignored with a warning when `cacheStore` is set or on Workers |

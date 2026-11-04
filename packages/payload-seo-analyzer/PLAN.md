@@ -1,6 +1,6 @@
 # SEO analyzer: port status and plan
 
-Handoff for whoever continues porting `@cargo/payload-seo-analyzer`. Last updated 2026-11-04 (after P0 + P1, their leftovers, P2 items 9–13, the deployed check of 10, 12 and 13, and CI + the README rewrite).
+Handoff for whoever continues porting `@cargo/payload-seo-analyzer`. Last updated 2026-11-04 (after P0 + P1, their leftovers, P2 items 9–13, the deployed check of 10–13, and CI + the README rewrite).
 
 ## TL;DR
 
@@ -15,8 +15,8 @@ Handoff for whoever continues porting `@cargo/payload-seo-analyzer`. Last update
 - **Background work runs as Payload jobs on a Cron Trigger** (P2 item 9, verified on the deployed Worker). The dashboard audit builds in steps, so big sites no longer need to fit one request.
 - **Time-series data lives in a second D1 database** (P2 item 10): score history, Search Console imports, rank history and 404 logs go to `SEO_D1` through the plugin's `dataStore` option, with retention mandatory. **Verified on the deployed Worker** (2026-11-04, D1 `cargo-template-seo`).
 - **The external links checker fits Workers limits** (P2 item 13) and **GSC token crypto is WebCrypto** (P2 item 12). Both verified on deployed Workers.
-- `apps/web` now turns on `performance`, `scoreHistory`, `seoLogs` and `externalLinks`. `gscApi` stays off until a Google OAuth client exists.
-- **AI features run on OpenRouter** (P2 item 11), DeepSeek V4.1 Flash by default. Checked in local workerd against a mock OpenRouter; `aiFeatures` stays off in `apps/web` until it passes on a deployed Worker with a real key.
+- `apps/web` now turns on `performance`, `scoreHistory`, `seoLogs`, `externalLinks` and `aiFeatures`. `gscApi` stays off until a Google OAuth client exists.
+- **AI features run on OpenRouter** (P2 item 11), DeepSeek V4.1 Flash by default. **Verified on the deployed Worker** with a real key (2026-11-04); that run also fixed the optimize prompt, which invented numbers in titles.
 
 ## Where things are
 
@@ -49,6 +49,7 @@ After that, in this repo:
 - `feat/seo-analyzer-seo-d1-deploy` (PR #13): the production SEO_D1 database, the deployed check of items 10, 12 and 13, and those features on in `apps/web`
 - `feat/seo-analyzer-ai-openrouter`: P2 item 11, the AI features on OpenRouter
 - `feat/ci-pullfrog-readme`: CI, the SEO e2e specs, Pullfrog reviews, the README and threat-model rewrite (P3 items 16 and 17)
+- `feat/seo-analyzer-ai-deployed`: P2 item 11's deployed check, `aiFeatures` on in `apps/web`, the optimize prompt fix
 
 ## Working on it
 
@@ -126,13 +127,13 @@ Results are in "Done on 2026-11-03".
 | `sitemapAudit` | `/admin/sitemap-audit`: orphans, weak pages, hubs, broken links (the 404 and External tabs follow `seoLogs` / `externalLinks`) | on | done | yes | **local workerd: pass.** ~0.4 ms per doc uncached, persisted in R2 |
 | `settings` | `seo-settings` collection, `/admin/seo-config` | on | done | yes | **local workerd: pass**, including saving |
 | *(always on)* | `GET /api/seo-plugin/sitemap.xml`, `robots.txt`, `llms.txt`, news/image/video sitemaps | on | done | yes | **local workerd: pass.** Served at `/sitemap.xml`, `/robots.txt` and `/llms.txt`; `llms.txt` needs `SEO_LLMS_TXT=1`. Without `SITE_URL` they use the request origin |
-| `cannibalization` | `/admin/cannibalization` | off | UI done | renders (empty data) | whole-site scan |
-| `keywords` | `/admin/keyword-research` + AI content brief | off | UI done | renders (empty data) | whole-site scan; the brief needs AI |
-| `linkGraph` | `/admin/link-graph`, crawl budget | off | UI done | renders with data | whole-site scan; client-side force simulation is fine |
+| `cannibalization` | `/admin/cannibalization` | off | UI done | renders (empty data) | whole-site scan; **backlog** (see Backlog) |
+| `keywords` | `/admin/keyword-research` + AI content brief | off | UI done | renders (empty data) | whole-site scan, **backlog**; the brief runs on AI (`aiFeatures`, verified) |
+| `linkGraph` | `/admin/link-graph`, crawl budget | off | UI done | renders with data | whole-site scan, **backlog**; client-side force simulation is fine |
 | `schemaBuilder` | `/admin/schema-builder` JSON-LD builder | off | UI done | renders | none (mostly client-side) |
-| `duplicateContent` | duplicate content endpoint | off | compiles | no | whole-site scan |
+| `duplicateContent` | duplicate content endpoint | off | compiles | no | whole-site scan; **backlog** |
 | `externalLinks` | outbound link checker (SSRF-guarded) | on | done | no (workerd instead) | **deployed: pass** (P2 item 13). The guard uses `resolve4`/`resolve6` on Workers, `lookup` on Node. Capped at 100 links (`SEO_EXTERNAL_LINKS_MAX`) and 1000 subrequests per call (`SEO_EXTERNAL_LINKS_MAX_SUBREQUESTS`), 5 at a time; a scan that doesn't fit resumes from results saved in R2, and a finished scan is cached. The External tab doesn't show `capped`/`partial` yet |
-| `aiFeatures` | generate meta, optimize, rewrite, alt text, content brief (OpenRouter Chat Completions via `fetch`) | off | done | no (local workerd instead) | **local workerd: pass** against a mock OpenRouter (P2 item 11). Needs `OPENROUTER_API_KEY` as a Worker secret, with a credit limit on the key as the spend cap. Alt text reads the image through Payload's file route in-process (R2), not over the network |
+| `aiFeatures` | generate meta, optimize, rewrite, alt text, content brief (OpenRouter Chat Completions via `fetch`) | on | done | yes, with a real key | **deployed: pass** (P2 item 11): all six endpoints, alt text on an R2 image, the sidebar's "Optimize with AI"; ≤ 0.2 s CPU per call. Needs `OPENROUTER_API_KEY` as a Worker secret, with a credit limit on the key as the spend cap. Alt text reads the image through Payload's file route in-process (R2), not over the network |
 | `performance` | `seo-performance` collection, GSC CSV/JSON/XLSX import, `/admin/performance` + 9 panels (CWV, indexation, content grade, CTR, alt text, health…), `/indexation-audit` | on | UI done | renders with empty data | **deployed: pass.** Rows in SEO_D1 through `dataStore` (P2 item 10; CSV import + read), pruned after 490 days / 100k rows. XLSX import only works if the host maps `xlsx`. `/indexation-audit` is cached and capped |
 | `scoreHistory` | score snapshot on every save + chart | on | done | no (workerd instead) | **deployed: pass.** Rows in SEO_D1 through `dataStore` (P2 item 10; snapshot on save + `/history`), pruned after 365 days / 50k rows. The snapshot write is kept alive with `waitUntil` |
 | `seoLogs` | 404 log, admin 404 tab | on | done | no (workerd instead) | **deployed: pass.** Rows in SEO_D1 through `dataStore` (P2 item 10). `apps/web` records 404s in-process from `resolveRedirect` via `waitUntil`. Capped at 5k rows (`SEO_LOGS_MAX_ROWS`) and 90 days. Record, repeat count, list, ignore, delete pass |
@@ -279,7 +280,7 @@ Order agreed on 2026-11-03: foundations first: 9 (done) → 10 → 12 → 13 →
       - The rows were in SEO_D1 (checked with `cf d1 query`). The main D1 has only the `seo_settings*` and `seo_redirects*` tables, and `migrate:create --skip-empty` finds no main-D1 changes with the four features on.
       - Retention: stale rows inserted directly (2024 score and performance rows, a January 404) were the only ones `POST /retention` deleted, one per dataset. The first Cron tick queued `seoRetentionPurge` for 04:00 UTC, so the scheduled run itself wasn't observed.
       - `/admin/performance`, `/admin/seo` and `/admin/sitemap-audit` return 200. Over the whole session `wrangler tail` showed no exceptions, errors or warnings (other than Payload's "no email adapter"). The new endpoints used at most 9 ms CPU, and Cron ticks 72–118 ms.
-11. **AI features on OpenRouter. Done (2026-11-04; local workerd with a mock, and the Node dev server with a real key).** The Anthropic Messages API calls are replaced by OpenRouter's OpenAI-compatible Chat Completions, so any OpenRouter model works; Claude stays reachable as `anthropic/…`.
+11. **AI features on OpenRouter. Done (2026-11-04; verified on the deployed Worker with a real key).** The Anthropic Messages API calls are replaced by OpenRouter's OpenAI-compatible Chat Completions, so any OpenRouter model works; Claude stays reachable as `anthropic/…`.
     - **One client:** `helpers/aiClient.ts` (`aiChat`) is used by `/ai-optimize`, `/ai-optimize-bulk`, `/ai-rewrite`, `/ai-alt-text` and `/ai-content-brief` (`/ai-generate` stays heuristic). `helpers/aiModel.ts` is gone. `/ai-rewrite` no longer pins Haiku and now accepts numeric ids (D1).
     - **Default model** `deepseek/deepseek-v4.1-flash` (`DEFAULT_AI_MODEL`): open weights, ~40 providers on OpenRouter, image input (alt text) and structured outputs, $0.045 / $0.50 per M tokens in/out at the time. Any override (`SEO_AI_MODEL`) must support structured outputs, and image input for alt text.
     - **Request:** system + user messages; `reasoning: { enabled: false }` by default (`SEO_AI_REASONING` raises it, for models that can't turn it off); `provider.data_collection: 'deny'` by default (`SEO_AI_DATA_COLLECTION=allow` lifts it), since prompts carry page content, drafts included. Optimize and brief send a strict `json_schema` `response_format` with `provider.require_parameters: true`; the defensive parsers and the server-side clamps stay.
@@ -294,9 +295,15 @@ Order agreed on 2026-11-03: foundations first: 9 (done) → 10 → 12 → 13 →
       - The prompts asked for "the page's language", and a four-word page came back with an Italian rationale. Every prompt now names the analysis locale's language (`aiLanguageName`).
       - "Optimize with AI" was always disabled: the sidebar read the document id from the form state, which Payload 4 doesn't fill. It now uses `useDocumentInfo()` (id and collection), which also fixes the duplicate-keyword check and internal-link suggestions excluding the current page.
       - With `aiFeatures` off, the sidebar's AI buttons and the dashboard's "Optimize site" / bulk "Optimize meta" stayed visible and answered 404. They now follow `features.aiFeatures`.
+    - **Verified on the deployed Worker** (2026-11-04, versions `28a9c37f`, then `af15d6ba` with the prompt fix). `aiFeatures` is on in `apps/web`. `varlock-wrangler deploy` uploads `OPENROUTER_API_KEY` from `apps/web/.env` as a `secret_text`; the key has a $5 credit limit in OpenRouter. Checked over REST with a temporary API-key user and a 960×720 JPEG uploaded to R2, both deleted afterwards:
+      - `/health` reports the key and the model. `/ai-generate` (templates), `/ai-optimize`, `/ai-rewrite` (title and description), `/ai-content-brief` and `/ai-optimize-bulk` (2 pages) all answered `method: "ai"`. `/ai-alt-text` described the photo correctly ("White cup of black coffee on a saucer with a spoon…"), reading it from R2 in-process, and `apply: true` saved it.
+      - In the admin, the page sidebar shows "Generate meta" and "Optimize with AI", and the suggestions panel fills in. `/admin/seo`, `/admin/performance` and `/admin/sitemap-audit` return 200, with no page errors.
+      - From `wrangler tail`: 8–192 ms CPU per call (the high end is a cold start), 0.9–4.6 s wall (the model). No exceptions.
+      - Routing: with `data_collection: 'deny'` (+ `require_parameters` for schemas) the calls went to Relace, an fp4 endpoint, the cheapest of 40. The whole check, probes included, cost about $0.0025.
+    - **Fixed from that run: the optimize prompt invented numbers.** The engine's issues ("No number in the title…") were passed as "fix these", against the rule "never invent numbers". On the 2-sentence demo page, 7 of 8 direct runs (and the deployed optimize and bulk calls) titled it "5 Essential Tips/Steps", and half the rationales argued for a focus-keyword change that `sanitizeSuggestions` then dropped. The prompt now calls the issues hints, allows a number or a question title only when the content supports it, and pins an editor's focus keyword. After: 0 of 12 invented numbers, no keyword talk; a page with "3 steps" still gets "3 Simple Steps"; French output reads naturally (0 of 4). A test in `aiClient.test.ts` guards the rules.
     - **Open:**
-      - Run it against real OpenRouter on a deployed Worker: create a key with a credit limit, `wrangler secret put OPENROUTER_API_KEY` (or through varlock), turn on `aiFeatures`, then check all five endpoints, alt text on an R2 image, and CPU/wall time per call. Confirm DeepSeek V4.1 Flash routes with `data_collection: 'deny'` + `require_parameters` (many providers support structured outputs; a few, like StreamLake and Novita, don't and get skipped).
-      - Judge the output quality on real pages (French and English); the default providers include fp4 quantizations. If quality suffers, pin providers or quantizations through `provider` (not exposed yet).
+      - Titles still lean on the power words the engine asks for ("The Ultimate Guide…") on thin pages. Fine on real content; revisit if editors complain.
+      - fp4 endpoints served everything and the output was good. If quality drops on long pages, pin providers or quantizations through `provider` (not exposed yet).
       - The alt-text system prompt only knows French and English (`seoConfig.locale`).
 12. **GSC on Workers. Done (2026-11-04; the crypto is verified on a deployed Worker, the endpoints aren't).**
     - `node:crypto` `scryptSync` and AES-GCM work in local workerd (22 ms CPU per scrypt at N=16384, r=8, 16 MiB). They were dropped anyway: deployed limits can't be checked locally (see the PBKDF2 patch), and scrypt costs CPU on every call.
@@ -328,6 +335,10 @@ Order agreed on 2026-11-03: foundations first: 9 (done) → 10 → 12 → 13 →
     - **Stats gap:** `stats.ok`, `broken` and `timeout` don't count blocked and DNS failures, so they don't add up to `total` (5 + 33 + 0 of 48 in the run above). Add a `blocked` / `error` count.
     - **Open:** whether a slow 25 s step fits through the edge (no slow hosts in the deployed test). Show `capped`/`partial`/`pending` in the External tab and continue partial scans from the button; treat 429/999 as unverified, not broken. On Node the guard can't pin the resolved IP for `fetch` (DNS rebinding gap); on Workers `fetch` can't reach private networks anyway.
 
+### Backlog
+
+22. **Whole-site scans** (`cannibalization`, `keywords`, `linkGraph`, `duplicateContent`). Deferred on 2026-11-04 until there's a real site with real content to measure against, planned for the next sprint. The demo site has 2 pages, and a seeded one says little about real link graphs or duplicate rates. Each scan reads every doc in one request, like `/indexation-audit` (12.7 s CPU at 1,500 docs deployed, against a 30 s limit). On the real site: measure each scan's CPU on a deployed Worker, then cap it (`SEO_FETCH_MAX_DOCS`), chunk it like the dashboard audit (P2 item 9), or mark it unsupported on Workers. `duplicateContent` has never run, even on Node.
+
 ### P3: quality and cleanup
 
 14. **Bulk-preview dialog** in `SeoView.tsx`: still a custom overlay without a focus trap or Escape to close. Move it to Payload `Modal` / `useModal`, then drop the last exception in `a11yContract.test.ts`.
@@ -345,7 +356,7 @@ Order agreed on 2026-11-03: foundations first: 9 (done) → 10 → 12 → 13 →
 
 ## Definition of done for "fully ported"
 
-- Every feature flag is either verified in a deployed Worker or explicitly marked unsupported on Workers in this file and in `README.md`. *(Enabled features: done, including the leftovers, P2 item 9, and `performance` / `scoreHistory` / `seoLogs` / `externalLinks` on 2026-11-04. `README.md` has the per-flag status table; `aiFeatures`, `gscApi`, `alerts`, `indexNow`, the whole-site scans and `schemaBuilder` are still "not checked", which isn't "unsupported".)*
+- Every feature flag is either verified in a deployed Worker or explicitly marked unsupported on Workers in this file and in `README.md`. *(Enabled features: done, including the leftovers, P2 item 9, and `performance` / `scoreHistory` / `seoLogs` / `externalLinks` on 2026-11-04. `README.md` has the per-flag status table; `aiFeatures` is verified too (2026-11-04). `gscApi`, `alerts`, `indexNow` and `schemaBuilder` are still "not checked", which isn't "unsupported". The whole-site scans are in the backlog until a real site exists (item 22).)*
 - No unpersisted background work and no module-level caches the UI depends on. *(Done for the enabled features.)*
 - No time-series data in the main D1. *(Done: `apps/web` uses `dataStore` with the production SEO_D1, verified on 2026-11-04.)*
 - No hard-coded `/api/seo-plugin` or `/admin` paths. *(Done.)*

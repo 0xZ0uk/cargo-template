@@ -251,6 +251,36 @@ describe('optimizeDocMeta on the AI client', () => {
     expect(system).not.toMatch(/same language as the page/i)
   })
 
+  it("treats the engine's issues as hints and pins an editor's focus keyword", async () => {
+    // Told to "fix" the "Number in title" issue, the default model invented "5 Essential Tips"
+    // for a page with no list (7 of 8 runs), and argued for a keyword change the server drops.
+    const answer = () =>
+      completion(
+        JSON.stringify({ metaTitle: 'Coffee Brewing Basics', metaDescription: 'x', focusKeyword: 'other', rationale: [] }),
+      )
+    let spy = mockFetch(answer())
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let r = await optimizeDocMeta(payloadWith({ 7: { ...page, focusKeyword: 'coffee' } }) as any, {
+      collection: 'pages',
+      id: '7',
+      mergedConfig: config,
+      apiKey: 'k',
+    })
+    let system = (sentBody(spy).messages as Array<{ content: string }>)[0].content
+    expect(system).toMatch(/issues are hints, not orders/)
+    expect(system).toMatch(/number in the title .* only if the content/)
+    expect(system).toContain('return "coffee" unchanged')
+    expect(r.suggestions?.focusKeyword).toBe('coffee')
+
+    vi.restoreAllMocks()
+    spy = mockFetch(answer())
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    r = await optimizeDocMeta(payloadWith({ 7: page }) as any, { collection: 'pages', id: '7', mergedConfig: config, apiKey: 'k' })
+    system = (sentBody(spy).messages as Array<{ content: string }>)[0].content
+    expect(system).toMatch(/focus keyword is missing: suggest one/)
+    expect(r.suggestions?.focusKeyword).toBe('other')
+  })
+
   it('falls back to the heuristics when the API fails or gives no usable answer', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('bad key', { status: 401 }))
     const payload = payloadWith({ 7: page })
