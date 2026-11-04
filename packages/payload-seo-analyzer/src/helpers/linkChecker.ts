@@ -2,7 +2,7 @@
  * Outbound link checker: SSRF-guarded HEAD (then GET) requests with manual redirects,
  * bounded concurrency, and a subrequest budget.
  *
- * Why the limits (Cloudflare Workers, paid plan, per invocation — see PLAN.md, P2 item 13):
+ * Why the limits (Cloudflare Workers, paid plan, per invocation):
  * - Subrequests: 10,000 (50 on Free). Every `fetch()` counts, each redirect hop counts, so
  *   does each D1/R2 call, and so does each `node:dns` lookup (two per host on Workers: A and
  *   AAAA). `SubrequestBudget` counts them here and stops starting links once spent.

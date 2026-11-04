@@ -516,7 +516,7 @@ function BulkActionBar({
     <div className="seo-audit__bulk">
       <div className="seo-row">
         <span className="seo-text seo-text--strong">
-          {count} {t.common.selected}{count > 1 ? 's' : ''}
+          {count} {t.common.selected}
         </span>
         <Button buttonStyle="secondary" onClick={onDeselectAll}>
           {t.common.deselectAll}
@@ -580,6 +580,9 @@ export function SeoView() {
   const [bulkOptimizing, setBulkOptimizing] = useState(false)
   const [bulkApplying, setBulkApplying] = useState(false)
   const [bulkApplied, setBulkApplied] = useState(false)
+  // Feedback when "Optimize site" / "Optimize meta" has no preview to show: nothing qualified,
+  // or the request failed (rate limit, AI provider error). Without it the click does nothing.
+  const [bulkNotice, setBulkNotice] = useState<{ tone: 'default' | 'danger'; message: string } | null>(null)
   const [bulkPreview, setBulkPreview] = useState<{ results: BulkPreviewRow[]; capped: boolean; total: number } | null>(null)
   const { openModal, closeModal, modalState } = useModal()
   const bulkPreviewOpen = Boolean(modalState[BULK_PREVIEW_MODAL_SLUG]?.isOpen)
@@ -969,6 +972,7 @@ export function SeoView() {
     bulkPreviewOpenerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
     setBulkOptimizing(true)
     setBulkPreview(null)
+    setBulkNotice(null)
     try {
       const res = await fetch(seoApi('/ai-optimize-bulk'), {
         method: 'POST',
@@ -982,12 +986,16 @@ export function SeoView() {
         const changed = ((data.results || []) as BulkPreviewRow[]).filter((r) => r.changed && !r.error)
         setBulkPreview({ results: changed, capped: !!data.capped, total: data.processed || 0 })
         openModal(BULK_PREVIEW_MODAL_SLUG)
+      } else if (mountedRef.current) {
+        setBulkNotice({ tone: 'danger', message: t.seoView.bulkPreviewFailed.replace('{status}', `HTTP ${res.status}`) })
       }
     } catch {
-      /* ignore */
+      if (mountedRef.current) {
+        setBulkNotice({ tone: 'danger', message: t.seoView.bulkPreviewFailed.replace('{status}', t.common.networkError) })
+      }
     }
     setBulkOptimizing(false)
-  }, [openModal, seoApi])
+  }, [openModal, seoApi, t])
 
   // Selection-driven bulk optimize.
   const handleBulkOptimizeMeta = useCallback(
@@ -1004,8 +1012,12 @@ export function SeoView() {
       .filter((i) => !i.metaTitle || !i.metaDescription || !i.focusKeyword || i.score < 70)
       .slice(0, 100)
       .map(itemKey)
+    if (targets.length === 0) {
+      setBulkNotice({ tone: 'default', message: t.seoView.optimizeSiteNothing })
+      return
+    }
     runBulkPreview(targets)
-  }, [items, runBulkPreview])
+  }, [items, runBulkPreview, t])
 
   // Apply the REVIEWED corrections (no second LLM call — server writes the previewed values).
   const handleBulkApplyPreview = useCallback(async () => {
@@ -1445,6 +1457,13 @@ export function SeoView() {
             </span>
           </Banner>
         )}
+
+        {bulkNotice && (
+          <Banner type={bulkNotice.tone}>
+            <span>{bulkNotice.message}</span>
+          </Banner>
+        )}
+        <LiveRegion message={bulkNotice?.message ?? ''} />
 
         {/* Bulk apply confirmation — avoids an auto-rebuild; user refreshes once when done */}
         {bulkApplied && (

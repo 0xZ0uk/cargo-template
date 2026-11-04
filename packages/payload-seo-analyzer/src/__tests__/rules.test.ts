@@ -19,6 +19,7 @@ import { checkTechnical } from '../rules/technical'
 import { checkEeat } from '../rules/eeat'
 import { checkGeo } from '../rules/geo'
 import { checkHreflang } from '../rules/hreflang'
+import { FLESCH_THRESHOLDS } from '../constants'
 
 // ---------------------------------------------------------------------------
 // Fixture helpers
@@ -473,6 +474,31 @@ describe('checkReadability', () => {
     )
     // Should have Flesch, long sentences, paragraphs, passive, transitions checks
     expect(checks.length).toBeGreaterThanOrEqual(4)
+  })
+
+  it('names the Flesch target when the score is below it', () => {
+    const hard =
+      'Notwithstanding considerable methodological heterogeneity, comprehensive organizational transformation necessitates systematic evaluation of interdependent infrastructural capabilities and multidimensional institutional accountability mechanisms.'
+    const fullText = Array(6).fill(hard).join(' ')
+    const checks = checkReadability(
+      makeInput({ heroRichText: null, content: null, blocks: [] }),
+      makeCtx({ fullText, wordCount: 120, sentences: Array(6).fill(hard) }),
+    )
+    const flesch = checks.find((c) => c.id === 'readability-flesch')
+    expect(flesch?.status).toBe('fail')
+    expect(flesch?.message).toContain(`(aim for ${FLESCH_THRESHOLDS.pass}+)`)
+  })
+
+  it('leaves the target out of a passing Flesch message', () => {
+    const easy = 'We make good coffee. You can make it too. Use fresh beans and hot water.'
+    const fullText = Array(12).fill(easy).join(' ')
+    const checks = checkReadability(
+      makeInput({ heroRichText: null, content: null, blocks: [] }),
+      makeCtx({ fullText, wordCount: 180, sentences: fullText.split(/(?<=\.)\s+/) }),
+    )
+    const flesch = checks.find((c) => c.id === 'readability-flesch')
+    expect(flesch?.status).toBe('pass')
+    expect(flesch?.message).not.toContain('aim for')
   })
 })
 
