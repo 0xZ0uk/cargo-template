@@ -6,6 +6,12 @@ import { defineConfig, devices } from '@playwright/test'
  */
 import 'varlock/auto-load'
 
+// Port of the dev server the specs start (`E2E_PORT`, default 3000). Set `E2E_BASE_URL` to test
+// a server you started yourself instead (e.g. `vite preview`). It must use the local D1: the
+// admin specs seed their user through the Local API.
+const port = Number(process.env.E2E_PORT || 3000)
+const baseURL = process.env.E2E_BASE_URL || `http://localhost:${port}`
+
 /**
  * See https://playwright.dev/docs/test-configuration.
  */
@@ -18,11 +24,11 @@ export default defineConfig({
   /* Opt out of parallel tests on CI. */
   workers: process.env.CI ? 1 : undefined,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
-  reporter: 'html',
+  reporter: process.env.CI ? [['github'], ['html', { open: 'never' }]] : 'html',
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
-    // baseURL: 'http://localhost:3000',
+    baseURL,
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
@@ -33,9 +39,15 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'], channel: 'chromium' },
     },
   ],
-  webServer: {
-    command: 'pnpm dev',
-    reuseExistingServer: true,
-    url: 'http://localhost:3000',
-  },
+  webServer: process.env.E2E_BASE_URL
+    ? undefined
+    : {
+        // `--strictPort`: if the port is taken, fail instead of testing whatever app holds it.
+        command: `pnpm dev --port ${port} --strictPort`,
+        // Locally, reuse a dev server you already started on that port. CI always starts its own.
+        reuseExistingServer: !process.env.CI,
+        // The first dev request compiles the admin and pushes the schema to a fresh local D1.
+        timeout: 180_000,
+        url: baseURL,
+      },
 })

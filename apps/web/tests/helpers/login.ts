@@ -3,6 +3,7 @@ import { expect } from '@playwright/test'
 
 export interface LoginOptions {
   page: Page
+  /** Origin of the app. Defaults to Playwright's `baseURL` (see playwright.config.ts). */
   serverURL?: string
   user: {
     email: string
@@ -15,7 +16,7 @@ export interface LoginOptions {
  */
 export async function login({
   page,
-  serverURL = 'http://localhost:3000',
+  serverURL = '',
   user,
 }: LoginOptions): Promise<void> {
   await page.goto(`${serverURL}/admin/login`)

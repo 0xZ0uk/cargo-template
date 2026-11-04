@@ -1,0 +1,13 @@
+# Workflow actions are pinned to commit SHAs (GitHub's hardening guidance; Pullfrog's
+# "Versions & pinning" docs). Dependabot bumps the SHA and its `# vX.Y.Z` comment together.
+# npm dependencies aren't listed: Payload's packages move in lockstep through the pnpm catalog
+# and the patched `payload` (see AGENTS.md), so they're bumped by hand.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ['*']
