@@ -37,3 +37,12 @@ Turbo caches `build`, `typecheck` and `lint`; anything that depends on a plugin 
 - **Plugins** go in `packages/<name>`, named `@cargo/<name>`, `"private": true`, built with tsup to `dist/`, and consumed by the app as `"workspace:*"`. Declare `payload` / `@payloadcms/ui` / `react` as peer dependencies and take the dev versions from the catalog.
 - **Plugin admin UI** follows [`packages/payload-seo-analyzer/src/ui/README.md`](packages/payload-seo-analyzer/src/ui/README.md): `@payloadcms/ui` components and Payload 4 tokens only.
 - **Upstream code** imported with `git subtree` keeps its history. Pull upstream fixes with `git subtree pull --prefix=packages/<name> <repo-url> <branch>`.
+
+## CI and code review
+
+- **CI** (`.github/workflows/ci.yml`) runs on every PR and push to `master`.
+  - The checks job runs lint, typecheck, the plugin's unit tests, the app's integration tests and the production build. It also fails when the Payload schema changed without a migration, or when the import map or generated types are stale.
+  - The e2e job migrates a fresh local D1 and runs the Playwright suite (frontend, admin and SEO views).
+  - It needs no secrets.
+- **Reviews:** [Pullfrog](https://docs.pullfrog.com) reviews PRs with DeepSeek V4.1 Flash on OpenCode Go (`.github/workflows/pullfrog.yml`). Its instructions and console setup are in [`.github/pullfrog/`](.github/pullfrog/README.md).
+- Workflow actions are pinned to commit SHAs, and Dependabot bumps them.

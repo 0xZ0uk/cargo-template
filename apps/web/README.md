@@ -99,6 +99,7 @@ Run these inside `apps/web`, or from the repo root as `pnpm web <command>` (e.g.
 | `pnpm migrate`        | Apply migrations to the local D1 database                       |
 | `pnpm migrate:remote` | Apply migrations to the remote D1 database                      |
 | `pnpm test:int`       | Run Local API integration tests                                 |
+| `pnpm test:e2e`       | Run Playwright against `pnpm dev` (`E2E_PORT`, default 3000; `E2E_BASE_URL` for a server you started on the local D1) |
 | `pnpm lint`           | Run ESLint                                                      |
 
 ## How it works

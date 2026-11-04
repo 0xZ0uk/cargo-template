@@ -1,6 +1,6 @@
 # SEO analyzer: port status and plan
 
-Handoff for whoever continues porting `@cargo/payload-seo-analyzer`. Last updated 2026-11-04 (after P0 + P1, their leftovers, P2 items 9–13, and the deployed check of 10, 12 and 13).
+Handoff for whoever continues porting `@cargo/payload-seo-analyzer`. Last updated 2026-11-04 (after P0 + P1, their leftovers, P2 items 9–13, the deployed check of 10, 12 and 13, and CI + the README rewrite).
 
 ## TL;DR
 
@@ -27,7 +27,8 @@ Handoff for whoever continues porting `@cargo/payload-seo-analyzer`. Last update
 | Shared UI layer | `src/ui/` (`styles.css`, `tone.ts`, `primitives.tsx`) |
 | How the app uses it | `apps/web/src/payload.config.ts` (`seoAnalyzerPlugin({...})`; the feature flags live there) |
 | Its migration in the app | `apps/web/src/db/migrations/20261103_110003_seo_analyzer.ts` (`seo_redirects`, `seo_settings`, `pages.focus_keyword`, `pages.is_cornerstone`, `pages_focus_keywords`) |
-| Upstream docs (Next.js-centric, partly stale) | `README.md` (below the fork notice), `docs/`, `CHANGELOG.md` |
+| Docs | `README.md` (rewritten for Payload 4 + Workers, with the per-feature Workers status), `docs/THREAT-MODEL.md` (updated, with a Workers section). `CHANGELOG.md` is upstream's history up to 4.2.2; `docs/*-2026*.md` are upstream product notes |
+| CI | `.github/workflows/ci.yml` (lint, typecheck, unit + int tests, build, migration/generated-files drift, Playwright). PR reviews: Pullfrog, `.github/pullfrog/` |
 | History | Imported with `git subtree`. `git log -- packages/payload-seo-analyzer` covers upstream v1.20.0 → 4.2.2 plus the port commits |
 
 Port commits, oldest first (`git log --oneline 4cc80c2`):
@@ -47,6 +48,7 @@ After that, in this repo:
 - `feat/seo-analyzer-p2-items-10-12-13` (PR #12): P2 items 10, 12 and 13 (SEO_D1 data store, GSC on WebCrypto, external links checker)
 - `feat/seo-analyzer-seo-d1-deploy` (PR #13): the production SEO_D1 database, the deployed check of items 10, 12 and 13, and those features on in `apps/web`
 - `feat/seo-analyzer-ai-openrouter`: P2 item 11, the AI features on OpenRouter
+- `feat/ci-pullfrog-readme`: CI, the SEO e2e specs, Pullfrog reviews, the README and threat-model rewrite (P3 items 16 and 17)
 
 ## Working on it
 
@@ -79,7 +81,7 @@ Gotchas:
 - **Dev-push data-loss prompt:** while the plugin's tables exist in your local D1 (`apps/web/.wrangler/state`), any branch or config without them makes Payload's dev push stop at an interactive "data loss" prompt. Tests and scripts then hang until they time out.
 - **First request after adding collections:** the first dev request sometimes fails with `index payload_locked_documents_rels_order_idx already exists`. That's a drizzle/SQLite push quirk; the next request works.
 - **Rate limiting:** the plugin rate-limits its expensive endpoints per user (10/min), so automated checks that load many views quickly get HTTP 429.
-- **e2e port:** `apps/web` e2e specs hard-code `localhost:3000` with `reuseExistingServer`. Any other app on that port gets tested instead.
+- **e2e port:** `pnpm web test:e2e` starts `vite dev --strictPort` on `E2E_PORT` (default 3000) and, outside CI, reuses a server already on that port. Use another port if a different app holds 3000. `E2E_BASE_URL` tests a running server instead. The dev server and the test process share the local D1, so the odd `SQLITE_BUSY` shows up in the log (and, rarely, fails a seed/cleanup step that a retry passes).
 - **workerd preview:**
   - `pnpm web preview` doesn't take `--port` cleanly. Run `pnpm web build`, then `CLOUDFLARE_RUNTIME=true vite preview --port 4310` from `apps/web`.
   - A local D1 created by Payload's dev push makes `pnpm web migrate` stop at the "data loss" prompt. Back up `.wrangler/state` and migrate a fresh copy.
@@ -330,10 +332,8 @@ Order agreed on 2026-11-03: foundations first: 9 (done) → 10 → 12 → 13 →
 
 14. **Bulk-preview dialog** in `SeoView.tsx`: still a custom overlay without a focus trap or Escape to close. Move it to Payload `Modal` / `useModal`, then drop the last exception in `a11yContract.test.ts`.
 15. **PDF export** (`SeoView.tsx`, `handleExportPdf`): builds a standalone HTML document with hard-coded print colours (the only hex left outside the third-party mock-ups). Fine to keep; move it to a template file if it grows.
-16. **E2E coverage:**
-    - Replace `e2e/` with Playwright specs in `apps/web/tests/e2e` covering the SEO views, or delete it.
-    - Make the app's e2e base URL configurable (no hard-coded `localhost:3000`).
-17. **Docs:** rewrite the upstream README sections for TanStack/Workers, update `docs/THREAT-MODEL.md` for the Workers deployment, and decide whether to keep `CHANGELOG.md` (upstream history) or start a fork changelog.
+16. **E2E coverage. Mostly done (2026-11-04).** `apps/web/tests/e2e/seo.e2e.spec.ts` renders the five enabled SEO views (header, admin shell, no error boundary, no page error) and checks the root `sitemap.xml` / `robots.txt`; the base URL and port are configurable (`E2E_PORT`, `E2E_BASE_URL`); CI runs the suite on a D1 built from the migrations. Left: delete upstream's `e2e/` (the dead Next.js harness), and add specs as features get turned on (sidebar score on a page edit, a redirect round trip through the UI).
+17. **Docs. Done (2026-11-04).** `README.md` is rewritten for Payload 4 + Workers (setup, options, data store, jobs, env vars without `NEXT_*`, the Workers status of every flag); `docs/THREAT-MODEL.md` got the WebCrypto, resolver and rate-limit changes plus a Workers section (R2 cache contents, in-process 404 recording, data placement). `CHANGELOG.md` stays upstream's history; fork changes are tracked here and in git. Start a fork changelog only if the package is ever published.
 18. **Payload UI notes:**
     - `Button` has no `small` size.
     - `Tabs` has no `aria-label`; it's wrapped in `role="group"`.
@@ -345,10 +345,10 @@ Order agreed on 2026-11-03: foundations first: 9 (done) → 10 → 12 → 13 →
 
 ## Definition of done for "fully ported"
 
-- Every feature flag is either verified in a deployed Worker or explicitly marked unsupported on Workers in this file and in `README.md`. *(Enabled features: done, including the leftovers, P2 item 9, and `performance` / `scoreHistory` / `seoLogs` / `externalLinks` on 2026-11-04.)*
+- Every feature flag is either verified in a deployed Worker or explicitly marked unsupported on Workers in this file and in `README.md`. *(Enabled features: done, including the leftovers, P2 item 9, and `performance` / `scoreHistory` / `seoLogs` / `externalLinks` on 2026-11-04. `README.md` has the per-flag status table; `aiFeatures`, `gscApi`, `alerts`, `indexNow`, the whole-site scans and `schemaBuilder` are still "not checked", which isn't "unsupported".)*
 - No unpersisted background work and no module-level caches the UI depends on. *(Done for the enabled features.)*
 - No time-series data in the main D1. *(Done: `apps/web` uses `dataStore` with the production SEO_D1, verified on 2026-11-04.)*
 - No hard-coded `/api/seo-plugin` or `/admin` paths. *(Done.)*
-- No `NEXT_*` environment variables. *(Done in code; `README.md` and `e2e/` still mention them.)*
+- No `NEXT_*` environment variables. *(Done in code and `README.md`; only upstream's dead `e2e/` harness still mentions them.)*
 - Redirects, `sitemap.xml` and `robots.txt` work on the live site. *(Done on the deployed Worker.)*
-- Unit tests, typecheck, lint and an e2e pass over the SEO views run in CI from the repo root. *(No CI workflow exists yet: `.github/workflows` is absent.)*
+- Unit tests, typecheck, lint and an e2e pass over the SEO views run in CI from the repo root. *(Done: `.github/workflows/ci.yml`, 2026-11-04.)*

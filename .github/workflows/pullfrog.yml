@@ -1,0 +1,71 @@
+# PULLFROG ACTION — DO NOT EDIT EXCEPT WHERE INDICATED
+#
+# Pullfrog (https://docs.pullfrog.com) dispatches this workflow itself (`workflow_dispatch`)
+# for PR reviews, @pullfrog mentions, "Fix all" and CI fixes. It always runs the copy on the
+# default branch, so changes here take effect once they're merged to master, and a PR can't
+# change the workflow that reviews it.
+#
+# Model: DeepSeek V4.1 Flash on the OpenCode Go plan, through the `opencode-go` provider
+# (models.dev specifier `opencode-go/deepseek-v4.1-flash`). DeepSeek is off the Go menu by
+# default: OpenCode gates it behind a workspace opt-in (China hosting) that must be on.
+# The console's repository model must be "Custom (set in workflow)", or it beats `model:`.
+# Setup, review instructions and the console settings: .github/pullfrog/README.md.
+name: Pullfrog
+run-name: ${{ inputs.name || github.workflow }}
+on:
+  workflow_dispatch:
+    inputs:
+      prompt:
+        type: string
+        description: Agent prompt
+      name:
+        type: string
+        description: Run name
+
+permissions:
+  contents: read
+
+jobs:
+  pullfrog:
+    runs-on: ubuntu-latest
+    # Edited: a stuck run shouldn't hold a runner (or the Go quota) for GitHub's 6 h default.
+    timeout-minutes: 45
+    permissions:
+      # Pullfrog mints its own short-lived GitHub App token through OIDC for comments, reviews
+      # and pushes; it never uses this job's GITHUB_TOKEN for them.
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      # Edited: the repo's toolchain, so the agent can run `pnpm typecheck`, `pnpm lint` and the
+      # tests to check a finding or a fix instead of guessing. pnpm comes from `packageManager`.
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          cache: pnpm
+      # Installs master's dependencies. If a PR changes them, the agent reruns the install.
+      - run: pnpm install --frozen-lockfile
+
+      - name: Run agent
+        # Pinned to a commit (bumped by Dependabot). The agent itself still comes from npm at
+        # ^<version>, so patch releases arrive without a bump.
+        uses: pullfrog/pullfrog@e78ef9012f375d522bd40efe9e9357cb81eae1a1 # v0.1.113
+        with:
+          prompt: ${{ inputs.prompt }}
+          # Edited: pinned model (see the header).
+          model: opencode-go/deepseek-v4.1-flash
+          # Edited: cap one run well under the 1 h default; a review shouldn't need more.
+          timeout: 30m
+          # Edited: fixes go to PR branches only: no pushes to master, no branch deletion, no
+          # tags. Stricter than the console default (full push access).
+          push: restricted
+        env:
+          # Edited: the OpenCode Go key, as a GitHub Actions secret. Shell commands the agent
+          # runs never see it (Pullfrog's shell isolation drops *_KEY variables).
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
