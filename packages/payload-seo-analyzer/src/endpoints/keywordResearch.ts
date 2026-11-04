@@ -10,11 +10,8 @@
 
 import type { PayloadHandler } from 'payload'
 import { seoCache } from '../cache.js'
-import {
-  getStopWordsFR,
-  normalizeForComparison,
-  countWords,
-} from '../helpers.js'
+import { normalizeForComparison, countWords } from '../helpers.js'
+import { getStopWords as getBaseStopWords } from '../constants.js'
 import { extractDocContent } from '../helpers/extractDocContent.js'
 import { fetchAllDocs } from '../helpers/fetchAllDocs.js'
 import { isSeoAdminRequest, isSeoPanelUser } from '../helpers/isAdmin.js'
@@ -53,20 +50,18 @@ const STOP_WORDS_SET = new Set<string>()
 
 function getStopWords(): Set<string> {
   if (STOP_WORDS_SET.size === 0) {
-    for (const w of getStopWordsFR()) {
+    for (const w of getBaseStopWords()) {
       STOP_WORDS_SET.add(w)
     }
-    // Additional common French words to filter
+    // Additional common English words to filter
     const extras = [
-      'plus', 'tout', 'tous', 'toute', 'toutes', 'être', 'avoir',
-      'faire', 'comme', 'mais', 'donc', 'car', 'ni', 'si',
-      'très', 'bien', 'aussi', 'peut', 'cette', 'ces', 'votre',
-      'notre', 'notre', 'vos', 'nos', 'elle', 'elles', 'lui',
-      'eux', 'même', 'autres', 'autre', 'entre', 'sans', 'vers',
-      'chez', 'sous', 'depuis', 'avant', 'après', 'jusqu',
-      'encore', 'déjà', 'toujours', 'jamais', 'rien', 'chaque',
-      'peu', 'où', 'quand', 'comment', 'pourquoi', 'quoi',
-      'celui', 'celle', 'ceux', 'celles', 'dont',
+      'would', 'could', 'should', 'about', 'there', 'their', 'they', 'them',
+      'then', 'than', 'which', 'what', 'when', 'where', 'while', 'will',
+      'just', 'also', 'very', 'more', 'most', 'some', 'such', 'only',
+      'into', 'over', 'been', 'have', 'has', 'had', 'does', 'did', 'not',
+      'can', 'our', 'you', 'its', 'these', 'those', 'other', 'each', 'both',
+      'after', 'before', 'between', 'through', 'who', 'how', 'why', 'all',
+      'any', 'out', 'up', 'down', 'off', 'than', 'too', 'now',
     ]
     for (const w of extras) {
       STOP_WORDS_SET.add(w)
@@ -124,16 +119,15 @@ function extractNgrams(text: string): string[] {
 }
 
 /**
- * Simple stemming for French: strip common suffixes.
+ * Simple stemming for English: strip common suffixes.
  * Not a full stemmer — just enough for keyword grouping.
  */
 function simpleStem(word: string): string {
   const normalized = normalizeForComparison(word)
-  // Strip common French suffixes
-  return normalized
-    .replace(/(?:ement|ement|ation|ition|ement|ment|eur|euse|eux|ique|iste|able|ible|tion|sion)$/, '')
-    .replace(/(?:es|er|ez|ent|ant|ait|ais|ions|iez|aient)$/, '')
-    .replace(/s$/, '')
+  const stem = normalized
+    .replace(/(?:ations?|itions?|ments?|ness|ally|ing|ed|ers?|ly)$/, '')
+    .replace(/(?:es|s)$/, '')
+  return stem.length >= 3 ? stem : normalized
 }
 
 // ---------------------------------------------------------------------------
@@ -188,7 +182,7 @@ export function createKeywordResearchHandler(targetCollections: string[], global
         const fullText = extractDocText(d)
         allDocs.push({
           id: sourceType === 'global' ? sourceSlug : d.id,
-          title: d.title || '(sans titre)',
+          title: d.title || '(untitled)',
           slug: d.slug || '',
           collection: sourceType === 'global' ? `global:${sourceSlug}` : sourceSlug,
           focusKeyword: d.focusKeyword || '',

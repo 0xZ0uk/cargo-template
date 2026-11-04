@@ -10,7 +10,6 @@ import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { Banner, Button } from '@payloadcms/ui'
 import { formatAdminURL } from 'payload/shared'
 import { getTranslations } from '../i18n.js'
-import { useSeoLocale } from '../hooks/useSeoLocale.js'
 import {
   CHART_COLORS,
   Card,
@@ -102,36 +101,20 @@ interface GraphData {
   underLinked?: UnderLinkedItem[]
 }
 
-/** Local bilingual labels for the crawl-budget section (kept self-contained). */
+/** Local labels for the crawl-budget section (kept self-contained). */
 const CB_LABELS = {
-  fr: {
-    title: 'Budget de crawl / maillage interne',
-    subtitle: 'Pages à fort potentiel mais peu de liens internes entrants. Renforcer le maillage améliore la couverture de crawl.',
-    underLinked: 'Pages sous-maillées',
-    suggested: 'Liens internes à ajouter',
-    maxDepth: 'Profondeur max',
-    unreachable: 'Inaccessibles depuis l’accueil',
-    page: 'Page',
-    inbound: 'Liens entrants',
-    add: 'À ajouter',
-    depth: 'Profondeur',
-    orphan: 'Orpheline',
-    none: 'Maillage interne sain — aucune page sous-maillée détectée.',
-  },
-  en: {
-    title: 'Crawl budget / internal linking',
-    subtitle: 'High-value pages with few inbound internal links. A stronger internal mesh improves crawl coverage.',
-    underLinked: 'Under-linked pages',
-    suggested: 'Internal links to add',
-    maxDepth: 'Max depth',
-    unreachable: 'Unreachable from home',
-    page: 'Page',
-    inbound: 'Inbound links',
-    add: 'To add',
-    depth: 'Depth',
-    orphan: 'Orphan',
-    none: 'Healthy internal mesh — no under-linked pages found.',
-  },
+  title: 'Crawl budget / internal linking',
+  subtitle: 'High-value pages with few inbound internal links. A stronger internal mesh improves crawl coverage.',
+  underLinked: 'Under-linked pages',
+  suggested: 'Internal links to add',
+  maxDepth: 'Max depth',
+  unreachable: 'Unreachable from home',
+  page: 'Page',
+  inbound: 'Inbound links',
+  add: 'To add',
+  depth: 'Depth',
+  orphan: 'Orphan',
+  none: 'Healthy internal mesh — no under-linked pages found.',
 } as const
 
 // Internal positioned node for simulation
@@ -280,9 +263,8 @@ function getNodeRadius(node: GraphNode, maxDegree: number): number {
 export function LinkGraphView() {
   const seoApi = useSeoApi()
   const adminRoute = useAdminRoute()
-  const locale = useSeoLocale()
-  const T = getTranslations(locale)
-  const cb = CB_LABELS[locale === 'en' ? 'en' : 'fr']
+  const T = getTranslations()
+  const cb = CB_LABELS
 
   const [data, setData] = useState<GraphData | null>(null)
   const [loading, setLoading] = useState(true)

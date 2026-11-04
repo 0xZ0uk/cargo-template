@@ -122,24 +122,11 @@ describe('seoAnalyzerPlugin — integration (config transform)', () => {
     expect(typeof out.onInit).toBe('function')
   })
 
-  // The sidebar analyses on the client, where the plugin config is not available:
-  // without these options it would ignore `locale` and disagree with the server audit.
-  it('forwards locale and localeMapping to the sidebar analyzer field', () => {
-    const localeMapping = { de: 'en' as const }
-    const out = run({ collections: ['pages', 'posts'], locale: 'en', localeMapping })
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const pages = out.collections.find((c: any) => c.slug === 'pages')
-    expect(findField(pages.fields, 'seoAnalyzer')?.admin?.custom).toEqual({ locale: 'en', localeMapping })
-  })
-
-  // The server-side registry never reaches the browser: the admin components only
-  // see customTranslations through the client config.
-  it('forwards customTranslations to the client config, keeping existing admin.custom keys', () => {
-    const customTranslations = { cs: { common: { loading: 'Načítání...' } } }
+  it('keeps existing admin.custom keys when forwarding the feature flags', () => {
     const base = baseConfig()
     base.admin.custom = { host: true, seoAnalyzer: { other: 1 } }
-    const out = seoAnalyzerPlugin({ collections: ['pages'], customTranslations })(base)
-    expect(out.admin.custom).toMatchObject({ host: true, seoAnalyzer: { other: 1, customTranslations } })
+    const out = seoAnalyzerPlugin({ collections: ['pages'] })(base)
+    expect(out.admin.custom).toMatchObject({ host: true, seoAnalyzer: { other: 1 } })
   })
 
   // The panels skip the endpoints of a disabled feature instead of logging a 404.
@@ -147,25 +134,7 @@ describe('seoAnalyzerPlugin — integration (config transform)', () => {
     const out = run({ collections: ['pages'], features: { gscApi: false, alerts: true } })
     expect(out.admin.custom.seoAnalyzer.features).toMatchObject({ gscApi: false, alerts: true, dashboard: true })
   })
-
-  it('leaves the analyzer field without locale keys when none is configured', () => {
-    const out = run({ collections: ['pages', 'posts'] })
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const pages = out.collections.find((c: any) => c.slug === 'pages')
-    expect(findField(pages.fields, 'seoAnalyzer')?.admin?.custom).toEqual({})
-  })
 })
-
-// Depth-first search through tabs, collapsibles and groups.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function findField(fields: any[] = [], name: string): any {
-  for (const field of fields) {
-    if (field?.name === name) return field
-    const nested = findField([...(field?.fields ?? []), ...(field?.tabs ?? [])], name)
-    if (nested) return nested
-  }
-  return undefined
-}
 
 // Every time-series feature off, so retention has nothing to do unless asked.
 const NO_TIME_SERIES = { scoreHistory: false, performance: false, seoLogs: false, gscApi: false }

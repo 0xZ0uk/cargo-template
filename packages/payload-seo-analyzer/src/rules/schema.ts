@@ -28,26 +28,14 @@ const FAQ_BLOCK_TYPES = new Set(['faq', 'FAQ', 'faqBlock', 'faqs'])
  * keep this agent's edits confined to schema rule files.
  */
 const SCHEMA_REQUIRED_STRINGS = {
-  fr: {
-    label: 'Propriétés Google requises (complétude)',
-    missing: (type: string, fields: string) =>
-      `Schéma ${type} : propriété(s) requise(s) par Google manquante(s) — ${fields}. À renseigner pour l'éligibilité aux résultats enrichis.`,
-    remind: (type: string, fields: string) =>
-      `Schéma ${type} : champs requis dérivables présents. Confirmez les propriétés non vérifiables depuis le CMS — ${fields}.`,
-    complete: (type: string) =>
-      `Schéma ${type} : toutes les propriétés requises par Google sont dérivables des données CMS.`,
-    tip: "Complétez les propriétés requises (ex. author, datePublished, image) — c'est la condition d'éligibilité aux résultats enrichis et un signal fort pour les moteurs IA.",
-  },
-  en: {
-    label: 'Google-required properties (completeness)',
-    missing: (type: string, fields: string) =>
-      `${type} schema: Google-required propert(ies) missing — ${fields}. Provide them for rich-result eligibility.`,
-    remind: (type: string, fields: string) =>
-      `${type} schema: derivable required fields are present. Confirm the CMS-unverifiable properties — ${fields}.`,
-    complete: (type: string) =>
-      `${type} schema: all Google-required properties are derivable from CMS data.`,
-    tip: 'Fill the required properties (e.g. author, datePublished, image) — they gate rich-result eligibility and strongly help AI answer engines.',
-  },
+  label: 'Google-required properties (completeness)',
+  missing: (type: string, fields: string) =>
+    `${type} schema: Google-required propert(ies) missing — ${fields}. Provide them for rich-result eligibility.`,
+  remind: (type: string, fields: string) =>
+    `${type} schema: derivable required fields are present. Confirm the CMS-unverifiable properties — ${fields}.`,
+  complete: (type: string) =>
+    `${type} schema: all Google-required properties are derivable from CMS data.`,
+  tip: 'Fill the required properties (e.g. author, datePublished, image) — they gate rich-result eligibility and strongly help AI answer engines.',
 } as const
 
 /** Detect whether the page carries an FAQ block (FAQPage markup is generatable). */
@@ -77,7 +65,7 @@ function detectExpectedSchemaType(input: SeoInput, ctx: AnalysisContext): Schema
 
 export function checkSchema(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
   const checks: SeoCheck[] = []
-  const r = getTranslations(ctx.locale).rules.schema
+  const r = getTranslations().rules.schema
 
   const faqPresent = hasFaqBlock(input.blocks)
 
@@ -155,7 +143,6 @@ export function checkSchema(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
   // for the detected type. Additive to `schema-coverage` and weight 0 (informational) —
   // schema is often render-injected, so this is honest guidance, never a ranking penalty.
   if (expected !== null) {
-    const sr = SCHEMA_REQUIRED_STRINGS[ctx.locale] ?? SCHEMA_REQUIRED_STRINGS.fr
     // Richer presence map: add E-E-A-T / entity-grade fields derivable from SeoInput.
     const presentExt: Record<string, boolean> = {
       ...present,
@@ -167,23 +154,23 @@ export function checkSchema(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
     if (missing.length > 0) {
       checks.push({
         id: 'schema-required-fields',
-        label: sr.label,
+        label: SCHEMA_REQUIRED_STRINGS.label,
         status: 'warning',
-        message: sr.missing(expected, missing.join(', ')),
+        message: SCHEMA_REQUIRED_STRINGS.missing(expected, missing.join(', ')),
         category: 'bonus',
         weight: 0,
         group: 'schema',
-        tip: sr.tip,
+        tip: SCHEMA_REQUIRED_STRINGS.tip,
       })
     } else {
       checks.push({
         id: 'schema-required-fields',
-        label: sr.label,
+        label: SCHEMA_REQUIRED_STRINGS.label,
         status: 'pass',
         message:
           unverifiable.length > 0
-            ? sr.remind(expected, unverifiable.join(', '))
-            : sr.complete(expected),
+            ? SCHEMA_REQUIRED_STRINGS.remind(expected, unverifiable.join(', '))
+            : SCHEMA_REQUIRED_STRINGS.complete(expected),
         category: 'bonus',
         weight: 0,
         group: 'schema',

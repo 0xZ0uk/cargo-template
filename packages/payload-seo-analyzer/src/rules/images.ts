@@ -112,7 +112,7 @@ function isGenericFilename(filename: string): boolean {
 
 export function checkImages(_input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
   const checks: SeoCheck[] = []
-  const r = getTranslations(ctx.locale).rules.images
+  const r = getTranslations().rules.images
   const { imageStats, normalizedKeyword, isPost, pageType } = ctx
 
   // Legal, contact and form pages don't need images — auto-pass

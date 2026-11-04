@@ -6,45 +6,24 @@ import { Card, Field, Grid, StatTile, type Tone } from '../ui/index.js'
 import { useSeoApi } from '../hooks/useSeoApi.js'
 import './CoreWebVitalsPanel.css'
 
-const S = {
-  fr: {
-    title: 'Core Web Vitals',
-    subtitle: 'LCP / INP / CLS réels via PageSpeed Insights — informationnel, hors du score SEO (tie-breaker).',
-    urlPlaceholder: 'https://votre-site.fr/page-a-tester',
-    urlLabel: 'URL à tester',
-    test: 'Tester',
-    testing: 'Analyse en cours…',
-    mobile: 'Mobile',
-    desktop: 'Desktop',
-    sourceField: 'Données terrain (utilisateurs réels, CrUX)',
-    sourceLab: 'Données labo (Lighthouse)',
-    noInp: 'INP nécessite des données terrain réelles (indisponible en labo).',
-    inpHint: 'INP = la métrique CWV la plus souvent en échec en 2026 — à prioriser.',
-    noKey: 'Astuce : définissez PAGESPEED_API_KEY côté serveur pour augmenter le quota.',
-    good: 'Bon',
-    ni: 'À améliorer',
-    poor: 'Mauvais',
-    na: '—',
-  },
-  en: {
-    title: 'Core Web Vitals',
-    subtitle: 'Real LCP / INP / CLS via PageSpeed Insights — informational, outside the SEO score (tie-breaker).',
-    urlPlaceholder: 'https://your-site.com/page-to-test',
-    urlLabel: 'URL to test',
-    test: 'Test',
-    testing: 'Analyzing…',
-    mobile: 'Mobile',
-    desktop: 'Desktop',
-    sourceField: 'Field data (real users, CrUX)',
-    sourceLab: 'Lab data (Lighthouse)',
-    noInp: 'INP needs real-user field data (not available in lab).',
-    inpHint: 'INP is the most commonly failed Core Web Vital in 2026 — prioritize it.',
-    noKey: 'Tip: set PAGESPEED_API_KEY on the server to raise the quota.',
-    good: 'Good',
-    ni: 'Needs improvement',
-    poor: 'Poor',
-    na: '—',
-  },
+const s = {
+  title: 'Core Web Vitals',
+  subtitle: 'Real LCP / INP / CLS via PageSpeed Insights — informational, outside the SEO score (tie-breaker).',
+  urlPlaceholder: 'https://your-site.com/page-to-test',
+  urlLabel: 'URL to test',
+  test: 'Test',
+  testing: 'Analyzing…',
+  mobile: 'Mobile',
+  desktop: 'Desktop',
+  sourceField: 'Field data (real users, CrUX)',
+  sourceLab: 'Lab data (Lighthouse)',
+  noInp: 'INP needs real-user field data (not available in lab).',
+  inpHint: 'INP is the most commonly failed Core Web Vital in 2026 — prioritize it.',
+  noKey: 'Tip: set PAGESPEED_API_KEY on the server to raise the quota.',
+  good: 'Good',
+  ni: 'Needs improvement',
+  poor: 'Poor',
+  na: '—',
 } as const
 
 type Rating = 'good' | 'needs-improvement' | 'poor' | 'unknown'
@@ -79,9 +58,8 @@ function formatValue(m: Metric, key: string): string {
   return String(Math.round(m.value))
 }
 
-export function CoreWebVitalsPanel({ locale }: { locale: 'fr' | 'en' }) {
+export function CoreWebVitalsPanel() {
   const seoApi = useSeoApi()
-  const s = S[locale] ?? S.fr
   const [url, setUrl] = useState<string>(typeof window !== 'undefined' ? window.location.origin : '')
   const [strategy, setStrategy] = useState<'mobile' | 'desktop'>('mobile')
   const [loading, setLoading] = useState(false)

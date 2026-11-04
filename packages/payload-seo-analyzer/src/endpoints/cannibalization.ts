@@ -81,7 +81,7 @@ export function createCannibalizationHandler(collections: string[], globals: str
         const collectionLabel = sourceType === 'global' ? `global:${sourceSlug}` : sourceSlug
         const pageEntry: PageEntry = {
           id: sourceType === 'global' ? sourceSlug : d.id,
-          title: d.title || '(sans titre)',
+          title: d.title || '(untitled)',
           slug: d.slug || '',
           collection: collectionLabel,
           score: 0,

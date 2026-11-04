@@ -223,7 +223,7 @@ export function createSitemapAuditHandler(
 
       // Slugs that should never be marked as orphan or broken
       // (homepage variants + known dynamic routes like /blog, /posts, etc.)
-      const homeSlugs = new Set(['home', '', 'accueil', ...knownRoutes])
+      const homeSlugs = new Set(['home', '', ...knownRoutes])
       // allSlugs + routePrefixes already computed above (step 1b).
 
       for (const doc of allDocs) {

@@ -1,13 +1,12 @@
 /**
  * Meta generation endpoint (the sidebar's "Generate meta").
  * Generates meta title + meta description from page content using heuristic extraction, in
- * the analysis locale (plugin `locale`, else the request's). No LLM call: the model-backed
+ * English. No LLM call: the model-backed
  * suggestions are /ai-optimize ("Optimize with AI").
  */
 
 import type { PayloadHandler } from 'payload'
 import type { SeoConfig } from '../types.js'
-import { resolveAnalysisLocale } from '../helpers/resolveLocale.js'
 import { generateMetaTitle, generateMetaDescription } from '../helpers/metaGeneration.js'
 import { parseJsonBody } from '../helpers/parseBody.js'
 import { isSeoPanelUser } from '../helpers/isAdmin.js'
@@ -37,13 +36,8 @@ export function createAiGenerateHandler(seoConfig?: SeoConfig): PayloadHandler {
         )
       }
 
-      const locale = resolveAnalysisLocale({
-        reqLocale: req.locale as string | undefined,
-        pluginLocale: seoConfig?.locale,
-        customMapping: seoConfig?.localeMapping,
-      })
-      const metaTitle = generateMetaTitle(title, focusKeyword, slug, locale)
-      const metaDescription = generateMetaDescription(content, focusKeyword, slug, locale)
+      const metaTitle = generateMetaTitle(title, focusKeyword, slug)
+      const metaDescription = generateMetaDescription(content, focusKeyword, slug)
 
       return Response.json({ metaTitle, metaDescription })
     } catch (error) {

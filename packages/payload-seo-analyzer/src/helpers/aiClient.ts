@@ -52,15 +52,6 @@ function aiDataCollection(): 'allow' | 'deny' {
   return env('SEO_AI_DATA_COLLECTION')?.toLowerCase() === 'allow' ? 'allow' : 'deny'
 }
 
-/**
- * The language the model must answer in: the site's analysis locale, named outright. Asking
- * for "the page's language" lets the model guess on thin content (a four-word page came back
- * with an Italian rationale).
- */
-export function aiLanguageName(locale: string | undefined): 'English' | 'French' {
-  return locale === 'en' ? 'English' : 'French'
-}
-
 export type AiContentPart =
   | { type: 'text'; text: string }
   | { type: 'image_url'; image_url: { url: string } }

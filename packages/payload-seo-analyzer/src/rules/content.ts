@@ -17,7 +17,7 @@ import { getTranslations } from '../i18n.js'
 
 export function checkContent(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
   const checks: SeoCheck[] = []
-  const r = getTranslations(ctx.locale).rules.content
+  const r = getTranslations().rules.content
   const { fullText, wordCount, normalizedKeyword, isPost, pageType } = ctx
 
   // Adapted min words by page type
@@ -67,7 +67,7 @@ export function checkContent(input: SeoInput, ctx: AnalysisContext): SeoCheck[] 
     })
   }
 
-  // 21. Focus keyword in the first paragraph (smart French matching)
+  // 21. Focus keyword in the first paragraph (smart matching)
   if (normalizedKeyword && fullText.trim()) {
     // First ~500 characters or up to first newline / sentence-ending period
     const firstParagraph = normalizeForComparison(fullText.trim().slice(0, 500))

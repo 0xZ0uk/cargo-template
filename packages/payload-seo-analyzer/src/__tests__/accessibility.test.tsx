@@ -4,13 +4,11 @@ import React from 'react'
 import { render, screen, cleanup, fireEvent, act } from '@testing-library/react'
 
 // @payloadcms/ui is a peer dependency whose entry point imports CSS, which the
-// node/jsdom loader cannot parse. Only `useTranslation` and `useConfig` are
-// reached from here (through useDashboardT): the first has a default `i18n`,
-// the second no default context at all — so these stubs match their behaviour
-// outside a provider rather than replacing it.
+// node/jsdom loader cannot parse. Only `useConfig` is reached from here
+// (through useDashboardT, which has no default context) — so this stub matches
+// its behaviour outside a provider rather than replacing it.
 vi.mock('@payloadcms/ui', async () => ({
   ...(await import('./helpers/payloadUiStub.js')).payloadUiStub,
-  useTranslation: () => ({ i18n: { language: 'fr' } }),
   useConfig: () => undefined,
 }))
 
@@ -89,7 +87,7 @@ describe('SeoSocialPreview — ARIA tabs', () => {
 
 describe('LiveRegion', () => {
   it('mounts EMPTY then fills, because a live region only announces a CHANGE', async () => {
-    const { container } = render(<LiveRegion message="Audit terminé" />)
+    const { container } = render(<LiveRegion message="Audit complete" />)
     const region = container.querySelector('[role="status"]')!
     expect(region).toBeTruthy()
     // The whole point of the component: rendering the text immediately would
@@ -99,7 +97,7 @@ describe('LiveRegion', () => {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 150))
     })
-    expect(region.textContent).toBe('Audit terminé')
+    expect(region.textContent).toBe('Audit complete')
   })
 
   it('is an assertive alert when asked, a polite status otherwise', () => {

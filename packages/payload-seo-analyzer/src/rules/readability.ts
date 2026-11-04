@@ -1,6 +1,6 @@
 /**
  * SEO Rules — Readability checks (weight: 2, category: important)
- * Locale-adapted readability analysis (FR: Kandel-Moles / Flesch FR, EN: standard Flesch).
+ * Readability analysis (standard Flesch reading ease).
  */
 import type { SeoCheck, SeoInput, AnalysisContext } from '../types.js'
 import {
@@ -23,19 +23,18 @@ import { getTranslations } from '../i18n.js'
 
 export function checkReadability(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
   const checks: SeoCheck[] = []
-  const r = getTranslations(ctx.locale).rules.readability
-  const locale = ctx.locale || 'fr'
-  const ft = FLESCH_THRESHOLDS[locale]
-  const rt = READABILITY_THRESHOLDS[locale]
+  const r = getTranslations().rules.readability
+  const ft = FLESCH_THRESHOLDS
+  const rt = READABILITY_THRESHOLDS
   const { fullText, readabilityText, sentences, wordCount } = ctx
 
   // Only run readability checks if there's enough content
   if (wordCount < 50) return checks
 
-  // 38. Flesch reading ease (locale-adapted: FR = Kandel-Moles, EN = Flesch-Kincaid)
+  // 38. Flesch reading ease
   // Uses the block-aware text so list items / paragraphs count as separate
   // sentences (otherwise scannable content is unfairly scored as unreadable).
-  const fleschScore = calculateFlesch(readabilityText || fullText, locale)
+  const fleschScore = calculateFlesch(readabilityText || fullText)
 
   if (fleschScore >= ft.pass) {
     checks.push({
@@ -150,7 +149,7 @@ export function checkReadability(input: SeoInput, ctx: AnalysisContext): SeoChec
   // SEO desintox (2026): passive-voice ratio is a Yoast-style readability heuristic,
   // never a ranking factor (Yoast itself says so). Kept as advice, removed from score.
   if (sentences.length > 0) {
-    const passiveSentences = sentences.filter((s) => detectPassiveVoice(s, locale))
+    const passiveSentences = sentences.filter((s) => detectPassiveVoice(s))
     const passiveRatio = passiveSentences.length / sentences.length
 
     if (passiveRatio > rt.passiveMax) {
@@ -180,7 +179,7 @@ export function checkReadability(input: SeoInput, ctx: AnalysisContext): SeoChec
   // SEO desintox (2026): transition-word ratio is a Yoast readability heuristic,
   // not a ranking factor. Kept as advice, removed from score.
   if (sentences.length > 0) {
-    const withTransition = sentences.filter((s) => hasTransitionWord(s, locale))
+    const withTransition = sentences.filter((s) => hasTransitionWord(s))
     const transitionRatio = withTransition.length / sentences.length
 
     if (transitionRatio < rt.transitionsMin) {

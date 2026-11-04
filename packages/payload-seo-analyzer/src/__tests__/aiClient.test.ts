@@ -197,7 +197,7 @@ const page = {
       children: [
         {
           type: 'paragraph',
-          children: [{ type: 'text', text: 'Pour-over, French press and espresso: how each method extracts coffee.' }],
+          children: [{ type: 'text', text: 'Pour-over, AeroPress and espresso: how each method extracts coffee.' }],
         },
       ],
     },
@@ -223,7 +223,7 @@ describe('optimizeDocMeta on the AI client', () => {
     const spy = mockFetch(
       completion(
         JSON.stringify({
-          metaTitle: 'Coffee Brewing Basics: Pour-Over, French Press, Espresso',
+          metaTitle: 'Coffee Brewing Basics: Pour-Over, AeroPress, Espresso',
           metaDescription: 'x '.repeat(120),
           focusKeyword: 'coffee brewing',
           rationale: ['Adds the keyword.'],
@@ -244,8 +244,8 @@ describe('optimizeDocMeta on the AI client', () => {
     const body = sentBody(spy)
     expect(body.model).toBe(DEFAULT_AI_MODEL)
     expect((body.response_format as { json_schema: { name: string } }).json_schema.name).toBe('seo_meta_suggestions')
-    // The answer's language is the site's locale, named outright (not "the page's language",
-    // which the model guesses on thin content).
+    // The answer's language is named outright (not "the page's language", which the model
+    // guesses on thin content).
     const system = (body.messages as Array<{ role: string; content: string }>)[0].content
     expect(system).toContain('in English')
     expect(system).not.toMatch(/same language as the page/i)

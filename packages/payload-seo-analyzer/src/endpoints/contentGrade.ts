@@ -130,7 +130,6 @@ export interface ContentGradeResult {
 }
 
 export interface GradeContentOptions {
-  locale?: 'fr' | 'en'
   /** Floor below which a query is treated as noise for gap detection (default 10). */
   minImpressions?: number
   /** Coverage below which a query is flagged as a coverage gap (default 0.6). */
@@ -146,8 +145,8 @@ export interface GradeContentOptions {
 // ---------------------------------------------------------------------------
 
 /** Extract the significant (non-stopword) terms of a string, normalized for comparison. */
-function significantTerms(text: string, locale: 'fr' | 'en'): string[] {
-  const stop = new Set(getStopWords(locale))
+function significantTerms(text: string): string[] {
+  const stop = new Set(getStopWords())
   const tokens = normalizeForComparison(text).match(/[a-z0-9]+/g) || []
   return tokens.filter((t) => t.length >= MIN_TERM_LENGTH && !stop.has(t))
 }
@@ -160,9 +159,8 @@ function significantTerms(text: string, locale: 'fr' | 'en'): string[] {
 export function computeQueryCoverage(
   query: string,
   normalizedContent: string,
-  locale: 'fr' | 'en',
 ): QueryCoverage {
-  const terms = significantTerms(query, locale)
+  const terms = significantTerms(query)
   if (terms.length === 0) {
     return { terms: [], presentTerms: [], missingTerms: [], coverage: 1 }
   }
@@ -296,45 +294,35 @@ function pct(x: number): string {
 }
 
 function buildRecommendations(args: {
-  locale: 'fr' | 'en'
   weightedPosition: number
   coverageGaps: CoverageGap[]
   ctrGaps: ContentCtrGap[]
 }): string[] {
-  const { locale, weightedPosition, coverageGaps, ctrGaps } = args
-  const fr = locale !== 'en'
+  const { weightedPosition, coverageGaps, ctrGaps } = args
   const out: string[] = []
 
   for (const g of coverageGaps.slice(0, 4)) {
     const terms = g.missingTerms.slice(0, 6).join(', ')
     out.push(
-      fr
-        ? `Ajoutez une section couvrant « ${g.query} » (${g.impressions} impressions, position ${g.position})${terms ? ` — termes peu/pas présents : ${terms}` : ''}.`
-        : `Add a section covering “${g.query}” (${g.impressions} impressions, position ${g.position})${terms ? ` — missing terms: ${terms}` : ''}.`,
+      `Add a section covering “${g.query}” (${g.impressions} impressions, position ${g.position})${terms ? ` — missing terms: ${terms}` : ''}.`,
     )
   }
 
   for (const c of ctrGaps.slice(0, 3)) {
     out.push(
-      fr
-        ? `Optimisez le titre / la méta description pour « ${c.query} » : CTR ${pct(c.ctr)} sous l'attendu (~${pct(c.expectedCtr)} en position ${c.position}), ~${c.potentialClicks} clics/mois potentiels.`
-        : `Optimize the title / meta description for “${c.query}”: CTR ${pct(c.ctr)} below the ~${pct(c.expectedCtr)} expected at position ${c.position}, ~${c.potentialClicks} potential clicks/month.`,
+      `Optimize the title / meta description for “${c.query}”: CTR ${pct(c.ctr)} below the ~${pct(c.expectedCtr)} expected at position ${c.position}, ~${c.potentialClicks} potential clicks/month.`,
     )
   }
 
   if (weightedPosition >= NEAR_TOP_MIN && weightedPosition <= NEAR_TOP_MAX) {
     out.push(
-      fr
-        ? `Vos requêtes se classent en moyenne en position ${weightedPosition} (proche du top) : enrichir le contenu et le maillage interne peut faire gagner des places.`
-        : `Your queries rank around position ${weightedPosition} (near the top): enriching content and internal links can win positions.`,
+      `Your queries rank around position ${weightedPosition} (near the top): enriching content and internal links can win positions.`,
     )
   }
 
   if (out.length === 0) {
     out.push(
-      fr
-        ? 'Bonne couverture des requêtes qui génèrent des impressions — continuez à rafraîchir le contenu et surveillez les nouvelles requêtes.'
-        : 'Good coverage of the queries that drive impressions — keep refreshing the content and watch for new queries.',
+      'Good coverage of the queries that drive impressions — keep refreshing the content and watch for new queries.',
     )
   }
   return out
@@ -349,7 +337,6 @@ export function gradeContentCoverage(
   rows: GscQueryRow[],
   opts: GradeContentOptions = {},
 ): ContentGradeResult {
-  const locale: 'fr' | 'en' = opts.locale === 'en' ? 'en' : 'fr'
   const minImpressions = opts.minImpressions ?? 10
   const coverageThreshold = opts.coverageThreshold ?? 0.6
   const maxGaps = opts.maxGaps ?? 15
@@ -373,9 +360,7 @@ export function gradeContentCoverage(
       coverageGaps: [],
       ctrGaps: [],
       recommendations: [
-        locale === 'en'
-          ? 'Not enough Search Console data yet for this page (no impressions over the period).'
-          : "Pas encore assez de données Search Console pour cette page (aucune impression sur la période).",
+        'Not enough Search Console data yet for this page (no impressions over the period).',
       ],
     }
   }
@@ -394,7 +379,7 @@ export function gradeContentCoverage(
     totalImpressions += impressions
     totalClicks += clicks
 
-    const cov = computeQueryCoverage(r.query, normalizedContent, locale)
+    const cov = computeQueryCoverage(r.query, normalizedContent)
     weightedCoverageNum += impressions * cov.coverage
 
     const expCtr = expectedCtrForPosition(position)
@@ -466,7 +451,6 @@ export function gradeContentCoverage(
     coverageGaps: trimmedCoverage,
     ctrGaps: trimmedCtr,
     recommendations: buildRecommendations({
-      locale,
       weightedPosition,
       coverageGaps: trimmedCoverage,
       ctrGaps: trimmedCtr,
@@ -499,9 +483,6 @@ export function createContentGradeHandler(
         25000,
         Math.max(100, parseInt(url.searchParams.get('rowLimit') || '5000', 10) || 5000),
       )
-
-      const analysisLocale: 'fr' | 'en' =
-        localeParam?.toLowerCase().startsWith('en') || seoConfig?.locale === 'en' ? 'en' : 'fr'
 
       if (!collection || !id) {
         return Response.json(
@@ -543,9 +524,7 @@ export function createContentGradeHandler(
             id,
             slug,
             message:
-              analysisLocale === 'en'
-                ? 'Google Search Console is not configured on this site.'
-                : "Google Search Console n'est pas configuré sur ce site.",
+              'Google Search Console is not configured on this site.',
           },
           { headers: { 'Cache-Control': 'no-store' } },
         )
@@ -561,9 +540,7 @@ export function createContentGradeHandler(
             id,
             slug,
             message:
-              analysisLocale === 'en'
-                ? 'Connect Google Search Console to grade this page against real query data.'
-                : 'Connectez Google Search Console pour noter cette page sur des données de requêtes réelles.',
+              'Connect Google Search Console to grade this page against real query data.',
           },
           { headers: { 'Cache-Control': 'no-store' } },
         )
@@ -582,9 +559,7 @@ export function createContentGradeHandler(
             id,
             slug,
             message:
-              analysisLocale === 'en'
-                ? 'Google Search Console token is no longer usable — please reconnect.'
-                : "Le jeton Google Search Console n'est plus utilisable — veuillez reconnecter.",
+              'Google Search Console token is no longer usable — please reconnect.',
           },
           { headers: { 'Cache-Control': 'no-store' } },
         )
@@ -613,7 +588,7 @@ export function createContentGradeHandler(
       }
 
       const { matchedUrl, queryRows } = matchPageRows(rows, { slug, explicitUrl })
-      const grade = gradeContentCoverage(extracted.text, queryRows, { locale: analysisLocale })
+      const grade = gradeContentCoverage(extracted.text, queryRows)
 
       return Response.json(
         {

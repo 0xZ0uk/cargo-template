@@ -52,10 +52,9 @@ function analyzeDoc(doc: any, collection: string, seoConfig?: SeoConfig) {
   const wordCount = countWords(fullText)
   // Use the block-aware text so list items / paragraphs are counted as separate
   // sentences (otherwise scannable, list-heavy content is wrongly scored unreadable).
-  // Same formula as the sidebar's readability rule: Kandel-Moles for French, Flesch for
-  // English, picked from the analysis locale (`analyzeSeo` defaults to 'fr' too).
+  // Same formula as the sidebar's readability rule (Flesch reading ease).
   const readabilityScore =
-    wordCount > 30 ? calculateFlesch(extracted.readabilityText || fullText, seoConfig?.locale ?? 'fr') : 0
+    wordCount > 30 ? calculateFlesch(extracted.readabilityText || fullText) : 0
 
   const internalLinks = allLinks.filter(
     (l) => l.url.startsWith('/') || l.url.startsWith('#') || !l.url.startsWith('http'),
@@ -385,7 +384,6 @@ async function buildAuditCache(
   collections: string[],
   globals: string[],
   seoConfig?: SeoConfig,
-  reqLocale?: string,
 ): Promise<CachedAudit> {
   const progress: AuditProgress = {
     v: 1,
@@ -396,7 +394,7 @@ async function buildAuditCache(
     results: [],
     capped: false,
   }
-  const { config: mergedConfig, ignoredSlugs } = await loadMergedConfig(payload, seoConfig, { reqLocale })
+  const { config: mergedConfig, ignoredSlugs } = await loadMergedConfig(payload, seoConfig)
   await scanAuditDocs(payload, collections, mergedConfig, ignoredSlugs, progress, {
     unthrottled: false,
     maxDocs: Infinity,
@@ -423,7 +421,6 @@ async function runAuditBuildStep(
   globals: string[],
   seoConfig: SeoConfig | undefined,
   cacheKey: string,
-  reqLocale: string | undefined,
   resumed: boolean,
 ): Promise<{ outcome: 'done' | 'paused'; processed: number }> {
   const unthrottled = cache.hasWaitUntil
@@ -441,9 +438,8 @@ async function runAuditBuildStep(
       capped: false,
     }
   }
-  // Load merged config from DB settings + plugin config (locale-aware so the audit scores
-  // each locale with its own language rules)
-  const { config: mergedConfig, ignoredSlugs } = await loadMergedConfig(payload, seoConfig, { reqLocale })
+  // Load merged config from DB settings + plugin config
+  const { config: mergedConfig, ignoredSlugs } = await loadMergedConfig(payload, seoConfig)
   const finished = await scanAuditDocs(payload, collections, mergedConfig, ignoredSlugs, progress, {
     unthrottled,
     ...auditStepBudget(unthrottled),
@@ -466,11 +462,10 @@ async function runClaimedAuditStep(
   globals: string[],
   seoConfig: SeoConfig | undefined,
   cacheKey: string,
-  reqLocale: string | undefined,
   resumed: boolean,
 ): Promise<'done' | 'paused' | 'failed'> {
   try {
-    const step = await runAuditBuildStep(cache, payload, collections, globals, seoConfig, cacheKey, reqLocale, resumed)
+    const step = await runAuditBuildStep(cache, payload, collections, globals, seoConfig, cacheKey, resumed)
     if (step.outcome === 'paused') {
       await cache.pauseBuild(cacheKey, step.processed)
       return 'paused'
@@ -507,18 +502,17 @@ async function ensureAuditBuild(
   globals: string[],
   seoConfig: SeoConfig | undefined,
   cacheKey: string,
-  reqLocale?: string,
 ): Promise<void> {
   const claim = await cache.tryStartBuildStep(cacheKey)
   if (!claim.claimed) return
   cache.runInBackground(
-    runClaimedAuditStep(cache, payload, collections, globals, seoConfig, cacheKey, reqLocale, claim.resumed),
+    runClaimedAuditStep(cache, payload, collections, globals, seoConfig, cacheKey, claim.resumed),
   )
 }
 
 /** Hash of the config that shapes the audit; part of persisted keys. */
 function auditConfigHash(collections: string[], globals: string[], seoConfig: SeoConfig | undefined): string {
-  // v2: readability uses the locale-appropriate Flesch formula (was always French).
+  // v2: readability uses the English Flesch formula.
   return hashConfig({ v: 2, collections, globals, seoConfig: seoConfig ?? null })
 }
 
@@ -554,7 +548,7 @@ export async function continuePausedAuditBuilds(args: {
     if (!claim.claimed) continue
     outcomes.push({
       key,
-      outcome: await runClaimedAuditStep(cache, payload, collections, globals, seoConfig, key, locale, claim.resumed),
+      outcome: await runClaimedAuditStep(cache, payload, collections, globals, seoConfig, key, claim.resumed),
     })
   }
   return outcomes
@@ -595,7 +589,7 @@ export async function buildAuditToFile(
   let docs = 0
   for (const loc of locales) {
     const key = loc ? `${CACHE_KEY}:${loc}` : CACHE_KEY
-    const built = await buildAuditCache(payload, opts.collections, opts.globals ?? [], opts.seoConfig, loc)
+    const built = await buildAuditCache(payload, opts.collections, opts.globals ?? [], opts.seoConfig)
     byKey[key] = built
     docs += built.enrichedResults.length
   }
@@ -616,21 +610,20 @@ export async function buildAuditToFile(
 async function tryHydrateAuditFromFile(
   filePath: string,
   /**
-   * `false` : sert le fichier même s'il est plus ancien que la dernière invalidation.
+   * `false`: serves the file even if it is older than the last invalidation.
    *
-   * Le contrôle de fraîcheur repose sur `seoCache.lastInvalidatedAt`, une horloge EN
-   * MÉMOIRE du process : elle repart à zéro à chaque démarrage, et toute modification de
-   * contenu la pousse à `Date.now()`. Sur un hébergement à mémoire contrainte, la
-   * conséquence est perverse — la moindre édition rend le fichier « périmé », le
-   * handler retombe sur une reconstruction site-wide, et le conteneur meurt d'OOM.
-   * L'option `auditCacheFile`, censée éviter exactement ce coût, devenait donc
-   * inutilisable sur la cible qu'elle visait, au point qu'un consommateur a dû
-   * neutraliser la ligne par un patch-package.
+   * The freshness check relies on `seoCache.lastInvalidatedAt`, an IN-MEMORY clock of the
+   * process: it restarts from zero at every boot, and any content edit pushes it to
+   * `Date.now()`. On a memory-constrained host that backfires — the slightest edit makes
+   * the file "stale", the handler falls back to a site-wide rebuild, and the container
+   * dies of OOM. The `auditCacheFile` option, meant to avoid exactly that cost, became
+   * unusable on the very target it was written for, to the point that a consumer had to
+   * neutralize the line with a patch-package.
    *
-   * La fraîcheur est alors assurée autrement : le fichier est régénéré à chaque
-   * déploiement par le prewarm de CI.
+   * Freshness is then ensured another way: the file is regenerated on every deploy by
+   * the CI prewarm.
    */
-  verifierFraicheur = true,
+  checkFreshness = true,
 ): Promise<boolean> {
   try {
     // Dynamic import keeps node:fs out of the (tree-shaken) client bundle (server-only path).
@@ -638,7 +631,7 @@ async function tryHydrateAuditFromFile(
     const parsed = JSON.parse(await readFile(filePath, 'utf8')) as AuditCacheFile
     const generatedAt = typeof parsed.generatedAt === 'number' ? parsed.generatedAt : 0
     if (!parsed.byKey || !generatedAt) return false
-    if (verifierFraicheur && generatedAt < seoCache.lastInvalidatedAt) return false // stale: content changed since build
+    if (checkFreshness && generatedAt < seoCache.lastInvalidatedAt) return false // stale: content changed since build
     let hydrated = false
     for (const [key, val] of Object.entries(parsed.byKey)) {
       seoCache.set(key, val)
@@ -720,17 +713,17 @@ export function createAuditHandler(
       // Runtime kill-switch: SEO_AUDIT_FILE_CACHE=0/false ignores the file (forces a live build).
       const fileCacheOff =
         process.env.SEO_AUDIT_FILE_CACHE === '0' || process.env.SEO_AUDIT_FILE_CACHE === 'false'
-      // `SEO_AUDIT_TRUST_FILE=1` : sert le fichier sans contrôler sa fraîcheur.
+      // `SEO_AUDIT_TRUST_FILE=1`: serves the file without checking its freshness.
       //
-      // Destiné aux hôtes à mémoire contrainte, où la reconstruction site-wide déclenchée
-      // par le contrôle de fraîcheur fait mourir le conteneur. La fraîcheur est alors
-      // garantie par le prewarm de CI, qui régénère le fichier à chaque déploiement.
-      const fichierFaitFoi = process.env.SEO_AUDIT_TRUST_FILE === '1'
+      // Meant for memory-constrained hosts, where the site-wide rebuild triggered by the
+      // freshness check kills the container. Freshness is then guaranteed by the CI
+      // prewarm, which regenerates the file on every deploy.
+      const trustFile = process.env.SEO_AUDIT_TRUST_FILE === '1'
       if (
         !cached &&
         fileCache &&
         !fileCacheOff &&
-        (await tryHydrateAuditFromFile(fileCache, !fichierFaitFoi))
+        (await tryHydrateAuditFromFile(fileCache, !trustFile))
       ) {
         cached = seoCache.get<CachedAudit>(cacheKey)
       }
@@ -745,7 +738,7 @@ export function createAuditHandler(
         // Cache miss — never build synchronously on the request path (that's what OOM-killed
         // the process on low-memory hosts). Start a single-flight background build and tell
         // the client to poll. The 202 response is tiny and returns immediately.
-        await ensureAuditBuild(cache, req.payload, collections, globals, seoConfig, cacheKey, reqLocale)
+        await ensureAuditBuild(cache, req.payload, collections, globals, seoConfig, cacheKey)
         return Response.json(
           {
             building: true,

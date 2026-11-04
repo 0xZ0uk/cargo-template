@@ -11,7 +11,6 @@ vi.mock('@payloadcms/ui', async () => ({
   ...(await import('./helpers/payloadUiStub.js')).payloadUiStub,
   useConfig: () => ({ config: { admin: { custom: { seoAnalyzer: { features } } } } }),
   useLocale: () => ({}),
-  useTranslation: () => ({ i18n: { language: 'fr' } }),
 }))
 
 import { RankTrackingPanel } from '../components/RankTrackingPanel.js'
@@ -46,13 +45,13 @@ describe('UI panels — feature flags from the client config', () => {
     mockFetch(500, {})
     render(
       <>
-        <RankTrackingPanel locale="fr" />
-        <CtrOpportunitiesPanel locale="fr" />
-        <AlertsPanel locale="fr" />
+        <RankTrackingPanel />
+        <CtrOpportunitiesPanel />
+        <AlertsPanel />
       </>,
     )
-    expect((await screen.findAllByText(/Connectez Google Search Console/i)).length).toBe(2)
-    expect(await screen.findByText(/Aucun canal configuré/i)).toBeTruthy()
+    expect((await screen.findAllByText(/Connect Google Search Console/i)).length).toBe(2)
+    expect(await screen.findByText(/No channel configured/i)).toBeTruthy()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect((globalThis as any).fetch).not.toHaveBeenCalled()
   })
@@ -61,8 +60,8 @@ describe('UI panels — feature flags from the client config', () => {
 describe('UI panels — render smoke (jsdom)', () => {
   it('RankTrackingPanel: 404 (feature off) → graceful "connect GSC", not "Error 404"', async () => {
     mockFetch(404, { error: 'Not Found' })
-    render(<RankTrackingPanel locale="fr" />)
-    expect(await screen.findByText(/Connectez Google Search Console/i)).toBeTruthy()
+    render(<RankTrackingPanel />)
+    expect(await screen.findByText(/Connect Google Search Console/i)).toBeTruthy()
     expect(screen.queryByText(/Error 404/i)).toBeNull()
   })
 
@@ -71,17 +70,17 @@ describe('UI panels — render smoke (jsdom)', () => {
       count: 1,
       lastSnapshot: '2026-06-24T08:00:00Z',
       movers: [
-        { query: 'plombier brive', page: null, position: 5, previousPosition: 3, delta: -2, clicks: 10, impressions: 100, ctr: 0.1, snapshotDate: '2026-06-24T08:00:00Z' },
+        { query: 'plumber boston', page: null, position: 5, previousPosition: 3, delta: -2, clicks: 10, impressions: 100, ctr: 0.1, snapshotDate: '2026-06-24T08:00:00Z' },
       ],
     })
-    render(<RankTrackingPanel locale="fr" />)
-    expect(await screen.findByText('plombier brive')).toBeTruthy()
+    render(<RankTrackingPanel />)
+    expect(await screen.findByText('plumber boston')).toBeTruthy()
   })
 
   it('CtrOpportunitiesPanel: 404 (feature off) → graceful "connect GSC", not "Error 404"', async () => {
     mockFetch(404, { error: 'Not Found' })
-    render(<CtrOpportunitiesPanel locale="fr" />)
-    expect(await screen.findByText(/Connectez Google Search Console/i)).toBeTruthy()
+    render(<CtrOpportunitiesPanel />)
+    expect(await screen.findByText(/Connect Google Search Console/i)).toBeTruthy()
     expect(screen.queryByText(/Error 404/i)).toBeNull()
   })
 
@@ -89,18 +88,18 @@ describe('UI panels — render smoke (jsdom)', () => {
     mockFetch(200, {
       count: 1,
       opportunities: [
-        { url: 'https://consilioweb.fr/a-propos', impressions: 1000, clicks: 5, ctr: 0.005, position: 4, expectedCtr: 0.07, potentialClicks: 65, doc: null },
+        { url: 'https://example.com/about-us', impressions: 1000, clicks: 5, ctr: 0.005, position: 4, expectedCtr: 0.07, potentialClicks: 65, doc: null },
       ],
     })
-    render(<CtrOpportunitiesPanel locale="fr" />)
-    expect(await screen.findByText(/a-propos/)).toBeTruthy()
+    render(<CtrOpportunitiesPanel />)
+    expect(await screen.findByText(/about-us/)).toBeTruthy()
     expect(await screen.findByText(/\+65/)).toBeTruthy()
   })
 
   it('AlertsPanel: 404 (feature off) → shows the "no channel / disabled" hint, not an error', async () => {
     mockFetch(404, { error: 'Not Found' })
-    render(<AlertsPanel locale="fr" />)
-    expect(await screen.findByText(/Aucun canal configuré/i)).toBeTruthy()
+    render(<AlertsPanel />)
+    expect(await screen.findByText(/No channel configured/i)).toBeTruthy()
   })
 
   it('HealthPanel: renders status + warnings from /health', async () => {
@@ -110,8 +109,8 @@ describe('UI panels — render smoke (jsdom)', () => {
       runtime: { gscConnected: false, lastRankSnapshot: null },
       warnings: ['No alert channel configured'],
     })
-    render(<HealthPanel locale="fr" />)
-    expect(await screen.findByText(/Santé du module SEO/i)).toBeTruthy()
+    render(<HealthPanel />)
+    expect(await screen.findByText(/SEO module health/i)).toBeTruthy()
     expect(await screen.findByText(/No alert channel configured/i)).toBeTruthy()
   })
 })

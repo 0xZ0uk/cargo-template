@@ -31,8 +31,8 @@ const root = (...children: unknown[]) => ({ root: { children } })
 
 function makeInput(overrides: Partial<SeoInput> = {}): SeoInput {
   return {
-    metaTitle: 'Guide complet du SEO en 2026',
-    metaDescription: 'Tout savoir sur le SEO moderne et la citation par les IA.',
+    metaTitle: 'Complete guide to SEO in 2026',
+    metaDescription: 'Everything about modern SEO and getting cited by AI.',
     slug: 'guide-seo-2026',
     focusKeyword: 'seo 2026',
     ...overrides,
@@ -42,27 +42,26 @@ function makeInput(overrides: Partial<SeoInput> = {}): SeoInput {
 function makeCtx(overrides: Partial<AnalysisContext> = {}): AnalysisContext {
   return {
     fullText:
-      'Voici une introduction generale au sujet traite ici. Nous explorons les bonnes pratiques actuelles. Le contenu se veut clair et structure.',
+      'Welcome to our general introduction. We explore current best practices. The content aims to be clear and structured.',
     readabilityText:
-      'Voici une introduction generale au sujet traite ici. Nous explorons les bonnes pratiques actuelles. Le contenu se veut clair et structure.',
+      'Welcome to our general introduction. We explore current best practices. The content aims to be clear and structured.',
     wordCount: 300,
     normalizedKeyword: 'seo 2026',
     secondaryNormalizedKeywords: [],
     allHeadings: [
-      { tag: 'h1', text: 'Guide complet du SEO' },
+      { tag: 'h1', text: 'Complete SEO guide' },
       { tag: 'h2', text: 'Introduction' },
     ],
     allLinks: [],
     imageStats: { total: 0, withAlt: 0, altTexts: [] },
     sentences: [
-      'Voici une introduction generale au sujet traite ici.',
-      'Nous explorons les bonnes pratiques actuelles.',
-      'Le contenu se veut clair et structure.',
+      'Welcome to our general introduction.',
+      'We explore current best practices.',
+      'The content aims to be clear and structured.',
     ],
     isPost: true,
     pageType: 'blog',
     config: {},
-    locale: 'fr',
     ...overrides,
   }
 }
@@ -104,8 +103,8 @@ describe('checkGeo — geo-faq-howto', () => {
       makeInput(),
       makeCtx({
         allHeadings: [
-          { tag: 'h2', text: 'Comment installer le plugin ?' },
-          { tag: 'h2', text: 'Pourquoi utiliser le SEO ?' },
+          { tag: 'h2', text: 'How do I install the plugin?' },
+          { tag: 'h2', text: 'Why use SEO?' },
         ],
       }),
     )
@@ -116,7 +115,7 @@ describe('checkGeo — geo-faq-howto', () => {
 
   it('passes when a numbered HowTo procedure (≥3 steps) is present', () => {
     const checks = checkGeo(
-      makeInput({ content: root(numberedList('Étape une', 'Étape deux', 'Étape trois')) }),
+      makeInput({ content: root(numberedList('Step one', 'Step two', 'Step three')) }),
       makeCtx(),
     )
     expect(idOf(checks, 'geo-faq-howto')?.status).toBe('pass')
@@ -131,7 +130,7 @@ describe('checkGeo — geo-faq-howto', () => {
   it('does not count a single question heading as an FAQ', () => {
     const checks = checkGeo(
       makeInput(),
-      makeCtx({ allHeadings: [{ tag: 'h2', text: 'Comment optimiser le SEO ?' }] }),
+      makeCtx({ allHeadings: [{ tag: 'h2', text: 'How do I optimize SEO?' }] }),
     )
     expect(idOf(checks, 'geo-faq-howto')?.status).toBe('warning')
   })
@@ -142,24 +141,10 @@ describe('checkGeo — geo-faq-howto', () => {
 // ---------------------------------------------------------------------------
 
 describe('checkGeo — geo-definition', () => {
-  it('passes with a concise "X est …" definition near the top (FR)', () => {
+  it('passes with a concise "X is …" definition near the top', () => {
     const checks = checkGeo(
       makeInput(),
       makeCtx({
-        sentences: [
-          "Le SEO est l'optimisation pour les moteurs de recherche.",
-          'Il regroupe de nombreuses techniques.',
-        ],
-      }),
-    )
-    expect(idOf(checks, 'geo-definition')?.status).toBe('pass')
-  })
-
-  it('passes with a concise "X is …" definition near the top (EN)', () => {
-    const checks = checkGeo(
-      makeInput(),
-      makeCtx({
-        locale: 'en',
         sentences: ['SEO is the practice of optimizing web content.', 'It covers many techniques.'],
       }),
     )
@@ -174,7 +159,7 @@ describe('checkGeo — geo-definition', () => {
 
   it('does not match an over-long sentence as a snippet', () => {
     const longDef =
-      'Le SEO est une discipline ' + Array.from({ length: 40 }, () => 'mot').join(' ') + '.'
+      'SEO is a discipline ' + Array.from({ length: 40 }, () => 'word').join(' ') + '.'
     const checks = checkGeo(makeInput(), makeCtx({ sentences: [longDef] }))
     expect(idOf(checks, 'geo-definition')?.status).toBe('warning')
   })
@@ -187,15 +172,15 @@ describe('checkGeo — geo-definition', () => {
 describe('checkGeo — geo-extractable-chunks', () => {
   it('passes when paragraphs are short and self-contained', () => {
     const content = root(
-      paragraph('Un court paragraphe autonome.'),
+      paragraph('A short self-contained paragraph.'),
       heading('h2', 'Section'),
-      paragraph('Un autre paragraphe bref et clair.'),
+      paragraph('Another brief and clear paragraph.'),
     )
     expect(idOf(checkGeo(makeInput({ content }), makeCtx()), 'geo-extractable-chunks')?.status).toBe('pass')
   })
 
   it('warns (with a tip) on a long wall of text', () => {
-    const wall = Array.from({ length: 210 }, () => 'mot').join(' ')
+    const wall = Array.from({ length: 210 }, () => 'word').join(' ')
     const c = idOf(
       checkGeo(makeInput({ content: root(paragraph(wall)) }), makeCtx()),
       'geo-extractable-chunks',

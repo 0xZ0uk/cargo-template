@@ -36,45 +36,24 @@ interface ContentGradeResponse {
   recommendations?: string[]
 }
 
-const S = {
-  fr: {
-    title: 'Content Grade (couverture GSC)',
-    subtitle: 'Note de couverture par page à partir des requêtes Google Search Console réelles — sans API SERP payante.',
-    selectPage: 'Choisir une page…',
-    loadingPages: 'Chargement des pages…',
-    grading: 'Analyse de la couverture…',
-    needGsc: 'Connectez Google Search Console pour activer le Content Grade.',
-    noPages: 'Aucune page à analyser.',
-    coverageGaps: 'Requêtes mal couvertes (à enrichir)',
-    missing: 'termes manquants',
-    nearTop: 'proche du top',
-    ctrGaps: 'Requêtes à fort potentiel CTR',
-    recommendations: 'Recommandations',
-    coverage: 'Couverture',
-    ctr: 'CTR',
-    position: 'Position',
-    refresh: 'Rafraîchir',
-    grade: 'Note',
-  },
-  en: {
-    title: 'Content Grade (GSC coverage)',
-    subtitle: 'Per-page coverage grade from real Google Search Console queries — no paid SERP API.',
-    selectPage: 'Pick a page…',
-    loadingPages: 'Loading pages…',
-    grading: 'Analyzing coverage…',
-    needGsc: 'Connect Google Search Console to enable Content Grade.',
-    noPages: 'No page to analyze.',
-    coverageGaps: 'Poorly covered queries (enrich these)',
-    missing: 'missing terms',
-    nearTop: 'near top',
-    ctrGaps: 'High-CTR-potential queries',
-    recommendations: 'Recommendations',
-    coverage: 'Coverage',
-    ctr: 'CTR',
-    position: 'Position',
-    refresh: 'Refresh',
-    grade: 'Grade',
-  },
+const s = {
+  title: 'Content Grade (GSC coverage)',
+  subtitle: 'Per-page coverage grade from real Google Search Console queries — no paid SERP API.',
+  selectPage: 'Pick a page…',
+  loadingPages: 'Loading pages…',
+  grading: 'Analyzing coverage…',
+  needGsc: 'Connect Google Search Console to enable Content Grade.',
+  noPages: 'No page to analyze.',
+  coverageGaps: 'Poorly covered queries (enrich these)',
+  missing: 'missing terms',
+  nearTop: 'near top',
+  ctrGaps: 'High-CTR-potential queries',
+  recommendations: 'Recommendations',
+  coverage: 'Coverage',
+  ctr: 'CTR',
+  position: 'Position',
+  refresh: 'Refresh',
+  grade: 'Grade',
 } as const
 
 function gradeTone(grade?: string): Tone {
@@ -84,9 +63,8 @@ function gradeTone(grade?: string): Tone {
   return 'danger'
 }
 
-export function ContentGradePanel({ locale }: { locale: 'fr' | 'en' }) {
+export function ContentGradePanel() {
   const seoApi = useSeoApi()
-  const s = S[locale] ?? S.fr
   const [pages, setPages] = useState<PageOption[]>([])
   const [pagesLoading, setPagesLoading] = useState(true)
   const [selected, setSelected] = useState<string>('')

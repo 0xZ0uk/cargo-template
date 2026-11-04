@@ -7,25 +7,24 @@ import {
   detectPageType,
   extractTextFromLexical,
   extractHeadingsFromLexical,
-  calculateFleschFR,
-  countSyllablesFR,
+  calculateFlesch,
+  countSyllablesEN,
   countWords,
   countSentences,
   detectPassiveVoice,
   hasTransitionWord,
   checkHeadingHierarchy,
   countLongSections,
-  getStopWordsFR,
-  getActionVerbsFR,
   isStopWordInCompoundExpression,
 } from '../helpers'
+import { getStopWords, getActionVerbs } from '../constants'
 
 // ---------------------------------------------------------------------------
 // normalizeForComparison
 // ---------------------------------------------------------------------------
 
 describe('normalizeForComparison', () => {
-  it('strips French accents', () => {
+  it('strips accents', () => {
     expect(normalizeForComparison('Réalité augmentée')).toBe('realite augmentee')
   })
 
@@ -38,7 +37,7 @@ describe('normalizeForComparison', () => {
   })
 
   it('handles cedilla and other diacritics', () => {
-    expect(normalizeForComparison('Français')).toBe('francais')
+    expect(normalizeForComparison('Garçon')).toBe('garcon')
     expect(normalizeForComparison('Noël')).toBe('noel')
   })
 })
@@ -49,7 +48,7 @@ describe('normalizeForComparison', () => {
 
 describe('slugifyKeyword', () => {
   it('converts spaces to hyphens and strips accents', () => {
-    expect(slugifyKeyword('Agence Web Ussel')).toBe('agence-web-ussel')
+    expect(slugifyKeyword('Web Agency Boston')).toBe('web-agency-boston')
   })
 
   it('removes dots and ampersands', () => {
@@ -68,18 +67,18 @@ describe('slugifyKeyword', () => {
 
 describe('keywordMatchesText', () => {
   it('finds exact substring match', () => {
-    expect(keywordMatchesText('agence web', 'notre agence web a ussel')).toBe(true)
+    expect(keywordMatchesText('web agency', 'our web agency in boston')).toBe(true)
   })
 
   it('returns false for absent keyword', () => {
-    expect(keywordMatchesText('creation mobile', 'notre agence web a ussel')).toBe(false)
+    expect(keywordMatchesText('mobile creation', 'our web agency in boston')).toBe(false)
   })
 
   it('handles multi-word keywords with significant words present', () => {
     expect(
       keywordMatchesText(
-        'politique confidentialite rgpd',
-        'decouvrez notre politique de confidentialite conforme au rgpd',
+        'privacy policy gdpr',
+        'discover our privacy policy compliant with gdpr',
       ),
     ).toBe(true)
   })
@@ -87,8 +86,8 @@ describe('keywordMatchesText', () => {
   it('returns false when not all significant words present for 3+ words', () => {
     expect(
       keywordMatchesText(
-        'politique confidentialite rgpd',
-        'decouvrez notre politique de confidentialite',
+        'privacy policy gdpr',
+        'discover our privacy policy',
       ),
     ).toBe(false)
   })
@@ -99,8 +98,8 @@ describe('keywordMatchesText', () => {
   })
 
   it('handles single short keyword', () => {
-    expect(keywordMatchesText('seo', 'guide seo complet')).toBe(true)
-    expect(keywordMatchesText('seo', 'guide complet')).toBe(false)
+    expect(keywordMatchesText('seo', 'complete seo guide')).toBe(true)
+    expect(keywordMatchesText('seo', 'complete guide')).toBe(false)
   })
 })
 
@@ -110,15 +109,15 @@ describe('keywordMatchesText', () => {
 
 describe('countKeywordOccurrences', () => {
   it('counts exact occurrences and computes density', () => {
-    const text = 'agence web a ussel est une agence web de qualite'
-    const result = countKeywordOccurrences('agence web', text, 10)
+    const text = 'web agency in boston is a web agency of quality'
+    const result = countKeywordOccurrences('web agency', text, 10)
     expect(result.exactCount).toBe(2)
     expect(result.wordLevelMatch).toBe(true)
     expect(result.effectiveDensity).toBeCloseTo(40, 0) // 2*2/10 * 100 = 40%
   })
 
   it('returns zero for absent keyword', () => {
-    const result = countKeywordOccurrences('creation mobile', 'agence web ussel', 3)
+    const result = countKeywordOccurrences('mobile creation', 'web agency boston', 3)
     expect(result.exactCount).toBe(0)
     expect(result.wordLevelMatch).toBe(false)
     expect(result.effectiveDensity).toBe(0)
@@ -126,8 +125,8 @@ describe('countKeywordOccurrences', () => {
 
   it('detects word-level match for multi-word keywords', () => {
     const result = countKeywordOccurrences(
-      'creation site internet',
-      'la creation de votre site sur internet est notre metier',
+      'website creation service',
+      'the creation of your website for any service is our job',
       10,
     )
     expect(result.exactCount).toBe(0)
@@ -150,20 +149,17 @@ describe('detectPageType', () => {
   it('detects home from empty slug', () => {
     expect(detectPageType('')).toBe('home')
     expect(detectPageType('home')).toBe('home')
-    expect(detectPageType('accueil')).toBe('home')
   })
 
   // Legal pages
   it('detects legal pages by slug', () => {
-    expect(detectPageType('mentions-legales')).toBe('legal')
-    expect(detectPageType('politique-confidentialite')).toBe('legal')
-    expect(detectPageType('politique-de-confidentialite')).toBe('legal')
-    expect(detectPageType('cgv')).toBe('legal')
-    expect(detectPageType('cgu')).toBe('legal')
-    expect(detectPageType('accessibilite')).toBe('legal')
+    expect(detectPageType('legal-notice')).toBe('legal')
+    expect(detectPageType('privacy-policy')).toBe('legal')
+    expect(detectPageType('terms-of-service')).toBe('legal')
+    expect(detectPageType('terms')).toBe('legal')
     expect(detectPageType('cookies')).toBe('legal')
-    expect(detectPageType('conditions-generales-vente')).toBe('legal')
-    expect(detectPageType('conditions-generales-utilisation')).toBe('legal')
+    expect(detectPageType('accessibility')).toBe('legal')
+    expect(detectPageType('gdpr')).toBe('legal')
   })
 
   // Contact
@@ -173,53 +169,51 @@ describe('detectPageType', () => {
 
   // Form pages
   it('detects form pages', () => {
-    expect(detectPageType('demande-devis')).toBe('form')
-    expect(detectPageType('inscription')).toBe('form')
+    expect(detectPageType('request-quote')).toBe('form')
+    expect(detectPageType('signup')).toBe('form')
     expect(detectPageType('support')).toBe('form')
   })
 
   // Local SEO
   it('detects local SEO from explicit slugs', () => {
-    expect(detectPageType('agence-web-ussel')).toBe('local-seo')
-    expect(detectPageType('creation-site-internet-correze')).toBe('local-seo')
+    expect(detectPageType('seattle-web', undefined, ['seattle-web'])).toBe('local-seo')
   })
 
   it('detects local SEO from patterns', () => {
-    expect(detectPageType('agence-web-toulouse')).toBe('local-seo')
-    expect(detectPageType('developpeur-web-paris')).toBe('local-seo')
-    expect(detectPageType('referencement-seo-lyon')).toBe('local-seo')
+    expect(detectPageType('web-agency-boston')).toBe('local-seo')
+    expect(detectPageType('web-developer-miami')).toBe('local-seo')
+    expect(detectPageType('seo-agency-austin')).toBe('local-seo')
   })
 
   // Service
   it('detects service pages', () => {
-    expect(detectPageType('services/creation-site')).toBe('service')
-    expect(detectPageType('services-developpement')).toBe('service')
+    expect(detectPageType('services/web-design')).toBe('service')
+    expect(detectPageType('services-development')).toBe('service')
+    expect(detectPageType('our-services')).toBe('service')
   })
 
   // Resource
   it('detects resource pages', () => {
-    expect(detectPageType('ressources/guide-seo')).toBe('resource')
-    expect(detectPageType('ressources-gratuites')).toBe('resource')
+    expect(detectPageType('resources/seo-guide')).toBe('resource')
+    expect(detectPageType('resources-free')).toBe('resource')
   })
 
   // Agency
   it('detects agency pages', () => {
-    expect(detectPageType('a-propos')).toBe('agency')
-    expect(detectPageType('equipe')).toBe('agency')
+    expect(detectPageType('about-us')).toBe('agency')
+    expect(detectPageType('about')).toBe('agency')
     expect(detectPageType('portfolio')).toBe('agency')
-    expect(detectPageType('agence')).toBe('agency')
-    expect(detectPageType('agence/')).toBe('agency')
   })
 
   // Blog slug-based fallback
   it('detects blog from slug pattern', () => {
-    expect(detectPageType('posts/mon-article')).toBe('blog')
+    expect(detectPageType('posts/my-article')).toBe('blog')
     expect(detectPageType('blog/guide')).toBe('blog')
   })
 
   // Generic
   it('returns generic for unknown slugs', () => {
-    expect(detectPageType('tarifs')).toBe('generic')
+    expect(detectPageType('pricing')).toBe('generic')
     expect(detectPageType('random-page')).toBe('generic')
   })
 })
@@ -252,25 +246,25 @@ describe('extractTextFromLexical', () => {
     const node = {
       root: {
         children: [
-          { type: 'heading', tag: 'h2', children: [{ type: 'text', text: 'Titre sans point' }] },
-          { type: 'paragraph', children: [{ type: 'text', text: 'Un paragraphe' }] },
+          { type: 'heading', tag: 'h2', children: [{ type: 'text', text: 'Title without period' }] },
+          { type: 'paragraph', children: [{ type: 'text', text: 'A paragraph' }] },
         ],
       },
     }
     // Default: blocks joined with a space, no injected periods.
-    expect(extractTextFromLexical(node)).toBe('Titre sans point Un paragraphe')
+    expect(extractTextFromLexical(node)).toBe('Title without period A paragraph')
   })
 
   it('adds sentence boundaries at block ends when sentenceBoundaries=true (readability)', () => {
     const node = {
       root: {
         children: [
-          { type: 'paragraph', children: [{ type: 'text', text: 'Intro sans ponctuation finale' }] },
+          { type: 'paragraph', children: [{ type: 'text', text: 'Intro without final punctuation' }] },
           {
             type: 'list',
             children: [
-              { type: 'listitem', children: [{ type: 'text', text: 'Premier item de liste' }] },
-              { type: 'listitem', children: [{ type: 'text', text: 'Deuxième item de liste' }] },
+              { type: 'listitem', children: [{ type: 'text', text: 'First list item' }] },
+              { type: 'listitem', children: [{ type: 'text', text: 'Second list item' }] },
             ],
           },
         ],
@@ -278,16 +272,16 @@ describe('extractTextFromLexical', () => {
     }
     const out = extractTextFromLexical(node, undefined, true)
     // Each block (paragraph + each list item) terminates a sentence.
-    expect(out).toContain('Intro sans ponctuation finale.')
-    expect(out).toContain('Premier item de liste.')
-    expect(out).toContain('Deuxième item de liste.')
+    expect(out).toContain('Intro without final punctuation.')
+    expect(out).toContain('First list item.')
+    expect(out).toContain('Second list item.')
     // List-heavy content is now segmented into 3 sentences instead of 1 giant one.
     expect(countSentences(out).length).toBe(3)
     // A pre-existing terminator is not doubled.
     const ending = {
-      root: { children: [{ type: 'paragraph', children: [{ type: 'text', text: 'Déjà ponctué !' }] }] },
+      root: { children: [{ type: 'paragraph', children: [{ type: 'text', text: 'Already punctuated!' }] }] },
     }
-    expect(extractTextFromLexical(ending, undefined, true)).toBe('Déjà ponctué !')
+    expect(extractTextFromLexical(ending, undefined, true)).toBe('Already punctuated!')
   })
 
   it('respects maxDepth parameter', () => {
@@ -309,14 +303,14 @@ describe('extractTextFromLexical', () => {
           {
             type: 'paragraph',
             children: [
-              { type: 'text', text: 'Bonjour' },
+              { type: 'text', text: 'Hello' },
               { type: 'text', text: ' le monde' },
             ],
           },
         ],
       },
     }
-    expect(extractTextFromLexical(node)).toContain('Bonjour')
+    expect(extractTextFromLexical(node)).toContain('Hello')
     expect(extractTextFromLexical(node)).toContain('le monde')
   })
 })
@@ -353,47 +347,53 @@ describe('extractHeadingsFromLexical', () => {
 })
 
 // ---------------------------------------------------------------------------
-// countSyllablesFR
+// countSyllablesEN
 // ---------------------------------------------------------------------------
 
-describe('countSyllablesFR', () => {
+describe('countSyllablesEN', () => {
   it('counts monosyllabic words', () => {
-    expect(countSyllablesFR('test')).toBe(1)
-    expect(countSyllablesFR('web')).toBe(1)
+    expect(countSyllablesEN('test')).toBe(1)
+    expect(countSyllablesEN('web')).toBe(1)
   })
 
-  it('counts polysyllabic French words', () => {
-    expect(countSyllablesFR('création')).toBeGreaterThanOrEqual(2)
-    expect(countSyllablesFR('développement')).toBeGreaterThanOrEqual(3)
+  it('counts polysyllabic words', () => {
+    expect(countSyllablesEN('creation')).toBeGreaterThanOrEqual(2)
+    expect(countSyllablesEN('development')).toBeGreaterThanOrEqual(3)
+  })
+
+  it('handles silent-e and -ed endings', () => {
+    expect(countSyllablesEN('make')).toBe(1)
+    expect(countSyllablesEN('jumped')).toBe(1)
+    expect(countSyllablesEN('wanted')).toBe(2)
   })
 
   it('returns 1 for empty/invalid input', () => {
-    expect(countSyllablesFR('')).toBe(1)
+    expect(countSyllablesEN('')).toBe(1)
   })
 })
 
 // ---------------------------------------------------------------------------
-// calculateFleschFR
+// calculateFlesch
 // ---------------------------------------------------------------------------
 
-describe('calculateFleschFR', () => {
+describe('calculateFlesch', () => {
   it('returns 0 for empty text', () => {
-    expect(calculateFleschFR('')).toBe(0)
+    expect(calculateFlesch('')).toBe(0)
   })
 
-  it('returns a score for normal French text', () => {
+  it('returns a score for normal text', () => {
     const text =
-      "Le développement web est un domaine passionnant. Les technologies évoluent rapidement. Il faut se former en continu."
-    const score = calculateFleschFR(text)
+      'Web development is an exciting field. Technologies evolve quickly. You need to keep learning.'
+    const score = calculateFlesch(text)
     expect(score).toBeGreaterThan(0)
     expect(score).toBeLessThanOrEqual(100)
   })
 
   it('returns higher score for simple sentences', () => {
-    const simple = 'Le chat dort. Il pleut. Je mange.'
+    const simple = 'The cat sleeps. It rains. I eat.'
     const complex =
-      "L'implémentation algorithmique des systèmes distribués nécessite une compréhension approfondie des paradigmes de programmation concurrente."
-    expect(calculateFleschFR(simple)).toBeGreaterThan(calculateFleschFR(complex))
+      'The algorithmic implementation of distributed systems requires a thorough understanding of concurrent programming paradigms.'
+    expect(calculateFlesch(simple)).toBeGreaterThan(calculateFlesch(complex))
   })
 })
 
@@ -415,8 +415,8 @@ describe('countSentences', () => {
     expect(countSentences('One sentence')).toHaveLength(1)
   })
 
-  it('handles French abbreviations', () => {
-    const sentences = countSentences('M. Dupont est là. Mme. Martin aussi.')
+  it('handles abbreviations', () => {
+    const sentences = countSentences('Mr. Smith is here. Mrs. Jones is here too.')
     expect(sentences).toHaveLength(2)
   })
 
@@ -430,24 +430,13 @@ describe('countSentences', () => {
 // ---------------------------------------------------------------------------
 
 describe('detectPassiveVoice', () => {
-  it('detects passive voice with "est + participe"', () => {
-    expect(detectPassiveVoice('Le site est réalisé par notre équipe')).toBe(true)
-  })
-
-  it('does not detect "a été" pattern due to \\b limitation with accented chars', () => {
-    // Known limitation: \b word boundary doesn't match after accented chars in JS regex.
-    // "a été terminé" fails because \b after "été" doesn't fire (é is not \w).
-    expect(detectPassiveVoice('Le projet a été terminé hier')).toBe(false)
-  })
-
-  it('excludes passé composé with être-verbs', () => {
-    expect(detectPassiveVoice('Il est allé au magasin')).toBe(false)
-    expect(detectPassiveVoice('Elle est venue hier')).toBe(false)
-    expect(detectPassiveVoice('Ils sont partis tôt')).toBe(false)
+  it('detects passive voice with be-verb + past participle', () => {
+    expect(detectPassiveVoice('The site is created by our team')).toBe(true)
+    expect(detectPassiveVoice('The project was finished yesterday')).toBe(true)
   })
 
   it('returns false for active voice', () => {
-    expect(detectPassiveVoice('Notre équipe crée des sites web')).toBe(false)
+    expect(detectPassiveVoice('Our team creates websites')).toBe(false)
   })
 })
 
@@ -457,16 +446,16 @@ describe('detectPassiveVoice', () => {
 
 describe('hasTransitionWord', () => {
   it('detects transition words at start of sentence', () => {
-    expect(hasTransitionWord('De plus, notre service est rapide')).toBe(true)
-    expect(hasTransitionWord('Cependant il faut noter que')).toBe(true)
+    expect(hasTransitionWord('Furthermore, our service is fast')).toBe(true)
+    expect(hasTransitionWord('However we should note that')).toBe(true)
   })
 
   it('detects transition words inside sentence', () => {
-    expect(hasTransitionWord('Notre service, en effet, est rapide')).toBe(true)
+    expect(hasTransitionWord('Our service, indeed, is fast')).toBe(true)
   })
 
   it('returns false when no transition word', () => {
-    expect(hasTransitionWord('Notre service est rapide')).toBe(false)
+    expect(hasTransitionWord('Our service is fast')).toBe(false)
   })
 })
 
@@ -510,7 +499,7 @@ describe('countLongSections', () => {
 
   it('counts sections exceeding threshold', () => {
     // Build a Lexical tree with a long paragraph (many words)
-    const longText = Array(350).fill('mot').join(' ')
+    const longText = Array(350).fill('word').join(' ')
     const node = {
       root: {
         children: [
@@ -522,7 +511,7 @@ describe('countLongSections', () => {
   })
 
   it('resets counter after heading', () => {
-    const text150 = Array(150).fill('mot').join(' ')
+    const text150 = Array(150).fill('word').join(' ')
     const node = {
       root: {
         children: [
@@ -537,24 +526,24 @@ describe('countLongSections', () => {
 })
 
 // ---------------------------------------------------------------------------
-// getStopWordsFR / getActionVerbsFR
+// getStopWords / getActionVerbs
 // ---------------------------------------------------------------------------
 
-describe('getStopWordsFR', () => {
+describe('getStopWords', () => {
   it('returns an array of stop words', () => {
-    const words = getStopWordsFR()
-    expect(words.length).toBeGreaterThan(30)
-    expect(words).toContain('le')
-    expect(words).toContain('de')
+    const words = getStopWords()
+    expect(words.length).toBeGreaterThan(20)
+    expect(words).toContain('the')
+    expect(words).toContain('and')
   })
 })
 
-describe('getActionVerbsFR', () => {
+describe('getActionVerbs', () => {
   it('returns action verbs', () => {
-    const verbs = getActionVerbsFR()
+    const verbs = getActionVerbs()
     expect(verbs.length).toBeGreaterThan(25)
-    expect(verbs).toContain('découvrez')
-    expect(verbs).toContain('contactez')
+    expect(verbs).toContain('discover')
+    expect(verbs).toContain('download')
   })
 })
 
@@ -563,15 +552,15 @@ describe('getActionVerbsFR', () => {
 // ---------------------------------------------------------------------------
 
 describe('isStopWordInCompoundExpression', () => {
-  it('detects "en ligne" compound', () => {
-    expect(isStopWordInCompoundExpression(['service', 'en', 'ligne'], 1)).toBe(true)
+  it('detects "in the" compound', () => {
+    expect(isStopWordInCompoundExpression(['service', 'in', 'the'], 1)).toBe(true)
   })
 
-  it('detects "sur mesure" compound', () => {
-    expect(isStopWordInCompoundExpression(['site', 'sur', 'mesure'], 1)).toBe(true)
+  it('detects "on the" compound', () => {
+    expect(isStopWordInCompoundExpression(['site', 'on', 'the'], 1)).toBe(true)
   })
 
   it('returns false for standalone stop word', () => {
-    expect(isStopWordInCompoundExpression(['site', 'de', 'test'], 1)).toBe(false)
+    expect(isStopWordInCompoundExpression(['site', 'of', 'test'], 1)).toBe(false)
   })
 })

@@ -26,7 +26,7 @@ import {
 import { SCORE_GOOD, SCORE_OK } from '../constants.js'
 import { formatAdminURL } from 'payload/shared'
 import { SeoSocialPreview } from './SeoSocialPreview.js'
-import { useDashboardT, useSeoAnalysisLocale, useSeoFeature, type SeoAnalysisLocaleOptions } from '../hooks/useSeoLocale.js'
+import { useDashboardT, useSeoFeature } from '../hooks/useSeoLocale.js'
 import { type DashboardTranslations } from '../dashboard-i18n.js'
 import { withSeoErrorBoundary } from './withSeoErrorBoundary.js'
 import { Card, Checklist, cx, ScoreRing, statusTone, TonePill, type Tone } from '../ui/index.js'
@@ -495,15 +495,9 @@ function AiMetaValue({
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
-interface SeoAnalyzerFieldProps {
-  /** Client field config; `admin.custom` carries the plugin's locale options (see seoFields()). */
-  field?: { admin?: { custom?: SeoAnalysisLocaleOptions } }
-}
-
-const SeoAnalyzerInner: React.FC<SeoAnalyzerFieldProps> = ({ field }) => {
+const SeoAnalyzerInner: React.FC = () => {
   const seoApi = useSeoApi()
   const adminRoute = useAdminRoute()
-  const analysisLocale = useSeoAnalysisLocale(field?.admin?.custom)
   // The `/ai-*` endpoints only exist with `features.aiFeatures`; unknown flags keep the buttons.
   const aiEnabled = useSeoFeature('aiFeatures') !== false
   const t = useDashboardT()
@@ -759,19 +753,18 @@ const SeoAnalyzerInner: React.FC<SeoAnalyzerFieldProps> = ({ field }) => {
         updatedAt: updatedAt || undefined,
         contentLastReviewed: contentLastReviewed || undefined,
       },
-      { locale: analysisLocale },
     )
 
     // Compute word count from the content check (reuse the check message or compute separately)
     let wc = 0
     const wcCheck = result.checks.find((c) => c.id === 'content-wordcount')
     if (wcCheck) {
-      const match = wcCheck.message.match(/(\d+)\s*(?:mots|words)/)
+      const match = wcCheck.message.match(/(\d+)\s*words/)
       if (match) wc = parseInt(match[1], 10)
     }
 
     return { analysis: result, wordCount: wc }
-  }, [formFields, focusKeyword, focusKeywords, isCornerstone, updatedAt, contentLastReviewed, getFieldValue, analysisLocale])
+  }, [formFields, focusKeyword, focusKeywords, isCornerstone, updatedAt, contentLastReviewed, getFieldValue])
 
   // The page host for the social preview. Read after mount: during SSR there is no
   // window, and reading it in render made the server and client markup disagree

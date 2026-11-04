@@ -1,5 +1,4 @@
 // Auto-extracted from @payloadcms/plugin-seo translation files
-// All 39 languages supported by Payload CMS plugin-seo
 
 export const seoTranslations: Record<string, { 'plugin-seo': Record<string, string> }> = {
   ar: {
@@ -242,28 +241,6 @@ export const seoTranslations: Record<string, { 'plugin-seo': Record<string, stri
       previewDescription: '\u0641\u0647\u0631\u0633\u062a \u0646\u062a\u0627\u06cc\u062c \u0645\u0645\u06a9\u0646 \u0627\u0633\u062a \u0628\u0631 \u0627\u0633\u0627\u0633 \u0645\u062d\u062a\u0648\u0627 \u0648 \u0645\u062a\u0646\u0627\u0633\u0628 \u0628\u0627 \u06a9\u0644\u0645\u0647 \u06a9\u0644\u06cc\u062f\u06cc \u062c\u0633\u062a\u062c\u0648 \u0634\u062f\u0647 \u0628\u0627\u0634\u0646\u062f',
       tooLong: '\u062e\u06cc\u0644\u06cc \u0637\u0648\u0644\u0627\u0646\u06cc',
       tooShort: '\u062e\u06cc\u0644\u06cc \u06a9\u0648\u062a\u0627\u0647',
-    },
-  },
-  fr: {
-    'plugin-seo': {
-      almostThere: 'On y est presque',
-      autoGenerate: 'Auto-g\u00e9n\u00e9rer',
-      bestPractices: 'bonnes pratiques',
-      characterCount: '{{current}}/{{minLength}}-{{maxLength}} caract\u00e8res, ',
-      charactersLeftOver: '{{characters}} restants',
-      charactersToGo: '{{characters}} \u00e0 ajouter',
-      charactersTooMany: '{{characters}} en trop',
-      checksPassing: '{{current}}/{{max}} v\u00e9rifications r\u00e9ussies',
-      good: 'Bien',
-      imageAutoGenerationTip: "L'auto-g\u00e9n\u00e9ration r\u00e9cup\u00e9rera l'image principale s\u00e9lectionn\u00e9e.",
-      lengthTipDescription: "Ceci devrait contenir entre {{minLength}} et {{maxLength}} caract\u00e8res. Pour obtenir de l'aide pour r\u00e9diger des descriptions meta de qualit\u00e9, consultez les ",
-      lengthTipTitle: "Ceci devrait contenir entre {{minLength}} et {{maxLength}} caract\u00e8res. Pour obtenir de l'aide pour r\u00e9diger des titres meta de qualit\u00e9, consultez les ",
-      missing: 'Manquant',
-      noImage: "Pas d'image",
-      preview: 'Aper\u00e7u',
-      previewDescription: 'Les r\u00e9sultats exacts peuvent varier en fonction du contenu et de la pertinence de la recherche.',
-      tooLong: 'Trop long',
-      tooShort: 'Trop court',
     },
   },
   he: {

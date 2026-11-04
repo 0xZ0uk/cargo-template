@@ -144,7 +144,6 @@ export function createNewsSitemapHandler(targetCollections: string[], seoConfig?
       if (typeof cachedXml === 'string') return xmlResponse(cachedXml)
 
       const siteUrl = resolveSiteUrl(seoConfig)
-      const language = seoConfig?.locale === 'en' ? 'en' : 'fr'
       // Publication name: configured siteName, else the host.
       let publication = seoConfig?.siteName || ''
       if (!publication && siteUrl) {
@@ -171,7 +170,7 @@ export function createNewsSitemapHandler(targetCollections: string[], seoConfig?
         if (!title) return
         const loc = `${siteUrl}${docPath((doc.slug as string) || '', collection, seoConfig)}`
         entries.push(
-          `  <url>\n    <loc>${escapeXml(loc)}</loc>\n    <news:news>\n      <news:publication>\n        <news:name>${escapeXml(publication)}</news:name>\n        <news:language>${language}</news:language>\n      </news:publication>\n      <news:publication_date>${new Date(dateStr).toISOString()}</news:publication_date>\n      <news:title>${escapeXml(title)}</news:title>\n    </news:news>\n  </url>`,
+          `  <url>\n    <loc>${escapeXml(loc)}</loc>\n    <news:news>\n      <news:publication>\n        <news:name>${escapeXml(publication)}</news:name>\n        <news:language>en</news:language>\n      </news:publication>\n      <news:publication_date>${new Date(dateStr).toISOString()}</news:publication_date>\n      <news:title>${escapeXml(title)}</news:title>\n    </news:news>\n  </url>`,
         )
       })
 

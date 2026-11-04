@@ -57,14 +57,13 @@ function hasTandemRepeat(text: string): boolean {
 
 export function checkQuality(_input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
   const checks: SeoCheck[] = []
-  const r = getTranslations(ctx.locale).rules.quality
+  const r = getTranslations().rules.quality
   const { fullText, wordCount } = ctx
 
   // 45. No duplicate/placeholder content detected
   const placeholderPatterns = [
     /\b(lorem ipsum|dolor sit amet|consectetur adipiscing)\b/i,
-    /\b(texte de remplacement|contenu temporaire|texte generique)\b/i,
-    /\b(titre de la page|description de la page)\b/i,
+    /\b(placeholder text|dummy text|temporary content|sample text)\b/i,
   ]
 
   const hasDuplicateContent =

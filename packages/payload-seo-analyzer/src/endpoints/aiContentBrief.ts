@@ -16,7 +16,7 @@ import type { SeoConfig } from '../types.js'
 import { parseJsonBody } from '../helpers/parseBody.js'
 import { extractDocContent } from '../helpers/extractDocContent.js'
 import { isSeoPanelUser } from '../helpers/isAdmin.js'
-import { aiApiKey, aiChat, aiLanguageName, aiModel } from '../helpers/aiClient.js'
+import { aiApiKey, aiChat, aiModel } from '../helpers/aiClient.js'
 
 export interface ContentBrief {
   outline: Array<{ level: 'h2' | 'h3'; text: string }>
@@ -110,14 +110,13 @@ const BRIEF_SCHEMA = {
 async function callAiBrief(
   apiKey: string,
   model: string,
-  language: string,
   params: { keyword: string; pageTitle?: string; existingContent?: string },
 ): Promise<ContentBrief | null> {
   const systemPrompt = `You are an SEO content strategist applying June 2026 best practices.
 Produce a concise WRITING BRIEF for the target keyword so a writer can create a page that ranks AND is citable by AI engines.
 Rules:
 - Base the brief on genuine search intent for the keyword; cover entities and questions a complete page must address.
-- Be specific and non-generic; no filler. Write in ${aiLanguageName(language)}.
+- Be specific and non-generic; no filler. Write in English.
 - Do not invent facts, brands, prices or statistics.
 Return ONLY a JSON object (no markdown, no prose) with EXACTLY this shape:
 {"outline":[{"level":"h2"|"h3","text":string}],"entities":[string],"questions":[string],"internalLinkIdeas":[string],"recommendedWordCount":number,"notes":[string]}
@@ -192,11 +191,10 @@ export function createAiContentBriefHandler(
       }
 
       const model = aiModel()
-      const language = seoConfig?.locale === 'en' ? 'en' : 'fr'
 
       let brief: ContentBrief | null
       try {
-        brief = await callAiBrief(apiKey, model, language, { keyword, pageTitle, existingContent })
+        brief = await callAiBrief(apiKey, model, { keyword, pageTitle, existingContent })
       } catch (e) {
         req.payload.logger.error(`[seo] ai-content-brief AI error: ${e instanceof Error ? e.message : 'unknown'}`)
         return Response.json({ error: 'Content brief generation failed.' }, { status: 502 })

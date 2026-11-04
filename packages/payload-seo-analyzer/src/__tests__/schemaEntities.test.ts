@@ -22,8 +22,8 @@ const SITE = 'https://example.com'
 
 function makeInput(overrides: Partial<SeoInput> = {}): SeoInput {
   return {
-    metaTitle: 'Guide complet du SEO en 2026',
-    metaDescription: 'Tout ce qu’il faut savoir sur le référencement en 2026, données et sources à l’appui.',
+    metaTitle: 'Complete guide to SEO in 2026',
+    metaDescription: 'Everything you need to know about SEO in 2026, with data and sources.',
     slug: 'guide-seo-2026',
     focusKeyword: 'seo 2026',
     ...overrides,
@@ -33,22 +33,21 @@ function makeInput(overrides: Partial<SeoInput> = {}): SeoInput {
 function makeCtx(overrides: Partial<AnalysisContext> = {}): AnalysisContext {
   return {
     fullText:
-      'En 2026, 70% des recherches passent par des moteurs IA. Nous avons analysé 1200 pages et observé 3 tendances.',
+      'In 2026, 70% of searches go through AI engines. We analyzed 1200 pages and observed 3 trends.',
     readabilityText: '',
     wordCount: 300,
     normalizedKeyword: 'seo 2026',
     secondaryNormalizedKeywords: [],
     allHeadings: [{ tag: 'h1', text: 'Guide SEO 2026' }],
     allLinks: [
-      { url: '/services', text: 'Nos services' },
-      { url: 'https://developers.google.com/search', text: 'Documentation Google' },
+      { url: '/services', text: 'Our services' },
+      { url: 'https://developers.google.com/search', text: 'Google documentation' },
     ],
-    imageStats: { total: 1, withAlt: 1, altTexts: ['Schéma SEO'] },
+    imageStats: { total: 1, withAlt: 1, altTexts: ['SEO diagram'] },
     sentences: [],
     isPost: true,
     pageType: 'blog',
     config: {},
-    locale: 'fr',
     ...overrides,
   }
 }
@@ -105,17 +104,17 @@ describe('buildJsonLd — topical entities (about / mentions / isPartOf)', () =>
       {
         title: 'T',
         meta: { description: 'D' },
-        about: ['Référencement naturel'],
+        about: ['Organic search'],
         mentions: [{ name: 'Google', sameAs: ['https://www.wikidata.org/wiki/Q95'] }],
-        isPartOf: 'Série SEO',
+        isPartOf: 'SEO series',
       },
       { collection: 'posts', siteUrl: SITE },
     )
-    expect(jsonLd.about).toEqual([{ '@type': 'Thing', name: 'Référencement naturel' }])
+    expect(jsonLd.about).toEqual([{ '@type': 'Thing', name: 'Organic search' }])
     expect(jsonLd.mentions).toEqual([
       { '@type': 'Thing', name: 'Google', sameAs: ['https://www.wikidata.org/wiki/Q95'] },
     ])
-    expect(jsonLd.isPartOf).toEqual({ '@type': 'CreativeWork', name: 'Série SEO' })
+    expect(jsonLd.isPartOf).toEqual({ '@type': 'CreativeWork', name: 'SEO series' })
   })
 
   it('omits about/mentions/isPartOf when absent (no empty keys)', () => {

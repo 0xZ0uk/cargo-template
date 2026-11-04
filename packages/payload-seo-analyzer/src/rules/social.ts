@@ -7,7 +7,7 @@ import { getTranslations } from '../i18n.js'
 
 export function checkSocial(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
   const checks: SeoCheck[] = []
-  const r = getTranslations(ctx.locale).rules.social
+  const r = getTranslations().rules.social
 
   // 34. OG/meta image defined
   const hasMetaImage =

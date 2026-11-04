@@ -43,7 +43,7 @@ It lives in the Cargo monorepo (`packages/payload-seo-analyzer`). `apps/web` con
 - **Generated output:**
   - `robots.txt`, `sitemap.xml`, news/image/video sitemaps and an opt-in `llms.txt`.
   - JSON-LD (`buildJsonLd`) and the same URL rules for your frontend.
-- **Bilingual analysis:** French and English, with a locale-adapted readability formula (Kandel-Moles for French, Flesch for English). Dashboard strings can be extended to other admin languages.
+- **English only:** the analysis (readability, stop words, messages), the AI prompts and the admin UI strings are in English.
 - **Opt-in integrations:** Google Search Console (OAuth), AI assists through OpenRouter (meta rewriting, alt text, content briefs), a monitoring digest over webhook or email, and IndexNow.
 
 ## Status on Cloudflare Workers
@@ -98,7 +98,6 @@ export default buildConfig({
     seoAnalyzerPlugin({
       collections: ['pages', 'posts'],
       siteUrl: 'https://example.com',
-      locale: 'en',
     }),
   ],
 })
@@ -135,7 +134,6 @@ import { workersSeoRateLimit } from './plugins/seoRateLimit'
 seoAnalyzerPlugin({
   collections: ['pages'],
   collectionRoutes: { pages: '' },
-  locale: 'en',
   siteUrl: process.env.SITE_URL || undefined, // falls back to SITE_URL, then the request origin
   cacheStore: r2SeoCacheStore(cloudflare.R2), // get/put/delete of strings
   waitUntil, // undefined under the Node dev server, which is fine
@@ -197,7 +195,7 @@ const { jsonLd } = buildJsonLd(page, {
   collection: 'pages',
   collectionRoutes: { pages: '' }, // the same map you gave the plugin
   siteUrl: 'https://example.com',
-  locale: 'en', // breadcrumb label "Home"; `homeLabel` overrides it
+  homeLabel: 'Home', // first breadcrumb item (defaults to "Home")
 })
 
 // TanStack Start route
@@ -232,8 +230,6 @@ Every field of `SeoPluginConfig`. All are optional.
 | `globals` | `string[]` | `[]` | Globals that get the SEO fields and are analyzed. |
 | `siteUrl` | `string` | `SITE_URL`, then the request origin | Base URL for canonicals, sitemaps, JSON-LD and the GSC redirect URI. Scheduled jobs have no request, so the rank snapshot needs this or `SITE_URL`. |
 | `siteName` | `string` | — | Used by the "brand duplicated in title" check. |
-| `locale` | `'fr' \| 'en'` | `'fr'` | Language of the analysis (readability, stop words, messages) and of the AI prompts. The plugin's interface follows the Payload admin language instead. |
-| `localeMapping` | `Record<string, 'fr' \| 'en'>` | — | Maps Payload locale codes onto the analysis locale. |
 | `collectionRoutes` | `Record<string, string>` | `{ posts: 'posts' }` | Public route prefix per collection, used by every URL the plugin generates. `''` serves at `/<slug>`. |
 | `knownRoutes` | `string[]` | `[]` | Routes with no matching document slug, so they aren't reported as broken links or orphans. |
 | `features` | `SeoFeatures` | see below | Per-feature switches. |
@@ -262,7 +258,6 @@ Every field of `SeoPluginConfig`. All are optional.
 | `fields` | `({ defaultFields }) => Field[]` | — | Rewrites the contents of the `meta` group. |
 | `tabbedUI` | `boolean` | `false` | Wraps collection fields in "Content" and "SEO" tabs. |
 | `interfaceName` | `string` | — | TypeScript interface name for the `meta` group. |
-| `customTranslations` | `Record<string, Partial<DashboardTranslations>>` | — | Dashboard strings for admin languages beyond FR/EN; missing keys fall back to English. |
 
 ### Feature flags
 

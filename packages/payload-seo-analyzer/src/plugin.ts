@@ -101,7 +101,6 @@ import { createAlertsDigestHandler, createAlertsRunHandler } from './endpoints/a
 import { resolveGscSiteUrl } from './helpers/gscClient.js'
 import { createGenerateHandler } from './endpoints/generate.js'
 import { seoTranslations } from './translations.js'
-import { registerDashboardTranslations } from './dashboard-i18n.js'
 import { createBucketRateLimiter, rateLimitKey, type BucketRateLimiter, type SeoRateLimit } from './rateLimiter.js'
 import {
   CONTENT_CACHE_BASES,
@@ -156,7 +155,7 @@ export interface SeoPluginConfig {
    * cross-origin redirects.
    */
   allowExternalRedirects?: boolean
-  /** Known dynamic routes that are not stored as document slugs (e.g. ['blog', 'réalisations', 'posts']). These won't be flagged as broken links or orphan pages. */
+  /** Known dynamic routes that are not stored as document slugs (e.g. ['blog', 'case-studies', 'posts']). These won't be flagged as broken links or orphan pages. */
   knownRoutes?: string[]
   /**
    * Public route prefix per collection, used by every URL the plugin generates
@@ -173,8 +172,6 @@ export interface SeoPluginConfig {
    * collection's own `create` ACL), so a panel editor cannot write rows the collection refuses them.
    */
   seoLogsSecret?: string
-  /** Locale for language-specific analysis (default: 'fr') */
-  locale?: 'fr' | 'en'
   /** Collection slug for uploads/media (used for meta.image relationTo). Default: 'media' */
   uploadsCollection?: string
   /** Auto-create meta fields (title, description, image) on target collections. Default: true */
@@ -234,21 +231,6 @@ export interface SeoPluginConfig {
   generateImage?: (args: GenerateFnArgs) => string | number | Promise<string | number>
   /** Custom function to generate page URL */
   generateURL?: (args: GenerateFnArgs) => string | Promise<string>
-  /** Mapping from Payload locale codes to analysis locale ('fr' | 'en') */
-  localeMapping?: Record<string, 'fr' | 'en'>
-  /** Custom dashboard translations for additional locales (e.g. 'cs', 'de', 'es').
-   *  Partial overrides are supported — missing keys fall back to English.
-   *  @example
-   *  ```ts
-   *  customTranslations: {
-   *    cs: {
-   *      common: { loading: 'Načítání...', save: 'Uložit' },
-   *      nav: { dashboard: 'Přehled', seo: 'SEO' },
-   *    }
-   *  }
-   *  ```
-   */
-  customTranslations?: Record<string, Partial<import('./dashboard-i18n.js').DashboardTranslations>>
   /** Override or reorganize the default meta fields inside the 'meta' group.
    *  Receives the default fields (overview, title, description, image, preview) and must return a Field[].
    *  Use this to add custom fields, remove defaults, or reorder them. */
@@ -306,8 +288,6 @@ function buildSeoConfig(pluginConfig: SeoPluginConfig): SeoConfig {
     ...(pluginConfig.disabledRules && { disabledRules: pluginConfig.disabledRules }),
     ...(pluginConfig.overrideWeights && { overrideWeights: pluginConfig.overrideWeights }),
     ...(pluginConfig.thresholds && { thresholds: pluginConfig.thresholds }),
-    ...(pluginConfig.locale && { locale: pluginConfig.locale }),
-    ...(pluginConfig.localeMapping && { localeMapping: pluginConfig.localeMapping }),
     ...(pluginConfig.collectionRoutes && { collectionRoutes: pluginConfig.collectionRoutes }),
   }
 }
@@ -321,7 +301,6 @@ export const seoAnalyzerPlugin =
     const targetGlobals = pluginConfig.globals ?? []
     const basePath = pluginConfig.endpointBasePath ?? '/seo-plugin'
     const seoConfig = buildSeoConfig(pluginConfig)
-    const analyzerLocaleOptions = { locale: pluginConfig.locale, localeMapping: pluginConfig.localeMapping }
     // Cache layer shared by the endpoints and invalidation hooks below. Without a store it
     // wraps the in-memory `seoCache` (per process), as before.
     const sharedCache = new SeoSharedCache({
@@ -468,7 +447,7 @@ export const seoAnalyzerPlugin =
           const hasSeoMeta = hasExistingSeoMeta(existingFields)
 
           // Determine which fields to add
-          const fieldsToAdd = [...seoFields(analyzerLocaleOptions)]
+          const fieldsToAdd = [...seoFields()]
 
           // Auto-create meta fields if:
           // - @payloadcms/plugin-seo is NOT detected
@@ -554,7 +533,7 @@ export const seoAnalyzerPlugin =
         const existingFields = global.fields || []
         const hasSeoMeta = hasExistingSeoMeta(existingFields)
 
-        const fieldsToAdd = [...seoFields(analyzerLocaleOptions)]
+        const fieldsToAdd = [...seoFields()]
         if (!hasSeoMeta && pluginConfig.autoCreateMetaFields !== false) {
           fieldsToAdd.push(...buildMetaFields())
         }
@@ -1062,7 +1041,7 @@ export const seoAnalyzerPlugin =
       ]
     }
 
-    // 4. Inject i18n translations for meta field UI labels (39 languages)
+    // 4. Inject i18n translations for meta field UI labels (Payload plugin-seo languages)
     if (!config.i18n) config.i18n = {}
     const existingTranslations = (config.i18n as Record<string, unknown>).translations as
       Record<string, Record<string, unknown>> | undefined
@@ -1075,18 +1054,10 @@ export const seoAnalyzerPlugin =
     }
     ;(config.i18n as Record<string, unknown>).translations = merged
 
-    // 5. Register custom dashboard translations if provided
-    if (pluginConfig.customTranslations) {
-      for (const [locale, translations] of Object.entries(pluginConfig.customTranslations)) {
-        registerDashboardTranslations(locale, translations)
-      }
-    }
-
     // The admin components run in the browser with their own module copies, so
     // what they need from this config travels in `admin.custom`, which is part of
     // the client config: the feature flags (a panel then never calls an endpoint
-    // that was not registered) and the custom dashboard translations (the
-    // registry above lives in this server module). Read by hooks/useSeoLocale.ts.
+    // that was not registered). Read by hooks/useSeoLocale.ts.
     if (!config.admin) config.admin = {}
     const adminCustom = (config.admin.custom ?? {}) as Record<string, unknown>
     config.admin.custom = {
@@ -1097,7 +1068,6 @@ export const seoAnalyzerPlugin =
         // Where the endpoints are mounted, so the UI builds URLs from the real
         // `routes.api` + this path (hooks/useSeoApi.ts) instead of '/api/seo-plugin'.
         endpointBasePath: basePath,
-        ...(pluginConfig.customTranslations && { customTranslations: pluginConfig.customTranslations }),
       },
     }
 

@@ -8,7 +8,7 @@ const SITE = 'https://example.com'
 
 describe('buildDocPath', () => {
   it('prefixes posts with their collection route by default', () => {
-    expect(buildDocPath('mon-article', 'posts')).toBe('/posts/mon-article')
+    expect(buildDocPath('my-article', 'posts')).toBe('/posts/my-article')
     expect(DEFAULT_COLLECTION_ROUTES.posts).toBe('posts')
   })
 
@@ -24,7 +24,7 @@ describe('buildDocPath', () => {
   })
 
   it('lets a host opt out of the posts prefix', () => {
-    expect(buildDocPath('mon-article', 'posts', { posts: '' })).toBe('/mon-article')
+    expect(buildDocPath('my-article', 'posts', { posts: '' })).toBe('/my-article')
   })
 
   it('supports a custom prefix per collection', () => {
@@ -33,11 +33,11 @@ describe('buildDocPath', () => {
   })
 
   it('never doubles a prefix already present in the slug', () => {
-    expect(buildDocPath('posts/mon-article', 'posts')).toBe('/posts/mon-article')
+    expect(buildDocPath('posts/my-article', 'posts')).toBe('/posts/my-article')
   })
 
   it('builds an absolute URL without a double slash', () => {
-    expect(buildDocUrl(`${SITE}/`, 'mon-article', 'posts')).toBe(`${SITE}/posts/mon-article`)
+    expect(buildDocUrl(`${SITE}/`, 'my-article', 'posts')).toBe(`${SITE}/posts/my-article`)
     expect(buildDocUrl(SITE, 'home', 'pages')).toBe(SITE)
   })
 })
@@ -47,11 +47,11 @@ describe('buildDocPath', () => {
 describe('canonical URL', () => {
   it('prefixes the canonical of a post', () => {
     const md = buildSeoMetadata(
-      { slug: 'mon-article', title: 'T' },
+      { slug: 'my-article', title: 'T' },
       { collection: 'posts', siteUrl: SITE },
     )
-    expect(md.alternates?.canonical).toBe(`${SITE}/posts/mon-article`)
-    expect(md.openGraph?.url).toBe(`${SITE}/posts/mon-article`)
+    expect(md.alternates?.canonical).toBe(`${SITE}/posts/my-article`)
+    expect(md.openGraph?.url).toBe(`${SITE}/posts/my-article`)
   })
 
   it('leaves a page canonical flat', () => {
@@ -64,7 +64,7 @@ describe('canonical URL', () => {
 
   it('honours an explicit canonical over the computed one', () => {
     const md = buildSeoMetadata(
-      { slug: 'mon-article', meta: { canonicalUrl: 'https://other.example/x' } },
+      { slug: 'my-article', meta: { canonicalUrl: 'https://other.example/x' } },
       { collection: 'posts', siteUrl: SITE },
     )
     expect(md.alternates?.canonical).toBe('https://other.example/x')
@@ -72,29 +72,29 @@ describe('canonical URL', () => {
 
   it('can be opted out per collection', () => {
     const md = buildSeoMetadata(
-      { slug: 'mon-article', title: 'T' },
+      { slug: 'my-article', title: 'T' },
       { collection: 'posts', siteUrl: SITE, collectionRoutes: { posts: '' } },
     )
-    expect(md.alternates?.canonical).toBe(`${SITE}/mon-article`)
+    expect(md.alternates?.canonical).toBe(`${SITE}/my-article`)
   })
 })
 
 describe('JSON-LD document URLs', () => {
   it('prefixes the Article @id', () => {
     const { jsonLd } = buildJsonLd(
-      { slug: 'mon-article', title: 'T' },
+      { slug: 'my-article', title: 'T' },
       { collection: 'posts', type: 'Article', siteUrl: SITE },
     )
     const mainEntity = jsonLd.mainEntityOfPage as Record<string, unknown>
-    expect(mainEntity['@id']).toBe(`${SITE}/posts/mon-article`)
+    expect(mainEntity['@id']).toBe(`${SITE}/posts/my-article`)
   })
 
   it('prefixes the Event url', () => {
     const { jsonLd } = buildJsonLd(
-      { slug: 'mon-event', title: 'E' },
+      { slug: 'my-event', title: 'E' },
       { collection: 'posts', type: 'Event', siteUrl: SITE },
     )
-    expect(jsonLd.url).toBe(`${SITE}/posts/mon-event`)
+    expect(jsonLd.url).toBe(`${SITE}/posts/my-event`)
   })
 
   it('keeps a pages document flat', () => {
@@ -112,7 +112,7 @@ describe('IndexNow docToUrl', () => {
   })
 
   it('prefixes when the collection is known', () => {
-    expect(docToUrl('mon-article', SITE, 'posts')).toBe(`${SITE}/posts/mon-article`)
+    expect(docToUrl('my-article', SITE, 'posts')).toBe(`${SITE}/posts/my-article`)
   })
 })
 
@@ -136,7 +136,7 @@ describe('sitemap.xml loc', () => {
     const req = {
       payload: makePayload({
         pages: [{ slug: 'home' }, { slug: 'a-propos' }],
-        posts: [{ slug: 'mon-article' }],
+        posts: [{ slug: 'my-article' }],
       }),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any
@@ -146,8 +146,8 @@ describe('sitemap.xml loc', () => {
 
     expect(xml).toContain(`<loc>${SITE}</loc>`)
     expect(xml).toContain(`<loc>${SITE}/a-propos</loc>`)
-    expect(xml).toContain(`<loc>${SITE}/posts/mon-article</loc>`)
-    expect(xml).not.toContain(`<loc>${SITE}/mon-article</loc>`)
+    expect(xml).toContain(`<loc>${SITE}/posts/my-article</loc>`)
+    expect(xml).not.toContain(`<loc>${SITE}/my-article</loc>`)
     delete process.env.SITE_URL
   })
 })
@@ -155,12 +155,12 @@ describe('sitemap.xml loc', () => {
 // The admin "Sitemap configuration" screen renders a preview of the entries
 // sitemap.xml will publish (SeoConfigView.tsx). It used to build its own URLs
 // (`/${slug}`) while sitemap.ts prefixed the collection route, so the screen
-// advertised `/mon-article` for an entry actually published as
-// `/posts/mon-article`. Lock the two generators together.
+// advertised `/my-article` for an entry actually published as
+// `/posts/my-article`. Lock the two generators together.
 describe('sitemap-config preview matches sitemap.xml', () => {
   const DOCS = {
     pages: [{ slug: 'home' }, { slug: 'a-propos' }],
-    posts: [{ slug: 'mon-article' }],
+    posts: [{ slug: 'my-article' }],
   }
 
   function makePayload() {
@@ -192,14 +192,14 @@ describe('sitemap-config preview matches sitemap.xml', () => {
 
     expect(preview).toHaveLength(3)
     const post = preview.find((e) => e.collection === 'posts')
-    expect(post?.url).toBe('/posts/mon-article')
+    expect(post?.url).toBe('/posts/my-article')
 
     for (const entry of preview) {
       // The home page is previewed as '/' where the XML emits the bare site URL.
       const loc = entry.url === '/' ? SITE : `${SITE}${entry.url}`
       expect(xml).toContain(`<loc>${loc}</loc>`)
     }
-    expect(xml).not.toContain(`<loc>${SITE}/mon-article</loc>`)
+    expect(xml).not.toContain(`<loc>${SITE}/my-article</loc>`)
 
     delete process.env.SITE_URL
   })
@@ -222,8 +222,8 @@ describe('sitemap-config preview matches sitemap.xml', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const xml = await (await createSitemapHandler(collections, seoConfig as any)(sitemapReq)).text()
 
-    expect(preview[0]?.url).toBe('/mon-article')
-    expect(xml).toContain(`<loc>${SITE}/mon-article</loc>`)
+    expect(preview[0]?.url).toBe('/my-article')
+    expect(xml).toContain(`<loc>${SITE}/my-article</loc>`)
 
     delete process.env.SITE_URL
   })

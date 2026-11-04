@@ -7,7 +7,7 @@ import { getTranslations } from '../i18n.js'
 
 export function checkLinking(_input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
   const checks: SeoCheck[] = []
-  const r = getTranslations(ctx.locale).rules.linking
+  const r = getTranslations().rules.linking
   const { allLinks } = ctx
 
   // Separate internal from external links
@@ -84,8 +84,8 @@ export function checkLinking(_input: SeoInput, ctx: AnalysisContext): SeoCheck[]
     })
   }
 
-  // 32. No generic anchor texts (check both FR + EN)
-  const allGenericAnchors = [...getGenericAnchors('fr'), ...getGenericAnchors('en')]
+  // 32. No generic anchor texts
+  const allGenericAnchors = getGenericAnchors()
   const genericAnchors = allLinks.filter((link) => {
     const text = link.text.toLowerCase().trim()
     return allGenericAnchors.includes(text)

@@ -15,15 +15,15 @@
 import type { SeoCheck, SeoInput, AnalysisContext } from '../types.js'
 import { getTranslations } from '../i18n.js'
 
-// Regex patterns for price detection in French/European formats
-const PRICE_REGEX = /(?:\d+(?:[.,]\d{1,2})?\s*(?:\u20AC|EUR|euros?|\$|USD))|(?:(?:\u20AC|EUR|euros?|\$|USD)\s*\d+(?:[.,]\d{1,2})?)|(?:\u00E0\s+partir\s+de\s+\d+)|(?:prix\s*:\s*\d+)|(?:tarif\s*:\s*\d+)/i
+// Regex patterns for price detection
+const PRICE_REGEX = /(?:\d+(?:[.,]\d{1,2})?\s*(?:\u20AC|EUR|euros?|\$|USD))|(?:(?:\u20AC|EUR|euros?|\$|USD)\s*\d+(?:[.,]\d{1,2})?)|(?:starting\s+at\s+\d+)|(?:price\s*:\s*\d+)|(?:cost\s*:\s*\d+)/i
 
-// Regex for availability keywords in French
-const AVAILABILITY_REGEX = /(?:en\s+stock|disponible|rupture\s+de\s+stock|sur\s+commande|livraison|expedition|indisponible|pre-?commande|bient\u00F4t\s+disponible|delai|disponibilite)/i
+// Regex for availability keywords
+const AVAILABILITY_REGEX = /(?:in\s+stock|available|out\s+of\s+stock|on\s+order|back-?order|shipping|delivery|unavailable|pre-?order|coming\s+soon|lead\s+time|availability)/i
 
 export function checkEcommerce(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
   const checks: SeoCheck[] = []
-  const r = getTranslations(ctx.locale).rules.ecommerce
+  const r = getTranslations().rules.ecommerce
 
   // 1. Product price mentioned in content
   const hasPriceInContent = PRICE_REGEX.test(ctx.fullText)
@@ -107,7 +107,7 @@ export function checkEcommerce(input: SeoInput, ctx: AnalysisContext): SeoCheck[
   })
 
   // 6. Review readiness (structured data / review mentions)
-  const reviewKeywords = /(?:avis|review|note|etoile|stars?|rating|\u00E9valuation|t\u00E9moignage|commentaire\s+client)/i
+  const reviewKeywords = /(?:review|rating|stars?|testimonial|customer\s+feedback)/i
   const hasReviewContent = reviewKeywords.test(ctx.fullText)
   checks.push({
     id: 'product-review-readiness',

@@ -51,7 +51,7 @@ export function extractPayloadLink(
 
 // ---------------------------------------------------------------------------
 // Normalize a link URL to a comparable slug
-// Strips accents (NFD) so French slugs like "réalisations" match "realisations".
+// Strips accents (NFD) so slugs like "café" match "cafe".
 // ---------------------------------------------------------------------------
 
 export function normalizeToSlug(url: string): string | null {

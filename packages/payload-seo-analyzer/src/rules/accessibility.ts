@@ -16,7 +16,7 @@ const CAMERA_FILENAME_PATTERN = /\b(IMG_\d+|DSC_\d+|DCIM|photo-\d+|image-\d+|scr
 
 export function checkAccessibility(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
   const checks: SeoCheck[] = []
-  const r = getTranslations(ctx.locale).rules.accessibility
+  const r = getTranslations().rules.accessibility
 
   // 1. a11y-short-anchors — Links with text < 3 characters
   const shortAnchors = ctx.allLinks.filter(

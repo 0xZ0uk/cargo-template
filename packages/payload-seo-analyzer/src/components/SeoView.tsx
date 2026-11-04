@@ -17,7 +17,7 @@ import {
 } from '@payloadcms/ui'
 import { formatAdminURL } from 'payload/shared'
 import { ContentDecaySection } from './ContentDecaySection.js'
-import { useDashboardT, useSeoFeature, useSeoLocale } from '../hooks/useSeoLocale.js'
+import { useDashboardT, useSeoFeature } from '../hooks/useSeoLocale.js'
 import { escapeHtml } from '../helpers/escapeHtml.js'
 import type { DashboardTranslations } from '../dashboard-i18n.js'
 import { toCsv } from '../helpers/csv.js'
@@ -275,7 +275,6 @@ function TableRow({
   expanded,
   onRowClick,
   t,
-  locale,
   adminRoute,
 }: {
   item: AuditItem
@@ -284,7 +283,6 @@ function TableRow({
   expanded: boolean
   onRowClick: () => void
   t: DashboardTranslations
-  locale: string
   adminRoute: string
 }) {
   // A2: Meta missing badges
@@ -435,7 +433,7 @@ function TableRow({
 
       {/* Updated at */}
       <td className="seo-table__num seo-text--secondary">
-        {item.updatedAt ? new Date(item.updatedAt).toLocaleDateString(locale) : '-'}
+        {item.updatedAt ? new Date(item.updatedAt).toLocaleDateString('en-US') : '-'}
       </td>
 
       {/* Edit link */}
@@ -533,7 +531,6 @@ function BulkActionBar({
 export function SeoView() {
   const payloadApi = usePayloadApi()
   const seoApi = useSeoApi()
-  const locale = useSeoLocale()
   const t = useDashboardT()
   // The `/ai-optimize-bulk` endpoint only exists with `features.aiFeatures`.
   const aiEnabled = useSeoFeature('aiFeatures') !== false
@@ -787,7 +784,7 @@ export function SeoView() {
         i.hasOgImage ? 'Yes' : 'No',
         i.isCornerstone ? 'Yes' : 'No',
         i.readingTime,
-        i.updatedAt ? new Date(i.updatedAt).toLocaleDateString(locale) : '',
+        i.updatedAt ? new Date(i.updatedAt).toLocaleDateString('en-US') : '',
       ])
       // toCsv neutralizes spreadsheet formulas — these cells carry editor-written
       // titles and meta values, opened later by an admin in Excel. See helpers/csv.ts.
@@ -906,7 +903,7 @@ export function SeoView() {
     setSelectedIds(new Set())
     // Do NOT auto-rebuild the audit here: on a large/constrained site, forcing a full rebuild after
     // every applied batch is what saturates the server. The changes are written; the user refreshes
-    // once (via "Rafraîchir") when done with all batches.
+    // once (via "Refresh") when done with all batches.
     setBulkApplied(true)
   }, [bulkPreview])
 
@@ -983,7 +980,7 @@ export function SeoView() {
   }, [])
 
   const handleExportPdf = useCallback(() => {
-    const today = new Date().toLocaleDateString(locale, {
+    const today = new Date().toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
@@ -1062,7 +1059,7 @@ export function SeoView() {
     const brandingTitle = siteName ? `${t.seoView.seoReport} — ${escapeHtml(siteName)}` : t.seoView.seoReport
 
     const html = `<!DOCTYPE html>
-<html lang="${locale}">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <title>${brandingTitle} - ${today}</title>
@@ -1209,7 +1206,7 @@ export function SeoView() {
       printWindow.document.write(html)
       printWindow.document.close()
     }
-  }, [filteredItems, stats, siteName, locale, t])
+  }, [filteredItems, stats, siteName, t])
 
   // Loading state
   if (loading) {
@@ -1521,7 +1518,6 @@ export function SeoView() {
                       expanded={isExpanded}
                       onRowClick={() => setExpandedId(isExpanded ? null : key)}
                       t={t}
-                      locale={locale}
                       adminRoute={adminRoute}
                     />
                     {/* B3: Inline edit panel */}

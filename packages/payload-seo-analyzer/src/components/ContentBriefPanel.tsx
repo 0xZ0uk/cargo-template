@@ -6,41 +6,22 @@ import { Card } from '../ui/index.js'
 import { useSeoApi } from '../hooks/useSeoApi.js'
 import './ContentBriefPanel.css'
 
-const S = {
-  fr: {
-    title: 'Brief de contenu IA',
-    subtitle: 'Génère un plan rédactionnel optimisé pour un mot-clé (plan, entités, questions, longueur cible).',
-    placeholder: 'Mot-clé cible (ex : plombier paris)',
-    keywordLabel: 'Mot-clé cible',
-    generate: 'Générer le brief',
-    generating: 'Génération…',
-    outline: 'Plan suggéré',
-    entities: 'Entités / termes à couvrir',
-    questions: 'Questions à traiter',
-    links: 'Idées de liens internes',
-    words: 'Longueur recommandée',
-    wordsUnit: 'mots',
-    notes: 'Conseils',
-    noKey: 'Clé API OpenRouter requise (OPENROUTER_API_KEY).',
-    disabled: 'Fonction IA désactivée (features.aiFeatures).',
-  },
-  en: {
-    title: 'AI content brief',
-    subtitle: 'Generate an optimized writing brief for a keyword (outline, entities, questions, target length).',
-    placeholder: 'Target keyword (e.g. paris plumber)',
-    keywordLabel: 'Target keyword',
-    generate: 'Generate brief',
-    generating: 'Generating…',
-    outline: 'Suggested outline',
-    entities: 'Entities / terms to cover',
-    questions: 'Questions to answer',
-    links: 'Internal link ideas',
-    words: 'Recommended length',
-    wordsUnit: 'words',
-    notes: 'Tips',
-    noKey: 'OpenRouter API key required (OPENROUTER_API_KEY).',
-    disabled: 'AI feature disabled (features.aiFeatures).',
-  },
+const s = {
+  title: 'AI content brief',
+  subtitle: 'Generate an optimized writing brief for a keyword (outline, entities, questions, target length).',
+  placeholder: 'Target keyword (e.g. paris plumber)',
+  keywordLabel: 'Target keyword',
+  generate: 'Generate brief',
+  generating: 'Generating…',
+  outline: 'Suggested outline',
+  entities: 'Entities / terms to cover',
+  questions: 'Questions to answer',
+  links: 'Internal link ideas',
+  words: 'Recommended length',
+  wordsUnit: 'words',
+  notes: 'Tips',
+  noKey: 'OpenRouter API key required (OPENROUTER_API_KEY).',
+  disabled: 'AI feature disabled (features.aiFeatures).',
 } as const
 
 interface Brief {
@@ -52,9 +33,8 @@ interface Brief {
   notes: string[]
 }
 
-export function ContentBriefPanel({ locale }: { locale: 'fr' | 'en' }) {
+export function ContentBriefPanel() {
   const seoApi = useSeoApi()
-  const s = S[locale] ?? S.fr
   const [keyword, setKeyword] = useState('')
   const [brief, setBrief] = useState<Brief | null>(null)
   const [busy, setBusy] = useState(false)

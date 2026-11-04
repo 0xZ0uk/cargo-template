@@ -149,11 +149,11 @@ export function ContentDecaySection({ items }: { items: AuditItem[] }) {
                           </div>
                         </td>
                         <td className="seo-text--secondary">
-                          {item.updatedAt ? new Date(item.updatedAt).toLocaleDateString('fr-FR') : '-'}
+                          {item.updatedAt ? new Date(item.updatedAt).toLocaleDateString('en-US') : '-'}
                         </td>
                         <td className="seo-text--secondary">
                           {item.contentLastReviewed
-                            ? new Date(item.contentLastReviewed).toLocaleDateString('fr-FR')
+                            ? new Date(item.contentLastReviewed).toLocaleDateString('en-US')
                             : '-'}
                         </td>
                         <td className={cx('seo-text--strong', tone !== 'neutral' && `seo-text--${tone}`)}>

@@ -6,54 +6,28 @@ import { useSeoFeature } from '../hooks/useSeoLocale.js'
 import { Card, Checklist, EmptyState, LoadingState, TonePill, type Tone } from '../ui/index.js'
 import { useSeoApi } from '../hooks/useSeoApi.js'
 
-const S = {
-  fr: {
-    title: 'Monitoring & alertes',
-    subtitle: 'Digest périodique : régressions de score, nouveaux 404, chutes de position (webhook / email).',
-    notConfigured:
-      "Aucun canal configuré. Définissez SEO_ALERT_WEBHOOK_URL et/ou SEO_ALERT_EMAIL côté serveur, puis activez features.alerts.",
-    noChannel:
-      "Aucun canal configuré : le digest n'est envoyé nulle part. Définissez SEO_ALERT_WEBHOOK_URL et/ou SEO_ALERT_EMAIL côté serveur.",
-    webhook: 'Webhook',
-    email: 'Email',
-    configured: 'configuré',
-    missing: 'absent',
-    preview: 'Aperçu',
-    sendNow: 'Envoyer maintenant',
-    sending: 'Envoi…',
-    loading: 'Chargement…',
-    noIssues: 'Aucun problème détecté sur la période.',
-    scoreReg: 'Régressions de score',
-    notFound: 'Nouveaux 404',
-    rankDrops: 'Chutes de position',
-    sent: 'Digest envoyé',
-    nothingToSend: 'Rien à envoyer (aucun problème).',
-    deliveryFailed: "L'envoi a échoué : vérifiez l'URL du webhook ou l'adaptateur e-mail (détails dans les logs).",
-    issues: 'problème(s)',
-  },
-  en: {
-    title: 'Monitoring & alerts',
-    subtitle: 'Periodic digest: score regressions, new 404s, ranking drops (webhook / email).',
-    notConfigured:
-      'No channel configured. Set SEO_ALERT_WEBHOOK_URL and/or SEO_ALERT_EMAIL on the server, then enable features.alerts.',
-    noChannel: 'No channel configured, so the digest goes nowhere. Set SEO_ALERT_WEBHOOK_URL and/or SEO_ALERT_EMAIL on the server.',
-    webhook: 'Webhook',
-    email: 'Email',
-    configured: 'configured',
-    missing: 'missing',
-    preview: 'Preview',
-    sendNow: 'Send now',
-    sending: 'Sending…',
-    loading: 'Loading…',
-    noIssues: 'No issues for the period.',
-    scoreReg: 'Score regressions',
-    notFound: 'New 404s',
-    rankDrops: 'Ranking drops',
-    sent: 'Digest sent',
-    nothingToSend: 'Nothing to send (no issues).',
-    deliveryFailed: 'Delivery failed: check the webhook URL or the email adapter (details in the logs).',
-    issues: 'issue(s)',
-  },
+const s = {
+  title: 'Monitoring & alerts',
+  subtitle: 'Periodic digest: score regressions, new 404s, ranking drops (webhook / email).',
+  notConfigured:
+    'No channel configured. Set SEO_ALERT_WEBHOOK_URL and/or SEO_ALERT_EMAIL on the server, then enable features.alerts.',
+  noChannel: 'No channel configured, so the digest goes nowhere. Set SEO_ALERT_WEBHOOK_URL and/or SEO_ALERT_EMAIL on the server.',
+  webhook: 'Webhook',
+  email: 'Email',
+  configured: 'configured',
+  missing: 'missing',
+  preview: 'Preview',
+  sendNow: 'Send now',
+  sending: 'Sending…',
+  loading: 'Loading…',
+  noIssues: 'No issues for the period.',
+  scoreReg: 'Score regressions',
+  notFound: 'New 404s',
+  rankDrops: 'Ranking drops',
+  sent: 'Digest sent',
+  nothingToSend: 'Nothing to send (no issues).',
+  deliveryFailed: 'Delivery failed: check the webhook URL or the email adapter (details in the logs).',
+  issues: 'issue(s)',
 } as const
 
 interface Digest {
@@ -71,10 +45,9 @@ interface Config {
   windowHours: number
 }
 
-export function AlertsPanel({ locale }: { locale: 'fr' | 'en' }) {
+export function AlertsPanel() {
   const seoApi = useSeoApi()
   const alertsEnabled = useSeoFeature('alerts')
-  const s = S[locale] ?? S.fr
   const [digest, setDigest] = useState<Digest | null>(null)
   const [config, setConfig] = useState<Config | null>(null)
   const [loading, setLoading] = useState(true)

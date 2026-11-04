@@ -1,25 +1,23 @@
 /**
  * SEO Analyzer — Helper utilities.
  * Pure functions for extracting data from Lexical JSON, counting words/syllables,
- * and performing French-language readability analysis.
+ * and performing English-language readability analysis.
  */
 
 import {
-  FRENCH_STOP_WORDS,
-  FRENCH_ACTION_VERBS,
-  STOP_WORD_COMPOUNDS,
+  STOP_WORD_COMPOUNDS_MAP,
   LOCAL_SEO_SLUGS,
   LEGAL_SLUGS_MAP,
   MAX_RECURSION_DEPTH,
 } from './constants'
 
 // ---------------------------------------------------------------------------
-// Text normalization (accent-stripping for French keyword matching)
+// Text normalization (accent-stripping for keyword matching)
 // ---------------------------------------------------------------------------
 
 /**
  * Strip diacritical marks (accents) from text for comparison.
- * "Réalité augmentée" → "realite augmentee"
+ * "Café" → "cafe"
  * Used to avoid false negatives when comparing keywords against content.
  */
 export function normalizeForComparison(text: string): string {
@@ -44,17 +42,17 @@ export function slugifyKeyword(kw: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Smart keyword matching for French multi-word keywords
+// Smart keyword matching for multi-word keywords
 // ---------------------------------------------------------------------------
 
 /**
- * Smart keyword matching adapted for French.
+ * Smart keyword matching.
  *
  * For 1-2 word keywords: exact substring match (accent-insensitive).
  * For 3+ word keywords: all significant words (>3 chars) must be present
- * in the text. This handles French articles/prepositions that naturally
- * separate keyword components ("politique de confidentialité" vs
- * "politique confidentialité RGPD").
+ * in the text. This handles articles/prepositions that naturally
+ * separate keyword components ("privacy policy for dogs" vs
+ * "privacy policy dogs").
  *
  * Both `keyword` and `text` must be pre-normalized with `normalizeForComparison()`.
  */
@@ -74,7 +72,7 @@ export function keywordMatchesText(normalizedKeyword: string, normalizedText: st
 }
 
 /**
- * Count keyword occurrences in text with smart French matching.
+ * Count keyword occurrences in text with smart matching.
  *
  * Returns exact occurrence count plus a word-level match flag for multi-word
  * keywords where individual significant words appear but not as exact phrase.
@@ -152,29 +150,18 @@ export function detectPageType(
   slug: string,
   collection?: string,
   extraLocalSeoSlugs?: string[],
-  locale?: 'fr' | 'en',
 ): PageType {
   // 1. Collection-based detection
   if (collection === 'posts') return 'blog'
 
   // 2. Home
-  if (!slug || slug === '' || slug === 'home' || slug === 'accueil') return 'home'
+  if (!slug || slug === '' || slug === 'home') return 'home'
 
   const s = slug.toLowerCase()
 
-  // 3. Legal pages (explicit slug list + broad pattern — FR + EN)
-  const allLegalSlugs = [...LEGAL_SLUGS_MAP.fr, ...LEGAL_SLUGS_MAP.en]
-  if (allLegalSlugs.includes(s)) return 'legal'
-  if (
-    s.includes('mentions-legales') ||
-    s.includes('politique-de-confidentialite') ||
-    s.includes('politique-confidentialite') ||
-    s.includes('cgv') ||
-    s.includes('cgu') ||
-    s.includes('accessibilite') ||
-    s.includes('cookies')
-  ) return 'legal'
-  // Legal pages — EN patterns
+  // 3. Legal pages (explicit slug list + broad pattern)
+  if (LEGAL_SLUGS_MAP.includes(s)) return 'legal'
+  if (s.includes('cookies')) return 'legal'
   if (
     s.includes('privacy-policy') ||
     s.includes('terms-of-service') ||
@@ -187,49 +174,31 @@ export function detectPageType(
     s === 'gdpr'
   ) return 'legal'
 
-  // 4. Contact (FR + EN)
+  // 4. Contact
   if (s === 'contact' || s.endsWith('/contact')) return 'contact'
   if (s === 'contact-us' || s === 'get-in-touch') return 'contact'
 
-  // 5. Form pages (FR + EN)
-  if (
-    s.includes('devis') ||
-    s.includes('inscription') ||
-    s.includes('support')
-  ) return 'form'
+  // 5. Form pages
+  if (s.includes('support')) return 'form'
   if (s.includes('quote') || s.includes('signup') || s.includes('register') || s.includes('apply')) return 'form'
 
-  // 6. Local SEO pages: explicit list + extra config slugs + pattern matching (FR)
+  // 6. Local SEO pages: explicit list + extra config slugs + pattern matching
   if (LOCAL_SEO_SLUGS.includes(s)) return 'local-seo'
   if (extraLocalSeoSlugs?.includes(s)) return 'local-seo'
-  if (
-    s.match(
-      /^(agence-web|creation-site-internet|agence-digitale|agence-communication|creation-logo|webmaster|developpeur-web|referencement-seo|zone-intervention)-/,
-    ) ||
-    s.includes('agence-web-') ||
-    s.includes('creation-site-') ||
-    s.includes('developpeur-web-') ||
-    s.includes('zone-intervention')
-  ) return 'local-seo'
-  // Local SEO — EN patterns
   if (
     s.match(/^(web-agency|web-design|web-developer|seo-agency|digital-agency|logo-design|webmaster)-/) ||
     s.includes('web-agency-') || s.includes('web-design-') || s.includes('web-developer-')
   ) return 'local-seo'
 
-  // 7. Service sub-pages (FR + EN)
-  if (s.startsWith('services/') || s.startsWith('nos-services') || s.startsWith('services-')) return 'service'
+  // 7. Service sub-pages
+  if (s.startsWith('services/') || s.startsWith('services-')) return 'service'
   if (s.startsWith('our-services')) return 'service'
 
-  // 8. Resource pages (FR + EN)
-  if (s.startsWith('ressources/') || s.startsWith('ressources-')) return 'resource'
+  // 8. Resource pages
   if (s.startsWith('resources/') || s.startsWith('resources-')) return 'resource'
 
-  // 9. Agency (FR + EN)
-  if (
-    s.includes('a-propos') || s.includes('equipe') || s.includes('portfolio') ||
-    s.startsWith('agence/') || s.startsWith('agence-') || s === 'agence'
-  ) return 'agency'
+  // 9. Agency
+  if (s.includes('portfolio')) return 'agency'
   if (s.includes('about-us') || s === 'about') return 'agency'
 
   // 10. Blog (slug-based fallback when collection is not provided)
@@ -507,53 +476,35 @@ export function countWords(text: string): number {
 }
 
 /**
- * Split text into sentences (French/English-aware).
- * Handles common abbreviations (M., Mme., Mr., Mrs., etc.) to avoid false splits.
+ * Split text into sentences.
+ * Handles common abbreviations (Mr., Mrs., Dr., etc.) to avoid false splits.
  */
-export function countSentences(text: string, locale?: 'fr' | 'en'): string[] {
+export function countSentences(text: string): string[] {
   if (!text.trim()) return []
 
-  const lang = locale || 'fr'
-
-  let normalized = text
-
-  if (lang === 'en') {
-    // English abbreviations
-    normalized = normalized
-      .replace(/\bMr\.\s/g, 'Mr_ ')
-      .replace(/\bMrs\.\s/g, 'Mrs_ ')
-      .replace(/\bMs\.\s/g, 'Ms_ ')
-      .replace(/\bDr\.\s/g, 'Dr_ ')
-      .replace(/\bJr\.\s/g, 'Jr_ ')
-      .replace(/\bSr\.\s/g, 'Sr_ ')
-      .replace(/\betc\.\s/g, 'etc_ ')
-      .replace(/\bvs\.\s/g, 'vs_ ')
-      .replace(/\be\.g\.\s/g, 'eg_ ')
-      .replace(/\bi\.e\.\s/g, 'ie_ ')
-      .replace(/\bSt\.\s/g, 'St_ ')
-      .replace(/\bInc\.\s/g, 'Inc_ ')
-      .replace(/\bLtd\.\s/g, 'Ltd_ ')
-      .replace(/\bCo\.\s/g, 'Co_ ')
-      .replace(/\bNo\.\s/g, 'No_ ')
-  } else {
-    // French abbreviations
-    normalized = normalized
-      .replace(/\bM\.\s/g, 'M_ ')
-      .replace(/\bMme\.\s/g, 'Mme_ ')
-      .replace(/\bMlle\.\s/g, 'Mlle_ ')
-      .replace(/\bDr\.\s/g, 'Dr_ ')
-      .replace(/\betc\.\s/g, 'etc_ ')
-      .replace(/\bcf\.\s/g, 'cf_ ')
-      .replace(/\bex\.\s/g, 'ex_ ')
-      .replace(/\bn°\s/g, 'n_ ')
-  }
+  const normalized = text
+    .replace(/\bMr\.\s/g, 'Mr_ ')
+    .replace(/\bMrs\.\s/g, 'Mrs_ ')
+    .replace(/\bMs\.\s/g, 'Ms_ ')
+    .replace(/\bDr\.\s/g, 'Dr_ ')
+    .replace(/\bJr\.\s/g, 'Jr_ ')
+    .replace(/\bSr\.\s/g, 'Sr_ ')
+    .replace(/\betc\.\s/g, 'etc_ ')
+    .replace(/\bvs\.\s/g, 'vs_ ')
+    .replace(/\be\.g\.\s/g, 'eg_ ')
+    .replace(/\bi\.e\.\s/g, 'ie_ ')
+    .replace(/\bSt\.\s/g, 'St_ ')
+    .replace(/\bInc\.\s/g, 'Inc_ ')
+    .replace(/\bLtd\.\s/g, 'Ltd_ ')
+    .replace(/\bCo\.\s/g, 'Co_ ')
+    .replace(/\bNo\.\s/g, 'No_ ')
 
   // Split on sentence-ending punctuation followed by a space or end of string
   const raw = normalized.split(/(?<=[.!?])\s+/)
 
   return raw
     .map((s) => {
-      // Restore abbreviations for both languages
+      // Restore abbreviations
       return s
         .replace(/Mr_/g, 'Mr.')
         .replace(/Mrs_/g, 'Mrs.')
@@ -568,50 +519,11 @@ export function countSentences(text: string, locale?: 'fr' | 'en'): string[] {
         .replace(/Ltd_/g, 'Ltd.')
         .replace(/Co_/g, 'Co.')
         .replace(/No_/g, 'No.')
-        .replace(/M_/g, 'M.')
-        .replace(/Mme_/g, 'Mme.')
-        .replace(/Mlle_/g, 'Mlle.')
         .replace(/Dr_/g, 'Dr.')
         .replace(/etc_/g, 'etc.')
-        .replace(/cf_/g, 'cf.')
-        .replace(/ex_/g, 'ex.')
-        .replace(/n_/g, 'n°')
         .trim()
     })
     .filter((s) => s.length > 0)
-}
-
-/**
- * Count syllables in a French word (Kandel-Moles approximation).
- *
- * Rules:
- * 1. Count vowel groups (a, e, i, o, u, y, accented variants)
- * 2. Silent final 'e' does not count (except single-syllable words)
- * 3. Common diphthongs (eau, ou, ai, ei, au, oi, eu) count as 1 vowel group
- */
-export function countSyllablesFR(word: string): number {
-  const lower = word.toLowerCase().replace(/[^a-zàâäéèêëïîôùûüÿæœ]/g, '')
-  if (!lower) return 1
-
-  // Count vowel groups
-  const vowelGroups = lower.match(/[aeiouyàâäéèêëïîôùûüÿæœ]+/g)
-  if (!vowelGroups) return 1
-
-  let count = vowelGroups.length
-
-  // Silent final 'e' (not counting monosyllabic words)
-  if (/[^aeiouyàâäéèêëïîôùûüÿæœ]e$/.test(lower) && count > 1) {
-    count--
-  }
-
-  // Diphthongs already counted as single vowel group by the regex,
-  // but compound diphthongs like 'eau' may create extra groups
-  const diphthongs = lower.match(/(?:eau|oeu|aie|oui)/g)
-  if (diphthongs) {
-    count -= diphthongs.length // correct for over-counting
-  }
-
-  return Math.max(1, count)
 }
 
 /**
@@ -663,41 +575,12 @@ export function countSyllablesEN(word: string): number {
 }
 
 /**
- * Calculate Flesch reading ease adapted for French (Kandel-Moles formula).
- * Flesch FR = 207 - 1.015 * (words/sentences) - 73.6 * (syllables/words)
+ * Calculate Flesch reading ease (Flesch-Kincaid: 206.835 - 1.015xASL - 84.6xASW).
  *
  * Returns a score from 0 (very difficult) to ~100 (very easy).
  */
-export function calculateFleschFR(text: string): number {
+export function calculateFlesch(text: string): number {
   const sentences = countSentences(text)
-  const words = text
-    .replace(/\s+/g, ' ')
-    .trim()
-    .split(' ')
-    .filter((w) => w.length > 0)
-
-  if (sentences.length === 0 || words.length === 0) return 0
-
-  const totalSyllables = words.reduce((sum, w) => sum + countSyllablesFR(w), 0)
-
-  const avgWordsPerSentence = words.length / sentences.length
-  const avgSyllablesPerWord = totalSyllables / words.length
-
-  const score = 207 - 1.015 * avgWordsPerSentence - 73.6 * avgSyllablesPerWord
-
-  // Clamp to 0-100
-  return Math.max(0, Math.min(100, Math.round(score)))
-}
-
-/**
- * Calculate Flesch reading ease — bilingual.
- * FR: Kandel-Moles (207 - 1.015xASL - 73.6xASW)
- * EN: Flesch-Kincaid (206.835 - 1.015xASL - 84.6xASW)
- */
-export function calculateFlesch(text: string, locale: 'fr' | 'en' = 'fr'): number {
-  if (locale === 'fr') return calculateFleschFR(text)
-
-  const sentences = countSentences(text, 'en')
   const words = text.replace(/\s+/g, ' ').trim().split(' ').filter(w => w.length > 0)
   if (sentences.length === 0 || words.length === 0) return 0
 
@@ -710,124 +593,12 @@ export function calculateFlesch(text: string, locale: 'fr' | 'en' = 'fr'): numbe
 }
 
 /**
- * Detect passive voice in a French sentence.
- * Looks for "être" conjugations followed by a past participle,
- * while excluding common passé composé verbs (aller, venir, arriver, etc.)
- * that use "être" as auxiliary but are NOT passive voice.
- *
- * Also excludes state descriptions ("est basé à", "est situé à") that are
- * natural in French B2B copy and not true passive constructions.
+ * Detect passive voice in a sentence: be-verb + past participle.
  */
-export function detectPassiveVoice(sentence: string, locale?: 'fr' | 'en'): boolean {
-  if ((locale || 'fr') === 'en') {
-    // English passive voice: be-verb + past participle
-    const enPassiveRegex = /\b(is|are|was|were|been|being|be|gets|got|gotten)\s+(\w+(?:ed|en|wn|ht|lt|nt|pt|ft|ng|xt|un))\b/i
-    return enPassiveRegex.test(sentence)
-  }
-
-  // Common past participles that use "être" as auxiliary (NOT passive voice)
-  const ETRE_VERBS_PARTICIPLES =
-    /\b(?:allé|allée|allés|allées|venu|venue|venus|venues|arrivé|arrivée|arrivés|arrivées|parti|partie|partis|parties|resté|restée|restés|restées|devenu|devenue|devenus|devenues|né|née|nés|nées|mort|morte|morts|mortes|tombé|tombée|tombés|tombées|passé|passée|passés|passées|sorti|sortie|sortis|sorties|entré|entrée|entrés|entrées|monté|montée|montés|montées|descendu|descendue|descendus|descendues|retourné|retournée|retournés|retournées)\b/i
-
-  const passivePattern =
-    /\b(?:est|sont|a\s+été|ont\s+été|sera|seront|fut|furent|était|étaient|serait|seraient|avait\s+été|avaient\s+été)\s+(\w+(?:é|ée|és|ées|i|ie|is|ies|u|ue|us|ues))\b/i
-
-  const match = passivePattern.exec(sentence)
-  if (!match) return false
-
-  // Check if the matched participle is a "être" verb (passé composé, not passive)
-  const participle = match[1]
-  if (ETRE_VERBS_PARTICIPLES.test(participle)) return false
-
-  return true
+export function detectPassiveVoice(sentence: string): boolean {
+  const passiveRegex = /\b(is|are|was|were|been|being|be|gets|got|gotten)\s+(\w+(?:ed|en|wn|ht|lt|nt|pt|ft|ng|xt|un))\b/i
+  return passiveRegex.test(sentence)
 }
-
-/**
- * French transition words / phrases.
- * Used to check whether sentences start with connective phrases.
- */
-const TRANSITION_WORDS_FR: string[] = [
-  // Addition
-  'de plus',
-  'en outre',
-  'par ailleurs',
-  'également',
-  'aussi',
-  'de même',
-  "d'une part",
-  "d'autre part",
-  'qui plus est',
-  'de surcroît',
-  'non seulement',
-  // Contrast
-  'cependant',
-  'néanmoins',
-  'toutefois',
-  'en revanche',
-  'tandis que',
-  'alors que',
-  'bien que',
-  'même si',
-  'pourtant',
-  'malgré tout',
-  'au contraire',
-  'or',
-  // Cause / consequence
-  'par conséquent',
-  'en effet',
-  'ainsi',
-  'donc',
-  'car',
-  'puisque',
-  'étant donné que',
-  'en raison de',
-  'à cause de',
-  'grâce à',
-  "c'est pourquoi",
-  'de ce fait',
-  // Purpose
-  'afin de',
-  'dans le but de',
-  'pour que',
-  'de manière à',
-  // Sequence
-  'puis',
-  'ensuite',
-  'enfin',
-  'premièrement',
-  'deuxièmement',
-  'troisièmement',
-  'finalement',
-  'en conclusion',
-  "tout d'abord",
-  "d'abord",
-  'pour commencer',
-  'pour finir',
-  // Illustration / emphasis
-  'par exemple',
-  "c'est-à-dire",
-  'autrement dit',
-  "en d'autres termes",
-  'en fait',
-  'en réalité',
-  'surtout',
-  'notamment',
-  'en particulier',
-  'à savoir',
-  // Condition
-  'à condition que',
-  'pourvu que',
-  'en cas de',
-  'si',
-  // Conclusion
-  'bref',
-  'en somme',
-  'en résumé',
-  'pour conclure',
-  'en définitive',
-  'somme toute',
-  'tout compte fait',
-]
 
 /**
  * English transition words / phrases.
@@ -865,23 +636,15 @@ const TRANSITION_WORDS_EN: string[] = [
 /**
  * Check whether a sentence contains a transition word/phrase.
  */
-export function hasTransitionWord(sentence: string, locale?: 'fr' | 'en'): boolean {
+export function hasTransitionWord(sentence: string): boolean {
   const lower = sentence.toLowerCase().trim()
-  const words = (locale || 'fr') === 'en' ? TRANSITION_WORDS_EN : TRANSITION_WORDS_FR
-  return words.some((tw) => {
+  return TRANSITION_WORDS_EN.some((tw) => {
     return lower.startsWith(tw) || lower.includes(`, ${tw}`) || lower.includes(` ${tw} `)
   })
 }
 
 /**
- * Get the list of French stop words (for slug analysis).
- */
-export function getStopWordsFR(): readonly string[] {
-  return FRENCH_STOP_WORDS
-}
-
-/**
- * Compound expressions in French where stop words are meaningful.
+ * Compound expressions where stop words are meaningful.
  * These should NOT be flagged in slug analysis.
  * Checks if a stop word at position `idx` in slug parts is part of a known expression.
  */
@@ -895,20 +658,13 @@ export function isStopWordInCompoundExpression(
   const prevWord = parts[idx - 1] || ''
 
   const allCompounds = extraCompounds
-    ? [...STOP_WORD_COMPOUNDS, ...extraCompounds]
-    : STOP_WORD_COMPOUNDS
+    ? [...STOP_WORD_COMPOUNDS_MAP, ...extraCompounds]
+    : STOP_WORD_COMPOUNDS_MAP
 
   return allCompounds.some(
     ([a, b]) =>
       (word === a && nextWord === b) || (word === b && prevWord === a),
   )
-}
-
-/**
- * French action verbs commonly used in CTAs.
- */
-export function getActionVerbsFR(): readonly string[] {
-  return FRENCH_ACTION_VERBS
 }
 
 // ---------------------------------------------------------------------------

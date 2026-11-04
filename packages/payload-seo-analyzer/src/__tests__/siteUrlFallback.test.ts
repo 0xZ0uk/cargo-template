@@ -70,8 +70,8 @@ describe('sitemap.xml site URL', () => {
 
 describe('breadcrumb endpoint', () => {
   // Found on the first deployed Worker: it answered with `http://localhost:3000` URLs and
-  // a French home label on an English site.
-  const call = async (seoConfig?: { siteUrl?: string; locale?: 'fr' | 'en' }) => {
+  // a non-English home label.
+  const call = async (seoConfig?: { siteUrl?: string }) => {
     const { createBreadcrumbHandler } = await import('../endpoints/breadcrumb.js')
     const req = {
       url: 'https://site.example/api/seo-plugin/breadcrumb?slug=about',
@@ -83,14 +83,14 @@ describe('breadcrumb endpoint', () => {
   }
 
   it('falls back to the request origin and an English home label', async () => {
-    const body = await call({ locale: 'en' })
+    const body = await call()
     expect(body.items[0]).toEqual({ name: 'Home', url: 'https://site.example' })
     expect(body.items[1].url).toBe('https://site.example/about')
   })
 
-  it('keeps Accueil for fr and prefers the configured site URL', async () => {
-    const body = await call({ locale: 'fr', siteUrl: 'https://public.example/' })
-    expect(body.items[0]).toEqual({ name: 'Accueil', url: 'https://public.example' })
+  it('prefers the configured site URL', async () => {
+    const body = await call({ siteUrl: 'https://public.example/' })
+    expect(body.items[0]).toEqual({ name: 'Home', url: 'https://public.example' })
   })
 })
 
@@ -100,9 +100,8 @@ describe('buildJsonLd breadcrumb home label', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (buildJsonLd(doc, { siteUrl: 'https://x.example', type: 'BreadcrumbList', ...opts }).jsonLd as any).itemListElement[0].name
 
-  it('defaults to Home, Accueil for fr, and honours an explicit label', () => {
+  it('defaults to Home and honours an explicit label', () => {
     expect(first({})).toBe('Home')
-    expect(first({ locale: 'fr' })).toBe('Accueil')
     expect(first({ homeLabel: 'Start' })).toBe('Start')
   })
 })

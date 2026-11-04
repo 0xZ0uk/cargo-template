@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useMemo, useCallback, useId } from 'react'
 import { Button, Banner, CheckIcon, EditIcon, EyeIcon, Pill, RefreshIcon, Tabs, TrashIcon, useConfig } from '@payloadcms/ui'
 import { formatAdminURL } from 'payload/shared'
-import { useDashboardT, useSeoFeature, useSeoLocale } from '../hooks/useSeoLocale.js'
+import { useDashboardT, useSeoFeature } from '../hooks/useSeoLocale.js'
 import { type DashboardTranslations } from '../dashboard-i18n.js'
 import { LiveRegion } from './LiveRegion.js'
 import { toCsv } from '../helpers/csv.js'
@@ -762,7 +762,6 @@ interface SeoLog {
 
 function Logs404Tab() {
   const seoApi = useSeoApi()
-  const locale = useSeoLocale()
   const t = useDashboardT()
   const [logs, setLogs] = useState<SeoLog[]>([])
   const [loading, setLoading] = useState(true)
@@ -980,7 +979,7 @@ function Logs404Tab() {
                     <div className="seo-row seo-text seo-text--small seo-text--secondary">
                       <TonePill tone="warning">{log.count}x</TonePill>
                       <span>
-                        {t.sitemapAudit.last} {log.lastSeen ? new Date(log.lastSeen).toLocaleDateString(locale) : '?'}
+                        {t.sitemapAudit.last} {log.lastSeen ? new Date(log.lastSeen).toLocaleDateString('en-US') : '?'}
                       </span>
                       {log.referrer && (
                         <span title={log.referrer}>
@@ -1089,7 +1088,7 @@ function ExternalLinksTab() {
   const handleExportCSV = useCallback(() => {
     if (!data) return
     const broken = data.results.filter((r) => !r.ok)
-    const rows: string[][] = [['URL', 'Statut', 'Erreur', 'Pages sources']]
+    const rows: string[][] = [['URL', 'Status', 'Error', 'Source pages']]
     for (const r of broken) {
       rows.push([
         r.url,
