@@ -50,6 +50,10 @@ export interface DashboardTranslations {
   seoView: {
     loadingAudit: string
     buildingAudit: string
+    /** `{time}`: when the shown audit was built. */
+    staleAuditRefreshing: string
+    staleAudit: string
+    auditRefreshing: string
     buildTimeout: string
     runAudit: string
     auditNotRun: string
@@ -182,6 +186,18 @@ export interface DashboardTranslations {
     brokenLabel: string
     rescan: string
     forceNewVerification: string
+    /** External tab: link checker buckets, capped / partial scan state. */
+    blocked: string
+    unreachable: string
+    unverified: string
+    unverifiedLabel: string
+    unverifiedNote: string
+    externalCapped: string
+    externalPartial: string
+    externalStoppedBudget: string
+    externalStoppedDeadline: string
+    continueScan: string
+    continuingScan: string
     analyzingInternal: string
     brokenLinkTo: string
     linkFrom: string
@@ -357,6 +373,7 @@ export interface DashboardTranslations {
     copyError: string
     tip: string
     beforeDeploying: string
+    faqNeedsAnswer: string
     visualGeneratorDesc: string
     addButton: string
     name: string
@@ -671,6 +688,9 @@ const en: DashboardTranslations = {
   seoView: {
     loadingAudit: 'Loading SEO audit...',
     buildingAudit: 'Building the SEO audit… (computed in the background to avoid overloading the server — this can take a moment on a large site)',
+    staleAuditRefreshing: 'Showing results from {time}; refreshing…',
+    staleAudit: 'Showing results from {time}. Content has changed since; refresh to update.',
+    auditRefreshing: 'Showing earlier results; refreshing…',
     buildTimeout: 'The audit is taking longer than expected. Please try again in a moment.',
     runAudit: 'Run site audit',
     auditNotRun: 'The audit analyzes all your pages and posts. It runs in the background (throttled so it won\'t slow the site down) — start it whenever you like.',
@@ -803,6 +823,17 @@ const en: DashboardTranslations = {
     brokenLabel: 'Broken',
     rescan: 'Rescan',
     forceNewVerification: 'Force a new verification',
+    blocked: 'blocked',
+    unreachable: 'unreachable',
+    unverified: 'couldn\'t verify',
+    unverifiedLabel: 'Couldn\'t verify',
+    unverifiedNote: 'Couldn\'t verify: the site answered 401, 403, 429, 451 or 999 (login, bot protection or rate limit). The link may still work in a browser.',
+    externalCapped: 'Only the first {max} of {total} unique external links are checked.',
+    externalPartial: '{checked} of {total} links checked, {pending} still pending.',
+    externalStoppedBudget: 'This step stopped because it used its request budget.',
+    externalStoppedDeadline: 'This step stopped because it ran out of time.',
+    continueScan: 'Continue scan',
+    continuingScan: 'Continuing…',
     analyzingInternal: 'Analyzing internal linking structure...',
     brokenLinkTo: 'broken link to',
     linkFrom: 'link from',
@@ -976,6 +1007,7 @@ const en: DashboardTranslations = {
     copyError: 'Copy error',
     tip: 'Tip:',
     beforeDeploying: 'before deploying to production.',
+    faqNeedsAnswer: 'Add at least one question with an answer: Google rejects a FAQPage without any.',
     visualGeneratorDesc: 'Visual generator of structured JSON-LD data for SEO',
     addButton: '+ Add',
     name: 'Name',

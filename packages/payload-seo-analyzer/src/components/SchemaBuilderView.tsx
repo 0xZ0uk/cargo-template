@@ -545,6 +545,8 @@ export function SchemaBuilderView() {
   // Build JSON-LD
   const jsonLd = useMemo(() => buildJsonLd(selectedType, values), [selectedType, values])
   const jsonString = useMemo(() => JSON.stringify(jsonLd, null, 2), [jsonLd])
+  // An FAQPage with no question and answer has an empty mainEntity, which Google rejects.
+  const faqEmpty = selectedType === 'FAQ' && (jsonLd.mainEntity as unknown[]).length === 0
   const scriptTag = useMemo(
     () => `<script type="application/ld+json">\n${jsonString}\n</script>`,
     [jsonString],
@@ -747,6 +749,8 @@ export function SchemaBuilderView() {
                 {highlighted}
               </div>
             </Card>
+
+            {faqEmpty && <Banner type="warning">{t.schemaBuilder.faqNeedsAnswer}</Banner>}
 
             {/* Validation hint */}
             <Banner type="default">

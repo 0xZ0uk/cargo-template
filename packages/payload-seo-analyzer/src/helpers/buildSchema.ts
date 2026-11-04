@@ -8,10 +8,12 @@
 
 import { extractTextFromLexical } from '../helpers.js'
 import { buildDocPath, type CollectionRoutes } from './docUrl.js'
+import { resolveDocTitle } from './docTitle.js'
 import { resolveSiteUrl } from './siteUrl.js'
 
 export const SCHEMA_TYPES = [
   'Article',
+  'WebPage',
   'LocalBusiness',
   'BreadcrumbList',
   'FAQPage',
@@ -42,19 +44,70 @@ export function getSchemaImageUrl(
   return undefined
 }
 
-/** Detect schema type from collection slug and document content. */
-export function detectSchemaType(collection: string, doc: Record<string, unknown>): SchemaType {
-  if (collection === 'posts') return 'Article'
+/** Collections whose documents are articles by nature (a blog, a news section…). */
+const ARTICLE_COLLECTION = /^(posts?|articles?|blogs?|blog-posts?|news|stories)$/i
 
-  const layout = doc.layout as unknown[] | undefined
-  if (layout && Array.isArray(layout)) {
-    const hasFaqBlock = layout.some((block) => {
-      if (!block || typeof block !== 'object') return false
-      const b = block as Record<string, unknown>
-      return b.blockType === 'faq' || b.blockType === 'FAQ' || b.blockType === 'faqBlock'
-    })
-    if (hasFaqBlock) return 'FAQPage'
+const isFaqBlock = (block: Record<string, unknown>): boolean =>
+  block.blockType === 'faq' || block.blockType === 'FAQ' || block.blockType === 'faqBlock'
+
+const hasContent = (value: unknown): boolean =>
+  Array.isArray(value) ? value.length > 0 : typeof value === 'string' ? value.trim().length > 0 : !!value
+
+/** A Mongo ObjectId or a UUID: an unpopulated relationship, not an author's name. */
+const RELATIONSHIP_ID = /^(?:[0-9a-f]{24}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i
+
+/**
+ * The document's authors as objects the Article builder can name: the first non-empty
+ * of `populatedAuthors`, `authors` and `author`, each a populated object or an array of
+ * them. A plain-text `author` field counts as a name. Unpopulated relationships (numeric
+ * or id-like values) are skipped: there's nothing to name.
+ */
+function resolveAuthors(doc: Record<string, unknown>): Record<string, unknown>[] {
+  for (const value of [doc.populatedAuthors, doc.authors, doc.author]) {
+    if (!hasContent(value)) continue
+    const authors = (Array.isArray(value) ? value : [value])
+      .map((a) =>
+        a === doc.author && typeof a === 'string' && a.trim() && !RELATIONSHIP_ID.test(a.trim())
+          ? { name: a.trim() }
+          : a,
+      )
+      .filter((a): a is Record<string, unknown> => !!a && typeof a === 'object')
+      .filter((a) => !!(a.name || a.firstName))
+    if (authors.length > 0) return authors
   }
+  return []
+}
+
+/** The publication date the Article builder emits, when the document has one of its own. */
+const publicationDate = (doc: Record<string, unknown>): unknown => doc.publishedAt || doc.datePublished
+
+/**
+ * A publication date together with an author: the two things that make a page an article.
+ * Uses the same fields the Article builder emits, so a page detected this way never
+ * produces an Article without them.
+ */
+function looksLikeArticle(doc: Record<string, unknown>): boolean {
+  return !!publicationDate(doc) && resolveAuthors(doc).length > 0
+}
+
+/**
+ * Detect schema type from collection slug and document content, first match wins:
+ *
+ * 1. A posts-like collection (`posts`, `articles`, `blog`, `news`…) → `Article`.
+ * 2. The home page (`home` or an empty slug) → `WebPage`; the site-level `WebSite` /
+ *    `Organization` nodes come from the host.
+ * 3. An FAQ block with at least one question *and* answer → `FAQPage`.
+ * 4. A `price` / `sku`, or a `products` collection → `Product`.
+ * 5. A slug that names a business (`restaurant`, `boutique`…) → `LocalBusiness`.
+ * 6. A publication date and an author → `Article`.
+ * 7. Anything else → `WebPage`.
+ */
+export function detectSchemaType(collection: string, doc: Record<string, unknown>): SchemaType {
+  if (ARTICLE_COLLECTION.test(collection)) return 'Article'
+
+  if (buildDocPath((doc.slug as string) || '') === '') return 'WebPage'
+
+  if (extractFaqPairs(doc).length > 0) return 'FAQPage'
 
   if (doc.price !== undefined || doc.sku !== undefined || collection === 'products') {
     return 'Product'
@@ -65,7 +118,7 @@ export function detectSchemaType(collection: string, doc: Record<string, unknown
     return 'LocalBusiness'
   }
 
-  return 'Article'
+  return looksLikeArticle(doc) ? 'Article' : 'WebPage'
 }
 
 /**
@@ -133,6 +186,24 @@ function buildAuthors(authors: unknown[]): unknown[] {
     })
 }
 
+function buildWebPageSchema(doc: Record<string, unknown>, siteUrl: string, docUrl: string): Record<string, unknown> {
+  const meta = (doc.meta || {}) as Record<string, unknown>
+  const heroMedia = (doc.hero as Record<string, unknown>)?.media as Record<string, unknown> | undefined
+  const imageUrl = getSchemaImageUrl(meta.image as Record<string, unknown> | undefined, heroMedia, siteUrl)
+
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'WebPage',
+    name: doc.title || meta.title || '',
+    // Omitted rather than empty, like the other optional properties.
+    description: meta.description || undefined,
+    url: docUrl,
+    image: imageUrl,
+    datePublished: publicationDate(doc) || undefined,
+    dateModified: doc.updatedAt || undefined,
+  }
+}
+
 function buildArticleSchema(doc: Record<string, unknown>, siteUrl: string, docUrl: string): Record<string, unknown> {
   const meta = (doc.meta || {}) as Record<string, unknown>
   const heroMedia = (doc.hero as Record<string, unknown>)?.media as Record<string, unknown> | undefined
@@ -141,9 +212,9 @@ function buildArticleSchema(doc: Record<string, unknown>, siteUrl: string, docUr
   const schema: Record<string, unknown> = {
     '@context': 'https://schema.org',
     '@type': 'Article',
-    headline: meta.title || doc.title || '',
+    headline: doc.title || meta.title || '',
     description: meta.description || '',
-    datePublished: doc.publishedAt || doc.createdAt || undefined,
+    datePublished: publicationDate(doc) || doc.createdAt || undefined,
     dateModified: doc.updatedAt || undefined,
     mainEntityOfPage: {
       '@type': 'WebPage',
@@ -152,9 +223,8 @@ function buildArticleSchema(doc: Record<string, unknown>, siteUrl: string, docUr
   }
 
   if (imageUrl) schema.image = imageUrl
-  if (doc.populatedAuthors) {
-    schema.author = buildAuthors(doc.populatedAuthors as unknown[])
-  }
+  const authors = resolveAuthors(doc)
+  if (authors.length > 0) schema.author = buildAuthors(authors)
 
   // Topical entities (SEO 2026): `about` = primary subject(s), `mentions` = secondary
   // entities referenced. Both let AI/search engines disambiguate the page's topic.
@@ -275,46 +345,51 @@ function buildBreadcrumbSchema(
   }
 }
 
-function buildFAQSchema(doc: Record<string, unknown>): Record<string, unknown> {
-  const layout = (doc.layout as unknown[]) || []
+/** Question / answer pairs of the document's FAQ blocks; items missing either half are skipped. */
+function extractFaqPairs(doc: Record<string, unknown>): Array<Record<string, unknown>> {
+  const layout = Array.isArray(doc.layout) ? (doc.layout as unknown[]) : []
   const questions: Array<Record<string, unknown>> = []
 
   for (const block of layout) {
     if (!block || typeof block !== 'object') continue
     const b = block as Record<string, unknown>
+    if (!isFaqBlock(b)) continue
 
-    if (b.blockType === 'faq' || b.blockType === 'FAQ' || b.blockType === 'faqBlock') {
-      const items = (b.items || b.questions || b.faqs) as unknown[] | undefined
-      if (items && Array.isArray(items)) {
-        for (const item of items) {
-          if (!item || typeof item !== 'object') continue
-          const q = item as Record<string, unknown>
-          const question = (q.question as string) || (q.title as string) || ''
-          let answer = (q.answer as string) || ''
+    const items = (b.items || b.questions || b.faqs) as unknown[] | undefined
+    if (!Array.isArray(items)) continue
+    for (const item of items) {
+      if (!item || typeof item !== 'object') continue
+      const q = item as Record<string, unknown>
+      const question = ((q.question as string) || (q.title as string) || '').trim()
+      // A rich-text answer arrives as a Lexical tree, not a string.
+      const answer =
+        typeof q.answer === 'string'
+          ? q.answer.trim()
+          : q.answer && typeof q.answer === 'object'
+            ? extractTextFromLexical(q.answer, 10).trim()
+            : ''
 
-          if (!answer && q.answer && typeof q.answer === 'object') {
-            answer = extractTextFromLexical(q.answer, 10)
-          }
-
-          if (question && answer) {
-            questions.push({
-              '@type': 'Question',
-              name: question,
-              acceptedAnswer: {
-                '@type': 'Answer',
-                text: answer,
-              },
-            })
-          }
-        }
+      if (question && answer) {
+        questions.push({
+          '@type': 'Question',
+          name: question,
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: answer,
+          },
+        })
       }
     }
   }
 
+  return questions
+}
+
+function buildFAQSchema(doc: Record<string, unknown>): Record<string, unknown> {
   return {
     '@context': 'https://schema.org',
     '@type': 'FAQPage',
-    mainEntity: questions,
+    mainEntity: extractFaqPairs(doc),
   }
 }
 
@@ -471,6 +546,19 @@ export interface BuildJsonLdOptions {
   collectionRoutes?: CollectionRoutes
   /** Name of the first BreadcrumbList item. Defaults to `Home`. */
   homeLabel?: string
+  /**
+   * Site name, stripped from `meta.title` ("Page | Site") when the document has no `title`
+   * of its own and its `meta.title` is used as the name.
+   */
+  siteName?: string
+}
+
+export interface BuildJsonLdResult {
+  /** The type actually generated: not the requested one when it fell back (see `warnings`). */
+  type: SchemaType
+  jsonLd: Record<string, unknown>
+  /** Why the output differs from what was asked for; empty when nothing needed adjusting. */
+  warnings: string[]
 }
 
 /**
@@ -478,11 +566,22 @@ export interface BuildJsonLdOptions {
  * during rendering (e.g. in a Next.js Server Component) or from the admin endpoint.
  */
 export function buildJsonLd(
-  doc: Record<string, unknown>,
+  rawDoc: Record<string, unknown>,
   options: BuildJsonLdOptions = {},
-): { type: SchemaType; jsonLd: Record<string, unknown> } {
+): BuildJsonLdResult {
   const siteUrl = resolveSiteUrl(options.siteUrl, 'http://localhost:3000')
-  const schemaType = options.type || detectSchemaType(options.collection || '', doc)
+  // Names come from the document's own title, never from `meta.title`'s "| Site name" suffix.
+  const doc: Record<string, unknown> = { ...rawDoc, title: resolveDocTitle(rawDoc, options.siteName) }
+  const warnings: string[] = []
+  let schemaType = options.type || detectSchemaType(options.collection || '', doc)
+  // An FAQPage without a question and an answer has an empty `mainEntity`, which Google
+  // rejects. Detection never picks FAQPage in that case, so only an explicit one lands here.
+  if (schemaType === 'FAQPage' && extractFaqPairs(doc).length === 0) {
+    schemaType = detectSchemaType(options.collection || '', doc)
+    warnings.push(
+      `No question and answer pairs found in this document, so a FAQPage would have an empty mainEntity, which Google rejects. Generated ${schemaType} instead.`,
+    )
+  }
   // Resolved once and threaded down: every node that points at "this document"
   // must use the same public URL, prefixed by the collection route.
   const docPath = buildDocPath((doc.slug as string) || '', options.collection, options.collectionRoutes)
@@ -492,6 +591,9 @@ export function buildJsonLd(
   switch (schemaType) {
     case 'Article':
       jsonLd = buildArticleSchema(doc, siteUrl, docUrl)
+      break
+    case 'WebPage':
+      jsonLd = buildWebPageSchema(doc, siteUrl, docUrl)
       break
     case 'LocalBusiness':
       jsonLd = buildLocalBusinessSchema(doc, siteUrl, docUrl)
@@ -524,7 +626,7 @@ export function buildJsonLd(
 
   // Strip undefined values for clean output.
   const cleaned = JSON.parse(JSON.stringify(jsonLd)) as Record<string, unknown>
-  return { type: schemaType, jsonLd: cleaned }
+  return { type: schemaType, jsonLd: cleaned, warnings }
 }
 
 /**
@@ -540,8 +642,8 @@ export function buildJsonLd(
  * unaffected. U+2028 / U+2029 are escaped too, since they are raw line
  * terminators for a JS parser.
  */
-export function serializeJsonLd(jsonLd: unknown): string {
-  return JSON.stringify(jsonLd)
+export function serializeJsonLd(jsonLd: unknown, space?: number): string {
+  return JSON.stringify(jsonLd, null, space)
     .replace(/</g, '\\u003c')
     .replace(/>/g, '\\u003e')
     .replace(/&/g, '\\u0026')

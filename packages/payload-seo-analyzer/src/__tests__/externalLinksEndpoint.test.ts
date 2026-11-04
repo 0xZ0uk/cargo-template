@@ -78,7 +78,7 @@ describe('external-links endpoint', () => {
     expect(body.results.map((r: { url: string }) => r.url).sort()).toEqual(['https://ext.example/dead', 'https://ext.example/x'])
     const x = body.results.find((r: { url: string }) => r.url === 'https://ext.example/x')
     expect(x.sourcePages.map((s: { slug: string }) => s.slug)).toEqual(['a', 'b'])
-    expect(body.stats).toEqual({ total: 2, ok: 1, broken: 1, timeout: 0 })
+    expect(body.stats).toEqual({ total: 2, ok: 1, broken: 1, timeout: 0, error: 0, blocked: 0, unverified: 0 })
     expect(body.results[0].ok).toBe(false) // broken first
     expect(body.capped).toBe(false)
     expect(body.partial).toBe(false)
@@ -224,6 +224,52 @@ describe('external-links endpoint', () => {
     const handler = createExternalLinksHandler(['pages'], [], undefined, makeCache())
     const res = await handler(request(fakePayload([]), {}, null))
     expect(res.status).toBe(401)
+  })
+
+  it('counts every link in exactly one bucket: blocked, dns, timeout and unverified included', async () => {
+    const answers: Record<string, number> = { '/good': 200, '/gone': 404, '/limited': 429, '/linkedin': 999, '/boom': 503 }
+    const fn = vi.fn(async (input: string | URL | Request) => {
+      const u = new URL(String(input))
+      if (u.pathname === '/slow') throw Object.assign(new Error('timed out'), { name: 'TimeoutError' })
+      const status = answers[u.pathname] ?? 200
+      // `new Response` rejects 999 (outside 200–599); a real network answer can carry it.
+      return status > 599 ? ({ status, ok: false, headers: new Headers(), body: null } as unknown as Response) : new Response(null, { status })
+    }) as unknown as typeof fetch
+    const resolver: HostResolver = async (host) => {
+      if (host === 'dead.example') throw Object.assign(new Error('x'), { code: 'ENOTFOUND' })
+      if (host === 'internal.example') return ['10.0.0.7']
+      return ['93.184.216.34']
+    }
+    const urls = [
+      'https://ext.example/good',
+      'https://ext.example/gone',
+      'https://ext.example/boom',
+      'https://ext.example/limited',
+      'https://ext.example/linkedin',
+      'https://ext.example/slow',
+      'https://dead.example/',
+      'https://internal.example/',
+    ]
+    const handler = createExternalLinksHandler(['pages'], [], undefined, makeCache(), { checker: { fetchImpl: fn, resolver } })
+    const body = await (await handler(request(fakePayload([{ slug: 'a', urls }])))).json()
+
+    expect(body.stats).toEqual({ total: 8, ok: 1, broken: 2, timeout: 1, error: 1, blocked: 1, unverified: 2 })
+    const { ok, broken, timeout, error, blocked, unverified, total } = body.stats
+    expect(ok + broken + timeout + error + blocked + unverified).toBe(total)
+    const state = (path: string) => body.results.find((r: { url: string }) => r.url.endsWith(path)).state
+    expect(state('/good')).toBe('ok')
+    expect(state('/gone')).toBe('broken')
+    expect(state('/boom')).toBe('broken')
+    expect(state('/limited')).toBe('unverified')
+    expect(state('/linkedin')).toBe('unverified')
+    expect(state('/slow')).toBe('timeout')
+    expect(state('dead.example/')).toBe('error')
+    expect(state('internal.example/')).toBe('blocked')
+    // Worst first, ok last.
+    expect(body.results.at(-1).state).toBe('ok')
+    expect(body.results.slice(0, 2).map((r: { state: string }) => r.state)).toEqual(['broken', 'broken'])
+    // The 429 / 999 links are reported with their status, and are not `ok`.
+    expect(body.results.find((r: { url: string }) => r.url.endsWith('/limited'))).toMatchObject({ status: 429, ok: false, state: 'unverified' })
   })
 
   it('never fetches links that resolve to private addresses', async () => {

@@ -61,7 +61,7 @@ The Cargo app (`apps/web`) runs this plugin on a deployed Worker. Each feature i
 | `performance` | on | **Verified.** Rows in `SEO_D1`. XLSX import needs `xlsx` mapped by the host |
 | `scoreHistory` | on | **Verified.** Rows in `SEO_D1` |
 | `seoLogs` (404 log) | on | **Verified.** Rows in `SEO_D1` |
-| `externalLinks` | on | **Verified.** Budgeted scans (100 links, 1,000 subrequests per call) that resume across calls |
+| `externalLinks` | on | **Verified.** Budgeted scans (100 links, 1,000 subrequests per call) that resume across calls. Each link is `ok`, `broken`, `timeout`, `error` (DNS, TLS, connection, redirect loop), `blocked` (SSRF guard) or `unverified` (401, 403, 429, 451 and 999: login walls, bot protection and rate limits, not broken links); `stats` add up to `total`. The External tab shows capped and partial scans and continues them |
 | `schemaBuilder` | on | **Verified.** URLs use `siteUrl`, then `SITE_URL`, then the request origin |
 | `alerts` | on | **Verified**: preview, send now and the scheduled `seoAlertsDigest` job, to a webhook. Nothing is sent until a channel is set. The webhook can't be another Worker on the same account's `workers.dev`, and email needs a Payload email adapter |
 | `aiFeatures` | on | **Verified** against OpenRouter (DeepSeek V4.1 Flash): all six endpoints, alt text read from R2, the sidebar's "Optimize with AI". Needs `OPENROUTER_API_KEY`; cap spend with a credit limit on the key |
@@ -208,7 +208,7 @@ Use `serializeJsonLd`, not `JSON.stringify`. It escapes `<`, `>`, `&`, U+2028 an
 
 | Function | Entry | Purpose |
 |---|---|---|
-| `buildJsonLd` | root, `/shared` | Schema.org object for a document; type auto-detected from the collection unless forced |
+| `buildJsonLd` | root, `/shared` | Schema.org object for a document, as `{ type, jsonLd, warnings }`. The type is auto-detected unless forced: `Article` for a posts-like collection or a publication date plus an author, `FAQPage` with at least one question and answer, `Product`, `LocalBusiness`, else `WebPage` (always for the home page). A forced `FAQPage` without Q&A falls back to the detected type and says so in `warnings`. Names use the document's `title`, else `meta.title` minus `siteName` |
 | `serializeJsonLd` | root, `/shared` | XSS-safe JSON for a `<script type="application/ld+json">` |
 | `renderJsonLdScript` | root | The complete, escaped `<script>` tag as a string |
 | `validateRedirectTarget`, `normalizeFromPath` | root, `/shared` | The redirect policy the plugin enforces (no `//host`, dangerous schemes or CRLF) |
@@ -319,7 +319,7 @@ With `jobs`, the plugin registers scheduled Payload tasks and starts no timers. 
 
 The host runs the queue: `runSeoJobs(payload)` from a Workers `scheduled` handler (see [step 3](#3-worker-entry-run-the-jobs-on-the-cron-trigger)), or Payload's `jobs.autoRun` on Node. A scheduled task is queued for the cron's *next* run time, so the first tick only queues and the second runs. Keep Payload's `deleteJobOnComplete` so finished jobs don't pile up.
 
-A step build stops after `SEO_AUDIT_STEP_DOCS` docs or `SEO_AUDIT_STEP_MS`, saves its cursor and partial results in `cacheStore`, and pauses. A pause with no new step for `SEO_AUDIT_PAUSED_STALE_MS` is abandoned. A save during a build makes the result stale, so on a site edited every few minutes a big audit may keep rebuilding (PLAN.md, P3 item 21).
+A step build stops after `SEO_AUDIT_STEP_DOCS` docs or `SEO_AUDIT_STEP_MS`, saves its cursor and partial results in `cacheStore`, and pauses. A pause with no new step for `SEO_AUDIT_PAUSED_STALE_MS` is abandoned. While a build runs, `/audit` keeps serving the last finished audit with `builtAt`, `stale` (a save since it was built) and `refreshing`, and a build that a save landed on still gets served (marked stale). Opening the dashboard never starts a first build, but when it finds a stale audit it starts the rebuild and keeps the old one on screen. An audit past its 15-minute TTL with no save since is served as current and only rebuilt on request.
 
 ### Environment variables
 

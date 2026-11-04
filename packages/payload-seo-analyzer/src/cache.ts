@@ -159,6 +159,19 @@ export const CONTENT_CACHE_BASES = [
   'sitemap-video',
 ] as const
 
+/**
+ * Bases whose last finished value is kept and served when it goes out of date, until the next
+ * build replaces it. It's marked stale only when a save moved the generation; once just the
+ * TTL has run out it is served as current, since nothing it depends on has changed. Only
+ * the dashboard audit: it's built in the background over several requests, so without this a
+ * site edited often would show "building" most of the time. The other scans compute inside
+ * the request and always answer with their own result.
+ */
+export const STALE_SERVABLE_BASES = ['audit'] as const
+
+/** In-memory mode: cap on kept last-good values (keys are per locale, so a handful in practice). */
+const MAX_LAST_GOOD = 50
+
 /** Caches that depend on the redirects collection. */
 export const REDIRECT_CACHE_BASES = ['sitemap-audit', 'link-graph', 'redirect-chains'] as const
 
@@ -187,9 +200,17 @@ interface BuildRecord {
 }
 
 export interface CacheLookup<T> {
+  /** The cached value: current, or (only with `allowStale`) the last finished one, see `stale`. */
   data: T | null
   /** Generation token to pass back to `set()` (read BEFORE computing the value). */
   gen: string
+  /** Epoch ms when `data` was built, when known. */
+  builtAt?: number
+  /**
+   * `data` is out of date: a save moved the generation since it was built. Only with
+   * `allowStale`; an entry past its TTL whose generation still matches is returned as current.
+   */
+  stale?: boolean
 }
 
 export interface BuildStatus {
@@ -260,6 +281,12 @@ export function hashConfig(value: unknown): string {
  *   invalidation in one isolate is seen by all of them (no per-isolate clock).
  * - Writers stamp entries with the generation read BEFORE computing, so a build that
  *   overlaps a save is stored already stale instead of masking the save.
+ * - For `STALE_SERVABLE_BASES` (the audit), an out-of-date entry stays where it is and
+ *   `lookup(..., { allowStale: true })` returns it with `stale: true`; the next build
+ *   overwrites it. So the last finished audit is served while the next one builds, and a
+ *   build that overlapped a save still lands (stale). The same `entry/<key>` object holds
+ *   both, so there's nothing extra to store or expire. In-memory mode mirrors this with a
+ *   local generation counter and a last-good map.
  * - There is deliberately no in-memory L1 for these bases: one parallel pair of store
  *   reads per request keeps every isolate consistent, and these are admin-only endpoints.
  * - Build coordination (audit): `build/<key>` holds `{ buildingSince, lastBuildAt, pausedAt }`.
@@ -286,6 +313,10 @@ export class SeoSharedCache {
   /** In-memory mode only: paused builds and their saved progress. */
   private readonly localPaused = new Map<string, { pausedAt: number; processed: number }>()
   private readonly localProgress = new Map<string, unknown>()
+  /** In-memory mode: generation counter per base (bumped by `invalidate`), for `STALE_SERVABLE_BASES`. */
+  private readonly localGen = new Map<string, number>()
+  /** In-memory mode: last finished value per key of `STALE_SERVABLE_BASES`, kept across invalidations. */
+  private readonly lastGood = new Map<string, { gen: string; builtAt: number; data: unknown }>()
 
   constructor(opts: SeoSharedCacheOptions = {}) {
     this.store = opts.store
@@ -311,29 +342,44 @@ export class SeoSharedCache {
     return this.store && (PERSISTENT_CACHE_BASES as readonly string[]).includes(base) ? this.store : undefined
   }
 
-  /** Current generation of a base ('' for in-memory bases). */
+  private isStaleServable(base: string): boolean {
+    return (STALE_SERVABLE_BASES as readonly string[]).includes(base)
+  }
+
+  /** In-memory generation of a base: a local counter for `STALE_SERVABLE_BASES`, else ''. */
+  private localGeneration(base: string): string {
+    return this.isStaleServable(base) ? `m${this.localGen.get(base) ?? 0}` : ''
+  }
+
+  /** Current generation of a base ('' for other in-memory bases). */
   async generation(base: string): Promise<string> {
     const store = this.storeFor(base)
-    if (!store) return ''
+    if (!store) return this.localGeneration(base)
     return (await store.get(`gen/${base}`)) ?? '0'
   }
 
-  async lookup<T>(base: string, key: string): Promise<CacheLookup<T>> {
+  /**
+   * Read a cached value. With `allowStale` (only meaningful for `STALE_SERVABLE_BASES`), an
+   * out-of-date value is returned too, with `stale: true`, instead of a miss.
+   */
+  async lookup<T>(base: string, key: string, opts: { allowStale?: boolean } = {}): Promise<CacheLookup<T>> {
+    const allowStale = !!opts.allowStale && this.isStaleServable(base)
     const store = this.storeFor(base)
-    if (!store) return { data: this.memory.get<T>(key), gen: '' }
+    if (!store) {
+      const gen = this.localGeneration(base)
+      const data = this.memory.get<T>(key)
+      const good = allowStale ? this.lastGood.get(key) : undefined
+      if (data != null) return { data, gen, ...(good?.data === data ? { builtAt: good.builtAt } : {}) }
+      if (good) return { data: good.data as T, gen, builtAt: good.builtAt, ...(good.gen !== gen ? { stale: true } : {}) }
+      return { data: null, gen }
+    }
     const [genRaw, entryRaw] = await Promise.all([store.get(`gen/${base}`), store.get(`entry/${key}`)])
     const gen = genRaw ?? '0'
     const entry = parseJson<StoredEntry<T>>(entryRaw)
-    if (
-      !entry ||
-      entry.v !== STORE_FORMAT ||
-      entry.gen !== gen ||
-      typeof entry.builtAt !== 'number' ||
-      Date.now() - entry.builtAt > this.ttlMs
-    ) {
-      return { data: null, gen }
-    }
-    return { data: entry.data, gen }
+    if (!entry || entry.v !== STORE_FORMAT || typeof entry.builtAt !== 'number') return { data: null, gen }
+    const stale = entry.gen !== gen
+    if (!allowStale && (stale || Date.now() - entry.builtAt > this.ttlMs)) return { data: null, gen }
+    return { data: entry.data, gen, builtAt: entry.builtAt, ...(stale ? { stale: true } : {}) }
   }
 
   async get<T>(base: string, key: string): Promise<T | null> {
@@ -347,9 +393,25 @@ export class SeoSharedCache {
   async set<T>(base: string, key: string, data: T, gen?: string): Promise<void> {
     const store = this.storeFor(base)
     if (!store) {
-      this.memory.set(key, data)
+      if (!this.isStaleServable(base)) {
+        this.memory.set(key, data)
+        return
+      }
+      const current = this.localGeneration(base)
+      const stamped = gen ?? current
+      // A value computed across an invalidation is kept as last-good (served stale), not fresh.
+      if (stamped === current) this.memory.set(key, data)
+      this.lastGood.delete(key)
+      this.lastGood.set(key, { gen: stamped, builtAt: Date.now(), data })
+      while (this.lastGood.size > MAX_LAST_GOOD) {
+        const oldest = this.lastGood.keys().next().value
+        if (oldest === undefined) break
+        this.lastGood.delete(oldest)
+      }
       return
     }
+    // With a store, the entry is overwritten even when `gen` is already out of date: it is
+    // then served stale (by `allowStale` readers) until the next build replaces it.
     const entry: StoredEntry<T> = {
       v: STORE_FORMAT,
       gen: gen ?? (await this.generation(base)),
@@ -364,6 +426,7 @@ export class SeoSharedCache {
     const writes: Promise<void>[] = []
     for (const base of new Set(bases)) {
       this.memory.invalidateByPrefix(base)
+      if (this.isStaleServable(base)) this.localGen.set(base, (this.localGen.get(base) ?? 0) + 1)
       const store = this.storeFor(base)
       if (store) writes.push(store.put(`gen/${base}`, newGeneration()))
     }
@@ -375,6 +438,7 @@ export class SeoSharedCache {
     const store = this.storeFor(base)
     if (!store) {
       this.memory.invalidateKey(key)
+      this.lastGood.delete(key)
       return
     }
     await store.delete(`entry/${key}`)

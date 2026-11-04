@@ -16,6 +16,7 @@ import type { SeoConfig } from '../types.js'
 import { requestOrigin, resolveSiteUrl } from '../helpers/siteUrl.js'
 import { readAccessOpts } from '../helpers/readAccess.js'
 import { isSeoPanelUser } from '../helpers/isAdmin.js'
+import { resolveDocTitle } from '../helpers/docTitle.js'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -78,6 +79,7 @@ export function createBreadcrumbHandler(targetCollections: string[], seoConfig?:
       let homeLabel = 'Home'
       let enabled = true
       let showOnHome = false
+      let siteName = seoConfig?.siteName
 
       try {
         const settingsResult = await req.payload.find({
@@ -87,6 +89,9 @@ export function createBreadcrumbHandler(targetCollections: string[], seoConfig?:
         })
         const settings = settingsResult.docs?.[0]
         if (settings) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const settingsSiteName = (settings as any).siteName
+          if (typeof settingsSiteName === 'string' && settingsSiteName) siteName = settingsSiteName
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const bc = (settings as any).breadcrumb
           if (bc && typeof bc === 'object') {
@@ -136,11 +141,9 @@ export function createBreadcrumbHandler(targetCollections: string[], seoConfig?:
             if (result.docs.length > 0) {
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               const doc = result.docs[0] as any
-              // Use meta title, then page title, then fallback to humanized segment
-              const docTitle = doc.meta?.title || doc.title
-              if (typeof docTitle === 'string' && docTitle.trim()) {
-                name = docTitle.trim()
-              }
+              // The page's own title (meta title minus the site name if it has none), then
+              // the humanized segment.
+              name = resolveDocTitle(doc, siteName) || name
               break
             }
           } catch {
@@ -161,10 +164,7 @@ export function createBreadcrumbHandler(targetCollections: string[], seoConfig?:
             if (result.docs.length > 0) {
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               const doc = result.docs[0] as any
-              const docTitle = doc.meta?.title || doc.title
-              if (typeof docTitle === 'string' && docTitle.trim()) {
-                name = docTitle.trim()
-              }
+              name = resolveDocTitle(doc, siteName) || name
             }
           } catch {
             // Collection might not exist

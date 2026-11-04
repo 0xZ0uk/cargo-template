@@ -12,9 +12,10 @@
 import type { PayloadHandler } from 'payload'
 import type { SeoConfig } from '../types.js'
 import { readAccessOpts } from '../helpers/readAccess.js'
-import { buildJsonLd, SCHEMA_TYPES, type SchemaType } from '../helpers/buildSchema.js'
+import { buildJsonLd, SCHEMA_TYPES, serializeJsonLd, type SchemaType } from '../helpers/buildSchema.js'
 import { requestOrigin, resolveSiteUrl } from '../helpers/siteUrl.js'
 import { isSeoPanelUser } from '../helpers/isAdmin.js'
+import { loadMergedConfig } from '../helpers/loadMergedConfig.js'
 
 export function createSchemaGeneratorHandler(
   targetCollections?: string[],
@@ -58,19 +59,25 @@ export function createSchemaGeneratorHandler(
         return Response.json({ error: `Document not found: ${collection}/${id}` }, { status: 404 })
       }
 
+      // The site name (the plugin option, or the one set in the SEO settings) is what a
+      // `meta.title` suffix is stripped by when the document has no title of its own.
+      const { config } = await loadMergedConfig(req.payload, seoConfig)
       // Without a configured site URL, use the request's origin (like /breadcrumb), never
       // buildJsonLd's localhost default: the output is meant to be pasted into the site.
-      const { type, jsonLd } = buildJsonLd(doc, {
+      const { type, jsonLd, warnings } = buildJsonLd(doc, {
         collection,
         type: typeOverride,
         siteUrl: resolveSiteUrl(seoConfig?.siteUrl, requestOrigin(req)),
         collectionRoutes: seoConfig?.collectionRoutes,
+        siteName: config.siteName,
       })
 
       return Response.json({
         type,
         jsonLd,
-        html: `<script type="application/ld+json">${JSON.stringify(jsonLd, null, 2)}</script>`,
+        // Set when `type` isn't what was asked for (e.g. a FAQPage with no Q&A to build it from).
+        warnings,
+        html: `<script type="application/ld+json">${serializeJsonLd(jsonLd, 2)}</script>`,
       })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Internal server error'

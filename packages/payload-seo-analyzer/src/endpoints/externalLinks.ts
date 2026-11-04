@@ -20,6 +20,7 @@ import type { PayloadHandler } from 'payload'
 import { defaultSeoSharedCache, type SeoSharedCache } from '../cache.js'
 import { fetchAllDocs } from '../helpers/fetchAllDocs.js'
 import { checkLinks, type LinkCheckResult, type LinkCheckerOptions } from '../helpers/linkChecker.js'
+import { classifyLink, countLinkStates, LINK_STATES } from '../helpers/linkStatus.js'
 import type { SeoConfig } from '../types.js'
 import { resolveSiteUrl } from '../helpers/siteUrl.js'
 import { parseJsonBody } from '../helpers/parseBody.js'
@@ -319,24 +320,19 @@ export function createExternalLinksHandler(
             url: link,
             status: result.status,
             ok: result.ok,
+            /** The one bucket this link is counted in (see `helpers/linkStatus.ts`). */
+            state: classifyLink(result),
             ...(result.error && { error: result.error }),
             sourcePages: urlSources.get(link) || [],
           }
         })
 
-      // 4. Compute stats
-      const stats = {
-        total: results.length,
-        ok: results.filter((r) => r.ok).length,
-        broken: results.filter((r) => !r.ok && !r.error).length,
-        timeout: results.filter((r) => r.error === 'timeout').length,
-      }
+      // 4. Compute stats: every checked link is in exactly one bucket, so
+      //    ok + broken + timeout + error + blocked + unverified === total.
+      const stats = countLinkStates(results)
 
-      // Sort broken/errored first
-      results.sort((a, b) => {
-        if (a.ok === b.ok) return 0
-        return a.ok ? 1 : -1
-      })
+      // Worst first (broken, timeout, error, blocked, unverified, ok); stable within a bucket.
+      results.sort((a, b) => LINK_STATES.indexOf(a.state) - LINK_STATES.indexOf(b.state))
 
       const responseData = {
         results,
