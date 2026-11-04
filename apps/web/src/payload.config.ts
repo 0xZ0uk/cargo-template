@@ -153,7 +153,7 @@ export default buildConfig({
     // limit in OpenRouter). The alerts digest sends nothing until SEO_ALERT_WEBHOOK_URL or
     // SEO_ALERT_EMAIL is set. GSC stays off until a Google OAuth client exists (it also needs a main-D1
     // migration for `seo-gsc-auth`). Whole-site scans (link graph, keywords,
-    // cannibalization…) and IndexNow stay off until the real site exists (PLAN.md items 22–23).
+    // cannibalization…) and IndexNow stay off until the real site exists (GitHub issues #27 and #28).
     seoAnalyzerPlugin({
       collections: ['pages'],
       collectionRoutes: { pages: '' },
