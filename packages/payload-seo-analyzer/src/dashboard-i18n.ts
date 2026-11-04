@@ -360,6 +360,7 @@ export interface DashboardTranslations {
     copyError: string
     tip: string
     beforeDeploying: string
+    faqNeedsAnswer: string
     visualGeneratorDesc: string
     addButton: string
     name: string
@@ -979,6 +980,7 @@ const fr: DashboardTranslations = {
     copyError: 'Erreur de copie',
     tip: 'Conseil :',
     beforeDeploying: 'avant de le déployer en production.',
+    faqNeedsAnswer: 'Add at least one question with an answer: Google rejects a FAQPage without any.',
     visualGeneratorDesc: 'Générateur visuel de données structurées JSON-LD pour le référencement',
     addButton: '+ Ajouter',
     name: 'Nom',
@@ -1597,6 +1599,7 @@ const en: DashboardTranslations = {
     copyError: 'Copy error',
     tip: 'Tip:',
     beforeDeploying: 'before deploying to production.',
+    faqNeedsAnswer: 'Add at least one question with an answer: Google rejects a FAQPage without any.',
     visualGeneratorDesc: 'Visual generator of structured JSON-LD data for SEO',
     addButton: '+ Add',
     name: 'Name',
