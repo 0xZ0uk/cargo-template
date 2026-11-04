@@ -1,0 +1,60 @@
+{
+  "name": "@cargo/onpage-lexical",
+  "version": "0.7.0",
+  "private": true,
+  "description": "Cargo's fork of payload-onpage rich-text field editor: inline Lexical editing compatible with Payload's Lexical JSON.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./editor": {
+      "types": "./dist/editor.d.ts",
+      "default": "./dist/editor.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "!dist/.tsbuildinfo",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@cargo/onpage-core": "workspace:*",
+    "@cargo/onpage-react": "workspace:*"
+  },
+  "peerDependencies": {
+    "lexical": "catalog:",
+    "@lexical/list": "catalog:",
+    "@lexical/react": "catalog:",
+    "@lexical/rich-text": "catalog:",
+    "@lexical/selection": "catalog:",
+    "@lexical/utils": "catalog:",
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@lexical/list": "catalog:",
+    "@lexical/react": "catalog:",
+    "@lexical/rich-text": "catalog:",
+    "@lexical/selection": "catalog:",
+    "@lexical/utils": "catalog:",
+    "@types/node": "24.12.3",
+    "@types/react": "catalog:",
+    "lexical": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "typescript": "catalog:"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

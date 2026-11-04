@@ -1,0 +1,36 @@
+{
+  // Shared compiler settings. Each package builds with `tsc -b` to dist/ (ESM + .d.ts),
+  // keeping one output file per source file so 'use client' directives stay where they are.
+  // Sources import siblings with explicit .ts/.tsx extensions; tsc rewrites them to .js.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["dom", "dom.iterable", "es2023"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    // Catch the mistakes strict mode lets through: an index that may be out of
+    // range, an optional property set to undefined, dead code and paths.
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitReturns": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    // Type-only imports stay type-only: nothing server-side leaks into client bundles by accident.
+    "verbatimModuleSyntax": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "composite": true,
+    "types": ["node"]
+  }
+}

@@ -55,6 +55,10 @@ jobs:
       - name: Plugin unit tests
         run: pnpm --filter @cargo/payload-seo-analyzer test
 
+      # Unit, component and Payload integration tests (in-memory SQLite), against source.
+      - name: On-page editor tests
+        run: pnpm --filter @cargo/onpage test
+
       # Runs against a fresh local D1 (wrangler's platform proxy), schema pushed by Payload.
       - name: App integration tests
         run: pnpm web test:int

@@ -1,0 +1,52 @@
+{
+  "name": "@cargo/onpage-plugin",
+  "version": "0.7.0",
+  "private": true,
+  "description": "Cargo's fork of payload-onpage for Payload CMS: on-page editing endpoints, auto-mapping, preview links and admin controls.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./admin": {
+      "types": "./dist/admin/index.d.ts",
+      "default": "./dist/admin/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "!dist/.tsbuildinfo",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@cargo/onpage-core": "workspace:*"
+  },
+  "peerDependencies": {
+    "payload": ">=4.0.0-beta.6 <5.0.0",
+    "@payloadcms/ui": ">=4.0.0-beta.6 <5.0.0",
+    "@payloadcms/translations": ">=4.0.0-beta.6 <5.0.0",
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@payloadcms/translations": "catalog:",
+    "@payloadcms/ui": "catalog:",
+    "@types/node": "24.12.3",
+    "@types/react": "catalog:",
+    "payload": "catalog:",
+    "react": "catalog:",
+    "typescript": "catalog:"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}
