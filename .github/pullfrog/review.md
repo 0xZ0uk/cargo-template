@@ -1,6 +1,6 @@
 This repo is a Payload 4 + TanStack Start app on Cloudflare Workers (D1 + R2), plus in-house Payload plugins in `packages/*`. Read `AGENTS.md` first. Besides defects, flag these, at their real severity:
 
-Workers runtime (`apps/web/src`, `packages/*/src`):
+Workers runtime (`apps/web/src`, `packages/*/src`, `packages/onpage/*/src`):
 - Node-only APIs without a Workers path (`fs`, `child_process`, `net`, sync `node:crypto` KDFs, `setInterval` background work), and PBKDF2 above 100,000 iterations.
 - Work that must finish after the response but isn't awaited or passed to `waitUntil`; module-level caches the admin UI depends on (they're per isolate).
 - Whole-site scans or loops over every document with no cap or step budget (Workers CPU limits; see Performance in `packages/payload-seo-analyzer/README.md`).
@@ -20,6 +20,7 @@ Conventions that break things:
 - Hard-coded `/api/seo-plugin` or `/admin` paths in the plugin (use `useSeoApi` / `formatAdminURL`).
 - A literal dynamic `import('pkg')` of an optional dependency (breaks Vite's optimizer; see `optionalImports.test.ts`).
 - SEO analyzer admin UI that ignores `packages/payload-seo-analyzer/src/ui/README.md`: hard-coded colours, non-`@payloadcms/ui` components where one exists.
+- On-page editor (`packages/onpage`, our fork of payload-onpage) changes that break the invariants in `packages/onpage/README.md`: anything visitors load or request without the hint cookie, field markers reaching a saved document, a state-changing endpoint without `rejectCrossSite` and an access check from `plugin/src/access.ts`, or an import across its package boundaries. Its endpoints call the Local API with `overrideAccess: true` only after those checks; flag one that doesn't. In the app, only a verified preview-link grant may widen a page read (`pages.functions.ts`).
 
 Also flag new plugin endpoints, analysis rules or store queries that come with no test.
 
