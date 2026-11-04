@@ -127,11 +127,11 @@ Results are in "Done on 2026-11-03".
 | `sitemapAudit` | `/admin/sitemap-audit`: orphans, weak pages, hubs, broken links (the 404 and External tabs follow `seoLogs` / `externalLinks`) | on | done | yes | **local workerd: pass.** ~0.4 ms per doc uncached, persisted in R2 |
 | `settings` | `seo-settings` collection, `/admin/seo-config` | on | done | yes | **local workerd: pass**, including saving |
 | *(always on)* | `GET /api/seo-plugin/sitemap.xml`, `robots.txt`, `llms.txt`, news/image/video sitemaps | on | done | yes | **local workerd: pass.** Served at `/sitemap.xml`, `/robots.txt` and `/llms.txt`; `llms.txt` needs `SEO_LLMS_TXT=1`. Without `SITE_URL` they use the request origin |
-| `cannibalization` | `/admin/cannibalization` | off | UI done | renders (empty data) | whole-site scan |
-| `keywords` | `/admin/keyword-research` + AI content brief | off | UI done | renders (empty data) | whole-site scan; the brief needs AI |
-| `linkGraph` | `/admin/link-graph`, crawl budget | off | UI done | renders with data | whole-site scan; client-side force simulation is fine |
+| `cannibalization` | `/admin/cannibalization` | off | UI done | renders (empty data) | whole-site scan; **backlog** (see Backlog) |
+| `keywords` | `/admin/keyword-research` + AI content brief | off | UI done | renders (empty data) | whole-site scan, **backlog**; the brief runs on AI (`aiFeatures`, verified) |
+| `linkGraph` | `/admin/link-graph`, crawl budget | off | UI done | renders with data | whole-site scan, **backlog**; client-side force simulation is fine |
 | `schemaBuilder` | `/admin/schema-builder` JSON-LD builder | off | UI done | renders | none (mostly client-side) |
-| `duplicateContent` | duplicate content endpoint | off | compiles | no | whole-site scan |
+| `duplicateContent` | duplicate content endpoint | off | compiles | no | whole-site scan; **backlog** |
 | `externalLinks` | outbound link checker (SSRF-guarded) | on | done | no (workerd instead) | **deployed: pass** (P2 item 13). The guard uses `resolve4`/`resolve6` on Workers, `lookup` on Node. Capped at 100 links (`SEO_EXTERNAL_LINKS_MAX`) and 1000 subrequests per call (`SEO_EXTERNAL_LINKS_MAX_SUBREQUESTS`), 5 at a time; a scan that doesn't fit resumes from results saved in R2, and a finished scan is cached. The External tab doesn't show `capped`/`partial` yet |
 | `aiFeatures` | generate meta, optimize, rewrite, alt text, content brief (OpenRouter Chat Completions via `fetch`) | on | done | yes, with a real key | **deployed: pass** (P2 item 11): all six endpoints, alt text on an R2 image, the sidebar's "Optimize with AI"; ≤ 0.2 s CPU per call. Needs `OPENROUTER_API_KEY` as a Worker secret, with a credit limit on the key as the spend cap. Alt text reads the image through Payload's file route in-process (R2), not over the network |
 | `performance` | `seo-performance` collection, GSC CSV/JSON/XLSX import, `/admin/performance` + 9 panels (CWV, indexation, content grade, CTR, alt text, health…), `/indexation-audit` | on | UI done | renders with empty data | **deployed: pass.** Rows in SEO_D1 through `dataStore` (P2 item 10; CSV import + read), pruned after 490 days / 100k rows. XLSX import only works if the host maps `xlsx`. `/indexation-audit` is cached and capped |
@@ -335,6 +335,10 @@ Order agreed on 2026-11-03: foundations first: 9 (done) → 10 → 12 → 13 →
     - **Stats gap:** `stats.ok`, `broken` and `timeout` don't count blocked and DNS failures, so they don't add up to `total` (5 + 33 + 0 of 48 in the run above). Add a `blocked` / `error` count.
     - **Open:** whether a slow 25 s step fits through the edge (no slow hosts in the deployed test). Show `capped`/`partial`/`pending` in the External tab and continue partial scans from the button; treat 429/999 as unverified, not broken. On Node the guard can't pin the resolved IP for `fetch` (DNS rebinding gap); on Workers `fetch` can't reach private networks anyway.
 
+### Backlog
+
+22. **Whole-site scans** (`cannibalization`, `keywords`, `linkGraph`, `duplicateContent`). Deferred on 2026-11-04 until there's a real site with real content to measure against, planned for the next sprint. The demo site has 2 pages, and a seeded one says little about real link graphs or duplicate rates. Each scan reads every doc in one request, like `/indexation-audit` (12.7 s CPU at 1,500 docs deployed, against a 30 s limit). On the real site: measure each scan's CPU on a deployed Worker, then cap it (`SEO_FETCH_MAX_DOCS`), chunk it like the dashboard audit (P2 item 9), or mark it unsupported on Workers. `duplicateContent` has never run, even on Node.
+
 ### P3: quality and cleanup
 
 14. **Bulk-preview dialog** in `SeoView.tsx`: still a custom overlay without a focus trap or Escape to close. Move it to Payload `Modal` / `useModal`, then drop the last exception in `a11yContract.test.ts`.
@@ -352,7 +356,7 @@ Order agreed on 2026-11-03: foundations first: 9 (done) → 10 → 12 → 13 →
 
 ## Definition of done for "fully ported"
 
-- Every feature flag is either verified in a deployed Worker or explicitly marked unsupported on Workers in this file and in `README.md`. *(Enabled features: done, including the leftovers, P2 item 9, and `performance` / `scoreHistory` / `seoLogs` / `externalLinks` on 2026-11-04. `README.md` has the per-flag status table; `aiFeatures` is verified too (2026-11-04). `gscApi`, `alerts`, `indexNow`, the whole-site scans and `schemaBuilder` are still "not checked", which isn't "unsupported".)*
+- Every feature flag is either verified in a deployed Worker or explicitly marked unsupported on Workers in this file and in `README.md`. *(Enabled features: done, including the leftovers, P2 item 9, and `performance` / `scoreHistory` / `seoLogs` / `externalLinks` on 2026-11-04. `README.md` has the per-flag status table; `aiFeatures` is verified too (2026-11-04). `gscApi`, `alerts`, `indexNow` and `schemaBuilder` are still "not checked", which isn't "unsupported". The whole-site scans are in the backlog until a real site exists (item 22).)*
 - No unpersisted background work and no module-level caches the UI depends on. *(Done for the enabled features.)*
 - No time-series data in the main D1. *(Done: `apps/web` uses `dataStore` with the production SEO_D1, verified on 2026-11-04.)*
 - No hard-coded `/api/seo-plugin` or `/admin` paths. *(Done.)*

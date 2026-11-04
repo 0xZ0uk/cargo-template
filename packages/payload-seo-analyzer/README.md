@@ -66,7 +66,7 @@ The Cargo app (`apps/web`) runs this plugin on a deployed Worker. Each feature i
 | `gscApi` | off | Token crypto verified on a deployed Worker. The endpoints and the OAuth flow aren't checked yet |
 | `alerts` | off | Runs as the `seoAlertsDigest` job; not checked on Workers |
 | `indexNow` | off | Not checked on Workers |
-| `cannibalization`, `keywords`, `linkGraph`, `duplicateContent` | off | Whole-site scans in one request, not measured against Workers CPU limits |
+| `cannibalization`, `keywords`, `linkGraph`, `duplicateContent` | off | Whole-site scans in one request, not measured against Workers CPU limits yet (deferred until there's a real site to measure) |
 | `schemaBuilder` | off | Mostly client-side; not checked on Workers |
 | `warmCache` | off | **Unsupported on Workers** (skipped by design) |
 | `auditCacheFile` / `buildAuditToFile()` | n/a | **Node only.** Ignored with a warning when `cacheStore` is set or on Workers |
