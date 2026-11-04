@@ -1166,11 +1166,16 @@ function ExternalLinksTab() {
     URL.revokeObjectURL(url)
   }, [classified])
 
+  // The "Couldn't verify" filter is hidden when nothing is in it; a selection left over from an
+  // earlier scan then falls back to "All" instead of showing an empty table.
+  const unverifiableCount = stats.unverified + stats.blocked
+  const activeFilter: ExternalFilter = filter === 'unverified' && unverifiableCount === 0 ? 'all' : filter
+
   const filteredResults = useMemo(() => {
-    if (filter === 'all') return classified
-    const states = FILTER_STATES[filter]
+    if (activeFilter === 'all') return classified
+    const states = FILTER_STATES[activeFilter]
     return classified.filter((r) => states.includes(r.state))
-  }, [classified, filter])
+  }, [classified, activeFilter])
 
   // Initial state: prompt to scan
   if (!data && !loading && !error) {
@@ -1279,9 +1284,9 @@ function ExternalLinksTab() {
         <div className="seo-row">
           {/* Filter toggles */}
           {(['all', 'broken', 'unverified', 'ok'] as ExternalFilter[])
-            .filter((f) => f !== 'unverified' || stats.unverified + stats.blocked > 0)
+            .filter((f) => f !== 'unverified' || unverifiableCount > 0)
             .map((f) => {
-              const active = filter === f
+              const active = activeFilter === f
               const label =
                 f === 'all'
                   ? t.sitemapAudit.all
@@ -1328,7 +1333,7 @@ function ExternalLinksTab() {
 
       {/* Results table */}
       {filteredResults.length === 0 ? (
-        <EmptyState title={filter === 'broken' ? t.sitemapAudit.noBrokenLinks : t.sitemapAudit.noExternalLinks} />
+        <EmptyState title={activeFilter === 'broken' ? t.sitemapAudit.noBrokenLinks : t.sitemapAudit.noExternalLinks} />
       ) : (
         <DataTable aria-label={t.sitemapAudit.externalLinks} bare>
           <thead>

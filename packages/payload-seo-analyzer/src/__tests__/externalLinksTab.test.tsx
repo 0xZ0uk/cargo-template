@@ -142,6 +142,26 @@ describe('External links tab', () => {
     expect(screen.queryByRole('button', { name: /continue scan/i })).toBeNull()
   })
 
+  it("falls back to All when the selected 'Couldn't verify' filter empties after a continue", async () => {
+    const first = { ...mixed, results: [r('https://shop.example/', 429)], totalFound: 3, pending: 2, partial: true, stoppedBy: 'budget' }
+    // The resumed scan rechecked the 429 as OK and found two more links, none unverifiable.
+    const done = {
+      ...mixed,
+      results: [r('https://shop.example/', 200), r('https://ok.example/', 200), r('https://a.example/gone', 404)],
+      totalFound: 3,
+    }
+    mockApi([first, done])
+    render(<SitemapAuditView />)
+    await openExternalTab()
+    fireEvent.click(await screen.findByRole('button', { name: "Couldn't verify" }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue scan' }))
+    await screen.findByText('3 total')
+    expect(screen.queryByRole('button', { name: "Couldn't verify" })).toBeNull()
+    const table = screen.getByRole('table')
+    expect(within(table).getByText(/ok\.example/)).toBeTruthy()
+    expect(within(table).getByText(/a\.example\/gone/)).toBeTruthy()
+  })
+
   it('shows a partial scan with its pending count and the reason, and continues it from the button', async () => {
     const first = {
       results: [r('https://a.example/', 200), r('https://b.example/', 404), r('https://c.example/', 429)],
