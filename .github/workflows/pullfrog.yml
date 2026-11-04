@@ -65,7 +65,6 @@ jobs:
           # Edited: fixes go to PR branches only: no pushes to master, no branch deletion, no
           # tags. Stricter than the console default (full push access).
           push: restricted
-        env:
-          # Edited: the OpenCode Go key, as a GitHub Actions secret. Shell commands the agent
-          # runs never see it (Pullfrog's shell isolation drops *_KEY variables).
-          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+        # No `env:` key mapping: the OpenCode Go key is stored with Pullfrog (account level),
+        # which injects it into the run. A workflow value would beat the stored key, and a
+        # stored key is the only kind the OSS funding check can see, so keep it out of here.
