@@ -38,6 +38,7 @@ const {
   isSharedPreview,
   isSharedPreviewFor,
   onpageContext,
+  previewGrantFor,
 } = await import('../session.server.ts')
 import { HINT_COOKIE } from '../hint.ts'
 
@@ -230,6 +231,27 @@ describe('shared preview grants', () => {
     expect(await isDraftEnabled()).toBe(false)
   })
 
+  it('previewGrantFor names the shared document for a server-derived path, on any request URL', async () => {
+    state.cookies.set(COOKIE.preview, await grant({ path: '/shared', ref: 'c:pages:7' }))
+    // A route loader re-run as a browser-invoked server function (hydration, invalidation).
+    state.path = '/_serverFn/x/loadPage'
+    expect(await previewGrantFor('/elsewhere')).toBeNull()
+    expect(state.headers.get('Cache-Control')).toBeUndefined()
+    expect(await previewGrantFor('/shared')).toEqual({ kind: 'collection', slug: 'pages', id: 7 })
+    expect(state.headers.get('Cache-Control')).toBe('private, no-store')
+  })
+
+  it('previewGrantFor refuses expired, tampered and malformed grants', async () => {
+    state.cookies.set(COOKIE.preview, await grant({ exp: Math.floor(Date.now() / 1000) - 1 }))
+    expect(await previewGrantFor('/a')).toBeNull()
+    const good = await grant()
+    state.cookies.set(COOKIE.preview, `${good.slice(0, -2)}xx`)
+    expect(await previewGrantFor('/a')).toBeNull()
+    state.cookies.set(COOKIE.preview, await grant({ ref: 'not-a-ref' }))
+    expect(await previewGrantFor('/a')).toBeNull()
+    expect(state.headers.get('Cache-Control')).toBeUndefined()
+  })
+
   it('grants never validate without a configured secret', async () => {
     vi.resetModules()
     const fresh = await import('../session.server.ts')
@@ -237,5 +259,6 @@ describe('shared preview grants', () => {
     // Fresh module: tanstackSession({ secret }) was never called here.
     expect(await fresh.isSharedPreview()).toBe(false)
     expect(await fresh.isDraftEnabled()).toBe(false)
+    expect(await fresh.previewGrantFor('/a')).toBeNull()
   })
 })

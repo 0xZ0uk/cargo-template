@@ -21,11 +21,14 @@ import {
   COOKIE,
   createModeCookie,
   isLivePreviewGrant,
+  parseRefKey,
   readModeCookie,
   samePath,
   SEAL_PURPOSE,
   unseal,
+  type DocRef,
   type OnPageMode,
+  type PreviewGrant,
   type SealSecret,
   type SessionAdapter,
 } from '@cargo/onpage-core'
@@ -135,12 +138,17 @@ export async function getOnPageMode(): Promise<OnPageMode | null> {
   }
 }
 
-/** A live sealed grant for `pathname`. Grants without a configured secret never validate. */
-async function liveGrantFor(pathname: string): Promise<boolean> {
-  if (!previewSecret) return false
+/** The live sealed grant for `pathname`, or null. Grants without a configured secret never validate. */
+async function grantFor(pathname: string): Promise<PreviewGrant | null> {
+  if (!previewSecret) return null
   const grant = await unseal(getCookie(COOKIE.preview), previewSecret, SEAL_PURPOSE.previewCookie)
-  if (!isLivePreviewGrant(grant)) return false
-  return samePath(pathname, grant.path)
+  if (!isLivePreviewGrant(grant)) return null
+  return samePath(pathname, grant.path) ? grant : null
+}
+
+/** A live sealed grant for `pathname`. */
+async function liveGrantFor(pathname: string): Promise<boolean> {
+  return (await grantFor(pathname)) !== null
 }
 
 /** A live sealed grant for this request's path. Grants without a configured secret never validate. */
@@ -169,6 +177,35 @@ export async function isSharedPreviewFor(pathname: string): Promise<boolean> {
     return await liveGrantFor(pathname)
   } catch {
     return false
+  }
+}
+
+/**
+ * The document a live preview-link grant shares at `pathname`, or null.
+ *
+ * Unlike `isDraftEnabled()`, this doesn't compare with the request URL, so it
+ * also works inside browser-invoked server functions (route loaders re-run on
+ * hydration, invalidation and client-side navigation, where the request URL is
+ * the RPC endpoint). In exchange the caller carries the check:
+ *
+ * - `pathname` must be the path of the page the caller is about to render,
+ *   derived on the server (e.g. from the route's slug), never taken from the
+ *   client as is;
+ * - read the returned document by its id, not by slug: a page that later takes
+ *   over the shared path is not covered by the grant.
+ *
+ * When it returns a document the response is marked `Cache-Control: private,
+ * no-store`, as `isDraftEnabled()` does. Safe to call anywhere (null outside a
+ * request).
+ */
+export async function previewGrantFor(pathname: string): Promise<DocRef | null> {
+  try {
+    const grant = await grantFor(pathname)
+    const ref = grant ? parseRefKey(grant.ref) : null
+    if (ref) setResponseHeader('Cache-Control', 'private, no-store')
+    return ref
+  } catch {
+    return null
   }
 }
 

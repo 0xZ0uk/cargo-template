@@ -74,13 +74,15 @@ export function TanstackEditor(props: OnPageMountProps) {
  * so a client-side navigation would load published content under a "Shared
  * preview" bar. Shared viewers get full page loads instead: each page is
  * rendered by the server for its own path, and the mount re-checks the grant.
+ * `replace`, not `assign`: the router has already pushed the new entry, and a
+ * second one would take two presses of Back to leave.
  */
 function useFullPageNavigation(enabled: boolean) {
   const router = useRouter()
   useEffect(() => {
     if (!enabled) return
     return router.subscribe('onBeforeNavigate', ({ pathChanged, toLocation }) => {
-      if (pathChanged) window.location.assign(toLocation.href)
+      if (pathChanged) window.location.replace(toLocation.href)
     })
   }, [enabled, router])
 }

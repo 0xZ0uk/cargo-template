@@ -107,16 +107,17 @@ describe('TanstackPreview', () => {
     expect(screen.queryByTestId('onpage-edit')).toBeNull()
   })
   it('link viewers navigate with full page loads, so the server checks each page', () => {
-    const assign = vi.fn()
-    vi.stubGlobal('location', { ...window.location, assign })
+    const replace = vi.fn()
+    vi.stubGlobal('location', { ...window.location, replace })
     try {
       const { unmount } = render(<TanstackPreview mode="view" shared />)
       const navigate = (e: unknown) =>
         nav.listeners.filter((l) => l.event === 'onBeforeNavigate').forEach((l) => l.fn(e))
       navigate({ pathChanged: false, toLocation: { href: '/about?tab=2' } })
-      expect(assign).not.toHaveBeenCalled()
+      expect(replace).not.toHaveBeenCalled()
       navigate({ pathChanged: true, toLocation: { href: '/pricing' } })
-      expect(assign).toHaveBeenCalledWith('/pricing')
+      // Replaces the entry the router just pushed: one press of Back leaves the page.
+      expect(replace).toHaveBeenCalledWith('/pricing')
       unmount()
       expect(nav.listeners).toHaveLength(0)
       // Editors keep client-side navigation.
