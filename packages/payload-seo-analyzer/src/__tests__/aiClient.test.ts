@@ -216,7 +216,7 @@ const payloadWith = (docs: Record<string, Record<string, unknown>>, update = vi.
   update,
 })
 
-const config = { locale: 'en' } as SeoConfig
+const config = {} as SeoConfig
 
 describe('optimizeDocMeta on the AI client', () => {
   it('sends the structured-output request and returns sanitized AI suggestions', async () => {
