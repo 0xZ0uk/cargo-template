@@ -21,14 +21,15 @@ The console stores the instructions, not this repo. After editing a file, push i
 ## One-time setup
 
 1. **OpenCode.** On an OpenCode Go subscription, open the workspace settings and turn on the **DeepSeek opt-in** (China hosting). DeepSeek isn't on the Go menu otherwise, and runs fail with a link to that setting. Then create an API key.
-2. **Pullfrog app.** Sign in at <https://pullfrog.com/console> with GitHub. Install the GitHub App on `0xZ0uk` for this repository only, and pick **BYOK** billing (not Pullfrog Router). On Router, the server hands each run a Router credential, and the GitHub secret below is never used.
-3. **Key as a GitHub Actions secret:**
+2. **Pullfrog app.** Sign in at <https://pullfrog.com/console> with GitHub. Install the GitHub App on `0xZ0uk` for this repository only, and pick **BYOK** billing (not Pullfrog Router), so runs spend your OpenCode Go quota and not a prepaid Router balance.
+3. **Key, stored with Pullfrog:** console → **Billing** → **Providers** → **BYOK** → **OpenCode** → **Set up**, or:
 
    ```sh
-   gh secret set OPENCODE_API_KEY --repo 0xZ0uk/cargo-template
+   npx pullfrog@latest secret set OPENCODE_API_KEY --org 0xZ0uk
+   npx pullfrog@latest secret list --repo 0xZ0uk/cargo-template   # shows it as [org, inherited]
    ```
 
-   Don't also store an `OPENCODE_API_KEY` in Pullfrog's secret store. The workflow's value wins, and two copies drift.
+   Don't also add it as a GitHub Actions secret mapped in the workflow. A workflow value beats the stored key, and Pullfrog's server can't see it when it picks the model: on a repo with `oss` funding on, a key that only lives in GitHub makes the run fall back to Pullfrog's funded default instead of `opencode-go/deepseek-v4.1-flash`.
 4. **Merge the workflow to `master`**, then click **Verify manual installation** on the repository's console page.
 5. **Console settings.** The CLI writes the same settings as the console and acts as your `gh` login (scopes `repo` and `read:org`):
 
@@ -58,6 +59,6 @@ The console stores the instructions, not this repo. After editing a file, push i
 
 ## Security notes
 
-- `OPENCODE_API_KEY` reaches the agent process only. Pullfrog's shell isolation (on by default; always on for public repos) drops `*_KEY` variables from the commands the agent runs.
+- Pullfrog injects `OPENCODE_API_KEY` into the agent process only. Pullfrog's shell isolation (on by default; always on for public repos) drops `*_KEY` variables from the commands the agent runs.
 - `push: restricted` lets the agent push to feature branches only: never to `master`, no branch deletion, no tags. Runs triggered by non-collaborators get a read-only token anyway.
 - Actions are pinned to commit SHAs; Dependabot (`../dependabot.yml`) bumps them weekly.
