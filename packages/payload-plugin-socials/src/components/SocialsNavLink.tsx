@@ -36,7 +36,7 @@ export const SocialsNavLink: React.FC<Props> = ({ href = '/admin/socials', label
       href={href}
       style={{
         alignItems: 'center',
-        color: 'var(--theme-elevation-800)',
+        color: 'var(--color-text)',
         display: 'flex',
         gap: '0.5rem',
         padding: '0.5rem 0.75rem',

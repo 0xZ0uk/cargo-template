@@ -510,7 +510,7 @@ describe('createPostDeleteEndpoints: cancel-only route', () => {
     const res = await run(getCancelEndpoint(), req)
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ ok: true, postId: 'queued_1', status: 'cancelled' })
-    expect(cancelByID).toHaveBeenCalledWith({ id: '91' })
+    expect(cancelByID).toHaveBeenCalledWith({ id: '91', overrideAccess: true })
     expect(adapterDelete).not.toHaveBeenCalled()
   })
 

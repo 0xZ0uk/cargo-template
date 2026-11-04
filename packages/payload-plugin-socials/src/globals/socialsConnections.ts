@@ -106,6 +106,9 @@ export const buildSocialsConnectionsGlobal = (
     // tab in the plugin admin view, never by editing this global directly.
     hidden: true,
   },
+  // Payload 4 versions globals by default. Versions here would keep every
+  // superseded token envelope (including ones a key rotation re-encrypted).
+  versions: false,
   fields: [
     {
       type: 'tabs',

@@ -5,7 +5,12 @@ import { lexicalEditor } from '@payloadcms/richtext-lexical'
 import { buildConfig, getPayload } from 'payload'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import payloadPluginSocials from '../index.js'
+import payloadPluginSocials, {
+  normalizePluginOptions,
+  queueSocialPostSweep,
+  runQueuedSocialsJobs,
+  SOCIAL_POST_SWEEP_TASK_SLUG,
+} from '../index.js'
 
 const HEX_KEY = '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff'
 
@@ -17,39 +22,24 @@ const HEX_KEY = '00112233445566778899aabbccddeeff00112233445566778899aabbccddeef
  */
 let payload: Payload
 
-const createTestDatabase = async (): Promise<Config['db']> => {
-  if (process.env.SOCIALS_TEST_DATABASE === 'postgres') {
-    const { postgresAdapter } = await import('@payloadcms/db-postgres')
-    return postgresAdapter({
-      pool: {
-        connectionString:
-          process.env.POSTGRES_URL ?? 'postgres://postgres:postgres@127.0.0.1:5432/socials_test',
-      },
-      push: true,
-    })
-  }
-  if (process.env.SOCIALS_TEST_DATABASE === 'mongodb') {
-    const { mongooseAdapter } = await import('@payloadcms/db-mongodb')
-    return mongooseAdapter({
-      ensureIndexes: true,
-      url: process.env.MONGODB_URL ?? 'mongodb://127.0.0.1:27017/socials_test',
-    })
-  }
-  return sqliteAdapter({ client: { url: ':memory:' }, push: true })
+const pluginOptions = {
+  authorize: () => Promise.resolve(true),
+  encryptionKey: HEX_KEY,
+  platforms: { pinterest: { enabled: false } },
+  sources: { product: () => Promise.reject(new Error('stub')) },
 }
+
+// Upstream also boots against Postgres and MongoDB; Cargo runs on D1 (SQLite) only.
+const createTestDatabase = (): Config['db'] =>
+  sqliteAdapter({ client: { url: ':memory:' }, push: true })
 
 beforeAll(async () => {
   const config = await buildConfig({
     collections: [{ slug: 'products', fields: [{ name: 'title', type: 'text' }] }],
-    db: await createTestDatabase(),
+    db: createTestDatabase(),
     editor: lexicalEditor(),
     plugins: [
-      payloadPluginSocials({
-        authorize: () => Promise.resolve(true),
-        encryptionKey: HEX_KEY,
-        platforms: { pinterest: { enabled: false } },
-        sources: { product: () => Promise.reject(new Error('stub')) },
-      }),
+      payloadPluginSocials(pluginOptions),
     ],
     secret: 'test-secret',
   })
@@ -64,6 +54,17 @@ describe('Payload boot with the plugin', () => {
   it('registers the plugin-owned collections', () => {
     expect(payload.collections['social-posts']).toBeDefined()
     expect(payload.collections['social-templates']).toBeDefined()
+  })
+
+  // Payload 4 versions collections and globals unless they opt out. Versions of the
+  // connections global would keep superseded token envelopes; social-posts rows are
+  // rewritten on every status change.
+  it('opts the plugin collections and global out of Payload 4 default versioning', () => {
+    expect(payload.collections['social-posts'].config.versions).toBeFalsy()
+    expect(payload.collections['social-templates'].config.versions).toBeFalsy()
+    const global = payload.config.globals.find((g) => g.slug === 'socials-connections')
+    expect(global).toBeDefined()
+    expect(global?.versions).toBeFalsy()
   })
 
   it('round-trips per-platform scopes on the connections global', async () => {
@@ -93,5 +94,22 @@ describe('Payload boot with the plugin', () => {
       overrideAccess: true,
     })
     expect((doc as { id: number | string }).id).toBeDefined()
+  })
+
+  // Payload 4's Local API defaults to overrideAccess: false, and jobs.access.* require
+  // a logged-in user. Sweeps and drains run from cron / the internal API with none.
+  it('queues and drains a sweep job without a user', async () => {
+    const jobId = await queueSocialPostSweep({ payload })
+    const findJob = () =>
+      payload.find({
+        collection: 'payload-jobs',
+        overrideAccess: true,
+        where: { id: { equals: jobId } },
+      })
+    const queued = await findJob()
+    expect(queued.docs[0]?.taskSlug).toBe(SOCIAL_POST_SWEEP_TASK_SLUG)
+    await runQueuedSocialsJobs(payload, normalizePluginOptions(pluginOptions))
+    // Payload deletes a job once it completes; a failed one stays with hasError.
+    expect((await findJob()).docs).toHaveLength(0)
   })
 })

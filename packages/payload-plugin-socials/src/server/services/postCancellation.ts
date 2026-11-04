@@ -91,7 +91,7 @@ export const cancelQueuedSocialPost = async (args: {
 
   if (row.queuedJobId) {
     try {
-      await args.payload.jobs.cancelByID({ id: row.queuedJobId as never })
+      await args.payload.jobs.cancelByID({ id: row.queuedJobId as never, overrideAccess: true })
     } catch {
       // The row status is the execution fence if the queued job already started.
     }

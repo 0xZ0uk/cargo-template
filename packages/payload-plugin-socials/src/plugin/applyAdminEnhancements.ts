@@ -2,7 +2,7 @@ import type { Config } from 'payload'
 
 import type { NormalizedPluginOptions } from '../types/index.js'
 
-import { PLUGIN_SLUG } from '../constants.js'
+import { PLUGIN_PACKAGE } from '../constants.js'
 
 type AdminComponents = NonNullable<Config['admin']>['components']
 
@@ -121,7 +121,7 @@ export const applyAdminEnhancements = (
     const navLink: NavComponent = {
       clientProps: { href: `${adminBase}${options.admin.route}`, label: options.admin.navLabel },
       exportName: 'SocialsNavLink',
-      path: `${PLUGIN_SLUG}/client`,
+      path: `${PLUGIN_PACKAGE}/client`,
     } as NavComponent
     components.beforeNavLinks = withUniqueComponent(components.beforeNavLinks, navLink)
 
@@ -133,7 +133,7 @@ export const applyAdminEnhancements = (
     const views = components.views as Record<string, unknown>
     if (!views[SOCIALS_VIEW_KEY]) {
       views[SOCIALS_VIEW_KEY] = {
-        Component: `${PLUGIN_SLUG}/rsc#SocialsAdminView`,
+        Component: `${PLUGIN_PACKAGE}/rsc#SocialsAdminView`,
         path: options.admin.route,
       }
     }
@@ -142,7 +142,7 @@ export const applyAdminEnhancements = (
   if (options.admin.mode === 'dashboard' || options.admin.mode === 'both') {
     const widget = {
       exportName: 'SocialsDashboardWidget',
-      path: `${PLUGIN_SLUG}/client`,
+      path: `${PLUGIN_PACKAGE}/client`,
     }
     components.beforeDashboard = withUniqueComponent(components.beforeDashboard, widget as never)
   }

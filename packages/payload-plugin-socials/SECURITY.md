@@ -1,24 +1,6 @@
-# Security policy
+# Security model
 
-## Supported versions
-
-Security fixes land on the latest supported major release. Upgrade promptly
-when a patch is released.
-
-| Version        | Supported |
-| -------------- | --------- |
-| latest `0.9.x` | Yes       |
-| `<0.9.1`       | No        |
-
-## Reporting a vulnerability
-
-Please do not open a public issue for a security problem.
-
-Report it privately through GitHub's "Report a vulnerability" flow on the
-repository's Security tab, which opens a private advisory visible only to the
-maintainers. Include the affected version, a description, and a reproduction if
-you have one. We aim to acknowledge a report within a few business days and to
-ship a fix or a mitigation as quickly as the severity warrants.
+This is the threat model of upstream's [`payload-plugin-socials`](https://github.com/ContiDigital/payload-plugin-socials), which this fork keeps. Report a problem in the fork as a private security advisory on the Cargo repository; one that also affects upstream goes to upstream's Security tab.
 
 ## How the plugin handles secrets
 

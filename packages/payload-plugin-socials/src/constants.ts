@@ -3,6 +3,8 @@
 // ---------------------------------------------------------------------------
 
 export const PLUGIN_SLUG = 'payload-plugin-socials'
+/** The package name: admin component paths in the import map resolve against it. */
+export const PLUGIN_PACKAGE = '@cargo/payload-plugin-socials'
 
 // ---------------------------------------------------------------------------
 // Platforms

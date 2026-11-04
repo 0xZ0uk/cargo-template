@@ -20,6 +20,7 @@ import { ValidationError } from '../utilities/errors.js'
 import { sha256Hex } from '../utilities/hash.js'
 import { detectImageFormat } from './detectImageFormat.js'
 import { PLATFORM_IMAGE_CONSTRAINTS } from './imagePreflight.js'
+import { importSharp } from './importSharp.js'
 import { fetchRemoteImageBytes } from './safeRemoteImage.js'
 
 /** How the platform will present the image; stories use a vertical canvas. */
@@ -221,8 +222,7 @@ type SharpFactory = (
 
 const loadSharp = async (): Promise<SharpFactory> => {
   try {
-    const sharpModule = (await import('sharp')) as unknown as { default: SharpFactory }
-    return sharpModule.default
+    return await importSharp<SharpFactory>()
   } catch {
     throw new ValidationError(
       `${PLUGIN_SLUG}: assets.autoConvert requires sharp as a peer dependency. ` +

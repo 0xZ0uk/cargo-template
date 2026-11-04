@@ -60,6 +60,7 @@ describe('queue helpers', () => {
     const arg = payload.jobs.queue.mock.calls[0][0]
     expect(arg).toMatchObject({
       input: { postId: 'post_1' },
+      overrideAccess: true,
       queue: SOCIALS_QUEUE_NAME,
       task: SOCIAL_POST_PUBLISH_TASK_SLUG,
     })
@@ -106,6 +107,7 @@ describe('runQueuedSocialsJobs', () => {
     await runQueuedSocialsJobs(asPayload(payload), options)
     expect(payload.jobs.run).toHaveBeenCalledWith({
       limit: 100,
+      overrideAccess: true,
       queue: SOCIALS_QUEUE_NAME,
       req: undefined,
     })
@@ -222,6 +224,6 @@ describe('scheduleSocialPostPublish', () => {
     })
     payload.update.mockResolvedValue({ id: 'post_old' })
     await scheduleSocialPostPublish(baseArgs())
-    expect(payload.jobs.cancelByID).toHaveBeenCalledWith({ id: 'job_old' })
+    expect(payload.jobs.cancelByID).toHaveBeenCalledWith({ id: 'job_old', overrideAccess: true })
   })
 })

@@ -76,8 +76,11 @@ export const runQueuedSocialsJobs = async (
   const limit = options.scheduling.drainBatchSize
   const queue = options.scheduling.queue
 
+  // Payload 4's Local API no longer bypasses access: `jobs.run` would require a
+  // logged-in user (jobs.access.run), which cron and scheduler drains don't have.
+  // Callers are gated by the plugin's own `authorize` / internal API key.
   const promise = payload.jobs
-    .run({ limit, queue, req })
+    .run({ limit, overrideAccess: true, queue, req })
     .then(() => undefined)
     .finally(() => {
       runnerState.delete(payload)
@@ -170,12 +173,16 @@ const queueOnSocialsQueue = async (args: {
 }): Promise<number | string | undefined> => {
   const queueOptions: {
     input: Record<string, unknown>
+    overrideAccess: true
     queue: string
     req?: PayloadRequest
     task: string
     waitUntil?: Date
   } = {
     input: args.input,
+    // Payload 4 checks jobs.access.queue (a logged-in user) unless told otherwise;
+    // sweeps and follow-up publishes run without one.
+    overrideAccess: true,
     queue: queueNames.get(args.payload) ?? SOCIALS_QUEUE_NAME,
     req: args.req,
     task: args.task,
@@ -443,7 +450,10 @@ export const scheduleSocialPostPublish = async (args: {
 
   if (existingDoc?.queuedJobId && String(existingDoc.queuedJobId) !== String(jobId)) {
     try {
-      await args.payload.jobs.cancelByID({ id: existingDoc.queuedJobId as never })
+      await args.payload.jobs.cancelByID({
+        id: existingDoc.queuedJobId as never,
+        overrideAccess: true,
+      })
     } catch (error) {
       logAsyncOperationFailure(args.payload, 'socials.jobs.cancel-stale', error)
     }

@@ -45,7 +45,7 @@ import {
 import { VideoPreviewPane, VideoTile } from './SocialMediaPreview.js'
 import { StandaloneSocialComposer } from './StandaloneSocialComposer.js'
 import { useSocialsAccess } from './useSocialsAccess.js'
-import './SocialPublishPanelClient.scss'
+import './socials.css'
 
 type Props =
   | {
@@ -651,7 +651,7 @@ const SourceComposerAuthorized: React.FC<{ sourceKind: string }> = ({ sourceKind
     <section className="socials-composer">
       <header className="socials-composer__header">
         <div>
-          <h2>Social composer</h2>
+          <h2 className="socials-heading">Social composer</h2>
           <p>Compose, validate, preview, and publish without leaving this document.</p>
         </div>
         <div aria-label="Social platform" className="socials-composer__tabs" role="tablist">
@@ -1045,7 +1045,7 @@ const SourceComposerAuthorized: React.FC<{ sourceKind: string }> = ({ sourceKind
               </div>
 
               <div className="socials-composer__add-media">
-                <Button onClick={openDrawer} size="small">
+                <Button onClick={openDrawer} size="medium">
                   Media library
                 </Button>
                 <div className="socials-composer__add-media-url">
@@ -1072,7 +1072,7 @@ const SourceComposerAuthorized: React.FC<{ sourceKind: string }> = ({ sourceKind
                     <option value="image">Image</option>
                     <option value="video">Video</option>
                   </select>
-                  <Button disabled={!urlInput.trim()} onClick={handleAddByUrl} size="small">
+                  <Button disabled={!urlInput.trim()} onClick={handleAddByUrl} size="medium">
                     Add URL
                   </Button>
                 </div>
@@ -1161,13 +1161,13 @@ const SourceComposerAuthorized: React.FC<{ sourceKind: string }> = ({ sourceKind
                     style={{
                       color:
                         row.status === 'published'
-                          ? 'var(--theme-success-500)'
+                          ? 'var(--color-text-success)'
                           : row.status === 'deleted'
-                            ? 'var(--theme-elevation-400)'
+                            ? 'var(--color-text-tertiary)'
                             : row.status === 'queued'
-                              ? 'var(--theme-warning-500)'
+                              ? 'var(--color-text-warning)'
                               : row.status === 'cancelled'
-                                ? 'var(--theme-elevation-400)'
+                                ? 'var(--color-text-tertiary)'
                                 : undefined,
                     }}
                   >
@@ -1202,7 +1202,7 @@ const SourceComposerAuthorized: React.FC<{ sourceKind: string }> = ({ sourceKind
                               void deletePost(row.id)
                             }
                           }}
-                          style={{ color: 'var(--theme-error-500)', fontSize: '0.8rem' }}
+                          style={{ color: 'var(--color-text-danger)', fontSize: '0.8rem' }}
                           type="button"
                         >
                           {isInstagram ? 'Confirm mark deleted' : 'Confirm delete'}
@@ -1219,7 +1219,7 @@ const SourceComposerAuthorized: React.FC<{ sourceKind: string }> = ({ sourceKind
                       <button
                         disabled={deletingId === row.id}
                         onClick={() => setConfirmingDeleteId(row.id)}
-                        style={{ color: 'var(--theme-error-400)', fontSize: '0.8rem' }}
+                        style={{ color: 'var(--color-text-danger-secondary)', fontSize: '0.8rem' }}
                         type="button"
                       >
                         {isInstagram ? 'Mark deleted (removed in app)' : 'Delete'}
@@ -1234,7 +1234,7 @@ const SourceComposerAuthorized: React.FC<{ sourceKind: string }> = ({ sourceKind
                         <button
                           disabled={deletingId === row.id}
                           onClick={() => void cancelPost(row.id)}
-                          style={{ color: 'var(--theme-error-500)', fontSize: '0.8rem' }}
+                          style={{ color: 'var(--color-text-danger)', fontSize: '0.8rem' }}
                           type="button"
                         >
                           Confirm cancel
@@ -1251,7 +1251,7 @@ const SourceComposerAuthorized: React.FC<{ sourceKind: string }> = ({ sourceKind
                       <button
                         disabled={deletingId === row.id}
                         onClick={() => setConfirmingDeleteId(row.id)}
-                        style={{ color: 'var(--theme-error-400)', fontSize: '0.8rem' }}
+                        style={{ color: 'var(--color-text-danger-secondary)', fontSize: '0.8rem' }}
                         type="button"
                       >
                         Cancel

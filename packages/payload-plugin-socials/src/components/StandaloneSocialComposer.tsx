@@ -29,7 +29,7 @@ import {
 } from './socialComposerViewModel.js'
 import { VideoTile } from './SocialMediaPreview.js'
 import { useSocialsAccess } from './useSocialsAccess.js'
-import './SocialPublishPanelClient.scss'
+import './socials.css'
 
 type Destination = ComposerDestination
 
@@ -256,7 +256,7 @@ const StandaloneComposerAuthorized: React.FC = () => {
     <section className="socials-composer">
       <header className="socials-composer__header">
         <div>
-          <h2>Standalone composer</h2>
+          <h2 className="socials-heading">Standalone composer</h2>
           <p>Compose one post from scratch and publish it to multiple channels at once.</p>
         </div>
       </header>
@@ -365,7 +365,7 @@ const StandaloneComposerAuthorized: React.FC = () => {
             </div>
           )}
           <div className="socials-composer__add-media">
-            <Button onClick={openDrawer} size="small">
+            <Button onClick={openDrawer} size="medium">
               Media library
             </Button>
             <div className="socials-composer__add-media-url">
@@ -390,7 +390,7 @@ const StandaloneComposerAuthorized: React.FC = () => {
                 <option value="image">Image</option>
                 <option value="video">Video</option>
               </select>
-              <Button disabled={!urlInput.trim()} onClick={handleAddByUrl} size="small">
+              <Button disabled={!urlInput.trim()} onClick={handleAddByUrl} size="medium">
                 Add URL
               </Button>
             </div>

@@ -1,5 +1,7 @@
 import type { ImageFormat, TargetDimensions } from './imagePreflight.js'
 
+import { importSharp } from './importSharp.js'
+
 /**
  * Execute a resolved crop/resize spec with sharp.
  *
@@ -18,10 +20,7 @@ export type TransformSpec = {
 } & TargetDimensions
 
 export const transformImage = async (input: Buffer, spec: TransformSpec): Promise<Buffer> => {
-  const sharpModule = (await import('sharp')) as unknown as {
-    default: (i: Buffer) => SharpLike
-  }
-  const sharp = sharpModule.default
+  const sharp = await importSharp<(i: Buffer) => SharpLike>()
 
   let pipeline = sharp(input).resize({
     fit: spec.fit,

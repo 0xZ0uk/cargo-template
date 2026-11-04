@@ -2,7 +2,7 @@ import type { CollectionBeforeChangeHook, CollectionConfig, PayloadRequest, Wher
 
 import type { AuthorizeFn, NormalizedPluginOptions } from '../types/index.js'
 
-import { PLATFORM_IDS, PLUGIN_SLUG, SOCIAL_TEMPLATES_SLUG } from '../constants.js'
+import { PLATFORM_IDS, PLUGIN_PACKAGE, SOCIAL_TEMPLATES_SLUG } from '../constants.js'
 
 /**
  * Plugin-owned `social-templates` collection.
@@ -112,7 +112,7 @@ const builderField = (
     Field: {
       clientProps: { copyField, multiline },
       exportName: 'SocialTemplateFieldBuilder',
-      path: `${PLUGIN_SLUG}/client`,
+      path: `${PLUGIN_PACKAGE}/client`,
     },
   },
   description: `Template for "${copyField}". Use the builder to pick tokens from the resolved scope and apply filters. Tokens must be mapped by the host's SourceContextResolver to produce output — fields not exposed via the resolver's metadata map will render as empty.`,
@@ -141,6 +141,8 @@ export const buildSocialTemplatesCollection = (
       hidden: schemaOnly ? true : ({ user }) => !user,
       useAsTitle: 'name',
     },
+    // Payload 4 versions collections by default; upstream (Payload 3) had none.
+    versions: false,
     fields: [
       {
         name: 'name',

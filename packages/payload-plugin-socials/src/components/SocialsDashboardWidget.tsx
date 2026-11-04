@@ -111,7 +111,9 @@ const SocialsDashboardWidgetInner: React.FC<Props> = ({ enabledPlatforms }) => {
 
   return (
     <section style={styles.container}>
-      <h3 style={{ marginTop: 0 }}>Social connections</h3>
+      <h3 className="socials-heading" style={{ marginTop: 0 }}>
+        Social connections
+      </h3>
       <p style={styles.muted}>
         Tokens remain server-side and encrypted. OAuth redirects open in this tab.
       </p>
@@ -136,7 +138,7 @@ const SocialsDashboardWidgetInner: React.FC<Props> = ({ enabledPlatforms }) => {
                       onClick={() => {
                         void disconnect(id)
                       }}
-                      style={{ color: 'var(--theme-error-500)' }}
+                      style={{ color: 'var(--color-text-danger)' }}
                       type="button"
                     >
                       Confirm disconnect
@@ -172,8 +174,8 @@ const SocialsDashboardWidgetInner: React.FC<Props> = ({ enabledPlatforms }) => {
                   style={{
                     ...styles.dot,
                     backgroundColor: row.connected
-                      ? 'var(--theme-success-500)'
-                      : 'var(--theme-elevation-300)',
+                      ? 'var(--color-icon-success)'
+                      : 'var(--color-icon-tertiary)',
                   }}
                 />
                 <span style={{ flex: 1 }}>
@@ -195,23 +197,23 @@ const SocialsDashboardWidgetInner: React.FC<Props> = ({ enabledPlatforms }) => {
 
 const styles: Record<string, React.CSSProperties> = {
   badge: {
-    backgroundColor: 'var(--theme-elevation-100)',
-    border: '1px solid var(--theme-elevation-150)',
+    backgroundColor: 'var(--color-bg-tertiary)',
+    border: 'var(--stroke-width-small) solid var(--color-border)',
     borderRadius: 4,
-    color: 'var(--theme-elevation-600)',
+    color: 'var(--color-text-secondary)',
     fontSize: '0.7rem',
     padding: '0.15rem 0.45rem',
     whiteSpace: 'nowrap',
   },
   container: {
-    backgroundColor: 'var(--theme-elevation-50)',
-    border: '1px solid var(--theme-elevation-150)',
+    backgroundColor: 'var(--color-bg-secondary)',
+    border: 'var(--stroke-width-small) solid var(--color-border)',
     borderRadius: 6,
     marginBlock: '1rem',
     padding: '1rem',
   },
   dot: { borderRadius: '50%', display: 'inline-block', height: 8, width: 8 },
   list: { display: 'grid', gap: '0.5rem', listStyle: 'none', padding: 0 },
-  muted: { color: 'var(--theme-elevation-500)', marginTop: 0 },
+  muted: { color: 'var(--color-text-secondary)', marginTop: 0 },
   row: { alignItems: 'center', display: 'flex', gap: '0.75rem', paddingBlock: '0.35rem' },
 }

@@ -4,7 +4,12 @@ import type { NormalizedPluginOptions } from '../types/index.js'
 
 import { buildSocialPostsCollection } from '../collections/socialPosts.js'
 import { buildSocialTemplatesCollection } from '../collections/socialTemplates.js'
-import { PLUGIN_SLUG, SOCIAL_POSTS_SLUG, SOCIAL_TEMPLATES_SLUG } from '../constants.js'
+import {
+  PLUGIN_PACKAGE,
+  PLUGIN_SLUG,
+  SOCIAL_POSTS_SLUG,
+  SOCIAL_TEMPLATES_SLUG,
+} from '../constants.js'
 
 /**
  * Inject the plugin-owned `social-posts` collection AND, for every host
@@ -24,7 +29,7 @@ const buildSocialsField = (sourceKind: string): Field => ({
       Field: {
         clientProps: { sourceKind },
         exportName: 'SocialPublishPanelClient',
-        path: `${PLUGIN_SLUG}/client`,
+        path: `${PLUGIN_PACKAGE}/client`,
       },
     },
   },
@@ -43,7 +48,7 @@ const isPluginSocialsField = (field: Field): boolean => {
   return (
     typeof component === 'object' &&
     component !== null &&
-    component.path === `${PLUGIN_SLUG}/client` &&
+    component.path === `${PLUGIN_PACKAGE}/client` &&
     component.exportName === 'SocialPublishPanelClient'
   )
 }
@@ -193,7 +198,7 @@ export const SocialsUIPlaceholder: Field = {
   type: 'ui',
   admin: {
     components: {
-      Field: `${PLUGIN_SLUG}/client#SocialPublishPanelClient`,
+      Field: `${PLUGIN_PACKAGE}/client#SocialPublishPanelClient`,
     },
   },
 }

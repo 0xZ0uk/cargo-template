@@ -1,10 +1,12 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { PinnedHttpsRequest } from '../safeRemoteImage.js'
 
 import {
+  createWorkersLookupHostname,
   fetchPinnedRemoteResponse,
   fetchRemoteImageBytes,
+  fetchUnpinnedHttpsRequest,
   isPublicIpAddress,
 } from '../safeRemoteImage.js'
 
@@ -218,5 +220,106 @@ describe('fetchRemoteImageBytes', () => {
     expect(requestImpl).toHaveBeenCalledWith(
       expect.objectContaining({ address: { address: '127.0.0.1', family: 4 } }),
     )
+  })
+})
+
+// Cloudflare Workers: node:https rejects the `lookup` option and Cloudflare documents
+// dns.lookup as not implemented, so the defaults switch to resolve4/resolve6 + fetch.
+describe('on Cloudflare Workers', () => {
+  const dnsError = (code: string) => Object.assign(new Error(code), { code })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('resolves A and AAAA records and keeps only IP literals', async () => {
+    const lookupHostname = createWorkersLookupHostname({
+      resolve4: () => Promise.resolve(['dyna.wikimedia.org.', '185.15.58.224']),
+      resolve6: () => Promise.reject(dnsError('ENODATA')),
+    })
+    await expect(lookupHostname('www.wikipedia.org')).resolves.toEqual(['185.15.58.224'])
+  })
+
+  it('fails closed when one family errors for another reason than a missing record', async () => {
+    const lookupHostname = createWorkersLookupHostname({
+      resolve4: () => Promise.resolve(['93.184.216.34']),
+      resolve6: () => Promise.reject(dnsError('ESERVFAIL')),
+    })
+    await expect(lookupHostname('example.com')).rejects.toThrow('ESERVFAIL')
+  })
+
+  it('surfaces a private AAAA record next to a public A record', async () => {
+    const lookupHostname = createWorkersLookupHostname({
+      resolve4: () => Promise.resolve(['93.184.216.34']),
+      resolve6: () => Promise.resolve(['fd00::1']),
+    })
+    const requestImpl = vi.fn<PinnedHttpsRequest>()
+    await expect(
+      fetchPinnedRemoteResponse({
+        label: 'Remote image',
+        lookupHostname,
+        policy,
+        requestImpl,
+        url: 'https://mixed.example/a.jpg',
+      }),
+    ).rejects.toThrow('private network')
+    expect(requestImpl).not.toHaveBeenCalled()
+  })
+
+  it('fetches without following redirects, so each hop is revalidated', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('ok'))
+    vi.stubGlobal('fetch', fetchMock)
+    const response = await fetchUnpinnedHttpsRequest({
+      address: { address: '93.184.216.34', family: 4 },
+      headers: { Range: 'bytes=0-31' },
+      timeoutMs: 1_000,
+      url: new URL('https://example.com/a.jpg'),
+    })
+    expect(await response.text()).toBe('ok')
+    expect(fetchMock).toHaveBeenCalledWith(
+      new URL('https://example.com/a.jpg'),
+      expect.objectContaining({
+        headers: { Range: 'bytes=0-31' },
+        method: 'GET',
+        redirect: 'manual',
+      }),
+    )
+  })
+
+  it('aborts when the response headers take longer than timeoutMs', async () => {
+    vi.stubGlobal(
+      'fetch',
+      (_url: URL, init: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          init.signal?.addEventListener('abort', () => reject(init.signal?.reason))
+        }),
+    )
+    await expect(
+      fetchUnpinnedHttpsRequest({
+        address: { address: '93.184.216.34', family: 4 },
+        timeoutMs: 10,
+        url: new URL('https://slow.example/a.jpg'),
+      }),
+    ).rejects.toThrow('Request timed out')
+  })
+
+  it('uses the fetch transport by default and revalidates redirect targets', async () => {
+    vi.stubGlobal('navigator', { userAgent: 'Cloudflare-Workers' })
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(null, { headers: { location: 'https://private.example/a.jpg' }, status: 302 }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const lookupHostname = vi.fn((hostname: string) =>
+      Promise.resolve(hostname === 'private.example' ? ['10.0.0.7'] : ['93.184.216.34']),
+    )
+    await expect(
+      fetchPinnedRemoteResponse({
+        label: 'Remote image',
+        lookupHostname,
+        policy,
+        url: 'https://public.example/a.jpg',
+      }),
+    ).rejects.toThrow('private network')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })

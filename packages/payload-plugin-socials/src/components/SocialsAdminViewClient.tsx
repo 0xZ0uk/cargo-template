@@ -5,7 +5,7 @@ import React, { useEffect, useState } from 'react'
 
 import { SocialsDashboardWidget } from './SocialsDashboardWidget.js'
 import { SocialPublishPanelClient } from './SourceSocialsPanelClient.js'
-import './SocialPublishPanelClient.scss'
+import './socials.css'
 
 type Props = {
   enabledPlatforms?: string[]

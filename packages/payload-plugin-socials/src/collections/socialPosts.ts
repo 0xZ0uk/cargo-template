@@ -61,6 +61,9 @@ export const buildSocialPostsCollection = (
     hidden: schemaOnly ? true : ({ user }) => !user,
     useAsTitle: 'title',
   },
+  // Payload 4 versions collections by default. Rows are an audit trail the
+  // plugin rewrites on every status change; versions would duplicate them.
+  versions: false,
   fields: [
     {
       name: 'idempotencyKey',

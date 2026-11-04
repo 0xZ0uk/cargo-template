@@ -55,7 +55,7 @@ describe('cancelQueuedSocialPost', () => {
       },
       status: 'cancelled',
     })
-    expect(payload.jobs.cancelByID).toHaveBeenCalledWith({ id: '55' })
+    expect(payload.jobs.cancelByID).toHaveBeenCalledWith({ id: '55', overrideAccess: true })
   })
 
   it('omits the lead condition when none is asked for', async () => {

@@ -1,6 +1,6 @@
 import type { LookupFunction } from 'node:net'
 
-import { lookup } from 'node:dns/promises'
+import { lookup, resolve4, resolve6 } from 'node:dns/promises'
 import { request as httpsRequest } from 'node:https'
 import { BlockList, isIP } from 'node:net'
 import { Readable } from 'node:stream'
@@ -46,10 +46,52 @@ export type RemoteImageBytes = {
   finalUrl: string
 }
 
-const defaultLookupHostname: LookupHostname = async (hostname) => {
+const nodeLookupHostname: LookupHostname = async (hostname) => {
   const records = await lookup(hostname, { all: true, verbatim: true })
   return records.map((record) => record.address)
 }
+
+/** True on Cloudflare Workers (workerd sets this user agent). */
+export const isWorkersRuntime = (): boolean =>
+  typeof navigator !== 'undefined' && navigator.userAgent === 'Cloudflare-Workers'
+
+const DNS_NOT_FOUND_CODES = new Set(['ENODATA', 'ENOTFOUND', 'NXDOMAIN'])
+
+type DnsResolvers = {
+  resolve4: (hostname: string) => Promise<string[]>
+  resolve6: (hostname: string) => Promise<string[]>
+}
+
+/**
+ * Hostname lookup for Cloudflare Workers. workerd implements `node:dns` over
+ * DNS-over-HTTPS; Cloudflare documents `lookup` as not implemented, so this uses
+ * `resolve4` + `resolve6`. Either family failing for a reason other than "no such
+ * record" fails the lookup (closed): a flaky AAAA must not hide a private IPv6
+ * address. workerd also returns CNAME targets among the answers; only IP literals
+ * are kept.
+ */
+export const createWorkersLookupHostname =
+  (resolvers: DnsResolvers = { resolve4, resolve6 }): LookupHostname =>
+  async (hostname) => {
+    const answers = await Promise.allSettled([
+      resolvers.resolve4(hostname),
+      resolvers.resolve6(hostname),
+    ])
+    for (const answer of answers) {
+      if (answer.status === 'rejected') {
+        const code = (answer.reason as { code?: unknown } | undefined)?.code
+        if (typeof code !== 'string' || !DNS_NOT_FOUND_CODES.has(code)) {
+          throw answer.reason
+        }
+      }
+    }
+    return answers
+      .flatMap((answer) => (answer.status === 'fulfilled' ? answer.value : []))
+      .filter((address) => isIP(address) !== 0)
+  }
+
+const defaultLookupHostname: LookupHostname = (hostname) =>
+  isWorkersRuntime() ? createWorkersLookupHostname()(hostname) : nodeLookupHostname(hostname)
 
 const defaultPinnedHttpsRequest: PinnedHttpsRequest = async ({
   address,
@@ -111,6 +153,51 @@ const defaultPinnedHttpsRequest: PinnedHttpsRequest = async ({
     request.once('error', reject)
     request.end()
   })
+
+/**
+ * Transport for Cloudflare Workers, where `node:https` rejects the `lookup`
+ * option, so a connection can't be pinned to the vetted address. It uses `fetch`
+ * instead. The address checks still run on every hop (`redirect: 'manual'` hands
+ * each redirect back to `fetchPinnedRemoteResponse`), but the edge resolves the
+ * name again when it connects: a DNS answer that changes between the two lookups
+ * isn't caught. Workers' outbound `fetch` doesn't reach private networks, which
+ * is what the pinning protects on Node.
+ *
+ * `timeoutMs` bounds the wait for the response headers, like the idle timeout of
+ * the Node transport; callers bound the body read themselves.
+ */
+export const fetchUnpinnedHttpsRequest: PinnedHttpsRequest = async ({
+  headers,
+  signal,
+  timeoutMs,
+  url,
+}) => {
+  const controller = new AbortController()
+  const abort = () => controller.abort(signal?.reason)
+  if (signal?.aborted) {
+    abort()
+  } else {
+    signal?.addEventListener('abort', abort, { once: true })
+  }
+  const timer = setTimeout(() => {
+    const error = new Error('Request timed out')
+    error.name = 'TimeoutError'
+    controller.abort(error)
+  }, timeoutMs)
+  try {
+    return await fetch(url, {
+      headers,
+      method: 'GET',
+      redirect: 'manual',
+      signal: controller.signal,
+    })
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+const defaultHttpsRequest: PinnedHttpsRequest = (args) =>
+  isWorkersRuntime() ? fetchUnpinnedHttpsRequest(args) : defaultPinnedHttpsRequest(args)
 
 const NON_PUBLIC_ADDRESSES = new BlockList()
 
@@ -237,7 +324,7 @@ export const fetchPinnedRemoteResponse = async (
   args: FetchPinnedRemoteResponseArgs,
 ): Promise<PinnedRemoteResponse> => {
   const lookupHostname = args.lookupHostname ?? defaultLookupHostname
-  const requestImpl = args.requestImpl ?? defaultPinnedHttpsRequest
+  const requestImpl = args.requestImpl ?? defaultHttpsRequest
   const redirectLimit = args.maxRedirects ?? MAX_REMOTE_ASSET_REDIRECTS
   let currentUrl = parseRemoteAssetUrl(args.url, args.label)
 

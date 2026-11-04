@@ -14,7 +14,7 @@ import {
   TEMPLATE_FILTERS,
   tokensFromScopeKeys,
 } from './socialTemplateBuilderModel.js'
-import './SocialPublishPanelClient.scss'
+import './socials.css'
 
 // ---------------------------------------------------------------------------
 // Platform character limits used for the per-field length warning

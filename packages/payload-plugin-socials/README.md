@@ -1,6 +1,16 @@
-# payload-plugin-socials
+# @cargo/payload-plugin-socials
 
-Multi-platform organic social publishing for [Payload CMS](https://payloadcms.com) 3.
+Multi-platform organic social publishing for [Payload CMS](https://payloadcms.com) 4, on Node or Cloudflare Workers.
+
+Cargo's fork of [`payload-plugin-socials`](https://github.com/ContiDigital/payload-plugin-socials) 0.11.1 by Conti Digital (MIT), which targets Payload 3 + Next.js. Forked from upstream `b2ee260` (2026-10-23): diff against that commit to see what changed, or to pick up upstream fixes. This fork:
+
+- **Requires Payload 4** (`4.0.0-beta.6`, from the workspace catalog) and has **no Next.js dependency**. The `/admin/socials` view renders through `DefaultTemplate` from `@payloadcms/ui/rsc` and redirects with Payload's `server.redirect()`, so it works under any Payload 4 adapter (the Cargo app uses TanStack Start).
+- **Opts out of Payload 4's default versioning** on `social-posts`, `social-templates` and the `socials-connections` global. Versions of the global would keep every superseded encrypted token; `social-posts` rows are rewritten on each status change.
+- **Passes `overrideAccess: true` to `payload.jobs.queue` / `run` / `cancelByID`.** Payload 4's Local API no longer bypasses access, and the default jobs access requires a logged-in user, which cron sweeps, the internal scheduler endpoints and follow-up publishes don't have. The plugin's own `authorize` and internal API key still gate every route. (Every collection and global call already passed `overrideAccess` explicitly.)
+- **Runs on Cloudflare Workers** (`nodejs_compat`): see [Cloudflare Workers](#cloudflare-workers).
+- Is named `@cargo/payload-plugin-socials`: admin import-map paths are `@cargo/payload-plugin-socials/client` and `/rsc`.
+- Is built with tsup (three bundles: `index`, `client` with `client.css`, `rsc`) instead of SWC; the stylesheet is plain CSS. Postgres/MongoDB boot tests, the Next.js dev app, Playwright e2e and the live canary suite are dropped; the unit and in-memory SQLite boot tests are kept.
+- Uses Payload 4 admin tokens (`--color-*`, `--field-color-*`, `--radius-*`); Payload 4 removed the v3 `--theme-*` / `--style-*` tokens the upstream styles used, which left dark mode broken. Headings take the heading tokens (Payload 4 leaves bare `h1`–`h3` unstyled). `size="medium"` on admin buttons (`@payloadcms/ui` 4 has no `small`).
 
 <img width="1542" height="1169" alt="The multi-platform social composer inside the Payload admin, with per-platform tabs, media selection, and live preview" src="https://github.com/user-attachments/assets/1e00ac76-42b9-4574-a2d7-5a8b1674d045" />
 
@@ -31,15 +41,16 @@ The host supplies source resolvers, authorization, credentials, the encryption k
 
 ## Requirements
 
-- Payload CMS `^3.84.1`
-- Node.js `>=22.12.0`
+- Payload CMS `>=4.0.0-beta.6 <5`
+- Node.js `>=22.12.0`, or Cloudflare Workers with `nodejs_compat`
 - React and React DOM `^19.0.0` for Payload admin surfaces
-- pnpm 9 or 10 when working in this repository
-- `sharp` only when `assets.autoConvert` is enabled
+- `sharp` only when `assets.autoConvert` is enabled (Node only)
 - A public HTTPS origin for OAuth callbacks and provider-fetchable media
 
-```bash
-pnpm add payload-plugin-socials
+In this monorepo, add it to an app as a workspace dependency:
+
+```json
+"@cargo/payload-plugin-socials": "workspace:*"
 ```
 
 ## Platform readiness
@@ -63,7 +74,7 @@ your own schema; source kinds are host-defined.
 
 ```ts
 import { buildConfig } from 'payload'
-import { payloadPluginSocials } from 'payload-plugin-socials'
+import { payloadPluginSocials } from '@cargo/payload-plugin-socials'
 
 export default buildConfig({
   plugins: [
@@ -355,13 +366,24 @@ Facebook's `scheduledPublishTime` is provider-native scheduling. The generic sou
 
 ## Image safety
 
-With preflight enabled, remote image inspection is HTTPS-only, redirect-bounded, time-bounded, and streamed under a processing cap (`assets.maxSourceImageBytes`, 25 MiB by default). Every redirect hostname is resolved and validated, and the HTTPS connection is pinned to that validated address while preserving the hostname for TLS SNI and certificate verification. DNS names resolving to local, private, link-local, documentation, or otherwise non-public IP ranges are rejected. `trustedRemoteHosts` is an explicit exact-host bypass for a host-controlled private media origin and should normally remain empty; those connections are still DNS-pinned.
+With preflight enabled, remote image inspection is HTTPS-only, redirect-bounded, time-bounded, and streamed under a processing cap (`assets.maxSourceImageBytes`, 25 MiB by default). Every redirect hostname is resolved and validated, and on Node the HTTPS connection is pinned to that validated address while preserving the hostname for TLS SNI and certificate verification (on Workers it can't be pinned: see [Cloudflare Workers](#cloudflare-workers)). DNS names resolving to local, private, link-local, documentation, or otherwise non-public IP ranges are rejected. `trustedRemoteHosts` is an explicit exact-host bypass for a host-controlled private media origin and should normally remain empty; those connections are still DNS-pinned.
 
 Image detection uses file signatures, not URL extensions, so extensionless CDN URLs are supported. With preflight enabled, an unreadable or unrecognized signature fails closed instead of passing an uninspected asset to a provider. Set `assets.preflight: false` only when the host deliberately accepts that pass-through behavior.
 
 When `autoConvert` is enabled, configure a dedicated public upload collection with no `formatOptions`; the plugin writes deterministic JPEG renditions there. Idempotency continues to use the original media URL. `assets.renditionData` supplies field values the rendition collection requires, such as alt text.
 
 `assets.normalize` extends conversion to every image, including formats the platform already accepts. Each rendition applies EXIF orientation, flattens transparency to white, converts to sRGB, strips metadata and is fitted onto a per-platform canvas without cropping: Facebook keeps the photograph's own proportions within 2048 pixels and is never enlarged, Instagram stories use a 1080 by 1920 canvas, and every other image is padded onto a 1080 pixel square so a carousel of mixed ratios publishes intact. Sources are decoded within a 64 megapixel budget and the encoded result must fit the platform's byte limit. Renditions are cached per source URL, platform, presentation and quality. Raise `maxSourceImageBytes` when originals are large; `maxConcurrentConversions` (default 1) bounds how many conversions a process runs at once, which matters for multi-photo and carousel publishes.
+
+## Cloudflare Workers
+
+The plugin runs in a Worker with the `nodejs_compat` flag. Checked in local workerd (compatibility date 2026-10-23): `node:crypto` AES-256-GCM, HMAC, RSA-SHA256 signing (Business Profile service accounts), `timingSafeEqual` and `node:net`'s `BlockList` all work as on Node. What differs:
+
+- **Remote media fetches aren't DNS-pinned.** workerd's `node:https` rejects the `lookup` option, and Cloudflare documents `dns.lookup` as not implemented. On Workers (detected by `navigator.userAgent === 'Cloudflare-Workers'`), the image preflight and Pinterest video downloads resolve each hostname with `dns.resolve4` + `dns.resolve6` (DNS over HTTPS), reject any non-public address as on Node, and then request it with `fetch` (`redirect: 'manual'`, so every redirect hop is checked again). The edge resolves the name again when it connects, so a DNS answer that changes between the two lookups isn't caught; Workers' outbound `fetch` doesn't reach private networks, which is what pinning protects against on Node. Each lookup is two subrequests.
+- **No `sharp`.** It's a native module, so `assets.autoConvert` and `assets.normalize` can't run in a Worker. Keep them off (the default), or run conversions in a Node worker. sharp is imported through a variable, so a host bundle without it still builds.
+- **Scheduling.** A Worker has no long-running process: drive the queue from a Cron Trigger's `scheduled` handler (call `sweepDueSocialPosts(payload, normalizedOptions)` and `runQueuedSocialsJobs(payload, normalizedOptions)`, with `normalizedOptions = normalizePluginOptions(sameOptions)`, or `payload.jobs.handleSchedules()` + `payload.jobs.run({ queue: 'socials', overrideAccess: true })` with `scheduling.autoRun` set), or `POST` the internal scheduler endpoints from an external cron.
+- **Limits.** A synchronous publish waits on the provider inside the request (video processing polls), which is wall-clock time, not CPU, on Workers. Keep `scheduling.drainBatchSize` small enough for one invocation's CPU budget.
+
+Checked so far: the unit and boot tests, the remote-fetch path in local workerd (DNS checks, redirects, private targets refused), and the admin (nav link, dashboard widget, `/admin/socials`, the Socials tab on Pages, the template builder) in the Cargo app under `vite dev`, light and dark. Not yet tried on a deployed Worker, and no post has been published through the port.
 
 ## Deferred publishing
 
@@ -427,7 +449,19 @@ The Business Profile listing helpers (`getLocation`, `updateLocation`, `setOpenS
 
 ## Release and migration policy
 
-Schema changes are versioned and documented in [CHANGELOG.md](./CHANGELOG.md). The host always generates, reviews, and applies its own Payload migration. Before production, run the repository's complete release gate and controlled canaries against each enabled provider account; automated tests never create or delete live social content.
+Schema changes are versioned and documented in [CHANGELOG.md](./CHANGELOG.md). The host always generates, reviews, and applies its own Payload migration (in the Cargo app: `pnpm web migrate:create`). Before production, run controlled canaries against each enabled provider account; automated tests never create or delete live social content.
+
+## Development
+
+From the repo root:
+
+```bash
+pnpm --filter @cargo/payload-plugin-socials build       # tsup → dist/
+pnpm --filter @cargo/payload-plugin-socials test        # Vitest: unit + Payload boot on in-memory SQLite
+pnpm --filter @cargo/payload-plugin-socials typecheck   # sources and tests
+```
+
+`payload`, `@payloadcms/*`, React and TypeScript come from the workspace catalog; never pin them here.
 
 ## Documentation
 
@@ -438,8 +472,7 @@ Schema changes are versioned and documented in [CHANGELOG.md](./CHANGELOG.md). T
 - [Facebook Pages](./docs/facebook.md)
 - [Google Business Profile](./docs/google-business-profile.md)
 - [Architecture decisions](./docs/decisions/)
-- [Security policy](./SECURITY.md)
-- [Contributing](./CONTRIBUTING.md)
+- [Security model](./SECURITY.md)
 
 ## License
 

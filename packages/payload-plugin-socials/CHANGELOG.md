@@ -4,6 +4,30 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.12.0-beta.0] - 2026-11-04
+
+Cargo's fork (`@cargo/payload-plugin-socials`) of upstream 0.11.1 (`b2ee260`), ported to Payload 4. No option changes. The schema is the same tables as 0.11.1; on Payload 4 that requires the opt-outs below, or Payload adds version tables.
+
+### Changed
+
+- **Payload 4** (`>=4.0.0-beta.6 <5`) replaces Payload 3; `@payloadcms/next` is no longer a peer. The `/admin/socials` view uses `DefaultTemplate` from `@payloadcms/ui/rsc` and `server.redirect()` instead of `next/navigation`.
+- `social-posts`, `social-templates` and the `socials-connections` global set `versions: false`: Payload 4 versions collections and globals by default.
+- `payload.jobs.queue`, `run` and `cancelByID` pass `overrideAccess: true`. Payload 4 defaults them to the jobs access functions (a logged-in user), so cron sweeps and internal-scheduler drains threw `Forbidden`.
+- Package name `@cargo/payload-plugin-socials`; admin import-map paths follow it (`@cargo/payload-plugin-socials/client`, `/rsc`). Log and error prefixes stay `payload-plugin-socials`.
+- Built with tsup into `dist/index.js`, `dist/client.js` (+ `client.css`) and `dist/rsc.js`. The stylesheet is plain CSS (it used SCSS only for nesting, which CSS has).
+- Admin buttons use `size="medium"`: `@payloadcms/ui` 4 has no `small`.
+- Admin styles use Payload 4 tokens (`--color-*`, `--field-color-*`, `--radius-*`, `--text-mono-family`, heading tokens) instead of the removed v3 ones (`--theme-elevation-*`, `--theme-text`, `--theme-input-bg`, `--style-radius-*`, `--font-mono`), so the composer, widget and template builder follow the admin theme in light and dark. `payload4Tokens.test.ts` guards it. Composer, widget and view headings carry a `socials-heading` class, since Payload 4 doesn't style bare headings.
+
+### Added
+
+- **Cloudflare Workers support** for remote media fetches (image preflight, Pinterest video downloads). On Workers, hostnames resolve through `dns.resolve4` + `dns.resolve6` (CNAME targets in the answers are ignored; a lookup error other than "no record" fails closed), and requests go through `fetch` with `redirect: 'manual'`, since workerd's `node:https` rejects the `lookup` option that pins the connection on Node. Every hop is still checked against non-public ranges. Exported from the module as `createWorkersLookupHostname` and `fetchUnpinnedHttpsRequest` for tests.
+- `sharp` is loaded through a variable specifier (`importSharp`), so bundlers don't try to resolve the optional dependency at build time. `optionalImports.test.ts` guards it.
+- Boot tests (real Payload, in-memory SQLite): the versioning opt-outs, and a sweep job queued and drained with no user.
+
+### Removed
+
+- The Next.js dev app, Playwright e2e and live canary suites, and the Postgres/MongoDB boot variants. Upstream's release tooling (ESLint config, publint, pack smoke test, CONTRIBUTING).
+
 ## [0.11.1] - 2026-10-23
 
 ### Fixed
