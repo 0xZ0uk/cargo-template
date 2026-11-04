@@ -3,6 +3,7 @@ import type { RequiredDataFromCollectionSlug } from 'payload'
 import { createServerFn } from '@tanstack/react-start'
 
 import { homeStatic } from '@/collections/Pages/homeStatic'
+import { pagePath } from '@/utilities/pagePath'
 
 type LoadPageInput = {
   draft?: boolean
@@ -12,6 +13,8 @@ type LoadPageInput = {
 export type LoadPageResult = {
   /** True when the draft is shown (live preview, on-page editing or a preview link). */
   draft: boolean
+  /** True for the admin's live preview (`?draft=true` from a signed-in user): it turns on the listener that reloads on save. */
+  livePreview: boolean
   /** Structured data nodes, serialized and safe to embed in `<script type="application/ld+json">`. */
   jsonLd: string[]
   /** The request origin, used to build absolute URLs for Open Graph tags. */
@@ -29,7 +32,7 @@ export const loadPage = createServerFn({ method: 'GET', strict: { output: false 
     // Loaded after the Payload config: `tanstackSession()` in the config hands the session
     // helpers the secret they verify cookies with.
     const payload = await getPayload({ config: (await import('@payload-config')).default })
-    const { isDraftEnabled, isSharedPreview, onpageContext } =
+    const { isDraftEnabled, onpageContext, previewGrantFor } =
       await import('@cargo/onpage-tanstack-start/session')
 
     // Drafts show for a logged-in user who asked with `?draft=true` (live preview) or turned
@@ -40,24 +43,25 @@ export const loadPage = createServerFn({ method: 'GET', strict: { output: false 
       data.draft || onpageDraft
         ? (await payload.auth({ headers: new Headers(getRequestHeaders()) })).user
         : null
-    // A preview link carries no Payload user: its sealed grant (checked against this request's
-    // path) stands in for read access, for this one page.
-    const sharedPreview = !user && onpageDraft && (await isSharedPreview())
-    const draft = Boolean(user) || sharedPreview
+    // A preview link carries no Payload user. Its sealed grant names one document and the path
+    // it was shared at; when that path is this page's, the grant stands in for read access to
+    // that document only. It's checked against the path of the slug being rendered, not the
+    // request URL, so it still holds when this loader re-runs as a server-function call
+    // (hydration, invalidation, client-side navigation). The document is read by id, so a page
+    // that later takes over the slug isn't covered.
+    const grant = user ? null : await previewGrantFor(pagePath(data.slug))
+    const shared = grant?.kind === 'collection' && grant.slug === 'pages' ? grant : null
+    const draft = Boolean(user) || Boolean(shared)
 
     const result = await payload.find({
       collection: 'pages',
       depth: 2,
       draft,
       limit: 1,
-      overrideAccess: sharedPreview,
+      overrideAccess: Boolean(shared),
       pagination: false,
       user,
-      where: {
-        slug: {
-          equals: data.slug,
-        },
-      },
+      where: shared ? { id: { equals: shared.id } } : { slug: { equals: data.slug } },
       // In edit mode, strings come back with invisible markers that map them to their fields.
       ...(await onpageContext()),
     })
@@ -80,5 +84,5 @@ export const loadPage = createServerFn({ method: 'GET', strict: { output: false 
       jsonLd = await buildPageJsonLd(page, process.env.SITE_URL || cloudflareEnv.SITE_URL || origin)
     }
 
-    return { draft, jsonLd, origin, page }
+    return { draft, jsonLd, livePreview: Boolean(user) && Boolean(data.draft), origin, page }
   })

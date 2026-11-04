@@ -89,6 +89,7 @@ describe('pageHead', () => {
   it('turns the serialized nodes into ld+json scripts', () => {
     const head = pageHead({
       draft: false,
+      livePreview: false,
       jsonLd: ['{"a":1}', '{"b":2}'],
       origin: 'https://example.com',
       page: { layout: [], slug: 'about', title: 'About', hero: { type: 'none' } } as never,

@@ -29,6 +29,34 @@ const paragraph = (text: string) => ({
   children: [{ type: 'text', detail: 0, format: 0, mode: 'normal', style: '', text, version: 1 }],
 })
 
+/** A published page with one Content block holding `text`. */
+const pageData = (title: string, slug: string, text: string) => ({
+  title,
+  slug,
+  _status: 'published',
+  hero: { type: 'none' },
+  layout: [
+    {
+      blockType: 'content',
+      columns: [
+        {
+          size: 'full',
+          richText: {
+            root: {
+              type: 'root',
+              direction: 'ltr',
+              format: '',
+              indent: 0,
+              version: 1,
+              children: [paragraph(text)],
+            },
+          },
+        },
+      ],
+    },
+  ],
+})
+
 /** A fresh browser context with no cookies: a site visitor. */
 const visitor = async (browser: Browser) => (await browser.newContext()).newPage()
 
@@ -37,7 +65,27 @@ test.describe('On-page editing', () => {
   let admin: Page
   let api: APIRequestContext
   let id: number
+  /** A page that takes over `slug` once the shared page is renamed. */
+  let squatterId: number | undefined
   const slug = `e2e-onpage-${Date.now()}`
+
+  /**
+   * A preview link for the test page, made from the admin as "Copy preview link" does: the
+   * endpoint refuses requests that aren't same-origin, which Playwright's API client isn't.
+   */
+  const createPreviewLink = async () => {
+    await admin.goto(`/admin/collections/pages/${id}`)
+    const { status, body } = await admin.evaluate(async (pageId) => {
+      const res = await fetch('/api/onpage/preview-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: 'collection', slug: 'pages', id: pageId }),
+      })
+      return { status: res.status, body: await res.text() }
+    }, id)
+    expect(status, body).toBe(200)
+    return (JSON.parse(body) as { url: string }).url
+  }
 
   test.beforeAll(async ({ browser }) => {
     await seedTestUser()
@@ -49,40 +97,18 @@ test.describe('On-page editing', () => {
     // Published through the REST API as the admin, so the dev server does every write itself
     // (see seo-sidebar.e2e.spec.ts).
     const response = await api.post('/api/pages', {
-      data: {
-        title: 'E2E on-page editing',
-        slug,
-        _status: 'published',
-        hero: { type: 'none' },
-        layout: [
-          {
-            blockType: 'content',
-            columns: [
-              {
-                size: 'full',
-                richText: {
-                  root: {
-                    type: 'root',
-                    direction: 'ltr',
-                    format: '',
-                    indent: 0,
-                    version: 1,
-                    children: [paragraph(PUBLISHED)],
-                  },
-                },
-              },
-            ],
-          },
-        ],
-      },
+      data: pageData('E2E on-page editing', slug, PUBLISHED),
     })
     expect(response.ok(), await response.text()).toBe(true)
     id = (await response.json()).doc.id
   })
 
   test.afterAll(async () => {
-    const response = await api.delete(`/api/pages/${id}`)
-    expect([200, 404]).toContain(response.status())
+    for (const pageId of [id, squatterId]) {
+      if (pageId === undefined) continue
+      const response = await api.delete(`/api/pages/${pageId}`)
+      expect([200, 404]).toContain(response.status())
+    }
     await context.close()
     await cleanupTestUser()
   })
@@ -157,27 +183,29 @@ test.describe('On-page editing', () => {
   test('a preview link shows the draft of that page only, to anyone holding it', async ({
     browser,
   }) => {
-    // From the admin page, as "Copy preview link" does: the endpoint refuses requests that
-    // aren't same-origin, which Playwright's API client isn't.
-    await admin.goto(`/admin/collections/pages/${id}`)
-    const { status, body } = await admin.evaluate(async (pageId) => {
-      const res = await fetch('/api/onpage/preview-link', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ kind: 'collection', slug: 'pages', id: pageId }),
-      })
-      return { status: res.status, body: await res.text() }
-    }, id)
-    expect(status, body).toBe(200)
-    const { url } = JSON.parse(body) as { url: string }
+    const previewURL = await createPreviewLink()
 
     const page = await visitor(browser)
-    await page.goto(url)
+    await page.goto(previewURL)
     await expect(page).toHaveURL(new RegExp(`/${slug}$`))
     await expect(page.getByText(EDIT + PUBLISHED)).toBeVisible()
     await expect(page.getByText('Shared preview — not published yet')).toBeVisible()
     // Never an editor, even with the link.
     await expect(page.getByRole('toolbar', { name: 'Page editor' })).toHaveCount(0)
+
+    // Still the draft once the page has hydrated: nothing may re-run the loader in place (it
+    // runs as a server-function call then, whose URL isn't the page's).
+    await page.waitForLoadState('networkidle')
+    await expect(page.getByText(EDIT + PUBLISHED)).toBeVisible()
+
+    // Link viewers navigate with full page loads (each page checked on the server), and one
+    // press of Back returns to the shared page, still showing the draft.
+    await page.getByRole('link', { name: 'Payload Logo' }).first().click()
+    await expect(page).toHaveURL(/\/$/)
+    await page.goBack()
+    await expect(page).toHaveURL(new RegExp(`/${slug}$`))
+    await page.waitForLoadState('networkidle')
+    await expect(page.getByText(EDIT + PUBLISHED)).toBeVisible()
 
     // The grant is bound to this page's path: the home page stays published for this viewer,
     // and a server render of it carries no draft state.
@@ -189,6 +217,39 @@ test.describe('On-page editing', () => {
     await other.goto(`/${slug}`)
     await expect(other.getByText(PUBLISHED, { exact: true })).toBeVisible()
     await other.context().close()
+    await page.context().close()
+  })
+
+  test('a preview grant keeps showing the page it was made for after its slug moves on', async ({
+    browser,
+  }) => {
+    // A viewer opens the link: their browser now holds a grant for /<slug> and this page.
+    const page = await visitor(browser)
+    await page.goto(await createPreviewLink())
+    await expect(page).toHaveURL(new RegExp(`/${slug}$`))
+
+    // The page is renamed (publishing its draft), and another page is published at the old
+    // slug, with a draft of its own.
+    const renamed = await api.patch(`/api/pages/${id}`, {
+      data: { slug: `${slug}-renamed`, _status: 'published' },
+    })
+    expect(renamed.ok(), await renamed.text()).toBe(true)
+    const squatter = await api.post('/api/pages', {
+      data: pageData('E2E squatter', slug, 'A different page now lives at this address.'),
+    })
+    expect(squatter.ok(), await squatter.text()).toBe(true)
+    squatterId = (await squatter.json()).doc.id
+    const squatterDraft = await api.patch(`/api/pages/${squatterId}?draft=true`, {
+      data: { title: 'E2E squatter (draft)' },
+    })
+    expect(squatterDraft.ok(), await squatterDraft.text()).toBe(true)
+
+    // Back at the old address, the grant still covers only the page it was made for: never the
+    // new occupant's draft.
+    await page.goto(`/${slug}`)
+    await page.waitForLoadState('networkidle')
+    await expect(page.getByText(EDIT + PUBLISHED)).toBeVisible()
+    await expect(page.getByText('A different page now lives at this address.')).toHaveCount(0)
     await page.context().close()
   })
 })
