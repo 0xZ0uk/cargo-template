@@ -161,10 +161,19 @@ export type CoercedEnvSchema = {
    * SEO analyzer alerts digest (`alerts` feature): a daily summary of score drops, new 404s and  
    * ranking drops, sent by the `seoAlertsDigest` job (04:00 UTC) or "Send now" in  
    * /admin/performance. Nothing is sent without a channel. The webhook gets a JSON POST  
-   * (`{ type: "seo-alert-digest", siteUrl, digest }`). Webhook URLs usually embed a token.  
+   * (`{ type: "seo-alert-digest", siteUrl, digest }`, or a message for Slack / Discord, see  
+   * SEO_ALERT_WEBHOOK_FORMAT). Webhook URLs usually embed a token.  
    * ![icon](data:image/svg+xml;utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2220%22%20height%3D%2220%22%20viewBox%3D%220%200%2032%2032%22%3E%3Cpath%20fill%3D%22%23808080%22%20d%3D%22M24%2021V9h-2v14h8v-2zm-4-6v-4c0-1.103-.897-2-2-2h-6v14h2v-6h1.48l2.335%206h2.145l-2.333-6H18c1.103%200%202-.897%202-2m-6-4h4v4h-4zM8%2023H4c-1.103%200-2-.897-2-2V9h2v12h4V9h2v12c0%201.103-.897%202-2%202%22%2F%3E%3C%2Fsvg%3E)   
    */
   SEO_ALERT_WEBHOOK_URL?: string;
+  
+  /**
+   * **SEO_ALERT_WEBHOOK_FORMAT**  
+   * Webhook body: `json` (the plugin's payload), `slack` or `discord`. Empty: guessed from the URL's  
+   * host (hooks.slack.com, discord.com/api/webhooks/), else `json`.  
+   * ![icon](data:image/svg+xml;utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2220%22%20height%3D%2220%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20fill%3D%22%23808080%22%20d%3D%22M7.885%2010.23L12%203.463l4.116%206.769zm9.606%2011q-1.558%200-2.64-1.081t-1.082-2.64t1.082-2.649t2.64-1.09t2.649%201.09t1.09%202.649t-1.09%202.64t-2.649%201.082m-13.722-.5v-6.462h6.462v6.462z%22%2F%3E%3C%2Fsvg%3E)   
+   */
+  SEO_ALERT_WEBHOOK_FORMAT?: "json" | "slack" | "discord";
   
   /**
    * **SEO_ALERT_EMAIL** 🔐 _sensitive_  
@@ -195,11 +204,11 @@ export type CoercedEnvSchema = {
   
 };
 
-type _CoercedEnvSchema_c4f20dd2 = CoercedEnvSchema;
+type _CoercedEnvSchema_c2a5fd0c = CoercedEnvSchema;
 
 declare module 'varlock/env' {
-  export interface TypedEnvSchema extends Readonly<_CoercedEnvSchema_c4f20dd2> {}
-  export interface PublicTypedEnvSchema extends Readonly<Pick<_CoercedEnvSchema_c4f20dd2, 'APP_ENV' | 'PAYLOAD_LOG_LEVEL' | 'SITE_URL' | 'SEO_LLMS_TXT' | 'SEO_AUDIT_MAX_DOCS' | 'SEO_AUDIT_STEP_DOCS' | 'SEO_FETCH_MAX_DOCS' | 'GSC_OAUTH_CLIENT_ID' | 'SEO_AI_MODEL' | 'SEO_AI_BASE_URL' | 'SEO_AI_REASONING' | 'SEO_AI_DATA_COLLECTION' | 'SEO_EXTERNAL_LINKS_MAX' | 'SEO_EXTERNAL_LINKS_MAX_SUBREQUESTS' | 'SEO_ALERT_SCORE_DROP' | 'SEO_ALERT_POSITION_DROP' | 'SEO_ALERT_WINDOW_HOURS'>> {}
+  export interface TypedEnvSchema extends Readonly<_CoercedEnvSchema_c2a5fd0c> {}
+  export interface PublicTypedEnvSchema extends Readonly<Pick<_CoercedEnvSchema_c2a5fd0c, 'APP_ENV' | 'PAYLOAD_LOG_LEVEL' | 'SITE_URL' | 'SEO_LLMS_TXT' | 'SEO_AUDIT_MAX_DOCS' | 'SEO_AUDIT_STEP_DOCS' | 'SEO_FETCH_MAX_DOCS' | 'GSC_OAUTH_CLIENT_ID' | 'SEO_AI_MODEL' | 'SEO_AI_BASE_URL' | 'SEO_AI_REASONING' | 'SEO_AI_DATA_COLLECTION' | 'SEO_EXTERNAL_LINKS_MAX' | 'SEO_EXTERNAL_LINKS_MAX_SUBREQUESTS' | 'SEO_ALERT_WEBHOOK_FORMAT' | 'SEO_ALERT_SCORE_DROP' | 'SEO_ALERT_POSITION_DROP' | 'SEO_ALERT_WINDOW_HOURS'>> {}
 }
 
 
@@ -209,11 +218,11 @@ export type EnvSchemaAsStrings = {
       : (NonNullable<CoercedEnvSchema[Property]> extends boolean ? ('true' | 'false') : string)
 };
 
-type _EnvSchemaAsStrings_c4f20dd2 = EnvSchemaAsStrings;
+type _EnvSchemaAsStrings_c2a5fd0c = EnvSchemaAsStrings;
 declare global {
 
   // add types for global import.meta.env
-  interface ImportMetaEnv extends _EnvSchemaAsStrings_c4f20dd2 {}
+  interface ImportMetaEnv extends _EnvSchemaAsStrings_c2a5fd0c {}
   interface ImportMeta {
     readonly env: ImportMetaEnv;
   }

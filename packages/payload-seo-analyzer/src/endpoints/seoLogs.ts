@@ -19,6 +19,7 @@ import { seoLogsMaxRows, type RetentionMaxRows } from '../retention.js'
 import { payloadStoreResolver, seoStoreRuntime, type NotFoundHit, type NotFoundRecordResult, type NotFoundType, type SeoDataStoreResolver } from '../store/index.js'
 import { createBucketRateLimiter, rateLimitKey, type SeoRateLimit } from '../rateLimiter.js'
 import { parseJsonBody } from '../helpers/parseBody.js'
+import { isProbePath } from '../helpers/probePaths.js'
 
 import { isSeoAdminRequest as isAdmin, isSeoPanelUser } from '../helpers/isAdmin.js'
 
@@ -89,6 +90,8 @@ export async function recordSeoNotFound(
   if (!runtime?.enabled.includes('seo-logs')) return null
   const hit = prepareNotFoundHit(raw)
   if ('error' in hit) return null
+  // Scanner probes (`/wp-login.php`, `/.env`) would fill the row cap with noise.
+  if (isProbePath(hit.url, runtime.notFoundProbeFilter)) return null
   try {
     const result = await runtime.resolveStore(payload).notFound.record(hit, seoLogsMaxRows(runtime.maxRows))
     if (result === 'capped') warnCapped(payload, seoLogsMaxRows(runtime.maxRows))
@@ -161,6 +164,10 @@ export function createSeoLogsHandler(
         const body = await parseJsonBody(req)
         const hit = prepareNotFoundHit(body)
         if ('error' in hit) return Response.json({ error: hit.error }, { status: 400 })
+        // Same filter as `recordSeoNotFound`: a host's 404 middleware shouldn't log scanner probes.
+        if (isProbePath(hit.url, seoStoreRuntime(req.payload)?.notFoundProbeFilter)) {
+          return Response.json({ success: true, action: 'ignored' })
+        }
 
         const max = seoLogsMaxRows(maxRows)
         const action = await resolveStore(req.payload).notFound.record(hit, max)

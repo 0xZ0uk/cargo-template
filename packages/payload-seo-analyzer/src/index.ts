@@ -146,6 +146,12 @@ export type {
 } from './store/index.js'
 // Record a 404 from the host's own frontend, in-process (needs `features.seoLogs`).
 export { recordSeoNotFound } from './endpoints/seoLogs.js'
+// The scanner-probe paths the 404 log drops (`notFoundProbeFilter` option).
+export { isProbePath, PROBE_PATH_PATTERNS } from './helpers/probePaths.js'
+export type { NotFoundProbeFilterOption, ProbePathMatcher } from './helpers/probePaths.js'
+// Alerts digest webhook formats (`alertWebhookFormat` option, `SEO_ALERT_WEBHOOK_FORMAT`).
+export { detectAlertWebhookFormat, ALERT_WEBHOOK_FORMATS } from './alertWebhook.js'
+export type { AlertWebhookFormat } from './alertWebhook.js'
 
 // Re-export the dashboard string dictionary
 export { getDashboardT } from './dashboard-i18n.js'

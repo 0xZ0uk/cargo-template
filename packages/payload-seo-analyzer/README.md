@@ -179,6 +179,7 @@ Jobs add Payload's `payload-jobs` collection, so run `migrate:create` once. A ne
 - **`/sitemap.xml`, `/robots.txt`, `/llms.txt`:** the plugin serves them under `/api/seo-plugin/…`. `apps/web` re-serves them at the root by passing the request to Payload's API handler in-process (`src/utilities/servePluginFile.ts`). Never fetch them from the Worker's own origin, because those subrequests are unreliable.
 - **Redirects:** the app reads `seo-redirects` only when the page lookup misses, caches the table per isolate for 60 s, and checks targets with `validateRedirectTarget` from `@cargo/payload-seo-analyzer/shared` (`src/app/_frontend/redirects.functions.ts`).
 - **404 log:** call `recordSeoNotFound(payload, { url, referrer, userAgent })` from your not-found path and pass the promise to `waitUntil`. It never throws, and does nothing while `seoLogs` is off.
+- **Scanner probes stay out of the log.** Bots request `/wp-login.php`, `/.env`, `/.git/config` and the like all day; each distinct path would take a slot of the log's row cap (`SEO_LOGS_MAX_ROWS`, 5k) and crowd out real broken links. `recordSeoNotFound` and `POST /seo-logs` drop them before they're stored. The filter reads the **path only**, never the user agent, because crawlers' 404s are the rows worth keeping. The built-in list (`PROBE_PATH_PATTERNS`, exported with `isProbePath`) covers: `*.php`, WordPress (`wp-admin`, `wp-login`, `wp-content`, `wp-includes`, `wp-json`, `wp-config`, `wp-cron`, `/xmlrpc`), dotfiles and VCS folders (`.env`, `.git`, `.svn`, `.hg`, `.aws`, `.ssh`, `.npmrc`, `.htaccess`, `.htpasswd`, `.DS_Store`; `.well-known` is kept), `cgi-bin`, `vendor/phpunit`, `phpmyadmin`, backups and archives at the root only (`/backup.zip`, `/db.sql`: `.sql .bak .backup .old .orig .dump .zip .tar .gz .tgz .rar .7z`), and `..` traversal. Legacy URLs such as `.aspx` pages or `/files/report.zip` are kept. Extend it with `notFoundProbeFilter: { extra: ['/old-admin', /\.cfm$/] }` (a string is a case-insensitive path prefix, a RegExp is tested against the decoded, lower-cased path), or log everything with `notFoundProbeFilter: false`.
 
 ### 5. Environment variables
 
@@ -246,6 +247,8 @@ Every field of `SeoPluginConfig`. All are optional.
 | `uploadsCollection` | `string` | `'media'` | Upload collection for `meta.image` and the alt-text endpoints. |
 | `autoCreateMetaFields` | `boolean` | `true` | Adds the `meta` group (title, description, image, preview). Skipped with a warning when the collection already has one, e.g. from `@payloadcms/plugin-seo`. |
 | `seoLogsSecret` | `string` | — | Shared secret for `POST /seo-logs` (`X-SEO-Secret`). Without it that route needs an SEO admin; in-process recording uses `recordSeoNotFound` instead. |
+| `notFoundProbeFilter` | `boolean \| { extra?: (string \| RegExp)[] }` | `true` | Drops vulnerability-scanner probes (`*.php`, `/wp-login`, `/.env`, `/.git`, …) before they reach the 404 log. `false` logs everything; `{ extra }` adds patterns to the built-in list. See [Root files, redirects and 404s](#4-root-files-redirects-and-404s). |
+| `alertWebhookFormat` | `'json' \| 'slack' \| 'discord'` | by URL host | Body of the alerts webhook. `SEO_ALERT_WEBHOOK_FORMAT` overrides it. See [Alerts webhook formats](#alerts-webhook-formats). |
 | `cacheStore` | `SeoCacheStore` | in memory | Persistent store for the caches the admin polls. **Required on Workers.** |
 | `waitUntil` | `(promise) => void` | — | Keeps background work alive after the response and enables step builds. **Required on Workers.** |
 | `dataStore` | `SeoDataStore` | Payload collections | Where time-series rows live. `createSqlSeoDataStore(d1)` on Workers. See [Data store and retention](#data-store-and-retention). |
@@ -355,11 +358,24 @@ The plugin reads no `NEXT_*` or `PAYLOAD_PUBLIC_*` variables. On Workers, declar
 | `SEO_GSC_ENCRYPTION_KEY` | derived from `PAYLOAD_SECRET` | 32-byte key (hex or base64) for the stored GSC token. Changing it, or the secret it derives from, forces a reconnect |
 | `GOOGLE_PAGESPEED_API_KEY` / `PAGESPEED_API_KEY` | — | PageSpeed Insights key for Core Web Vitals |
 | `SEO_INDEXNOW_KEY` | — | IndexNow key, required by `indexNow` |
-| `SEO_ALERT_WEBHOOK_URL`, `SEO_ALERT_EMAIL` | — | Digest delivery for `alerts`. The webhook gets a JSON POST, `{ type: "seo-alert-digest", siteUrl, digest }`; a non-2xx answer counts as failed. The scheduled digest only knows `siteUrl` from the option or `SITE_URL` |
+| `SEO_ALERT_WEBHOOK_URL`, `SEO_ALERT_EMAIL` | — | Digest delivery for `alerts`. The webhook gets a POST in the format below, and a non-2xx answer or no answer within 10 s counts as failed. The scheduled digest only knows `siteUrl` from the option or `SITE_URL` |
+| `SEO_ALERT_WEBHOOK_FORMAT` | by URL host | `json`, `slack` or `discord`; overrides the `alertWebhookFormat` option. Unset: `hooks.slack.com` → `slack`, `discord.com` / `discordapp.com` with `/api/webhooks/` → `discord`, anything else → `json`. A value that isn't one of the three is ignored with a warning |
 | `SEO_ALERT_SCORE_DROP`, `SEO_ALERT_POSITION_DROP`, `SEO_ALERT_WINDOW_HOURS`, `SEO_ALERT_INTERVAL_HOURS` | `10`, `5`, `24`, `24` | Digest thresholds; the interval only applies to the Node timer |
 | `SEO_REQUIRE_ADMIN_ROLE` | — | `1` requires an explicit `admin` role (no fail-open on role-less setups) |
 | `SEO_ADMIN_USER_COLLECTIONS` | `config.admin.user` | Comma-separated collections accepted as admin-panel users |
 | `SEO_STRICT_READ_ACCESS` | — | `1` makes single-document reads honour the caller's ACL |
+
+### Alerts webhook formats
+
+`SEO_ALERT_WEBHOOK_URL` gets one POST per digest. The body depends on the format (`SEO_ALERT_WEBHOOK_FORMAT`, else the `alertWebhookFormat` option, else the URL's host):
+
+| Format | Body | Notes |
+| --- | --- | --- |
+| `json` | `{ type: "seo-alert-digest", siteUrl, digest }` | The raw digest, for your own receiver. The default for any other host |
+| `slack` | `{ text }` | Slack incoming webhook; mrkdwn. At most 3,500 characters |
+| `discord` | `{ content, allowed_mentions: { parse: [] }, flags: 4 }` | Discord webhook. At most 2,000 characters (Discord's limit); no `@everyone` or role can be pinged, and the link doesn't unfurl (`SUPPRESS_EMBEDS`) |
+
+Slack and Discord messages list score drops, new 404s and ranking drops, then link to the performance view under the host's admin route (`<siteUrl>/admin/performance` by default) when the site URL is known (the option or `SITE_URL` for the scheduled job, the request origin for "Send now"). Each section shows up to 10 rows, fewer when the message would exceed the limit, then "…and N more"; the section counts stay exact. Paths and queries come from visitors and Search Console, so they're always printed in code spans with markup-breaking characters removed or escaped.
 
 ## API endpoints
 

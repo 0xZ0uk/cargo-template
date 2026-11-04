@@ -113,6 +113,63 @@ describe('deliverAlertDigest', () => {
     expect(init!.signal).toBeInstanceOf(AbortSignal)
   })
 
+  it.each([
+    ['https://hooks.slack.com/services/T/B/X', undefined, 'text'],
+    ['https://discord.com/api/webhooks/1/abc', undefined, 'content'],
+    ['https://hook.test/x', undefined, 'type'],
+    // the env var forces a format whatever the host
+    ['https://hook.test/x', 'slack', 'text'],
+    ['https://hook.test/x', 'discord', 'content'],
+    ['https://hooks.slack.com/services/T/B/X', 'json', 'type'],
+  ])('posts the %s webhook (format env %s) as a body with `%s`', async (webhookUrl, webhookFormat, key) => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }))
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const r = await deliverAlertDigest({ logger: logger() } as any, digest, { ...cfg, webhookUrl, webhookFormat }, 'https://site.test')
+    expect(r.sent).toBe(true)
+    const [, init] = spy.mock.calls[0]!
+    const body = JSON.parse(String(init!.body))
+    expect(Object.keys(body)).toContain(key)
+    if (key !== 'type') expect(body[key]).toContain('/gone')
+  })
+
+  it("links to the performance view under the host's admin route", async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(null, { status: 200 }))
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const payload = { logger: logger(), config: { routes: { admin: '/cms' } } } as any
+    await deliverAlertDigest(payload, digest, { ...cfg, webhookUrl: 'https://hooks.slack.com/services/T/B/X' }, 'https://site.test')
+    const { text } = JSON.parse(String(spy.mock.calls[0]![1]!.body))
+    expect(text).toContain('<https://site.test/cms/performance|')
+  })
+
+  it('uses the plugin option, and the env var wins over it', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(null, { status: 200 }))
+    const payload = {
+      logger: logger(),
+      config: { custom: { seoAnalyzer: { store: { alertWebhookFormat: 'discord' } } } },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any
+    await deliverAlertDigest(payload, digest, { ...cfg, webhookUrl: 'https://hook.test/x' })
+    expect(Object.keys(JSON.parse(String(spy.mock.calls[0]![1]!.body)))).toEqual(['content', 'allowed_mentions', 'flags'])
+    await deliverAlertDigest(payload, digest, { ...cfg, webhookUrl: 'https://hook.test/x', webhookFormat: 'slack' })
+    expect(Object.keys(JSON.parse(String(spy.mock.calls[1]![1]!.body)))).toEqual(['text'])
+  })
+
+  it('warns about an unknown SEO_ALERT_WEBHOOK_FORMAT and falls back to the URL', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 200 }))
+    const log = logger()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await deliverAlertDigest({ logger: log } as any, digest, { ...cfg, webhookUrl: 'https://hooks.slack.com/services/a/b/c', webhookFormat: 'teams' })
+    expect(log.warn).toHaveBeenCalledWith(expect.stringContaining('"teams"'))
+    expect(Object.keys(JSON.parse(String(spy.mock.calls[0]![1]!.body)))).toEqual(['text'])
+  })
+
+  it('still treats a non-2xx from a Slack or Discord webhook as failed', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('invalid_payload', { status: 400 }))
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const r = await deliverAlertDigest({ logger: logger() } as any, digest, { ...cfg, webhookUrl: 'https://hooks.slack.com/services/a/b/c' })
+    expect(r).toEqual({ sent: false, reason: 'delivery_failed', channels: { webhook: false, email: false } })
+  })
+
   it('treats a 4xx/5xx from the webhook as a failed delivery, and logs the status', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('gone', { status: 404 }))
     const log = logger()
