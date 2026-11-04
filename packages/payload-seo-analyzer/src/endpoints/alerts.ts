@@ -230,8 +230,11 @@ export async function deliverAlertDigest(
   }
 
   if (cfg.emails.length > 0) {
-    const send = (payload as unknown as { sendEmail?: (opts: unknown) => Promise<unknown> }).sendEmail
-    if (typeof send === 'function') {
+    const p = payload as unknown as { email?: { name?: string }; sendEmail?: (opts: unknown) => Promise<unknown> }
+    const send = p.sendEmail
+    // Without `config.email`, Payload installs its `console` adapter, whose sendEmail only logs
+    // and resolves: counting that as delivered would be a false success, so it counts as none.
+    if (typeof send === 'function' && p.email?.name !== 'console') {
       try {
         await send({
           to: cfg.emails,

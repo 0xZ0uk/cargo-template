@@ -122,15 +122,37 @@ describe('deliverAlertDigest', () => {
     expect(log.warn).toHaveBeenCalledWith(expect.stringContaining('HTTP 404'))
   })
 
-  it('says no channel is configured only when none is, and warns about emails without an adapter', async () => {
+  it('says no channel is configured only when none is', async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let r = await deliverAlertDigest({ logger: logger() } as any, digest, cfg)
+    const r = await deliverAlertDigest({ logger: logger() } as any, digest, cfg)
     expect(r.reason).toBe('no_channel_configured')
+  })
+
+  it("doesn't count Payload's console fallback adapter as an email delivery", async () => {
+    // What Payload installs without `config.email`: a sendEmail that only logs and resolves.
+    const consoleSend = vi.fn().mockResolvedValue(undefined)
     const log = logger()
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    r = await deliverAlertDigest({ logger: log } as any, digest, { ...cfg, emails: ['a@b.test'] })
-    expect(r.reason).toBe('delivery_failed')
+    const r = await deliverAlertDigest(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { logger: log, email: { name: 'console' }, sendEmail: consoleSend } as any,
+      digest,
+      { ...cfg, emails: ['a@b.test'] },
+    )
+    expect(r).toEqual({ sent: false, reason: 'delivery_failed', channels: { webhook: false, email: false } })
+    expect(consoleSend).not.toHaveBeenCalled()
     expect(log.warn).toHaveBeenCalledWith(expect.stringContaining('no email adapter'))
+  })
+
+  it('sends through a real email adapter', async () => {
+    const send = vi.fn().mockResolvedValue({})
+    const r = await deliverAlertDigest(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { logger: logger(), email: { name: 'resend' }, sendEmail: send } as any,
+      digest,
+      { ...cfg, emails: ['a@b.test'] },
+    )
+    expect(r.channels.email).toBe(true)
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ to: ['a@b.test'], subject: expect.stringContaining('1 issue') }))
   })
 
   it('sends nothing when there is nothing to report', async () => {
