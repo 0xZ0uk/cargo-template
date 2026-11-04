@@ -44,7 +44,7 @@ src/
 
 - **TypeScript** — All code must be typed, no `any` unless strictly necessary
 - **No dependencies** — The plugin has zero runtime dependencies (only peer deps)
-- **Backward compatibility** — Don't remove or rename existing exports
+- **Backward compatibility** — The package is private and consumed only by `apps/web`; exports can change, as long as the app is updated in the same change
 - **Strings** — All user-facing strings are English and live in `i18n.ts` / `dashboard-i18n.ts`
 - **Tests** — Add tests for new rules or helpers
 

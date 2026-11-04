@@ -135,6 +135,16 @@ async function eachPublishedDoc(
 // ---------------------------------------------------------------------------
 // GET /sitemap-news.xml — articles from the last 48h (depth 0, lightweight)
 // ---------------------------------------------------------------------------
+/**
+ * `<news:language>`: the language the articles are written in (ISO 639), so Payload's default
+ * content locale when the site is localized, else `en`.
+ */
+export function newsLanguage(config: { localization?: unknown }): string {
+  const localization = config.localization as { defaultLocale?: unknown } | false | undefined
+  const code = localization && typeof localization.defaultLocale === 'string' ? localization.defaultLocale.trim() : ''
+  return code ? code.toLowerCase() : 'en'
+}
+
 export function createNewsSitemapHandler(targetCollections: string[], seoConfig?: SeoConfig): PayloadHandler {
   const cacheKey = `${SITEMAP_NEWS_CACHE_BASE}:${targetCollections.join(',')}`
   return async (req) => {
@@ -157,6 +167,7 @@ export function createNewsSitemapHandler(targetCollections: string[], seoConfig?
       const cutoff = Date.now() - 48 * 3_600_000
       const entries: string[] = []
 
+      const language = escapeXml(newsLanguage(req.payload.config))
       await eachPublishedDoc(req.payload, targetCollections, 0, (doc, collection) => {
         const dateStr =
           (typeof doc.publishedAt === 'string' && doc.publishedAt) ||
@@ -170,7 +181,7 @@ export function createNewsSitemapHandler(targetCollections: string[], seoConfig?
         if (!title) return
         const loc = `${siteUrl}${docPath((doc.slug as string) || '', collection, seoConfig)}`
         entries.push(
-          `  <url>\n    <loc>${escapeXml(loc)}</loc>\n    <news:news>\n      <news:publication>\n        <news:name>${escapeXml(publication)}</news:name>\n        <news:language>en</news:language>\n      </news:publication>\n      <news:publication_date>${new Date(dateStr).toISOString()}</news:publication_date>\n      <news:title>${escapeXml(title)}</news:title>\n    </news:news>\n  </url>`,
+          `  <url>\n    <loc>${escapeXml(loc)}</loc>\n    <news:news>\n      <news:publication>\n        <news:name>${escapeXml(publication)}</news:name>\n        <news:language>${language}</news:language>\n      </news:publication>\n      <news:publication_date>${new Date(dateStr).toISOString()}</news:publication_date>\n      <news:title>${escapeXml(title)}</news:title>\n    </news:news>\n  </url>`,
         )
       })
 

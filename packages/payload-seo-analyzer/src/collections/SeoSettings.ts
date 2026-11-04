@@ -12,6 +12,7 @@
 
 import type { CollectionConfig } from 'payload'
 import { isSeoAdminRequest, isSeoPanelUser } from '../helpers/isAdmin.js'
+import { FLESCH_SCORE_PASS } from '../constants.js'
 
 export function createSeoSettingsCollection(): CollectionConfig {
   return {
@@ -106,7 +107,7 @@ export function createSeoSettingsCollection(): CollectionConfig {
           { name: 'minWordsPost', type: 'number', label: 'Min words (posts)', admin: { description: 'Default: 800' } },
           { name: 'keywordDensityMin', type: 'number', label: 'Min keyword density (%)', admin: { description: 'Default: 0.5' } },
           { name: 'keywordDensityMax', type: 'number', label: 'Max keyword density (%)', admin: { description: 'Default: 3' } },
-          { name: 'fleschScorePass', type: 'number', label: 'Min Flesch score', admin: { description: 'Default: 40' } },
+          { name: 'fleschScorePass', type: 'number', label: 'Min Flesch score', admin: { description: `Default: ${FLESCH_SCORE_PASS}` } },
           { name: 'slugMaxLength', type: 'number', label: 'Max slug length', admin: { description: 'Default: 75' } },
         ],
       },

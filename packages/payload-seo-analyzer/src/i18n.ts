@@ -232,17 +232,17 @@ export interface RuleTranslations {
     fleschFail: (score: number) => string
     longSentencesLabelFail: string
     longSentencesLabelPass: string
-    longSentencesFail: (long: number, total: number, pct: number) => string
+    longSentencesFail: (long: number, total: number, pct: number, words: number, maxPct: number) => string
     longSentencesPass: (pct: number) => string
     longParagraphsLabel: string
     longParagraphsFail: string
     longParagraphsPass: string
     passiveLabelFail: string
     passiveLabelPass: string
-    passiveFail: (count: number, total: number, pct: number) => string
+    passiveFail: (count: number, total: number, pct: number, maxPct: number) => string
     passivePass: (pct: number) => string
     transitionsLabel: string
-    transitionsFail: (pct: number) => string
+    transitionsFail: (pct: number, minPct: number) => string
     transitionsPass: (pct: number) => string
     consecutiveLabelFail: string
     consecutiveLabelPass: string
@@ -751,17 +751,19 @@ const rulesEn: RuleTranslations = {
     fleschFail: (score) => `Flesch score: ${score}/100 — Text is hard to read. Shorten sentences and simplify vocabulary.`,
     longSentencesLabelFail: 'Long sentences',
     longSentencesLabelPass: 'Sentence length',
-    longSentencesFail: (long, total, pct) => `${long}/${total} sentences over 25 words (${pct}%) — Recommended max: 30%.`,
+    longSentencesFail: (long, total, pct, words, maxPct) =>
+      `${long}/${total} sentences over ${words} words (${pct}%) — Recommended max: ${maxPct}%.`,
     longSentencesPass: (pct) => `${pct}% long sentences — Good distribution.`,
     longParagraphsLabel: 'Long paragraphs',
     longParagraphsFail: 'Paragraphs with more than 150 words detected — Break them up for easier reading.',
     longParagraphsPass: 'No excessively long paragraphs.',
     passiveLabelFail: 'Passive voice',
     passiveLabelPass: 'Active voice',
-    passiveFail: (count, total, pct) => `${count}/${total} passive voice sentences (${pct}%) — Recommended max: 15%.`,
+    passiveFail: (count, total, pct, maxPct) =>
+      `${count}/${total} passive voice sentences (${pct}%) — Recommended max: ${maxPct}%.`,
     passivePass: (pct) => `${pct}% passive voice — Good use of active voice.`,
     transitionsLabel: 'Transition words',
-    transitionsFail: (pct) => `${pct}% of sentences contain transition words — Aim for 15%+.`,
+    transitionsFail: (pct, minPct) => `${pct}% of sentences contain transition words — Aim for ${minPct}%+.`,
     transitionsPass: (pct) => `${pct}% of sentences with transition words — Good flow.`,
     consecutiveLabelFail: 'Repetitive sentence starts',
     consecutiveLabelPass: 'Sentence variety',

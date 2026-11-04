@@ -68,7 +68,7 @@ export function checkReadability(input: SeoInput, ctx: AnalysisContext): SeoChec
     })
   }
 
-  // 39. Long sentences (>25 words) — max 30% of sentences
+  // 39. Long sentences (> rt.longSentenceWords words) — max LONG_SENTENCE_MAX_RATIO of sentences
   if (sentences.length > 0) {
     const longSentences = sentences.filter((s) => countWords(s) > rt.longSentenceWords)
     const longRatio = longSentences.length / sentences.length
@@ -78,7 +78,13 @@ export function checkReadability(input: SeoInput, ctx: AnalysisContext): SeoChec
         id: 'readability-long-sentences',
         label: r.longSentencesLabelFail,
         status: 'warning',
-        message: r.longSentencesFail(longSentences.length, sentences.length, Math.round(longRatio * 100)),
+        message: r.longSentencesFail(
+          longSentences.length,
+          sentences.length,
+          Math.round(longRatio * 100),
+          rt.longSentenceWords,
+          Math.round(LONG_SENTENCE_MAX_RATIO * 100),
+        ),
         category: 'important',
         weight: 2,
         group: 'readability',
@@ -157,7 +163,12 @@ export function checkReadability(input: SeoInput, ctx: AnalysisContext): SeoChec
         id: 'readability-passive',
         label: r.passiveLabelFail,
         status: 'warning',
-        message: r.passiveFail(passiveSentences.length, sentences.length, Math.round(passiveRatio * 100)),
+        message: r.passiveFail(
+          passiveSentences.length,
+          sentences.length,
+          Math.round(passiveRatio * 100),
+          Math.round(rt.passiveMax * 100),
+        ),
         category: 'bonus',
         weight: 0,
         group: 'readability',
@@ -187,7 +198,7 @@ export function checkReadability(input: SeoInput, ctx: AnalysisContext): SeoChec
         id: 'readability-transitions',
         label: r.transitionsLabel,
         status: 'warning',
-        message: r.transitionsFail(Math.round(transitionRatio * 100)),
+        message: r.transitionsFail(Math.round(transitionRatio * 100), Math.round(rt.transitionsMin * 100)),
         category: 'bonus',
         weight: 0,
         group: 'readability',
