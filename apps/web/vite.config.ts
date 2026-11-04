@@ -98,6 +98,25 @@ const payloadConfig = withPayload(
         tanstackStart(pluginOptions.tanstackStart),
         viteReact(pluginOptions.react),
       ],
+      // The on-page editor's rich-text chunk (packages/onpage/lexical) loads lazily, so Vite's
+      // dev server would only discover Lexical on an editor's first rich-text click, then
+      // re-bundle and reload the page mid-edit. Listing it up front avoids that. Dev only.
+      optimizeDeps: {
+        include: [
+          'lexical',
+          '@lexical/list',
+          '@lexical/react/LexicalComposer',
+          '@lexical/react/LexicalComposerContext',
+          '@lexical/react/LexicalContentEditable',
+          '@lexical/react/LexicalErrorBoundary',
+          '@lexical/react/LexicalHistoryPlugin',
+          '@lexical/react/LexicalListPlugin',
+          '@lexical/react/LexicalRichTextPlugin',
+          '@lexical/rich-text',
+          '@lexical/selection',
+          '@lexical/utils',
+        ],
+      },
       resolve: {
         alias: {
           '#cloudflare-runtime': path.resolve(

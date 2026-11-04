@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 
+import { OnPage } from '@cargo/onpage-tanstack-start'
 import { createFileRoute, Outlet, useMatches } from '@tanstack/react-router'
 
 import type { LoadPageResult } from './_frontend/pages.functions'
@@ -42,6 +43,9 @@ function FrontendLayout() {
       <Header data={header} theme={hasHighImpactHero ? 'dark' : undefined} />
       <Outlet />
       <Footer data={footer} />
+      {/* The on-page editor, or the shared-preview bar. Renders nothing and sends no requests
+          unless an editor pressed "Edit on page" or opened a preview link. */}
+      <OnPage />
     </div>
   )
 }

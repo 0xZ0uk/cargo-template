@@ -1,0 +1,64 @@
+{
+  "name": "@cargo/onpage-tanstack-start",
+  "version": "0.7.0",
+  "private": true,
+  "description": "Cargo's fork of payload-onpage for TanStack Start: cookie session adapter, <OnPage />, onpageContext() and refresh rendering.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "default": "./dist/client.js"
+    },
+    "./session": {
+      "types": "./dist/session.server.d.ts",
+      "default": "./dist/session.server.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "!dist/.tsbuildinfo",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@cargo/onpage-core": "workspace:*",
+    "@cargo/onpage-react": "workspace:*",
+    "@cargo/onpage-lexical": "workspace:*"
+  },
+  "peerDependencies": {
+    "@tanstack/react-start": "catalog:",
+    "@tanstack/react-router": "catalog:",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@lexical/list": "catalog:",
+    "@lexical/react": "catalog:",
+    "@lexical/rich-text": "catalog:",
+    "@lexical/selection": "catalog:",
+    "@lexical/utils": "catalog:",
+    "@tanstack/react-router": "catalog:",
+    "@tanstack/react-start": "catalog:",
+    "@types/node": "24.12.3",
+    "@types/react": "catalog:",
+    "lexical": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "typescript": "catalog:"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

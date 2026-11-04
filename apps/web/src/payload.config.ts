@@ -1,3 +1,5 @@
+import { onpage } from '@cargo/onpage-plugin'
+import { tanstackSession } from '@cargo/onpage-tanstack-start/session'
 import { createSqlSeoDataStore, seoAnalyzerPlugin } from '@cargo/payload-seo-analyzer'
 import { sqliteD1Adapter } from '@payloadcms/db-d1-sqlite'
 import { mcpPlugin } from '@payloadcms/plugin-mcp'
@@ -56,6 +58,9 @@ const cloudflareLogger = {
   warn: createLog('warn', console.warn),
 } as unknown as PayloadLogger
 
+// Payload's secret also seals onpage's edit-mode cookies and preview links.
+const secret = process.env.PAYLOAD_SECRET || cloudflare.PAYLOAD_SECRET || ''
+
 const generateTitle: GenerateTitle<Page> = ({ doc }) =>
   doc?.title ? `${doc.title} | ${siteName}` : siteName
 
@@ -72,7 +77,7 @@ export default buildConfig({
   collections: [Pages, Users, Media, Folders, Tags],
   editor: defaultLexical,
   globals: [Header, Footer],
-  secret: process.env.PAYLOAD_SECRET || cloudflare.PAYLOAD_SECRET || '',
+  secret,
   typescript: {
     outputFile: path.resolve(dirname, 'payload-types.ts'),
   },
@@ -191,6 +196,16 @@ export default buildConfig({
         seoLogs: true,
         warmCache: false,
       },
+    }),
+    // On-page editing (packages/onpage): "Edit on page" in the admin opens the page with an
+    // editor, and edits autosave as drafts through Payload's REST API. Pages only: Header and
+    // Footer have no drafts, so every keystroke would publish. Comments and saved sections
+    // (`comments`, `patterns`) stay off; each adds a collection to the main D1.
+    onpage({
+      collections: {
+        pages: { url: ({ doc }) => (typeof doc.slug === 'string' ? pagePath(doc.slug) : null) },
+      },
+      session: tanstackSession({ secret }),
     }),
     limitVersions({ max: 20 }),
   ],

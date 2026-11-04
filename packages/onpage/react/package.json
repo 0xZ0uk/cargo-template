@@ -1,0 +1,61 @@
+{
+  "name": "@cargo/onpage-react",
+  "version": "0.7.0",
+  "private": true,
+  "description": "Cargo's fork of payload-onpage React editor: overlay, toolbars, field editors, annotations and client mode.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./annotations": {
+      "types": "./dist/annotations.d.ts",
+      "default": "./dist/annotations.js"
+    },
+    "./client": {
+      "types": "./dist/OnPageClient.d.ts",
+      "default": "./dist/OnPageClient.js"
+    },
+    "./editor-kit": {
+      "types": "./dist/editor-kit.d.ts",
+      "default": "./dist/editor-kit.js"
+    },
+    "./locales/*": {
+      "types": "./dist/locales/*.d.ts",
+      "default": "./dist/locales/*.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "!dist/.tsbuildinfo",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@cargo/onpage-core": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.12.3",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "typescript": "catalog:"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

@@ -1,0 +1,110 @@
+[
+  {
+    "name": "title",
+    "type": "text",
+    "label": "Title",
+    "localized": true,
+    "required": true
+  },
+  {
+    "name": "sections",
+    "type": "blocks",
+    "label": "Sections",
+    "blocks": [
+      {
+        "slug": "hero",
+        "labels": {
+          "singular": "Hero",
+          "plural": "Heroes"
+        },
+        "fields": [
+          {
+            "name": "heading",
+            "type": "text",
+            "label": "Heading",
+            "localized": true,
+            "required": true
+          },
+          {
+            "name": "image",
+            "type": "upload",
+            "label": "Image",
+            "relationTo": "media"
+          },
+          {
+            "name": "section",
+            "type": "group",
+            "label": "Section",
+            "fields": [
+              {
+                "name": "background",
+                "type": "select",
+                "label": "Background",
+                "defaultValue": "white",
+                "options": [
+                  {
+                    "label": "White",
+                    "value": "white"
+                  },
+                  {
+                    "label": "light",
+                    "value": "light"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "name": "ctas",
+            "type": "array",
+            "label": "Ctas",
+            "maxRows": 2,
+            "fields": [
+              {
+                "name": "label",
+                "type": "text",
+                "label": "Label",
+                "required": true
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "slug": "gallery",
+        "labels": {
+          "singular": "Gallery",
+          "plural": "Gallery"
+        },
+        "fields": [
+          {
+            "name": "images",
+            "type": "array",
+            "label": "Images",
+            "minRows": 1,
+            "fields": [
+              {
+                "name": "image",
+                "type": "upload",
+                "label": "Image",
+                "relationTo": "media"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "meta",
+    "type": "group",
+    "label": "SEO",
+    "fields": [
+      {
+        "name": "description",
+        "type": "textarea",
+        "label": "Description"
+      }
+    ]
+  }
+]

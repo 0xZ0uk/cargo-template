@@ -8,7 +8,8 @@ pnpm + Turborepo workspace. Run commands from the repo root.
 
 - `apps/web` (`@cargo/web`): the Payload + TanStack Start app on Cloudflare Workers. App scripts run as `pnpm web <script>` from the root.
 - `packages/*` (`@cargo/*`): in-house Payload plugins, built with tsup and consumed by the app as `workspace:*`. The SEO analyzer's admin UI must follow `packages/payload-seo-analyzer/src/ui/README.md`.
-- `payload`, `@payloadcms/*`, React and TypeScript versions come from the catalog in `pnpm-workspace.yaml` (`"catalog:"`). Change them there, never per package: two copies of `payload` / `@payloadcms/ui` break the admin.
+- `packages/onpage/*` (`@cargo/onpage-*`): our fork of payload-onpage, the on-page editor ("Edit on page"). The exception to tsup: its five packages build with `tsc -b` (one file per source keeps `'use client'` and the lazy editor chunk); tests, lint and typecheck run from `packages/onpage` (`@cargo/onpage`). Read `packages/onpage/README.md` before changing it: it lists what the fork changed from upstream and the invariants (visitors pay nothing, markers never persist, package boundaries).
+- `payload`, `@payloadcms/*`, React and TypeScript versions come from the catalog in `pnpm-workspace.yaml` (`"catalog:"`). Change them there, never per package: two copies of `payload` / `@payloadcms/ui` break the admin. Lexical and TanStack Router/Start are in the catalog for the same reason (onpage shares them with the app); bump Lexical to whatever `@payloadcms/richtext-lexical` depends on.
 - `payload` is patched (`patches/`, `patchedDependencies` in `pnpm-workspace.yaml`) so password hashes use at most 100,000 PBKDF2 iterations, the Workers limit; upstream uses 600,000 and admin login fails on a deployed Worker. When bumping `payload`, port the patch to the new version (`pnpm patch payload@<version>`) unless upstream has fixed it.
 
 ## Cloudflare D1 / R2
