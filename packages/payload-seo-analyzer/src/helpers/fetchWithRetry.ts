@@ -1,7 +1,7 @@
 /**
  * fetch() wrapper with a hard timeout and bounded retry/backoff.
  *
- * Used for outbound LLM / API calls (Anthropic, Google) which otherwise have no
+ * Used for outbound LLM / API calls (OpenRouter, Google) which otherwise have no
  * timeout (a hung connection blocks the request indefinitely) and no retry
  * (a transient 429/503/529 surfaces as a hard error to the user).
  */

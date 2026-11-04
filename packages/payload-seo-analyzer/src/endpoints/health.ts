@@ -13,7 +13,7 @@ import { getSeoDataStore, seoDatasetEnabled } from '../store/index.js'
 import type { SeoConfig } from '../types.js'
 import { seoCache } from '../cache.js'
 import { getGscOAuthConfig, getOrCreateGscAuthDoc } from '../helpers/gscClient.js'
-import { aiModel } from '../helpers/aiModel.js'
+import { aiApiKey, aiModel } from '../helpers/aiClient.js'
 
 import { isSeoAdminRequest as isAdmin } from '../helpers/isAdmin.js'
 import { resolveSiteUrl } from '../helpers/siteUrl.js'
@@ -26,7 +26,7 @@ export function createSeoHealthHandler(basePath: string, seoConfig?: SeoConfig):
 
       // --- Env configuration (booleans only, never the values) ---
       const config = {
-        aiKey: !!process.env.ANTHROPIC_API_KEY,
+        aiKey: !!aiApiKey(),
         aiModel: aiModel(),
         pageSpeedKey: !!(process.env.PAGESPEED_API_KEY || process.env.GOOGLE_PAGESPEED_API_KEY),
         gscConfigured: !!getGscOAuthConfig(basePath, seoConfig, payloadApiRoute(req.payload), req),
@@ -63,7 +63,7 @@ export function createSeoHealthHandler(basePath: string, seoConfig?: SeoConfig):
 
       // --- Derived warnings (what to fix) ---
       const warnings: string[] = []
-      if (!config.aiKey) warnings.push('ANTHROPIC_API_KEY not set — AI features fall back to heuristics.')
+      if (!config.aiKey) warnings.push('OPENROUTER_API_KEY not set — AI features fall back to heuristics.')
       if (config.gscConfigured && !gscConnected) warnings.push('GSC configured but not connected — rank tracking & CTR opportunities inactive.')
       if (config.gscConfigured && !config.gscEncryptionKey) warnings.push('SEO_GSC_ENCRYPTION_KEY not set — GSC token encrypted with a derived key (set an explicit key for stability).')
       if ((config.alertWebhook || config.alertEmail) === false) warnings.push('No alert channel configured (SEO_ALERT_WEBHOOK_URL / SEO_ALERT_EMAIL) — monitoring digest will not be delivered.')

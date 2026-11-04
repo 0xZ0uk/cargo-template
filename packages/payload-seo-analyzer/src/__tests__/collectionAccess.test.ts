@@ -70,7 +70,7 @@ describe.each(collections)('%s access', (_slug, collection) => {
 // findByID/update with overrideAccess: true.
 describe('POST /ai-alt-text collection allowlist', () => {
   afterEach(() => {
-    delete process.env.ANTHROPIC_API_KEY
+    delete process.env.OPENROUTER_API_KEY
   })
 
   function makeReq(body: Record<string, unknown>, update = vi.fn()) {

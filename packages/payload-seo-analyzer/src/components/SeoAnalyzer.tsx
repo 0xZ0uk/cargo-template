@@ -11,6 +11,7 @@ import {
   InfoIcon,
   NewTabIcon,
   useAllFormFields,
+  useDocumentInfo,
   WarningIcon,
   XIcon,
 } from '@payloadcms/ui'
@@ -25,7 +26,7 @@ import {
 import { SCORE_GOOD, SCORE_OK } from '../constants.js'
 import { formatAdminURL } from 'payload/shared'
 import { SeoSocialPreview } from './SeoSocialPreview.js'
-import { useDashboardT, useSeoAnalysisLocale, type SeoAnalysisLocaleOptions } from '../hooks/useSeoLocale.js'
+import { useDashboardT, useSeoAnalysisLocale, useSeoFeature, type SeoAnalysisLocaleOptions } from '../hooks/useSeoLocale.js'
 import { type DashboardTranslations } from '../dashboard-i18n.js'
 import { withSeoErrorBoundary } from './withSeoErrorBoundary.js'
 import { Card, Checklist, cx, ScoreRing, statusTone, TonePill, type Tone } from '../ui/index.js'
@@ -503,6 +504,8 @@ const SeoAnalyzerInner: React.FC<SeoAnalyzerFieldProps> = ({ field }) => {
   const seoApi = useSeoApi()
   const adminRoute = useAdminRoute()
   const analysisLocale = useSeoAnalysisLocale(field?.admin?.custom)
+  // The `/ai-*` endpoints only exist with `features.aiFeatures`; unknown flags keep the buttons.
+  const aiEnabled = useSeoFeature('aiFeatures') !== false
   const t = useDashboardT()
   const [formFields, dispatchFields] = useAllFormFields()
   const initialScoreRef = useRef<number | null>(null)
@@ -537,7 +540,11 @@ const SeoAnalyzerInner: React.FC<SeoAnalyzerFieldProps> = ({ field }) => {
   // Extract focusKeyword, cornerstone flag and document ID
   const focusKeyword = getFieldValue('focusKeyword') as string | undefined
   const isCornerstone = getFieldValue('isCornerstone') as boolean | undefined
-  const documentId = getFieldValue('id') as string | undefined
+  // The document id and collection come from the edit view: Payload 4 keeps no `id` in the
+  // form state, so reading it from the fields left every saved document "unsaved".
+  const { id: docInfoId, collectionSlug } = useDocumentInfo()
+  const documentId =
+    docInfoId != null && docInfoId !== '' ? String(docInfoId) : (getFieldValue('id') as string | undefined)
   const updatedAt = getFieldValue('updatedAt') as string | undefined
   const contentLastReviewed = getFieldValue('contentLastReviewed') as string | undefined
 
@@ -830,10 +837,11 @@ const SeoAnalyzerInner: React.FC<SeoAnalyzerFieldProps> = ({ field }) => {
 
   // Detect collection from current URL
   const currentCollection = useMemo(() => {
+    if (collectionSlug) return collectionSlug
     if (typeof window === 'undefined') return 'pages'
     const match = window.location.pathname.match(/\/collections\/([^/]+)\//)
     return match ? match[1] : 'pages'
-  }, [])
+  }, [collectionSlug])
 
   const { suggestions: linkSuggestions, loading: linkSuggestionsLoading } =
     useInternalLinkSuggestions(documentId, currentCollection, textContentForLinks)
@@ -1067,6 +1075,8 @@ const SeoAnalyzerInner: React.FC<SeoAnalyzerFieldProps> = ({ field }) => {
         </div>
       )}
 
+      {aiEnabled && (
+      <>
       {/* AI Meta Generation */}
       <div className="seo-stack seo-stack--tight">
         <Button
@@ -1125,7 +1135,7 @@ const SeoAnalyzerInner: React.FC<SeoAnalyzerFieldProps> = ({ field }) => {
           buttonStyle="secondary"
           className="seo-analyzer__action"
           disabled={aiOptimizing || !documentId}
-          extraButtonProps={!documentId ? { title: t.seoAnalyzer.applySaveHint } : undefined}
+          extraButtonProps={!documentId ? { title: t.seoAnalyzer.optimizeSaveFirst } : undefined}
           margin={false}
           onClick={handleAiOptimize}
           size="medium"
@@ -1214,6 +1224,8 @@ const SeoAnalyzerInner: React.FC<SeoAnalyzerFieldProps> = ({ field }) => {
           </Card>
         )}
       </div>
+      </>
+      )}
 
       {/* Feature 2: Smart Suggestions */}
       {suggestions.length > 0 && (

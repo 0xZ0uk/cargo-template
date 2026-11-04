@@ -1,14 +1,13 @@
 /**
- * AI Meta Generation endpoint.
- * Generates meta title + meta description from page content using heuristic extraction.
- * No external AI API needed — pure algorithmic approach.
- *
- * NOTE: Rate limiting is not handled by this plugin. The consuming application
- * should implement rate limiting via its own middleware (e.g., express-rate-limit,
- * Next.js middleware, or a reverse proxy like Nginx/Caddy).
+ * Meta generation endpoint (the sidebar's "Generate meta").
+ * Generates meta title + meta description from page content using heuristic extraction, in
+ * the analysis locale (plugin `locale`, else the request's). No LLM call: the model-backed
+ * suggestions are /ai-optimize ("Optimize with AI").
  */
 
 import type { PayloadHandler } from 'payload'
+import type { SeoConfig } from '../types.js'
+import { resolveAnalysisLocale } from '../helpers/resolveLocale.js'
 import { generateMetaTitle, generateMetaDescription } from '../helpers/metaGeneration.js'
 import { parseJsonBody } from '../helpers/parseBody.js'
 import { isSeoPanelUser } from '../helpers/isAdmin.js'
@@ -16,7 +15,7 @@ import { isSeoPanelUser } from '../helpers/isAdmin.js'
 // ---------------------------------------------------------------------------
 // Endpoint handler factory
 // ---------------------------------------------------------------------------
-export function createAiGenerateHandler(): PayloadHandler {
+export function createAiGenerateHandler(seoConfig?: SeoConfig): PayloadHandler {
   return async (req) => {
     try {
       if (!isSeoPanelUser(req)) {
@@ -38,8 +37,13 @@ export function createAiGenerateHandler(): PayloadHandler {
         )
       }
 
-      const metaTitle = generateMetaTitle(title, focusKeyword, slug)
-      const metaDescription = generateMetaDescription(content, focusKeyword, slug)
+      const locale = resolveAnalysisLocale({
+        reqLocale: req.locale as string | undefined,
+        pluginLocale: seoConfig?.locale,
+        customMapping: seoConfig?.localeMapping,
+      })
+      const metaTitle = generateMetaTitle(title, focusKeyword, slug, locale)
+      const metaDescription = generateMetaDescription(content, focusKeyword, slug, locale)
 
       return Response.json({ metaTitle, metaDescription })
     } catch (error) {

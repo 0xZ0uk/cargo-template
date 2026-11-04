@@ -214,7 +214,7 @@ describe('SEO-03 — SSRF guard understands IPv4-mapped IPv6', () => {
 // ---------------------------------------------------------------------------
 describe('SEO-05 — /ai-content-brief', () => {
   afterEach(() => {
-    delete process.env.ANTHROPIC_API_KEY
+    delete process.env.OPENROUTER_API_KEY
   })
 
   const makeReq = (body: Record<string, unknown>, user: unknown = staff) =>
@@ -227,7 +227,7 @@ describe('SEO-05 — /ai-content-brief', () => {
   })
 
   it('rejects an oversized keyword before any call to the model', async () => {
-    process.env.ANTHROPIC_API_KEY = 'sk-test'
+    process.env.OPENROUTER_API_KEY = 'sk-or-test'
     const fetchSpy = vi.spyOn(globalThis, 'fetch')
     const res = await createAiContentBriefHandler()(
       makeReq({ keyword: 'a'.repeat(MAX_KEYWORD_LENGTH + 1) }),

@@ -1,23 +1,29 @@
 /**
- * AI image alt-text (SEO 2026 + accessibility) — Claude vision.
+ * AI image alt-text (SEO 2026 + accessibility) — a vision model through OpenRouter.
  *
  *   GET  /alt-text-audit → list media missing alt text (admin)
- *   POST /ai-alt-text    → generate alt for one image (Claude vision), optionally apply (admin)
+ *   POST /ai-alt-text    → generate alt for one image (vision model), optionally apply (admin)
  *                          - { id, apply:false }                 → generate, return suggestion
  *                          - { id, apply:true, altText:"..." }   → write the provided text (no LLM call)
  *
- * Gated behind `features.aiFeatures`. The API key is read only from ANTHROPIC_API_KEY (server
- * side). Model: see helpers/aiModel (Sonnet 4.6, vision-capable), overridable via SEO_AI_MODEL.
+ * Gated behind `features.aiFeatures`. The API key is read only from OPENROUTER_API_KEY (server
+ * side). Model: see helpers/aiClient (SEO_AI_MODEL, must take image input).
  *
- * Security: the image is fetched server-side and must be on the configured site origin (or
- * SEO_MEDIA_ORIGIN) — SSRF-safe, consistent with the Core Web Vitals endpoint.
+ * Image bytes come from Payload's own file route, run in-process (`handleEndpoints`), so they
+ * are read from whatever storage the uploads collection uses (R2, local disk…) with the
+ * caller's read access. Nothing goes over the network: on Workers a subrequest to the
+ * Worker's own origin is unreliable. When that route has no file (media stored elsewhere),
+ * the image is fetched server-side and must be on the site origin (the `siteUrl` option,
+ * SITE_URL or the request's origin) or SEO_MEDIA_ORIGIN — SSRF-safe, consistent with the Core
+ * Web Vitals endpoint.
  */
-import type { PayloadHandler } from 'payload'
+import { handleEndpoints } from 'payload'
+import type { PayloadHandler, PayloadRequest } from 'payload'
 import type { SeoConfig } from '../types.js'
 import { resolveGscSiteUrl } from '../helpers/gscClient.js'
 import { parseJsonBody } from '../helpers/parseBody.js'
-import { fetchWithRetry } from '../helpers/fetchWithRetry.js'
-import { aiModel } from '../helpers/aiModel.js'
+import { aiApiKey, aiChat, aiLanguageName, aiModel } from '../helpers/aiClient.js'
+import { buildPayloadApiUrl, payloadApiRoute } from '../helpers/seoApiUrl.js'
 
 const ALT_MAX = 125
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024 // 5 MB
@@ -31,6 +37,43 @@ const SUPPORTED_MIME: Record<string, string> = {
 }
 
 import { isSeoAdminRequest as isAdmin } from '../helpers/isAdmin.js'
+
+/** Request headers that carry the caller's identity into the in-process file read. */
+const FORWARDED_HEADERS = ['authorization', 'cookie']
+
+/**
+ * Reads an upload's file through Payload's `/<collection>/file/<filename>` route in-process,
+ * as the caller. `null` when the route has no file for it (or refuses it).
+ */
+async function readUploadInProcess(
+  req: PayloadRequest,
+  collection: string,
+  media: Record<string, unknown>,
+): Promise<Uint8Array | null> {
+  const filename = typeof media.filename === 'string' ? media.filename : ''
+  if (!filename) return null
+
+  const origin = req.url ? new URL(req.url).origin : 'http://localhost'
+  const path = buildPayloadApiUrl(payloadApiRoute(req.payload), `/${collection}/file/${encodeURIComponent(filename)}`)
+  const headers = new Headers()
+  for (const name of FORWARDED_HEADERS) {
+    const value = req.headers?.get(name)
+    if (value) headers.set(name, value)
+  }
+
+  let res: Response
+  try {
+    res = await handleEndpoints({ config: req.payload.config, request: new Request(`${origin}${path}`, { headers }) })
+  } catch (e) {
+    req.payload.logger.warn(`[seo] ai-alt-text: in-process file read failed: ${e instanceof Error ? e.message : 'unknown'}`)
+    return null
+  }
+  if (!res.ok) {
+    await res.body?.cancel()
+    return null
+  }
+  return new Uint8Array(await res.arrayBuffer())
+}
 
 /** Resolve an absolute, SSRF-checked image URL from a media doc. Returns null if not allowed. */
 function resolveImageUrl(media: Record<string, unknown>, siteUrl: string | undefined): string | null {
@@ -74,43 +117,23 @@ async function generateAltText(
 Rules:
 - Describe what is actually visible in the image.
 - Maximum ${ALT_MAX} characters.
-- Write in ${language === 'en' ? 'English' : 'French'}.
+- Write in ${aiLanguageName(language)}.
 - Do NOT start with "image of", "photo of", "picture of" or similar.
 - No quotes around the result. Return ONLY the alt text, nothing else.`
 
   const userText = `Filename: ${context.filename}${context.title ? `\nPage/context: ${context.title}` : ''}\nWrite the alt text for this image:`
 
-  const response = await fetchWithRetry('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: 150,
-      system: systemPrompt,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
-            { type: 'text', text: userText },
-          ],
-        },
-      ],
-    }),
+  const raw = await aiChat({
+    apiKey,
+    model,
+    system: systemPrompt,
+    user: [
+      { type: 'image_url', image_url: { url: `data:${mediaType};base64,${base64}` } },
+      { type: 'text', text: userText },
+    ],
+    maxTokens: 300,
   })
-
-  if (!response.ok) {
-    const body = await response.text()
-    throw new Error(`Claude API error ${response.status}: ${body}`)
-  }
-
-  const data = (await response.json()) as { stop_reason?: string; content?: Array<{ type: string; text?: string }> }
-  if (data.stop_reason === 'refusal') return null
-  const text = (data.content?.find((b) => b.type === 'text')?.text || '').trim().replace(/^["']|["']$/g, '')
+  const text = (raw || '').replace(/^["']|["']$/g, '').trim()
   if (!text) return null
   return text.length > ALT_MAX ? text.slice(0, ALT_MAX).trim() : text
 }
@@ -161,7 +184,7 @@ export function createAltTextAuditHandler(uploadsCollection: string): PayloadHan
 }
 
 // ---------------------------------------------------------------------------
-// POST /ai-alt-text — generate (Claude vision) and/or apply
+// POST /ai-alt-text — generate (vision model) and/or apply
 // ---------------------------------------------------------------------------
 export function createAiAltTextHandler(uploadsCollection: string, seoConfig?: SeoConfig): PayloadHandler {
   return async (req) => {
@@ -195,10 +218,10 @@ export function createAiAltTextHandler(uploadsCollection: string, seoConfig?: Se
         return Response.json({ alt, applied: true, method: 'manual' })
       }
 
-      const apiKey = process.env.ANTHROPIC_API_KEY
+      const apiKey = aiApiKey()
       if (!apiKey) {
         return Response.json(
-          { error: 'AI not configured. Set ANTHROPIC_API_KEY to generate alt text.', code: 'no_api_key' },
+          { error: 'AI not configured. Set OPENROUTER_API_KEY to generate alt text.', code: 'no_api_key' },
           { status: 400 },
         )
       }
@@ -219,28 +242,34 @@ export function createAiAltTextHandler(uploadsCollection: string, seoConfig?: Se
         )
       }
 
-      const siteUrl = resolveGscSiteUrl(seoConfig)
-      const imageUrl = resolveImageUrl(media, siteUrl)
-      if (!imageUrl) {
-        return Response.json(
-          { error: 'Could not resolve a safe image URL (must be on the site origin or SEO_MEDIA_ORIGIN).' },
-          { status: 422 },
-        )
-      }
-
-      // Fetch the image bytes server-side (SSRF-checked above) and base64-encode for the API.
-      let base64: string
+      // Image bytes: from Payload's file route in-process, else fetched (SSRF-checked).
+      let bytes: Uint8Array
       try {
-        const imgResp = await fetch(imageUrl)
-        if (!imgResp.ok) throw new Error(`fetch ${imgResp.status}`)
-        const buf = Buffer.from(await imgResp.arrayBuffer())
-        if (buf.byteLength > MAX_IMAGE_BYTES) {
-          return Response.json({ error: 'Image too large for vision (max 5 MB).' }, { status: 413 })
+        const stored = await readUploadInProcess(req, collection, media)
+        if (stored) {
+          bytes = stored
+        } else {
+          const imageUrl = resolveImageUrl(media, resolveGscSiteUrl(seoConfig, req))
+          if (!imageUrl) {
+            return Response.json(
+              { error: 'Could not resolve a safe image URL (must be on the site origin or SEO_MEDIA_ORIGIN).' },
+              { status: 422 },
+            )
+          }
+          const imgResp = await fetch(imageUrl)
+          if (!imgResp.ok) throw new Error(`fetch ${imgResp.status}`)
+          bytes = new Uint8Array(await imgResp.arrayBuffer())
         }
-        base64 = buf.toString('base64')
       } catch (e) {
         return Response.json({ error: `Could not fetch image: ${e instanceof Error ? e.message : 'error'}` }, { status: 502 })
       }
+      if (bytes.byteLength === 0) {
+        return Response.json({ error: 'Could not fetch image: empty file' }, { status: 502 })
+      }
+      if (bytes.byteLength > MAX_IMAGE_BYTES) {
+        return Response.json({ error: 'Image too large for vision (max 5 MB).' }, { status: 413 })
+      }
+      const base64 = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString('base64')
 
       const model = aiModel()
       const language = seoConfig?.locale === 'en' ? 'en' : 'fr'
@@ -252,7 +281,7 @@ export function createAiAltTextHandler(uploadsCollection: string, seoConfig?: Se
           title: typeof body.context === 'string' ? body.context : undefined,
         })
       } catch (e) {
-        req.payload.logger.error(`[seo] ai-alt-text Claude error: ${e instanceof Error ? e.message : 'unknown'}`)
+        req.payload.logger.error(`[seo] ai-alt-text AI error: ${e instanceof Error ? e.message : 'unknown'}`)
         return Response.json({ error: 'Alt-text generation failed.' }, { status: 502 })
       }
 

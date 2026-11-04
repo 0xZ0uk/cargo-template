@@ -530,6 +530,8 @@ export interface DashboardTranslations {
     labelFocusKeyword: string
     heuristicNote: string
     applySaveHint: string
+    /** Why "Optimize with AI" is disabled on a document that was never saved. */
+    optimizeSaveFirst: string
     noMetaChange: string
   }
   scoreHistory: {
@@ -1145,8 +1147,9 @@ const fr: DashboardTranslations = {
     labelCurrent: 'Actuel',
     labelSuggested: 'Suggéré',
     labelFocusKeyword: 'Mot-clé cible',
-    heuristicNote: 'Suggestions heuristiques (clé API Claude non configurée).',
+    heuristicNote: 'Suggestions heuristiques (clé API OpenRouter non configurée ou réponse IA indisponible).',
     applySaveHint: 'Champs remplis — pensez à enregistrer le document.',
+    optimizeSaveFirst: "Enregistrez d'abord le document : l'IA analyse la version enregistrée.",
     noMetaChange: 'Aucun changement proposé.',
   },
   scoreHistory: {
@@ -1762,8 +1765,9 @@ const en: DashboardTranslations = {
     labelCurrent: 'Current',
     labelSuggested: 'Suggested',
     labelFocusKeyword: 'Focus keyword',
-    heuristicNote: 'Heuristic suggestions (Claude API key not configured).',
+    heuristicNote: 'Heuristic suggestions (no OpenRouter API key, or no usable AI answer).',
     applySaveHint: 'Fields filled — remember to save the document.',
+    optimizeSaveFirst: 'Save the document first: the AI analyzes the saved version.',
     noMetaChange: 'No changes proposed.',
   },
   scoreHistory: {

@@ -1,12 +1,14 @@
 /**
  * Shared meta generation helpers.
- * Used by both aiGenerate.ts and aiRewrite.ts endpoints.
+ * Used by /ai-generate, and as the fallback of /ai-rewrite and /ai-optimize.
  *
- * Heuristic meta title/description generation — no external AI API needed.
+ * Heuristic meta title/description generation — no external AI API needed. The templates
+ * follow the analysis locale (`fr` | `en`, default `fr` like the analyzer).
  */
+import type { SeoLocale } from '../i18n.js'
 
 // ---------------------------------------------------------------------------
-// French CTA prefixes for natural-sounding meta
+// CTA prefixes for natural-sounding meta, per locale
 // ---------------------------------------------------------------------------
 
 export const TITLE_PREFIXES = [
@@ -24,6 +26,27 @@ export const DESC_PREFIXES = [
   'Apprenez comment',
   'Explorez',
 ]
+
+const META_TEMPLATES: Record<
+  SeoLocale,
+  { title: string[]; desc: string[]; titleSeparator: string; leadingArticle: RegExp }
+> = {
+  fr: {
+    title: TITLE_PREFIXES,
+    desc: DESC_PREFIXES,
+    // French typography: a space before the colon.
+    titleSeparator: ' : ',
+    leadingArticle: /^(Le|La|Les|Un|Une|L'|D')\s*/i,
+  },
+  en: {
+    title: ['Discover', 'Guide to', 'All about', 'Tips for', 'Keys to'],
+    desc: ['Discover', 'Read our guide to', 'All about', 'Learn how', 'Explore'],
+    titleSeparator: ': ',
+    leadingArticle: /^(The|A|An)\s+/i,
+  },
+}
+
+const templatesFor = (locale: SeoLocale | undefined) => META_TEMPLATES[locale === 'en' ? 'en' : 'fr']
 
 // ---------------------------------------------------------------------------
 // Text cleaning helpers
@@ -71,7 +94,13 @@ export function pickPrefix(prefixes: string[], slug: string): string {
 // Meta title generation
 // ---------------------------------------------------------------------------
 
-export function generateMetaTitle(title: string, focusKeyword: string | undefined, slug: string): string {
+export function generateMetaTitle(
+  title: string,
+  focusKeyword: string | undefined,
+  slug: string,
+  locale?: SeoLocale,
+): string {
+  const tpl = templatesFor(locale)
   if (!title || !title.trim()) {
     // Fallback: derive from slug
     const fromSlug = slug
@@ -94,7 +123,7 @@ export function generateMetaTitle(title: string, focusKeyword: string | undefine
         result = candidate
       } else {
         // Try adding a CTA prefix with keyword
-        const prefix = pickPrefix(TITLE_PREFIXES, slug)
+        const prefix = pickPrefix(tpl.title, slug)
         const candidate2 = `${prefix} ${focusKeyword}`
         if (candidate2.length <= 60) {
           result = candidate2
@@ -105,9 +134,9 @@ export function generateMetaTitle(title: string, focusKeyword: string | undefine
   }
 
   // If title is short enough, try adding a CTA prefix
-  if (result.length < 40 && !result.startsWith('Découvrez') && !result.startsWith('Guide')) {
-    const prefix = pickPrefix(TITLE_PREFIXES, slug)
-    const candidate = `${prefix} : ${result}`
+  if (result.length < 40 && !tpl.title.some((p) => result.startsWith(p))) {
+    const prefix = pickPrefix(tpl.title, slug)
+    const candidate = `${prefix}${tpl.titleSeparator}${result}`
     if (candidate.length <= 60) {
       result = candidate
     }
@@ -124,25 +153,27 @@ export function generateMetaDescription(
   content: string,
   focusKeyword: string | undefined,
   slug: string,
+  locale?: SeoLocale,
 ): string {
+  const tpl = templatesFor(locale)
   const sentences = extractSentences(content)
 
   if (sentences.length === 0) {
     // Fallback: use keyword or slug
     if (focusKeyword && focusKeyword.trim()) {
-      const prefix = pickPrefix(DESC_PREFIXES, slug)
+      const prefix = pickPrefix(tpl.desc, slug)
       return truncateWords(`${prefix} ${focusKeyword}.`, 160)
     }
     return ''
   }
 
   // Start building the description
-  const prefix = pickPrefix(DESC_PREFIXES, slug)
+  const prefix = pickPrefix(tpl.desc, slug)
   let desc = ''
 
   // Check if the first sentence already starts with a CTA-like word
   const firstSentenceLower = sentences[0]!.toLowerCase()
-  const startsWithAction = DESC_PREFIXES.some((p) =>
+  const startsWithAction = tpl.desc.some((p) =>
     firstSentenceLower.startsWith(p.toLowerCase()),
   )
 
@@ -151,9 +182,10 @@ export function generateMetaDescription(
     desc = sentences[0]!
   } else {
     // Prepend a CTA prefix
-    // Clean the first sentence: remove leading "Le/La/Les/Un/Une" for smoother flow
+    // Clean the first sentence: remove a leading article ("Le/La/Les…", "The/A/An") for
+    // smoother flow after the prefix
     let firstClean = sentences[0]!
-    const leadingArticle = firstClean.match(/^(Le|La|Les|Un|Une|L'|D')\s*/i)
+    const leadingArticle = firstClean.match(tpl.leadingArticle)
     if (leadingArticle) {
       firstClean = firstClean.substring(leadingArticle[0].length)
       // Lowercase the first char after article removal

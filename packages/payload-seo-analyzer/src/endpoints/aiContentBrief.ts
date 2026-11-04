@@ -8,16 +8,15 @@
  * internal-link ideas. When collection+id are provided, the current page content is used as
  * context so the brief complements (not duplicates) what already exists.
  *
- * Gated behind `features.aiFeatures`. Key from ANTHROPIC_API_KEY (server only), model from
- * SEO_AI_MODEL (default: see helpers/aiModel). No heuristic fallback — a brief needs the model.
+ * Gated behind `features.aiFeatures`. Key from OPENROUTER_API_KEY (server only), model from
+ * SEO_AI_MODEL (default: see helpers/aiClient). No heuristic fallback — a brief needs the model.
  */
 import type { PayloadHandler } from 'payload'
 import type { SeoConfig } from '../types.js'
 import { parseJsonBody } from '../helpers/parseBody.js'
-import { fetchWithRetry } from '../helpers/fetchWithRetry.js'
 import { extractDocContent } from '../helpers/extractDocContent.js'
 import { isSeoPanelUser } from '../helpers/isAdmin.js'
-import { aiModel } from '../helpers/aiModel.js'
+import { aiApiKey, aiChat, aiLanguageName, aiModel } from '../helpers/aiClient.js'
 
 export interface ContentBrief {
   outline: Array<{ level: 'h2' | 'h3'; text: string }>
@@ -82,7 +81,33 @@ export function sanitizeBrief(b: ContentBrief): ContentBrief {
   }
 }
 
-async function callClaudeBrief(
+/** The brief's shape, enforced by the provider (structured outputs) and re-checked on parse. */
+const BRIEF_SCHEMA = {
+  name: 'seo_content_brief',
+  schema: {
+    type: 'object',
+    properties: {
+      outline: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: { level: { type: 'string', enum: ['h2', 'h3'] }, text: { type: 'string' } },
+          required: ['level', 'text'],
+          additionalProperties: false,
+        },
+      },
+      entities: { type: 'array', items: { type: 'string' } },
+      questions: { type: 'array', items: { type: 'string' } },
+      internalLinkIdeas: { type: 'array', items: { type: 'string' } },
+      recommendedWordCount: { type: 'number' },
+      notes: { type: 'array', items: { type: 'string' } },
+    },
+    required: ['outline', 'entities', 'questions', 'internalLinkIdeas', 'recommendedWordCount', 'notes'],
+    additionalProperties: false,
+  },
+}
+
+async function callAiBrief(
   apiKey: string,
   model: string,
   language: string,
@@ -92,7 +117,7 @@ async function callClaudeBrief(
 Produce a concise WRITING BRIEF for the target keyword so a writer can create a page that ranks AND is citable by AI engines.
 Rules:
 - Base the brief on genuine search intent for the keyword; cover entities and questions a complete page must address.
-- Be specific and non-generic; no filler. Write in ${language === 'en' ? 'English' : 'French'}.
+- Be specific and non-generic; no filler. Write in ${aiLanguageName(language)}.
 - Do not invent facts, brands, prices or statistics.
 Return ONLY a JSON object (no markdown, no prose) with EXACTLY this shape:
 {"outline":[{"level":"h2"|"h3","text":string}],"entities":[string],"questions":[string],"internalLinkIdeas":[string],"recommendedWordCount":number,"notes":[string]}
@@ -108,25 +133,15 @@ ${params.existingContent ? `Existing content (first 2000 chars, complement it �
 
 Return the JSON brief now:`
 
-  const response = await fetchWithRetry('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({
-      model,
-      max_tokens: 1500,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: userPrompt }],
-    }),
+  const text = await aiChat({
+    apiKey,
+    model,
+    system: systemPrompt,
+    user: userPrompt,
+    maxTokens: 2000,
+    schema: BRIEF_SCHEMA,
   })
-  if (!response.ok) {
-    const body = await response.text()
-    throw new Error(`Claude API error ${response.status}: ${body}`)
-  }
-  const data = (await response.json()) as { stop_reason?: string; content?: Array<{ type: string; text?: string }> }
-  if (data.stop_reason === 'refusal') return null
-  const text = (data.content?.find((b) => b.type === 'text')?.text || '').trim()
-  if (!text) return null
-  return parseBrief(text)
+  return text ? parseBrief(text) : null
 }
 
 /** Upper bound on the free-text `keyword` forwarded to the model. */
@@ -153,10 +168,10 @@ export function createAiContentBriefHandler(
         )
       }
 
-      const apiKey = process.env.ANTHROPIC_API_KEY
+      const apiKey = aiApiKey()
       if (!apiKey) {
         return Response.json(
-          { error: 'AI not configured. Set ANTHROPIC_API_KEY to generate a content brief.', code: 'no_api_key' },
+          { error: 'AI not configured. Set OPENROUTER_API_KEY to generate a content brief.', code: 'no_api_key' },
           { status: 400 },
         )
       }
@@ -181,9 +196,9 @@ export function createAiContentBriefHandler(
 
       let brief: ContentBrief | null
       try {
-        brief = await callClaudeBrief(apiKey, model, language, { keyword, pageTitle, existingContent })
+        brief = await callAiBrief(apiKey, model, language, { keyword, pageTitle, existingContent })
       } catch (e) {
-        req.payload.logger.error(`[seo] ai-content-brief Claude error: ${e instanceof Error ? e.message : 'unknown'}`)
+        req.payload.logger.error(`[seo] ai-content-brief AI error: ${e instanceof Error ? e.message : 'unknown'}`)
         return Response.json({ error: 'Content brief generation failed.' }, { status: 502 })
       }
       if (!brief) return Response.json({ error: 'The model did not return a brief (possibly declined).' }, { status: 502 })

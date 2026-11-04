@@ -17,7 +17,7 @@ import {
 } from '@payloadcms/ui'
 import { formatAdminURL } from 'payload/shared'
 import { ContentDecaySection } from './ContentDecaySection.js'
-import { useDashboardT, useSeoLocale } from '../hooks/useSeoLocale.js'
+import { useDashboardT, useSeoFeature, useSeoLocale } from '../hooks/useSeoLocale.js'
 import { escapeHtml } from '../helpers/escapeHtml.js'
 import type { DashboardTranslations } from '../dashboard-i18n.js'
 import { toCsv } from '../helpers/csv.js'
@@ -486,7 +486,8 @@ function BulkActionBar({
   onExportCsv: () => void
   onMarkCornerstone: () => void
   onUnmarkCornerstone: () => void
-  onOptimizeMeta: () => void
+  /** Omitted when `features.aiFeatures` is off (the endpoint doesn't exist). */
+  onOptimizeMeta?: () => void
   optimizing: boolean
   t: DashboardTranslations
 }) {
@@ -506,13 +507,15 @@ function BulkActionBar({
         <Button buttonStyle="secondary" onClick={onExportCsv}>
           {t.common.exportCsv}
         </Button>
-        <Button
-          buttonStyle="primary"
-          disabled={optimizing}
-          onClick={() => { if (!optimizing) onOptimizeMeta() }}
-        >
-          {optimizing ? t.seoView.bulkOptimizing : t.seoView.bulkOptimizeMeta}
-        </Button>
+        {onOptimizeMeta && (
+          <Button
+            buttonStyle="primary"
+            disabled={optimizing}
+            onClick={() => { if (!optimizing) onOptimizeMeta() }}
+          >
+            {optimizing ? t.seoView.bulkOptimizing : t.seoView.bulkOptimizeMeta}
+          </Button>
+        )}
         <Button buttonStyle="secondary" onClick={onMarkCornerstone}>
           {t.seoView.markCornerstone}
         </Button>
@@ -532,6 +535,8 @@ export function SeoView() {
   const seoApi = useSeoApi()
   const locale = useSeoLocale()
   const t = useDashboardT()
+  // The `/ai-optimize-bulk` endpoint only exists with `features.aiFeatures`.
+  const aiEnabled = useSeoFeature('aiFeatures') !== false
   const {
     config: {
       routes: { admin: adminRoute },
@@ -1271,14 +1276,16 @@ export function SeoView() {
       <ViewHeader
         actions={
           <>
-            <Button
-              buttonStyle="primary"
-              disabled={bulkOptimizing || items.length === 0}
-              onClick={handleOptimizeSite}
-              tooltip={t.seoView.optimizeSiteHint}
-            >
-              {bulkOptimizing ? t.seoView.bulkOptimizing : t.seoView.optimizeSite}
-            </Button>
+            {aiEnabled && (
+              <Button
+                buttonStyle="primary"
+                disabled={bulkOptimizing || items.length === 0}
+                onClick={handleOptimizeSite}
+                tooltip={t.seoView.optimizeSiteHint}
+              >
+                {bulkOptimizing ? t.seoView.bulkOptimizing : t.seoView.optimizeSite}
+              </Button>
+            )}
             <Button buttonStyle="secondary" icon={<RefreshIcon />} iconPosition="left" onClick={() => fetchAudit('refresh')}>
               {t.common.refresh}
             </Button>
@@ -1591,7 +1598,7 @@ export function SeoView() {
           onExportCsv={handleBulkExportCsv}
           onMarkCornerstone={() => handleBulkCornerstone(true)}
           onUnmarkCornerstone={() => handleBulkCornerstone(false)}
-          onOptimizeMeta={handleBulkOptimizeMeta}
+          onOptimizeMeta={aiEnabled ? handleBulkOptimizeMeta : undefined}
           optimizing={bulkOptimizing}
           t={t}
         />

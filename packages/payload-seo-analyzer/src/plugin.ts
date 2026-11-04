@@ -654,7 +654,8 @@ export const seoAnalyzerPlugin =
     //   (single-flight) build runs; the polls only read the cache or return a 202, and a
     //   10/min cap surfaced as HTTP 429 mid-build.
     // - ai-interactive (30/min): per-document LLM endpoints (/ai-rewrite, /ai-optimize),
-    //   one human click at a time; still bounds the spend hard.
+    //   one human click at a time. A brake, not a spend cap: cap spend with a credit limit
+    //   on the OpenRouter key.
     const expensiveEndpointLimiter = createBucketRateLimiter('expensive', pluginConfig.rateLimit)
     const auditPollLimiter = createBucketRateLimiter('audit-poll', pluginConfig.rateLimit)
     const aiInteractiveLimiter = createBucketRateLimiter('ai-interactive', pluginConfig.rateLimit)
@@ -792,8 +793,8 @@ export const seoAnalyzerPlugin =
     // AI features (generate + rewrite + optimize)
     if (features.aiFeatures) {
       pluginEndpoints.push(
-        { path: `${basePath}/ai-generate`, method: 'post', handler: createAiGenerateHandler() },
-        { path: `${basePath}/ai-rewrite`, method: 'post', handler: withRateLimit(createAiRewriteHandler(targetCollections), aiInteractiveLimiter) },
+        { path: `${basePath}/ai-generate`, method: 'post', handler: createAiGenerateHandler(seoConfig) },
+        { path: `${basePath}/ai-rewrite`, method: 'post', handler: withRateLimit(createAiRewriteHandler(targetCollections, seoConfig), aiInteractiveLimiter) },
         { path: `${basePath}/ai-optimize`, method: 'post', handler: withRateLimit(createAiOptimizeHandler(targetCollections, seoConfig), aiInteractiveLimiter) },
         { path: `${basePath}/alt-text-audit`, method: 'get', handler: createAltTextAuditHandler(uploadsCollection) },
         { path: `${basePath}/ai-alt-text`, method: 'post', handler: withRateLimit(createAiAltTextHandler(uploadsCollection, seoConfig)) },
