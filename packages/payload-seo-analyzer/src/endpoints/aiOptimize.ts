@@ -92,8 +92,13 @@ Strict rules (these mirror the site's own SEO engine — follow them exactly):
 - Meta title: natural and compelling, hard limit ${TITLE_HARD_MAX} characters, front-load the important words, do NOT keyword-stuff or repeat the brand/keyword.
 - Meta description: 120-160 characters, one or two sentences, action-oriented, includes the focus keyword ONCE and naturally. No keyword stuffing.
 - Write EVERYTHING (meta title, meta description, focus keyword and rationale) in ${language}, whatever the language of the content.
-- Base everything on the ACTUAL content; never invent facts, prices, numbers, or claims not present in the content.
-- If the focus keyword is missing, you MAY suggest one short keyword (2-4 words) matching the content's main topic; otherwise keep the existing one.
+- Base everything on the ACTUAL content; never invent facts, prices, numbers, or claims not present in the content. Accuracy beats every other rule.
+- The detected issues are hints, not orders. Skip any you can't fix truthfully: put a number in the title ("5 tips", "Top 10") only if the content has exactly that many items or states that number, and phrase the title as a question only if the content answers it.
+${
+  params.focusKeyword
+    ? `- The focus keyword is set by the editor and stays as is: return "${params.focusKeyword}" unchanged in "focusKeyword", and don't mention changing it in the rationale.`
+    : '- The focus keyword is missing: suggest one short keyword (2-4 words) matching the content\'s main topic.'
+}
 Return ONLY a JSON object (no markdown, no prose, no code fences) with EXACTLY this shape:
 {"metaTitle": string, "metaDescription": string, "focusKeyword": string, "rationale": string[]}
 "rationale": 2-4 short strings, in ${language}, explaining what you improved and why, referencing the detected issues.`
@@ -108,7 +113,7 @@ Current focus keyword: ${params.focusKeyword || '(none)'}
 Current meta title: ${params.currentMetaTitle || '(empty)'}
 Current meta description: ${params.currentMetaDescription || '(empty)'}
 
-SEO issues detected by the engine (fix these):
+SEO issues detected by the engine (fix the ones the content supports):
 ${issuesText}
 
 Page content (first 3000 chars):
