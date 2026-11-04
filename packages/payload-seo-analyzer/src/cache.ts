@@ -76,7 +76,7 @@ export class SeoCache {
   /**
    * Invalidate every entry whose key matches `base` exactly or as a scoped
    * variant (`base:<locale>`, `base-<param>`). Needed because cache keys are
-   * locale-scoped (e.g. `audit:fr`, `audit:en`) — a plain `invalidateKey('audit')`
+   * locale-scoped (e.g. `audit:de`, `audit:es`) — a plain `invalidateKey('audit')`
    * would never match them. Deleting during Map iteration is safe.
    */
   invalidateByPrefix(base: string): void {

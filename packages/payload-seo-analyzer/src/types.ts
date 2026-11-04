@@ -160,14 +160,6 @@ export interface SeoConfig {
   overrideWeights?: Partial<Record<RuleGroup, number>>
   /** Custom thresholds (override defaults from constants.ts) */
   thresholds?: SeoThresholds
-  /** Locale for language-specific analysis (default: 'fr') */
-  locale?: 'fr' | 'en'
-  /**
-   * Maps Payload locale codes onto the analysis locale. Read by the plugin's
-   * endpoints and hooks when they resolve the locale of a request (see
-   * `resolveAnalysisLocale`); `analyzeSeo()` itself only reads `locale`.
-   */
-  localeMapping?: Record<string, 'fr' | 'en'>
   /**
    * Public route prefix per collection, used when generating URLs
    * (sitemap, canonical, JSON-LD, llms.txt, IndexNow).
@@ -272,6 +264,4 @@ export interface AnalysisContext {
   pageType: PageType
   /** SEO configuration (merged defaults + user overrides) */
   config: SeoConfig
-  /** Active locale for language-specific rules */
-  locale: 'fr' | 'en'
 }

@@ -8,7 +8,7 @@ import { getTranslations } from '../i18n.js'
 
 export function checkMetaDescription(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
   const checks: SeoCheck[] = []
-  const r = getTranslations(ctx.locale).rules.metaDescription
+  const r = getTranslations().rules.metaDescription
   const desc = input.metaDescription || ''
   const descLen = desc.length
   const kw = ctx.normalizedKeyword
@@ -63,7 +63,7 @@ export function checkMetaDescription(input: SeoInput, ctx: AnalysisContext): Seo
     })
   }
 
-  // 8. Focus keyword present in description (smart French matching)
+  // 8. Focus keyword present in description (smart matching)
   if (kw) {
     const descNorm = normalizeForComparison(desc)
     const descContainsKw = keywordMatchesText(kw, descNorm)
@@ -81,16 +81,12 @@ export function checkMetaDescription(input: SeoInput, ctx: AnalysisContext): Seo
   }
 
   // 9. Contains an action verb or alternative CTA pattern
-  const locale = ctx.locale || 'fr'
-  const actionVerbs = getActionVerbs(locale)
+  const actionVerbs = getActionVerbs()
   const descLower = desc.toLowerCase()
   const hasActionVerb = actionVerbs.some((verb) => descLower.includes(verb))
-  const hasNumericCta = locale === 'en'
-    ? /\b\d+\s+(?:reasons?|steps?|tips?|tricks?|mistakes?|benefits?|keys?|points?|ways?|methods?|techniques?|tools?|secrets?)\b/i.test(desc)
-    : /\b\d+\s+(?:raisons?|étapes?|astuces?|conseils?|erreurs?|avantages?|clés?|points?|façons?|méthodes?|techniques?|outils?|secrets?)\b/i.test(desc)
-  const hasInterrogativeCta = locale === 'en'
-    ? /\b(?:how|why|when|what|which|where|who)\b/i.test(desc)
-    : /\b(?:comment|pourquoi|quand|quel|quelle|quels|quelles)\b/i.test(desc)
+  const hasNumericCta =
+    /\b\d+\s+(?:reasons?|steps?|tips?|tricks?|mistakes?|benefits?|keys?|points?|ways?|methods?|techniques?|tools?|secrets?)\b/i.test(desc)
+  const hasInterrogativeCta = /\b(?:how|why|when|what|which|where|who)\b/i.test(desc)
   const hasAction = hasActionVerb || hasNumericCta || hasInterrogativeCta
 
   checks.push({

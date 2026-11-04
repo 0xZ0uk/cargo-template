@@ -34,9 +34,9 @@ src/
 ├── endpoints/            # REST API endpoint handlers
 ├── hooks/                # Payload hooks (auto-redirect, score tracking)
 ├── helpers/              # Utility functions
-├── i18n.ts               # Analysis engine i18n (FR/EN)
-├── dashboard-i18n.ts     # Dashboard UI i18n (~500 strings)
-├── translations.ts       # Meta field labels (39 languages)
+├── i18n.ts               # Analysis engine strings (English)
+├── dashboard-i18n.ts     # Dashboard UI strings (English, ~500 strings)
+├── translations.ts       # Meta field labels (Payload plugin-seo languages)
 └── types.ts              # TypeScript type definitions
 ```
 
@@ -44,8 +44,8 @@ src/
 
 - **TypeScript** — All code must be typed, no `any` unless strictly necessary
 - **No dependencies** — The plugin has zero runtime dependencies (only peer deps)
-- **Backward compatibility** — Don't remove or rename existing exports
-- **i18n** — All user-facing strings must be in both French and English
+- **Backward compatibility** — The package is private and consumed only by `apps/web`; exports can change, as long as the app is updated in the same change
+- **Strings** — All user-facing strings are English and live in `i18n.ts` / `dashboard-i18n.ts`
 - **Tests** — Add tests for new rules or helpers
 
 ## Submitting Changes

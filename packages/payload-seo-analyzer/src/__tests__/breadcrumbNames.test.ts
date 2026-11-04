@@ -36,7 +36,7 @@ const names = async (handler: ReturnType<typeof createBreadcrumbHandler>, r: unk
 }
 
 describe('GET /breadcrumb names', () => {
-  const config = { locale: 'en', siteName: 'Cargo Template' } as SeoConfig
+  const config = { siteName: 'Cargo Template' } as SeoConfig
 
   it("uses each page's own title, not the meta title with its suffix", async () => {
     const handler = createBreadcrumbHandler(['pages'], config)

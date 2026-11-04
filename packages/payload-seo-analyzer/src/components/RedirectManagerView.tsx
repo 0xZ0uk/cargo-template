@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useMemo, useCallback, useRef, useId } from 'react'
 import { Banner, Button, CheckIcon, ChevronIcon, EditIcon, RefreshIcon, TrashIcon, XIcon } from '@payloadcms/ui'
-import { useDashboardT, useSeoLocale } from '../hooks/useSeoLocale.js'
+import { useDashboardT } from '../hooks/useSeoLocale.js'
 import { toCsv } from '../helpers/csv.js'
 import { Card, DataTable, EmptyState, Field, Grid, LoadingState, StatTile, TonePill, ViewBody, ViewHeader, type Tone } from '../ui/index.js'
 import { useSeoApi } from '../hooks/useSeoApi.js'
@@ -71,7 +71,6 @@ function typeTone(type: string): Tone {
 // ---------------------------------------------------------------------------
 export function RedirectManagerView() {
   const seoApi = useSeoApi()
-  const locale = useSeoLocale()
   const t = useDashboardT()
   // useId(), never a literal: duplicate ids would break the very association
   // they create if the view is ever mounted twice.
@@ -362,7 +361,7 @@ export function RedirectManagerView() {
         r.from,
         r.to,
         r.type,
-        r.createdAt ? new Date(r.createdAt).toLocaleDateString(locale === 'fr' ? 'fr-FR' : 'en-US') : '',
+        r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-US') : '',
       ])
 
       // toCsv neutralizes spreadsheet formulas — see helpers/csv.ts.
@@ -697,7 +696,7 @@ export function RedirectManagerView() {
                     </td>
                     <td className="seo-table__num seo-text--secondary">
                       {r.createdAt
-                        ? new Date(r.createdAt).toLocaleDateString(locale === 'fr' ? 'fr-FR' : 'en-US')
+                        ? new Date(r.createdAt).toLocaleDateString('en-US')
                         : '-'}
                     </td>
                     <td>

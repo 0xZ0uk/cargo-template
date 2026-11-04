@@ -23,14 +23,14 @@ function makeLexicalParagraph(text: string) {
 
 function makeFullInput(overrides: Partial<SeoInput> = {}): SeoInput {
   return {
-    metaTitle: 'Agence Web à Ussel en Corrèze | Mon Site',
+    metaTitle: 'Web Agency in Boston, Massachusetts | My Site',
     metaDescription:
-      "Découvrez notre agence web à Ussel en Corrèze. Création de sites internet, développement web et référencement SEO. Devis gratuit.",
-    slug: 'agence-web-ussel',
-    focusKeyword: 'agence web ussel',
-    heroTitle: 'Agence Web à Ussel',
+      'Discover our web agency in Boston, Massachusetts. Website creation, web development and SEO services. Get a free quote today.',
+    slug: 'web-agency-boston',
+    focusKeyword: 'web agency boston',
+    heroTitle: 'Web Agency in Boston',
     heroRichText: makeLexicalParagraph(
-      "Notre agence est votre partenaire web a ussel specialisee dans la creation de sites internet. En effet, nous proposons des services de developpement web sur mesure.",
+      'Our agency is your web partner in Boston, specialized in website creation. Indeed, we offer tailor-made web development services.',
     ),
     blocks: [
       {
@@ -40,7 +40,7 @@ function makeFullInput(overrides: Partial<SeoInput> = {}): SeoInput {
             richText: makeLexicalParagraph(
               Array(50)
                 .fill(
-                  "Notre agence web ussel cree des sites internet modernes et performants pour les entreprises de la region.",
+                  'Our web agency in Boston builds modern, high-performing websites for businesses in the region.',
                 )
                 .join(' '),
             ),
@@ -48,8 +48,8 @@ function makeFullInput(overrides: Partial<SeoInput> = {}): SeoInput {
         ],
       },
     ],
-    metaImage: { id: 1, url: '/images/og.jpg', alt: 'Agence web Ussel' },
-    heroMedia: { url: '/images/hero.jpg', alt: 'Hero agence web Ussel background' },
+    metaImage: { id: 1, url: '/images/og.jpg', alt: 'Web agency Boston' },
+    heroMedia: { url: '/images/hero.jpg', alt: 'Hero web agency Boston background' },
     updatedAt: new Date().toISOString(),
     ...overrides,
   }
@@ -168,9 +168,9 @@ describe('post mode', () => {
     const result = analyzeSeo(
       makeFullInput({
         isPost: true,
-        heroTitle: 'Mon Article',
-        heroRichText: makeLexicalParagraph('Introduction de mon article.'),
-        content: makeLexicalParagraph('Contenu principal de article.'),
+        heroTitle: 'My Article',
+        heroRichText: makeLexicalParagraph('Introduction to my article.'),
+        content: makeLexicalParagraph('Main content of the article.'),
       }),
     )
     const h1Check = result.checks.find(
@@ -218,7 +218,7 @@ describe('SeoConfig', () => {
   it('runs technical checks when canonical/robots are provided', () => {
     const result = analyzeSeo(
       makeFullInput({
-        canonicalUrl: 'https://example.com/agence-web-ussel',
+        canonicalUrl: 'https://example.com/web-agency-boston',
         robotsMeta: 'index, follow',
       }),
     )

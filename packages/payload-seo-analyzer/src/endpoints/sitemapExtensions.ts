@@ -135,6 +135,16 @@ async function eachPublishedDoc(
 // ---------------------------------------------------------------------------
 // GET /sitemap-news.xml — articles from the last 48h (depth 0, lightweight)
 // ---------------------------------------------------------------------------
+/**
+ * `<news:language>`: the language the articles are written in (ISO 639), so Payload's default
+ * content locale when the site is localized, else `en`.
+ */
+export function newsLanguage(config: { localization?: unknown }): string {
+  const localization = config.localization as { defaultLocale?: unknown } | false | undefined
+  const code = localization && typeof localization.defaultLocale === 'string' ? localization.defaultLocale.trim() : ''
+  return code ? code.toLowerCase() : 'en'
+}
+
 export function createNewsSitemapHandler(targetCollections: string[], seoConfig?: SeoConfig): PayloadHandler {
   const cacheKey = `${SITEMAP_NEWS_CACHE_BASE}:${targetCollections.join(',')}`
   return async (req) => {
@@ -144,7 +154,6 @@ export function createNewsSitemapHandler(targetCollections: string[], seoConfig?
       if (typeof cachedXml === 'string') return xmlResponse(cachedXml)
 
       const siteUrl = resolveSiteUrl(seoConfig)
-      const language = seoConfig?.locale === 'en' ? 'en' : 'fr'
       // Publication name: configured siteName, else the host.
       let publication = seoConfig?.siteName || ''
       if (!publication && siteUrl) {
@@ -158,6 +167,7 @@ export function createNewsSitemapHandler(targetCollections: string[], seoConfig?
       const cutoff = Date.now() - 48 * 3_600_000
       const entries: string[] = []
 
+      const language = escapeXml(newsLanguage(req.payload.config))
       await eachPublishedDoc(req.payload, targetCollections, 0, (doc, collection) => {
         const dateStr =
           (typeof doc.publishedAt === 'string' && doc.publishedAt) ||

@@ -19,15 +19,15 @@ describe('normalizeToSlug', () => {
 describe('resolveToDocSlug', () => {
   const allSlugs = new Set([
     'seo-local-limoges', // a post (bare slug, served at /posts/seo-local-limoges)
-    'services/creation-site-internet', // a nested page (served at /services/creation-site-internet)
+    'services/web-design', // a nested page (served at /services/web-design)
     'agence-web-limoges', // a top-level page
   ])
   const routePrefixes = new Set(['posts', 'pages'])
 
   it('returns the slug unchanged when it already matches a document', () => {
     expect(resolveToDocSlug('agence-web-limoges', allSlugs, routePrefixes)).toBe('agence-web-limoges')
-    expect(resolveToDocSlug('services/creation-site-internet', allSlugs, routePrefixes)).toBe(
-      'services/creation-site-internet',
+    expect(resolveToDocSlug('services/web-design', allSlugs, routePrefixes)).toBe(
+      'services/web-design',
     )
   })
 

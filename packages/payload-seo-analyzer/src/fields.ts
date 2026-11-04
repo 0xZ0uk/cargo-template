@@ -4,41 +4,26 @@
  */
 
 import type { Field } from 'payload'
-import type { SeoAnalysisLocaleOptions } from './hooks/useSeoLocale.js'
 
-/**
- * @param options - `locale` and `localeMapping` from the plugin config, forwarded
- * to the sidebar analyzer through `admin.custom` so it resolves the analysis
- * locale exactly like the server endpoints do.
- */
-export function seoFields(options: SeoAnalysisLocaleOptions = {}): Field[] {
-  // Defined keys only: an explicit `undefined` would be serialised to the client.
-  const analyzerCustom: SeoAnalysisLocaleOptions = {
-    ...(options.locale && { locale: options.locale }),
-    ...(options.localeMapping && { localeMapping: options.localeMapping }),
-  }
-
+export function seoFields(): Field[] {
   return [
     {
       name: 'isCornerstone',
       type: 'checkbox',
       defaultValue: false,
-      label: { en: 'Cornerstone content', fr: 'Contenu pilier (Cornerstone)' },
+      label: 'Cornerstone content',
       admin: {
-        description: {
-          en: 'Cornerstone content is the most important content on your site and should be well linked.',
-          fr: 'Les contenus piliers sont les pages les plus importantes du site et doivent être bien maillées.',
-        },
+        description: 'Cornerstone content is the most important content on your site and should be well linked.',
         position: 'sidebar',
       },
     },
     {
       name: 'focusKeyword',
       type: 'text',
-      label: { en: 'Primary SEO keyword', fr: 'Mot-clé SEO principal' },
+      label: 'Primary SEO keyword',
       admin: {
         position: 'sidebar',
-        description: { en: 'Target keyword for SEO analysis', fr: "Mot-clé cible pour l'analyse SEO" },
+        description: 'Target keyword for SEO analysis',
       },
     },
     {
@@ -49,12 +34,11 @@ export function seoFields(options: SeoAnalysisLocaleOptions = {}): Field[] {
         components: {
           Field: '@cargo/payload-seo-analyzer/client#SeoAnalyzerField',
         },
-        custom: analyzerCustom,
       },
     },
     {
       type: 'collapsible',
-      label: { en: 'Secondary keywords (SEO)', fr: 'Mots-clés secondaires (SEO)' },
+      label: 'Secondary keywords (SEO)',
       admin: { initCollapsed: true },
       fields: [
         {
@@ -62,10 +46,7 @@ export function seoFields(options: SeoAnalysisLocaleOptions = {}): Field[] {
           type: 'array',
           maxRows: 3,
           admin: {
-            description: {
-              en: 'Secondary keywords (in addition to the primary keyword)',
-              fr: 'Mots-clés secondaires (en plus du mot-clé principal)',
-            },
+            description: 'Secondary keywords (in addition to the primary keyword)',
           },
           fields: [
             {

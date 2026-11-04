@@ -40,8 +40,6 @@ export {
   countKeywordOccurrences,
   countWords,
   countSentences,
-  countSyllablesFR,
-  calculateFleschFR,
   calculateFlesch,
   countSyllablesEN,
   detectPassiveVoice,
@@ -49,8 +47,6 @@ export {
   checkHeadingHierarchy,
   countLongSections,
   detectPageType,
-  getStopWordsFR,
-  getActionVerbsFR,
   isStopWordInCompoundExpression,
 } from './helpers'
 
@@ -64,8 +60,6 @@ export { metaFields } from './metaFields.js'
 export type { MetaFieldsConfig } from './metaFields.js'
 
 // Re-export helpers
-export { resolveAnalysisLocale } from './helpers/resolveLocale.js'
-export type { ResolveLocaleArgs } from './helpers/resolveLocale.js'
 export { fetchAllDocs } from './helpers/fetchAllDocs.js'
 export type { FetchedDoc, FetchAllDocsOptions, DocSourceType } from './helpers/fetchAllDocs.js'
 
@@ -159,9 +153,9 @@ export type { NotFoundProbeFilterOption, ProbePathMatcher } from './helpers/prob
 export { detectAlertWebhookFormat, ALERT_WEBHOOK_FORMATS } from './alertWebhook.js'
 export type { AlertWebhookFormat } from './alertWebhook.js'
 
-// Re-export dashboard i18n for custom locale registration
-export { registerDashboardTranslations, getDashboardT } from './dashboard-i18n.js'
-export type { DashboardTranslations, DashboardLocale } from './dashboard-i18n.js'
+// Re-export the dashboard string dictionary
+export { getDashboardT } from './dashboard-i18n.js'
+export type { DashboardTranslations } from './dashboard-i18n.js'
 
 // Re-export constants for consumers that need thresholds
 export {
@@ -182,7 +176,6 @@ export {
   SCORE_OK,
   WARNING_MULTIPLIER,
   MAX_RECURSION_DEPTH,
-  POWER_WORDS_FR,
   POWER_WORDS,
   STOP_WORDS,
   ACTION_VERBS,
@@ -514,7 +507,6 @@ function buildContext(data: SeoInput, config: SeoConfig): AnalysisContext {
       ? 'blog'
       : detectPageType(data.slug || '', undefined, config.localSeoSlugs),
     config,
-    locale: (config.locale || 'fr') as 'fr' | 'en',
   }
 }
 

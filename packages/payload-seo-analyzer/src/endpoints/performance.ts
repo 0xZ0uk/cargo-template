@@ -198,7 +198,7 @@ export function createPerformanceHandler(resolveStore: SeoDataStoreResolver = pa
         // Aggregate by query (top queries)
         const queryMap = new Map<string, AggregatedRow>()
         for (const doc of docs) {
-          const key = doc.query || '(sans requête)'
+          const key = doc.query || '(no query)'
           if (!queryMap.has(key)) {
             queryMap.set(key, { key, clicks: 0, impressions: 0, ctr: 0, position: 0, count: 0 })
           }
@@ -264,9 +264,9 @@ export function createPerformanceHandler(resolveStore: SeoDataStoreResolver = pa
           const todayISO = new Date().toISOString().split('T')[0]
 
           for (const row of rows) {
-            // Support multiple header variants (FR and EN GSC exports)
-            const urlVal = row.url || row.page || row.pages || row['pages les plus populaires'] || ''
-            const queryVal = row.query || row.queries || row['top queries'] || row.requete || row['requête'] || row['requêtes les plus fréquentes'] || row['requêtes principales'] || ''
+            // Support multiple header variants of GSC exports
+            const urlVal = row.url || row.page || row.pages || ''
+            const queryVal = row.query || row.queries || row['top queries'] || ''
             const dateVal = row.date || ''
 
             // GSC exports different report types:
@@ -279,7 +279,7 @@ export function createPerformanceHandler(resolveStore: SeoDataStoreResolver = pa
             entries.push({
               url: urlVal || '/',
               query: queryVal || undefined,
-              clicks: parseFloat(row.clicks || row.clics || '0') || 0,
+              clicks: parseFloat(row.clicks || '0') || 0,
               impressions: parseFloat(row.impressions || '0') || 0,
               ctr: parseFloat((row.ctr || '0').replace('%', '').replace(',', '.')) || 0,
               position: parseFloat((row.position || '0').replace(',', '.')) || 0,
@@ -309,7 +309,7 @@ export function createPerformanceHandler(resolveStore: SeoDataStoreResolver = pa
         if (entries.length === 0) {
           return Response.json(
             {
-              error: 'Aucune entrée valide trouvée. Le CSV doit contenir au moins une colonne "Page" (ou "URL") ou "Top queries". Formats acceptés : export Google Search Console (Pages, Requêtes, ou Dates).',
+              error: 'No valid entry found. The CSV needs at least a "Page" (or "URL") or "Top queries" column. Accepted formats: Google Search Console exports (Pages, Queries or Dates).',
             },
             { status: 400 },
           )

@@ -17,41 +17,24 @@ import type { SeoCheck, SeoInput, AnalysisContext } from '../types.js'
 const HREFLANG_RE = /^[a-z]{2,3}(-[a-z]{2,4})?$/i
 
 const STRINGS = {
-  fr: {
-    codesLabel: 'Codes hreflang valides',
-    codesPass: 'Tous les codes hreflang sont au format valide (langue ISO 639-1, région ISO 3166-1 optionnelle).',
-    codesFail: (bad: string) => `Code(s) hreflang invalide(s) : ${bad} — un seul code erroné fait ignorer tout le cluster par Google.`,
-    dupLabel: 'Doublons hreflang',
-    dupPass: 'Aucun doublon de code hreflang.',
-    dupFail: (dup: string) => `Code(s) hreflang en double : ${dup} — chaque locale doit être déclarée une seule fois.`,
-    absLabel: 'URLs hreflang absolues',
-    absPass: 'Toutes les URLs hreflang sont absolues.',
-    absFail: 'Certaines URLs hreflang ne sont pas absolues — utilisez des URLs complètes (https://...).',
-    xdefLabel: 'hreflang x-default',
-    xdefPass: 'Un x-default est défini — bonne pratique pour les visiteurs hors locales ciblées.',
-    xdefFail: 'Aucun x-default — ajoutez un hreflang="x-default" pour les locales non couvertes.',
-  },
-  en: {
-    codesLabel: 'Valid hreflang codes',
-    codesPass: 'All hreflang codes are well-formed (ISO 639-1 language, optional ISO 3166-1 region).',
-    codesFail: (bad: string) => `Invalid hreflang code(s): ${bad} — a single bad code makes Google ignore the whole cluster.`,
-    dupLabel: 'Duplicate hreflang',
-    dupPass: 'No duplicate hreflang code.',
-    dupFail: (dup: string) => `Duplicate hreflang code(s): ${dup} — each locale must be declared once.`,
-    absLabel: 'Absolute hreflang URLs',
-    absPass: 'All hreflang URLs are absolute.',
-    absFail: 'Some hreflang URLs are not absolute — use full URLs (https://...).',
-    xdefLabel: 'hreflang x-default',
-    xdefPass: 'An x-default is defined — good practice for visitors outside targeted locales.',
-    xdefFail: 'No x-default — add hreflang="x-default" for locales you do not cover.',
-  },
+  codesLabel: 'Valid hreflang codes',
+  codesPass: 'All hreflang codes are well-formed (ISO 639-1 language, optional ISO 3166-1 region).',
+  codesFail: (bad: string) => `Invalid hreflang code(s): ${bad} — a single bad code makes Google ignore the whole cluster.`,
+  dupLabel: 'Duplicate hreflang',
+  dupPass: 'No duplicate hreflang code.',
+  dupFail: (dup: string) => `Duplicate hreflang code(s): ${dup} — each locale must be declared once.`,
+  absLabel: 'Absolute hreflang URLs',
+  absPass: 'All hreflang URLs are absolute.',
+  absFail: 'Some hreflang URLs are not absolute — use full URLs (https://...).',
+  xdefLabel: 'hreflang x-default',
+  xdefPass: 'An x-default is defined — good practice for visitors outside targeted locales.',
+  xdefFail: 'No x-default — add hreflang="x-default" for locales you do not cover.',
 } as const
 
 export function checkHreflang(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
   const alts = input.localeAlternates
   if (!Array.isArray(alts) || alts.length === 0) return [] // mono-locale → silent
 
-  const s = STRINGS[ctx.locale] ?? STRINGS.fr
   const checks: SeoCheck[] = []
 
   const codes = alts.map((a) => (a.hreflang || '').trim()).filter(Boolean)
@@ -60,9 +43,9 @@ export function checkHreflang(input: SeoInput, ctx: AnalysisContext): SeoCheck[]
   const invalid = codes.filter((c) => c.toLowerCase() !== 'x-default' && !HREFLANG_RE.test(c))
   checks.push({
     id: 'hreflang-codes',
-    label: s.codesLabel,
+    label: STRINGS.codesLabel,
     status: invalid.length === 0 ? 'pass' : 'fail',
-    message: invalid.length === 0 ? s.codesPass : s.codesFail(invalid.join(', ')),
+    message: invalid.length === 0 ? STRINGS.codesPass : STRINGS.codesFail(invalid.join(', ')),
     category: 'important',
     weight: 2,
     group: 'hreflang',
@@ -77,9 +60,9 @@ export function checkHreflang(input: SeoInput, ctx: AnalysisContext): SeoCheck[]
   }
   checks.push({
     id: 'hreflang-duplicates',
-    label: s.dupLabel,
+    label: STRINGS.dupLabel,
     status: dups.size === 0 ? 'pass' : 'warning',
-    message: dups.size === 0 ? s.dupPass : s.dupFail([...dups].join(', ')),
+    message: dups.size === 0 ? STRINGS.dupPass : STRINGS.dupFail([...dups].join(', ')),
     category: 'important',
     weight: 1,
     group: 'hreflang',
@@ -89,9 +72,9 @@ export function checkHreflang(input: SeoInput, ctx: AnalysisContext): SeoCheck[]
   const allAbsolute = alts.every((a) => /^https?:\/\//i.test((a.href || '').trim()))
   checks.push({
     id: 'hreflang-absolute',
-    label: s.absLabel,
+    label: STRINGS.absLabel,
     status: allAbsolute ? 'pass' : 'warning',
-    message: allAbsolute ? s.absPass : s.absFail,
+    message: allAbsolute ? STRINGS.absPass : STRINGS.absFail,
     category: 'important',
     weight: 1,
     group: 'hreflang',
@@ -101,9 +84,9 @@ export function checkHreflang(input: SeoInput, ctx: AnalysisContext): SeoCheck[]
   const hasXDefault = codes.some((c) => c.toLowerCase() === 'x-default')
   checks.push({
     id: 'hreflang-x-default',
-    label: s.xdefLabel,
+    label: STRINGS.xdefLabel,
     status: hasXDefault ? 'pass' : 'warning',
-    message: hasXDefault ? s.xdefPass : s.xdefFail,
+    message: hasXDefault ? STRINGS.xdefPass : STRINGS.xdefFail,
     category: 'bonus',
     weight: 1,
     group: 'hreflang',

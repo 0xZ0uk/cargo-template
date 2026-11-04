@@ -7,45 +7,24 @@ import { Card, DataTable, EmptyState, LoadingState, TonePill } from '../ui/index
 import { usePayloadApi, useSeoApi } from '../hooks/useSeoApi.js'
 import './CtrOpportunitiesPanel.css'
 
-const S = {
-  fr: {
-    title: 'Opportunités CTR (faible clic / bonne position)',
-    subtitle: 'Pages bien positionnées mais peu cliquées (méta peu attractive). Données Google Search Console → réécriture méta ciblée.',
-    needGsc: 'Connectez Google Search Console ci-dessus pour activer les opportunités CTR.',
-    none: 'Aucune opportunité détectée sur la période.',
-    loading: 'Analyse des données GSC…',
-    page: 'Page',
-    pos: 'Pos.',
-    ctr: 'CTR',
-    expected: 'attendu',
-    potential: 'Clics/mois potentiels',
-    optimize: 'Optimiser',
-    optimizing: '…',
-    apply: 'Appliquer',
-    applied: 'Appliqué',
-    noKey: 'Clé API OpenRouter requise (OPENROUTER_API_KEY).',
-    open: 'Ouvrir',
-    refresh: 'Rafraîchir',
-  },
-  en: {
-    title: 'CTR opportunities (low clicks / good rank)',
-    subtitle: 'Pages that rank well but get few clicks (weak meta). Google Search Console data → targeted meta rewrite.',
-    needGsc: 'Connect Google Search Console above to enable CTR opportunities.',
-    none: 'No opportunities for the period.',
-    loading: 'Analyzing GSC data…',
-    page: 'Page',
-    pos: 'Pos.',
-    ctr: 'CTR',
-    expected: 'expected',
-    potential: 'Potential clicks/mo',
-    optimize: 'Optimize',
-    optimizing: '…',
-    apply: 'Apply',
-    applied: 'Applied',
-    noKey: 'OpenRouter API key required (OPENROUTER_API_KEY).',
-    open: 'Open',
-    refresh: 'Refresh',
-  },
+const s = {
+  title: 'CTR opportunities (low clicks / good rank)',
+  subtitle: 'Pages that rank well but get few clicks (weak meta). Google Search Console data → targeted meta rewrite.',
+  needGsc: 'Connect Google Search Console above to enable CTR opportunities.',
+  none: 'No opportunities for the period.',
+  loading: 'Analyzing GSC data…',
+  page: 'Page',
+  pos: 'Pos.',
+  ctr: 'CTR',
+  expected: 'expected',
+  potential: 'Potential clicks/mo',
+  optimize: 'Optimize',
+  optimizing: '…',
+  apply: 'Apply',
+  applied: 'Applied',
+  noKey: 'OpenRouter API key required (OPENROUTER_API_KEY).',
+  open: 'Open',
+  refresh: 'Refresh',
 } as const
 
 interface Opportunity {
@@ -65,11 +44,10 @@ interface RowState {
   error?: string
 }
 
-export function CtrOpportunitiesPanel({ locale }: { locale: 'fr' | 'en' }) {
+export function CtrOpportunitiesPanel() {
   const payloadApi = usePayloadApi()
   const seoApi = useSeoApi()
   const gscEnabled = useSeoFeature('gscApi')
-  const s = S[locale] ?? S.fr
   const [opps, setOpps] = useState<Opportunity[] | null>(null)
   const [loading, setLoading] = useState(true)
   const [notConnected, setNotConnected] = useState(false)

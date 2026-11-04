@@ -38,45 +38,24 @@ interface HygieneResponse {
   }
 }
 
-const S = {
-  fr: {
-    title: 'Hygiène d’indexation',
-    subtitle: 'Audit cross-page : noindex de masse, canonical cassé / dupliqué / manquant. Le seul « crash » SEO on-page vraiment actionnable.',
-    unavailable: 'Audit d’indexation indisponible (réservé aux admins).',
-    loading: 'Analyse de l’indexation…',
-    clean: 'Indexation saine — aucun problème détecté.',
-    refresh: 'Rafraîchir',
-    docs: 'documents analysés',
-    capped: (n: number) => `limité aux ${n} premiers documents (SEO_INDEXATION_MAX_DOCS)`,
-    noindex: 'En noindex',
-    massNoindex: 'noindex de masse',
-    dupCanonical: 'Canonical dupliqués',
-    missingCanonical: 'Canonical manquants',
-    danglingCanonical: 'Canonical cassés',
-    page: 'Page',
-    pass: 'OK',
-    warning: 'À surveiller',
-    fail: 'Critique',
-  },
-  en: {
-    title: 'Indexation hygiene',
-    subtitle: 'Cross-page audit: mass noindex, broken / duplicated / missing canonicals. The one truly actionable on-page SEO “crash”.',
-    unavailable: 'Indexation audit unavailable (admin only).',
-    loading: 'Analyzing indexation…',
-    clean: 'Healthy indexation — no issues found.',
-    refresh: 'Refresh',
-    docs: 'documents analyzed',
-    capped: (n: number) => `capped at the first ${n} documents (SEO_INDEXATION_MAX_DOCS)`,
-    noindex: 'Noindexed',
-    massNoindex: 'mass noindex',
-    dupCanonical: 'Duplicated canonicals',
-    missingCanonical: 'Missing canonicals',
-    danglingCanonical: 'Broken canonicals',
-    page: 'Page',
-    pass: 'OK',
-    warning: 'Watch',
-    fail: 'Critical',
-  },
+const s = {
+  title: 'Indexation hygiene',
+  subtitle: 'Cross-page audit: mass noindex, broken / duplicated / missing canonicals. The one truly actionable on-page SEO “crash”.',
+  unavailable: 'Indexation audit unavailable (admin only).',
+  loading: 'Analyzing indexation…',
+  clean: 'Healthy indexation — no issues found.',
+  refresh: 'Refresh',
+  docs: 'documents analyzed',
+  capped: (n: number) => `capped at the first ${n} documents (SEO_INDEXATION_MAX_DOCS)`,
+  noindex: 'Noindexed',
+  massNoindex: 'mass noindex',
+  dupCanonical: 'Duplicated canonicals',
+  missingCanonical: 'Missing canonicals',
+  danglingCanonical: 'Broken canonicals',
+  page: 'Page',
+  pass: 'OK',
+  warning: 'Watch',
+  fail: 'Critical',
 } as const
 
 function sevTone(sev?: Severity): Tone {
@@ -85,9 +64,8 @@ function sevTone(sev?: Severity): Tone {
   return 'success'
 }
 
-export function IndexationHygienePanel({ locale }: { locale: 'fr' | 'en' }) {
+export function IndexationHygienePanel() {
   const seoApi = useSeoApi()
-  const s = S[locale] ?? S.fr
   const [data, setData] = useState<HygieneResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [unavailable, setUnavailable] = useState(false)

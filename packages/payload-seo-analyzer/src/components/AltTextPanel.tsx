@@ -6,39 +6,21 @@ import { Card, EmptyState, LoadingState, TonePill } from '../ui/index.js'
 import { useSeoApi } from '../hooks/useSeoApi.js'
 import './AltTextPanel.css'
 
-const S = {
-  fr: {
-    title: 'Alt-text IA des images',
-    subtitle: "Génère l'attribut alt des images qui n'en ont pas (modèle de vision), pour l'accessibilité et le SEO.",
-    none: 'Toutes les images ont un alt.',
-    forbidden: 'Réservé aux administrateurs.',
-    disabled: 'Fonction IA désactivée (features.aiFeatures).',
-    missing: 'image(s) sans alt',
-    generate: 'Générer',
-    generating: '…',
-    apply: 'Appliquer',
-    applied: 'Appliqué',
-    noKey: 'Clé API OpenRouter requise (OPENROUTER_API_KEY).',
-    loading: 'Chargement…',
-    refresh: 'Rafraîchir',
-    altLabel: 'Texte alternatif',
-  },
-  en: {
-    title: 'AI image alt-text',
-    subtitle: 'Generate alt text for images that lack one (vision model), for accessibility and SEO.',
-    none: 'All images have alt text.',
-    forbidden: 'Admins only.',
-    disabled: 'AI feature disabled (features.aiFeatures).',
-    missing: 'image(s) without alt',
-    generate: 'Generate',
-    generating: '…',
-    apply: 'Apply',
-    applied: 'Applied',
-    noKey: 'OpenRouter API key required (OPENROUTER_API_KEY).',
-    loading: 'Loading…',
-    refresh: 'Refresh',
-    altLabel: 'Alt text',
-  },
+const s = {
+  title: 'AI image alt-text',
+  subtitle: 'Generate alt text for images that lack one (vision model), for accessibility and SEO.',
+  none: 'All images have alt text.',
+  forbidden: 'Admins only.',
+  disabled: 'AI feature disabled (features.aiFeatures).',
+  missing: 'image(s) without alt',
+  generate: 'Generate',
+  generating: '…',
+  apply: 'Apply',
+  applied: 'Applied',
+  noKey: 'OpenRouter API key required (OPENROUTER_API_KEY).',
+  loading: 'Loading…',
+  refresh: 'Refresh',
+  altLabel: 'Alt text',
 } as const
 
 interface Item {
@@ -55,9 +37,8 @@ interface RowState {
   error?: string
 }
 
-export function AltTextPanel({ locale }: { locale: 'fr' | 'en' }) {
+export function AltTextPanel() {
   const seoApi = useSeoApi()
-  const s = S[locale] ?? S.fr
   const [items, setItems] = useState<Item[] | null>(null)
   const [collection, setCollection] = useState('media')
   const [missingCount, setMissingCount] = useState(0)

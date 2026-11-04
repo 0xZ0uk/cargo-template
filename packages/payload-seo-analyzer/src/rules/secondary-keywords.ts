@@ -14,7 +14,7 @@ import { getTranslations } from '../i18n.js'
 
 export function checkSecondaryKeywords(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
   const checks: SeoCheck[] = []
-  const r = getTranslations(ctx.locale).rules.secondaryKeywords
+  const r = getTranslations().rules.secondaryKeywords
   const { secondaryNormalizedKeywords } = ctx
 
   if (secondaryNormalizedKeywords.length === 0) return checks

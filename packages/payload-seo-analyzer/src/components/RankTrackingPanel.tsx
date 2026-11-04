@@ -7,43 +7,23 @@ import { Card, DataTable, EmptyState, LoadingState, TonePill } from '../ui/index
 import { useSeoApi } from '../hooks/useSeoApi.js'
 import './RankTrackingPanel.css'
 
-const S = {
-  fr: {
-    title: 'Suivi de positions (rank tracking)',
-    subtitle: 'Historique quotidien des positions Google (via Search Console) et mouvements dans le temps.',
-    needGsc: 'Connectez Google Search Console ci-dessus pour activer le suivi de positions.',
-    snapshot: 'Relever maintenant',
-    snapshotting: 'Relevé en cours…',
-    noData: 'Pas encore de données. Le relevé tourne automatiquement chaque jour ; cliquez « Relever maintenant » pour démarrer.',
-    lastSnapshot: 'Dernier relevé',
-    query: 'Requête',
-    position: 'Position',
-    change: 'Évolution',
-    clicks: 'Clics',
-    impressions: 'Impr.',
-    stable: 'stable',
-    newQ: 'nouveau',
-    countLabel: 'requêtes suivies',
-    loading: 'Chargement…',
-  },
-  en: {
-    title: 'Rank tracking',
-    subtitle: 'Daily Google position history (via Search Console) and movement over time.',
-    needGsc: 'Connect Google Search Console above to enable rank tracking.',
-    snapshot: 'Snapshot now',
-    snapshotting: 'Snapshotting…',
-    noData: 'No data yet. The snapshot runs automatically every day; click "Snapshot now" to start.',
-    lastSnapshot: 'Last snapshot',
-    query: 'Query',
-    position: 'Position',
-    change: 'Change',
-    clicks: 'Clicks',
-    impressions: 'Impr.',
-    stable: 'stable',
-    newQ: 'new',
-    countLabel: 'tracked queries',
-    loading: 'Loading…',
-  },
+const s = {
+  title: 'Rank tracking',
+  subtitle: 'Daily Google position history (via Search Console) and movement over time.',
+  needGsc: 'Connect Google Search Console above to enable rank tracking.',
+  snapshot: 'Snapshot now',
+  snapshotting: 'Snapshotting…',
+  noData: 'No data yet. The snapshot runs automatically every day; click "Snapshot now" to start.',
+  lastSnapshot: 'Last snapshot',
+  query: 'Query',
+  position: 'Position',
+  change: 'Change',
+  clicks: 'Clicks',
+  impressions: 'Impr.',
+  stable: 'stable',
+  newQ: 'new',
+  countLabel: 'tracked queries',
+  loading: 'Loading…',
 } as const
 
 interface Mover {
@@ -58,10 +38,9 @@ interface Mover {
   snapshotDate: string
 }
 
-export function RankTrackingPanel({ locale }: { locale: 'fr' | 'en' }) {
+export function RankTrackingPanel() {
   const seoApi = useSeoApi()
   const gscEnabled = useSeoFeature('gscApi')
-  const s = S[locale] ?? S.fr
   const [movers, setMovers] = useState<Mover[] | null>(null)
   const [lastSnapshot, setLastSnapshot] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -176,7 +155,7 @@ export function RankTrackingPanel({ locale }: { locale: 'fr' | 'en' }) {
         <>
           {lastSnapshot && (
             <p className="seo-text seo-text--small seo-text--secondary">
-              {s.lastSnapshot}: {new Date(lastSnapshot).toLocaleString(locale)}
+              {s.lastSnapshot}: {new Date(lastSnapshot).toLocaleString('en-US')}
               {movers ? ` · ${movers.length} ${s.countLabel}` : ''}
             </p>
           )}

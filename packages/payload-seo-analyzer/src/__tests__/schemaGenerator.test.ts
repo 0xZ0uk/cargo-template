@@ -37,7 +37,7 @@ describe('GET /schema-generator', () => {
 
   it("uses the request's origin when no site URL is configured, never localhost", async () => {
     vi.stubEnv('SITE_URL', '')
-    const handler = createSchemaGeneratorHandler(['pages'], { locale: 'en' } as SeoConfig)
+    const handler = createSchemaGeneratorHandler(['pages'], {} as SeoConfig)
     const { status, body } = await json(
       await handler(req('https://cargo.example/api/seo-plugin/schema-generator?collection=pages&id=2')),
     )
@@ -48,7 +48,6 @@ describe('GET /schema-generator', () => {
 
   it('prefers the configured site URL and applies the collection routes', async () => {
     const handler = createSchemaGeneratorHandler(['pages'], {
-      locale: 'en',
       siteUrl: 'https://www.site.test/',
       collectionRoutes: { pages: 'guides' },
     } as SeoConfig)
@@ -59,7 +58,7 @@ describe('GET /schema-generator', () => {
   })
 
   it('generates a WebPage for the home page and for a generic page, not an Article', async () => {
-    const handler = createSchemaGeneratorHandler(['pages'], { locale: 'en', siteUrl: 'https://s.test' } as SeoConfig)
+    const handler = createSchemaGeneratorHandler(['pages'], { siteUrl: 'https://s.test' } as SeoConfig)
     const base = 'https://cargo.example/api/seo-plugin/schema-generator?collection=pages'
     for (const id of ['2', '3']) {
       const { body } = await json(await handler(req(`${base}&id=${id}`)))
@@ -70,7 +69,7 @@ describe('GET /schema-generator', () => {
   })
 
   it('falls back from a FAQPage with no Q&A, with a warning', async () => {
-    const handler = createSchemaGeneratorHandler(['pages'], { locale: 'en' } as SeoConfig)
+    const handler = createSchemaGeneratorHandler(['pages'], {} as SeoConfig)
     const { status, body } = await json(
       await handler(req('https://cargo.example/api/seo-plugin/schema-generator?collection=pages&id=2&type=FAQPage')),
     )
@@ -82,7 +81,7 @@ describe('GET /schema-generator', () => {
   })
 
   it('strips the site name from meta.title when the document has no title', async () => {
-    const handler = createSchemaGeneratorHandler(['pages'], { locale: 'en', siteName: 'Cargo Template' } as SeoConfig)
+    const handler = createSchemaGeneratorHandler(['pages'], { siteName: 'Cargo Template' } as SeoConfig)
     const { body } = await json(
       await handler(req('https://cargo.example/api/seo-plugin/schema-generator?collection=pages&id=4')),
     )
@@ -90,7 +89,7 @@ describe('GET /schema-generator', () => {
   })
 
   it('rejects anonymous callers, other collections, unknown types and missing docs', async () => {
-    const handler = createSchemaGeneratorHandler(['pages'], { locale: 'en' } as SeoConfig)
+    const handler = createSchemaGeneratorHandler(['pages'], {} as SeoConfig)
     const base = 'https://cargo.example/api/seo-plugin/schema-generator'
     expect((await handler(req(`${base}?collection=pages&id=2`, null))).status).toBe(401)
     expect((await handler(req(`${base}?collection=users&id=1`))).status).toBe(403)
@@ -123,7 +122,7 @@ describe('buildJsonLd BreadcrumbList', () => {
   })
 
   it("escapes the pasteable html so a title can't close the script tag", async () => {
-    const handler = createSchemaGeneratorHandler(['pages'], { locale: 'en', siteUrl: 'https://s.test' } as SeoConfig)
+    const handler = createSchemaGeneratorHandler(['pages'], { siteUrl: 'https://s.test' } as SeoConfig)
     const { body } = await json(
       await handler(req('https://cargo.example/api/seo-plugin/schema-generator?collection=pages&id=5')),
     )

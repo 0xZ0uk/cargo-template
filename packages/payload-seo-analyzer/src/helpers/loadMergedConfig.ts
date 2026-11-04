@@ -4,7 +4,6 @@
  */
 
 import type { SeoConfig } from '../types.js'
-import { resolveAnalysisLocale } from './resolveLocale.js'
 
 export interface MergedConfigResult {
   config: SeoConfig
@@ -19,10 +18,6 @@ export async function loadMergedConfig(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   payload: any,
   pluginConfig?: SeoConfig,
-  options?: {
-    reqLocale?: string
-    localeMapping?: Record<string, 'fr' | 'en'>
-  },
 ): Promise<MergedConfigResult> {
   let ignoredSlugs: string[] = []
   let mergedConfig: SeoConfig = { ...pluginConfig }
@@ -71,18 +66,6 @@ export async function loadMergedConfig(
     }
   } catch {
     // SeoSettings collection might not exist yet — use plugin config as-is
-  }
-
-  // Resolve locale from Payload's i18n. The mapping defaults to the plugin's own
-  // `localeMapping`, so every endpoint honours it without threading it through.
-  const localeMapping = options?.localeMapping ?? pluginConfig?.localeMapping
-  if (options?.reqLocale || localeMapping) {
-    const effectiveLocale = resolveAnalysisLocale({
-      reqLocale: options?.reqLocale,
-      pluginLocale: mergedConfig.locale,
-      customMapping: localeMapping,
-    })
-    mergedConfig = { ...mergedConfig, locale: effectiveLocale }
   }
 
   return { config: mergedConfig, ignoredSlugs }

@@ -23,7 +23,7 @@ function isCrossCanonical(canonical: string, siteUrl: string, slug: string): boo
 
 export function checkTechnical(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
   const checks: SeoCheck[] = []
-  const r = getTranslations(ctx.locale).rules.technical
+  const r = getTranslations().rules.technical
 
   // 1. Canonical URL check
   if (input.canonicalUrl !== undefined) {

@@ -58,7 +58,7 @@ function setup(opts: { chunked: boolean }) {
     ...(opts.chunked ? { waitUntil: (p: Promise<unknown>) => void background.push(p) } : {}),
   })
   const payload = fakePayload()
-  const handler = createAuditHandler(['pages'], { locale: 'en' }, [], undefined, cache)
+  const handler = createAuditHandler(['pages'], {}, [], undefined, cache)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const req = { user: { id: 1, collection: 'users' }, url: 'http://localhost/api/seo-plugin/audit?limit=500', payload } as any
   const call = async () => {
@@ -150,7 +150,7 @@ describe('chunked audit build', () => {
       payload: s.payload as any,
       collections: ['pages'],
       globals: [],
-      seoConfig: { locale: 'en' as const },
+      seoConfig: {},
       cache: s.cache,
     }
     expect((await continuePausedAuditBuilds(args)).map((o) => o.outcome)).toEqual(['paused'])
@@ -203,7 +203,7 @@ describe('chunked audit build', () => {
   it('with no cacheStore at all (Node), a save serves the last audit stale while it rebuilds', async () => {
     const cache = new SeoSharedCache({ memory: new SeoCache() })
     const payload = fakePayload()
-    const handler = createAuditHandler(['pages'], { locale: 'en' }, [], undefined, cache)
+    const handler = createAuditHandler(['pages'], {}, [], undefined, cache)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const req = { user: { id: 1, collection: 'users' }, url: 'http://localhost/api/seo-plugin/audit?limit=500', payload } as any
     const call = async () => {

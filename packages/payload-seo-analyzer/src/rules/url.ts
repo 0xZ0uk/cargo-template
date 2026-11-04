@@ -8,7 +8,7 @@ import { getTranslations } from '../i18n.js'
 
 export function checkUrl(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
   const checks: SeoCheck[] = []
-  const r = getTranslations(ctx.locale).rules.url
+  const r = getTranslations().rules.url
   const slug = input.slug || ''
   const kw = ctx.normalizedKeyword
 
@@ -18,9 +18,7 @@ export function checkUrl(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
       id: 'slug-global-skip',
       label: r.missingLabel,
       status: 'pass',
-      message: ctx.locale === 'en'
-        ? 'Global content — URL checks are not applicable.'
-        : 'Contenu global — Les verifications URL ne sont pas applicables.',
+      message: getTranslations().metaFields.globalSkip,
       category: 'bonus',
       weight: 1,
       group: 'url',
@@ -90,9 +88,7 @@ export function checkUrl(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
 
   // 13. Focus keyword in slug (strips accents and special chars like . & /)
   // Skip for utility/standard slugs where keyword in URL is not applicable
-  const locale = ctx.locale || 'fr'
-  const allUtilitySlugs = [...getUtilitySlugs('fr'), ...getUtilitySlugs('en')]
-  const isUtilitySlug = allUtilitySlugs.some((us) => slug === us || slug.endsWith(`/${us}`))
+  const isUtilitySlug = getUtilitySlugs().some((us) => slug === us || slug.endsWith(`/${us}`))
 
   if (kw && !isUtilitySlug) {
     const kwSlugified = slugifyKeyword(input.focusKeyword || kw)
@@ -127,8 +123,8 @@ export function checkUrl(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
   }
 
   // 14. No stop words in slug (excluding compound expressions)
-  const stopWords = getStopWords(locale)
-  const compounds = [...getStopWordCompounds(locale), ...(ctx.config.stopWordCompounds || [])]
+  const stopWords = getStopWords()
+  const compounds = [...getStopWordCompounds(), ...(ctx.config.stopWordCompounds || [])]
   const slugParts = slug.split('-')
   const foundStopWords = slugParts.filter((part, idx) =>
     stopWords.includes(part) && !isStopWordInCompoundExpression(slugParts, idx, compounds),

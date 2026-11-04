@@ -544,9 +544,7 @@ export interface BuildJsonLdOptions {
    * 404s. Pass `{ posts: '' }` if your posts are served flat.
    */
   collectionRoutes?: CollectionRoutes
-  /** Analysis locale; picks the default breadcrumb home label (`Home` / `Accueil`). */
-  locale?: 'fr' | 'en'
-  /** Name of the first BreadcrumbList item. Defaults to `Home` (`Accueil` for `fr`). */
+  /** Name of the first BreadcrumbList item. Defaults to `Home`. */
   homeLabel?: string
   /**
    * Site name, stripped from `meta.title` ("Page | Site") when the document has no `title`
@@ -601,7 +599,7 @@ export function buildJsonLd(
       jsonLd = buildLocalBusinessSchema(doc, siteUrl, docUrl)
       break
     case 'BreadcrumbList':
-      jsonLd = buildBreadcrumbSchema(doc, siteUrl, docPath, options.homeLabel ?? (options.locale === 'fr' ? 'Accueil' : 'Home'))
+      jsonLd = buildBreadcrumbSchema(doc, siteUrl, docPath, options.homeLabel ?? 'Home')
       break
     case 'FAQPage':
       jsonLd = buildFAQSchema(doc)

@@ -69,7 +69,6 @@ export function createSchemaGeneratorHandler(
         type: typeOverride,
         siteUrl: resolveSiteUrl(seoConfig?.siteUrl, requestOrigin(req)),
         collectionRoutes: seoConfig?.collectionRoutes,
-        locale: seoConfig?.locale,
         siteName: config.siteName,
       })
 

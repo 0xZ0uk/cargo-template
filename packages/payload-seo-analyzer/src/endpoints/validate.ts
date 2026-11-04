@@ -132,7 +132,6 @@ export function createValidateHandler(
   _collections: string[],
   _globals: string[] = [],
   seoConfig?: SeoConfig,
-  localeMapping?: Record<string, 'fr' | 'en'>,
 ): PayloadHandler {
   return async (req) => {
     try {
@@ -141,10 +140,7 @@ export function createValidateHandler(
       }
 
       // Load merged config from DB settings + plugin config
-      const { config: mergedConfig } = await loadMergedConfig(req.payload, seoConfig, {
-        reqLocale: req.locale as string | undefined,
-        localeMapping,
-      })
+      const { config: mergedConfig } = await loadMergedConfig(req.payload, seoConfig)
 
       // GET — quick score check by ID
       if (req.method === 'GET') {

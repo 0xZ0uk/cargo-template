@@ -30,7 +30,7 @@ function estimateTitlePixelWidth(title: string): number {
 
 export function checkTitle(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
   const checks: SeoCheck[] = []
-  const r = getTranslations(ctx.locale).rules.title
+  const r = getTranslations().rules.title
   const title = input.metaTitle || ''
   const titleLen = title.length
   const kw = ctx.normalizedKeyword
@@ -99,7 +99,7 @@ export function checkTitle(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
     group: 'title',
   })
 
-  // 3. Focus keyword present in title (smart French matching)
+  // 3. Focus keyword present in title (smart matching)
   if (kw) {
     const titleNorm = normalizeForComparison(title)
     const kwPresent = keywordMatchesText(kw, titleNorm)
@@ -164,7 +164,7 @@ export function checkTitle(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
 
   // C2. Power words in title — boost CTR
   const titleNormForPower = normalizeForComparison(title)
-  const foundPowerWords = getPowerWords(ctx.locale || 'fr').filter((pw) => titleNormForPower.includes(pw))
+  const foundPowerWords = getPowerWords().filter((pw) => titleNormForPower.includes(pw))
 
   if (foundPowerWords.length > 0) {
     checks.push({
@@ -203,9 +203,7 @@ export function checkTitle(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
   })
 
   // Headline analyzer — Question title (Featured Snippet friendly)
-  const questionWords = ctx.locale === 'en'
-    ? ['how', 'why', 'when', 'what', 'which', 'where', 'who', 'can', 'do', 'does', 'is', 'are', 'should']
-    : ['comment', 'pourquoi', 'quand', 'quel', 'quelle', 'quels', 'quelles', 'combien', 'ou', 'qui', 'que', 'est-ce']
+  const questionWords = ['how', 'why', 'when', 'what', 'which', 'where', 'who', 'can', 'do', 'does', 'is', 'are', 'should']
   const titleLower = title.toLowerCase().trim()
   const isQuestion = questionWords.some(w => titleLower.startsWith(w + ' ') || titleLower.startsWith(w + '-'))
     || title.trim().endsWith('?')
@@ -221,9 +219,7 @@ export function checkTitle(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
   })
 
   // Headline analyzer — Sentiment/emotional words
-  const sentimentWords = ctx.locale === 'en'
-    ? ['mistake', 'secret', 'incredible', 'danger', 'urgent', 'shocking', 'terrible', 'extraordinary', 'fascinating', 'astonishing', 'surprising', 'impressive', 'remarkable', 'crucial', 'vital', 'essential', 'forbidden', 'impossible', 'revolutionary']
-    : ['erreur', 'secret', 'incroyable', 'danger', 'urgent', 'choquant', 'terrible', 'extraordinaire', 'fascinant', 'etonnant', 'surprenant', 'impressionnant', 'remarquable', 'crucial', 'vital', 'indispensable', 'interdit', 'impossible', 'revolutionnaire']
+  const sentimentWords = ['mistake', 'secret', 'incredible', 'danger', 'urgent', 'shocking', 'terrible', 'extraordinary', 'fascinating', 'astonishing', 'surprising', 'impressive', 'remarkable', 'crucial', 'vital', 'essential', 'forbidden', 'impossible', 'revolutionary']
   const titleNormForSentiment = normalizeForComparison(title)
   const foundSentiment = sentimentWords.filter(w => titleNormForSentiment.includes(w))
   checks.push({

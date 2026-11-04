@@ -1,9 +1,9 @@
 /**
- * Wiring between the pure `SeoErrorBoundary` and this plugin's translations.
+ * Wiring between the pure `SeoErrorBoundary` and this plugin's strings.
  *
  * Kept apart from ErrorBoundary.tsx on purpose: the boundary itself must stay
  * free of Payload imports so it can be unit-tested without an admin provider
- * tree. Everything that needs `useTranslation()` lives here.
+ * tree. Everything that needs the plugin's string dictionary lives here.
  *
  * 'use client' is prepended to the whole client bundle by tsup.
  */
@@ -15,12 +15,11 @@ import { useDashboardT } from '../hooks/useSeoLocale.js'
 export type LocalizedSeoErrorBoundaryProps = Omit<SeoErrorBoundaryProps, 'labels'>
 
 /**
- * `SeoErrorBoundary` with the plugin's own FR/EN strings wired in.
+ * `SeoErrorBoundary` with the plugin's own strings wired in.
  *
- * Safe to mount above anything: `useTranslation()` is `use(Context)` with a
- * default `i18n` (language 'en') in @payloadcms/ui, so it never throws outside
- * a provider — which matters, because nothing catches an error thrown by the
- * boundary's own wrapper.
+ * Safe to mount above anything: it reads a static dictionary, so it never
+ * throws outside a provider — which matters, because nothing catches an error
+ * thrown by the boundary's own wrapper.
  */
 export function LocalizedSeoErrorBoundary(props: LocalizedSeoErrorBoundaryProps) {
   const t = useDashboardT()

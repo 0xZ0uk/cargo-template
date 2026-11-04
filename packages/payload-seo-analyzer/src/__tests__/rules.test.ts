@@ -26,35 +26,35 @@ import { checkHreflang } from '../rules/hreflang'
 
 function makeInput(overrides: Partial<SeoInput> = {}): SeoInput {
   return {
-    metaTitle: 'Agence Web à Ussel en Corrèze | Mon Site',
+    metaTitle: 'Web Agency in Boston, Massachusetts | My Site',
     metaDescription:
-      "Découvrez notre agence web à Ussel en Corrèze. Création de sites internet, développement web et référencement SEO. Devis gratuit.",
-    slug: 'agence-web-ussel',
-    focusKeyword: 'agence web ussel',
+      'Discover our web agency in Boston, Massachusetts. Website creation, web development and SEO services. Get a free quote today.',
+    slug: 'web-agency-boston',
+    focusKeyword: 'web agency boston',
     ...overrides,
   }
 }
 
 function makeCtx(overrides: Partial<AnalysisContext> = {}): AnalysisContext {
   return {
-    fullText: "Notre agence est votre partenaire web a ussel en correze. Nous creons des sites web modernes et performants. Notre equipe de developpeurs maitrise les dernieres technologies.",
+    fullText: 'Our agency is your web partner in Boston, Massachusetts. We build modern, high-performing websites. Our team of developers masters the latest technologies.',
     wordCount: 300,
-    normalizedKeyword: 'agence web ussel',
+    normalizedKeyword: 'web agency boston',
     secondaryNormalizedKeywords: [],
     allHeadings: [
-      { tag: 'h1', text: 'Agence Web à Ussel' },
-      { tag: 'h2', text: 'Nos services web' },
+      { tag: 'h1', text: 'Web Agency in Boston' },
+      { tag: 'h2', text: 'Our web services' },
     ],
     allLinks: [
-      { url: '/services/creation-site', text: 'Création de site' },
-      { url: '/contact', text: 'Contactez-nous' },
-      { url: 'https://example.com', text: 'Source externe' },
+      { url: '/services/web-design', text: 'Web design' },
+      { url: '/contact', text: 'Contact us' },
+      { url: 'https://example.com', text: 'External source' },
     ],
-    imageStats: { total: 2, withAlt: 2, altTexts: ['Photo agence web Ussel', 'Logo agence web'] },
+    imageStats: { total: 2, withAlt: 2, altTexts: ['Web agency photo Boston', 'Web agency logo'] },
     sentences: [
-      'Notre agence est votre partenaire web a ussel en correze.',
-      'Nous creons des sites web modernes et performants.',
-      'Notre equipe de developpeurs maitrise les dernieres technologies.',
+      'Our agency is your web partner in Boston, Massachusetts.',
+      'We build modern, high-performing websites.',
+      'Our team of developers masters the latest technologies.',
     ],
     isPost: false,
     pageType: 'local-seo',
@@ -77,7 +77,7 @@ describe('checkTitle', () => {
   it('treats title length as informational, not critical (SEO desintox)', () => {
     const checks = checkTitle(makeInput(), makeCtx())
     const lengthCheck = checks.find((c) => c.id === 'title-length')
-    // Title length is a SERP-display hint, not a ranking factor: depondéré
+    // Title length is a SERP-display hint, not a ranking factor: down-weighted
     expect(lengthCheck?.category).not.toBe('critical')
     expect(lengthCheck?.weight).toBe(1)
   })
@@ -124,7 +124,7 @@ describe('checkTitle', () => {
 
   it('detects duplicate brand in title', () => {
     const checks = checkTitle(
-      makeInput({ metaTitle: 'Mon Site | Mon Site' }),
+      makeInput({ metaTitle: 'My Site | My Site' }),
       makeCtx(),
     )
     const dupCheck = checks.find((c) => c.id === 'title-duplicate-brand')
@@ -170,7 +170,7 @@ describe('checkMetaDescription', () => {
     const checks = checkMetaDescription(
       makeInput({
         metaDescription:
-          "Notre agence propose ses services en Corrèze pour la création de sites internet professionnels et le développement web.",
+          'Our agency offers its services in Massachusetts for professional website creation and web development.',
       }),
       makeCtx(),
     )
@@ -352,8 +352,8 @@ describe('checkLinking', () => {
       makeInput(),
       makeCtx({
         allLinks: [
-          { url: '/page', text: 'cliquez ici' },
-          { url: '/autre', text: 'en savoir plus' },
+          { url: '/page', text: 'click here' },
+          { url: '/other', text: 'read more' },
         ],
       }),
     )
@@ -461,7 +461,7 @@ describe('checkReadability', () => {
   })
 
   it('runs all checks for sufficient content', () => {
-    const longText = Array(100).fill('Le developpement web est un domaine passionnant.').join(' ')
+    const longText = Array(100).fill('Web development is an exciting field.').join(' ')
     const sentences = longText.split('. ').filter(Boolean)
     const checks = checkReadability(
       makeInput({ heroRichText: null, content: null, blocks: [] }),
@@ -514,7 +514,7 @@ describe('checkQuality', () => {
   // catastrophically backtracking `/(.{30,})\1/i` pattern. It must keep the
   // exact same semantics: a block of >= 30 characters immediately repeated.
   it('detects a tandem repeat of at least 30 characters', () => {
-    const block = 'la meme phrase repetee deux fois de suite exactement '
+    const block = 'the same sentence repeated twice in a row exactly '
     const checks = checkQuality(makeInput(), makeCtx({ fullText: block + block }))
     const dupCheck = checks.find((c) => c.id === 'quality-no-duplicate')
     expect(dupCheck?.status).toBe('fail')
@@ -522,16 +522,16 @@ describe('checkQuality', () => {
 
   it('does not flag a repeated block shorter than 30 characters', () => {
     // 12 chars repeated: below the threshold the old regex used too.
-    const checks = checkQuality(makeInput(), makeCtx({ fullText: 'court bloc court bloc ' }))
+    const checks = checkQuality(makeInput(), makeCtx({ fullText: 'short block short block ' }))
     const dupCheck = checks.find((c) => c.id === 'quality-no-duplicate')
     expect(dupCheck?.status).toBe('pass')
   })
 
   it('does not flag a repeat that is not adjacent to itself', () => {
-    const block = 'un bloc de plus de trente caracteres bien identifiable'
+    const block = 'a block of more than thirty clearly identifiable characters'
     const checks = checkQuality(
       makeInput(),
-      makeCtx({ fullText: `${block} du texte intercale ici pour casser l adjacence ${block}` }),
+      makeCtx({ fullText: `${block} some text inserted here to break the adjacency ${block}` }),
     )
     const dupCheck = checks.find((c) => c.id === 'quality-no-duplicate')
     expect(dupCheck?.status).toBe('pass')
@@ -548,7 +548,7 @@ describe('checkQuality', () => {
   // still fails loudly on a regression without failing on noise.
   it('analyses 20 000 characters of non-duplicate text without backtracking', () => {
     const words: string[] = []
-    for (let i = 0; i < 4000; i++) words.push(`mot${i}`)
+    for (let i = 0; i < 4000; i++) words.push(`word${i}`)
     const fullText = words.join(' ').slice(0, 20_000)
 
     checkQuality(makeInput(), makeCtx({ fullText })) // warm-up, JIT
@@ -574,20 +574,20 @@ describe('checkSecondaryKeywords', () => {
 
   it('checks secondary keywords in title/desc/content/headings', () => {
     const checks = checkSecondaryKeywords(
-      makeInput({ focusKeywords: ['création site'] }),
-      makeCtx({ secondaryNormalizedKeywords: ['creation site'] }),
+      makeInput({ focusKeywords: ['website creation'] }),
+      makeCtx({ secondaryNormalizedKeywords: ['website creation'] }),
     )
     expect(checks.length).toBe(4) // title, desc, content, heading
   })
 
   it('displays original accented keyword (fix 3b)', () => {
     const checks = checkSecondaryKeywords(
-      makeInput({ focusKeywords: ['développement web'] }),
-      makeCtx({ secondaryNormalizedKeywords: ['developpement web'] }),
+      makeInput({ focusKeywords: ['café menu'] }),
+      makeCtx({ secondaryNormalizedKeywords: ['cafe menu'] }),
     )
     const titleCheck = checks.find((c) => c.id === 'secondary-kw-title-0')
-    // Should display the original "développement web" not the normalized "developpement web"
-    expect(titleCheck?.message).toContain('développement web')
+    // Should display the original "café menu" not the normalized "cafe menu"
+    expect(titleCheck?.message).toContain('café menu')
   })
 })
 
@@ -668,7 +668,7 @@ describe('checkFreshness', () => {
   it('uses relaxed thresholds for evergreen pages', () => {
     const date = new Date(Date.now() - 400 * 86400000).toISOString()
     const checks = checkFreshness(
-      makeInput({ slug: 'mentions-legales', updatedAt: date }),
+      makeInput({ slug: 'legal-notice', updatedAt: date }),
       makeCtx({ pageType: 'legal' }),
     )
     const ageCheck = checks.find((c) => c.id === 'freshness-age')
@@ -699,7 +699,7 @@ describe('checkTechnical', () => {
 
   it('passes for valid canonical URL', () => {
     const checks = checkTechnical(
-      makeInput({ canonicalUrl: 'https://example.com/agence-web-ussel' }),
+      makeInput({ canonicalUrl: 'https://example.com/web-agency-boston' }),
       makeCtx(),
     )
     const canonCheck = checks.find((c) => c.id === 'canonical-ok')
@@ -717,7 +717,7 @@ describe('checkTechnical', () => {
 
   it('warns for relative canonical URL', () => {
     const checks = checkTechnical(
-      makeInput({ canonicalUrl: '/agence-web-ussel' }),
+      makeInput({ canonicalUrl: '/web-agency-boston' }),
       makeCtx(),
     )
     const canonCheck = checks.find((c) => c.id === 'canonical-invalid')
@@ -735,8 +735,8 @@ describe('checkTechnical', () => {
 
   it('warns for a cross-canonical (page canonicalizing to a DIFFERENT on-site page)', () => {
     const checks = checkTechnical(
-      // slug is 'agence-web-ussel' but canonical points to another page → self de-indexing
-      makeInput({ canonicalUrl: 'https://example.com/une-autre-page' }),
+      // slug is 'web-agency-boston' but canonical points to another page → self de-indexing
+      makeInput({ canonicalUrl: 'https://example.com/another-page' }),
       makeCtx({ config: { siteUrl: 'https://example.com' } }),
     )
     const cross = checks.find((c) => c.id === 'canonical-cross')
@@ -745,7 +745,7 @@ describe('checkTechnical', () => {
 
   it('does NOT flag a self-referential canonical (trailing slash tolerated)', () => {
     const checks = checkTechnical(
-      makeInput({ canonicalUrl: 'https://example.com/agence-web-ussel/' }),
+      makeInput({ canonicalUrl: 'https://example.com/web-agency-boston/' }),
       makeCtx({ config: { siteUrl: 'https://example.com' } }),
     )
     expect(checks.find((c) => c.id === 'canonical-cross')).toBeUndefined()
@@ -796,20 +796,20 @@ describe('checkTechnical', () => {
 describe('C1 — keyword distribution', () => {
   const kwText = (kw: string, tiers: number[]) => {
     // Build text where keyword appears only in specified tiers (0, 1, 2)
-    const filler = 'Le developpement web est un domaine passionnant et en pleine evolution constante. '
+    const filler = 'Web development is an exciting and constantly evolving field. '
     const fillerBlock = filler.repeat(10) // ~180 chars per block
     const parts = [fillerBlock, fillerBlock, fillerBlock]
     for (const t of tiers) {
-      parts[t] = parts[t] + ` Le ${kw} est important. `
+      parts[t] = parts[t] + ` The ${kw} is important. `
     }
     return parts.join('')
   }
 
   it('passes when keyword is well distributed (2+ tiers)', () => {
-    const text = kwText('agence web ussel', [0, 2])
+    const text = kwText('web agency boston', [0, 2])
     const checks = checkContent(
-      makeInput({ focusKeyword: 'agence web ussel' }),
-      makeCtx({ fullText: text, wordCount: 500, normalizedKeyword: 'agence web ussel' }),
+      makeInput({ focusKeyword: 'web agency boston' }),
+      makeCtx({ fullText: text, wordCount: 500, normalizedKeyword: 'web agency boston' }),
     )
     const distCheck = checks.find((c) => c.id === 'content-keyword-distribution')
     expect(distCheck).toBeDefined()
@@ -818,10 +818,10 @@ describe('C1 — keyword distribution', () => {
   })
 
   it('warns when keyword is in only 1 tier', () => {
-    const text = kwText('agence web ussel', [1])
+    const text = kwText('web agency boston', [1])
     const checks = checkContent(
-      makeInput({ focusKeyword: 'agence web ussel' }),
-      makeCtx({ fullText: text, wordCount: 500, normalizedKeyword: 'agence web ussel' }),
+      makeInput({ focusKeyword: 'web agency boston' }),
+      makeCtx({ fullText: text, wordCount: 500, normalizedKeyword: 'web agency boston' }),
     )
     const distCheck = checks.find((c) => c.id === 'content-keyword-distribution')
     expect(distCheck?.status).toBe('warning')
@@ -829,10 +829,10 @@ describe('C1 — keyword distribution', () => {
   })
 
   it('warns informationally (weight 0, not fail) when keyword is in 0 tiers', () => {
-    const text = kwText('agence web ussel', [])
+    const text = kwText('web agency boston', [])
     const checks = checkContent(
-      makeInput({ focusKeyword: 'agence web ussel' }),
-      makeCtx({ fullText: text, wordCount: 500, normalizedKeyword: 'agence web ussel' }),
+      makeInput({ focusKeyword: 'web agency boston' }),
+      makeCtx({ fullText: text, wordCount: 500, normalizedKeyword: 'web agency boston' }),
     )
     const distCheck = checks.find((c) => c.id === 'content-keyword-distribution')
     // SEO desintox: keyword distribution is a disguised density metric — no longer
@@ -843,8 +843,8 @@ describe('C1 — keyword distribution', () => {
 
   it('skips distribution check for short content (<100 words)', () => {
     const checks = checkContent(
-      makeInput({ focusKeyword: 'agence web' }),
-      makeCtx({ wordCount: 50, normalizedKeyword: 'agence web' }),
+      makeInput({ focusKeyword: 'web agency' }),
+      makeCtx({ wordCount: 50, normalizedKeyword: 'web agency' }),
     )
     const distCheck = checks.find((c) => c.id === 'content-keyword-distribution')
     expect(distCheck).toBeUndefined()
@@ -902,7 +902,7 @@ describe('SEO desintox — readability heuristics are not scored', () => {
 describe('C2 — power words in title', () => {
   it('passes when title contains a power word', () => {
     const checks = checkTitle(
-      makeInput({ metaTitle: 'Guide complet agence web Ussel' }),
+      makeInput({ metaTitle: 'Complete guide to web agencies in Boston' }),
       makeCtx(),
     )
     const pwCheck = checks.find((c) => c.id === 'title-power-words')
@@ -913,20 +913,11 @@ describe('C2 — power words in title', () => {
 
   it('warns when title has no power word', () => {
     const checks = checkTitle(
-      makeInput({ metaTitle: 'Agence Web a Ussel en Correze' }),
+      makeInput({ metaTitle: 'Web Agency in Boston Massachusetts' }),
       makeCtx(),
     )
     const pwCheck = checks.find((c) => c.id === 'title-power-words')
     expect(pwCheck?.status).toBe('warning')
-  })
-
-  it('detects accented power words (e.g. "méthode" → "methode")', () => {
-    const checks = checkTitle(
-      makeInput({ metaTitle: 'Notre méthode pour créer votre site' }),
-      makeCtx(),
-    )
-    const pwCheck = checks.find((c) => c.id === 'title-power-words')
-    expect(pwCheck?.status).toBe('pass')
   })
 })
 
@@ -990,9 +981,9 @@ describe('C3 — lists in content', () => {
 describe('C4 — H1 vs meta title different', () => {
   it('passes when H1 and meta title are different', () => {
     const checks = checkHeadings(
-      makeInput({ metaTitle: 'Agence Web à Ussel | Mon Site' }),
+      makeInput({ metaTitle: 'Web Agency in Boston | My Site' }),
       makeCtx({
-        allHeadings: [{ tag: 'h1', text: 'Votre agence web de confiance à Ussel' }],
+        allHeadings: [{ tag: 'h1', text: 'Your trusted web agency in Boston' }],
       }),
     )
     const h1TitleCheck = checks.find((c) => c.id === 'h1-title-different')
@@ -1002,9 +993,9 @@ describe('C4 — H1 vs meta title different', () => {
 
   it('warns when H1 and meta title are identical', () => {
     const checks = checkHeadings(
-      makeInput({ metaTitle: 'Agence Web à Ussel' }),
+      makeInput({ metaTitle: 'Web Agency in Boston' }),
       makeCtx({
-        allHeadings: [{ tag: 'h1', text: 'Agence Web à Ussel' }],
+        allHeadings: [{ tag: 'h1', text: 'Web Agency in Boston' }],
       }),
     )
     const h1TitleCheck = checks.find((c) => c.id === 'h1-title-different')
@@ -1015,7 +1006,7 @@ describe('C4 — H1 vs meta title different', () => {
     const checks = checkHeadings(
       makeInput({ metaTitle: '' }),
       makeCtx({
-        allHeadings: [{ tag: 'h1', text: 'Agence Web à Ussel' }],
+        allHeadings: [{ tag: 'h1', text: 'Web Agency in Boston' }],
       }),
     )
     const h1TitleCheck = checks.find((c) => c.id === 'h1-title-different')
@@ -1039,8 +1030,8 @@ describe('Tips on checks', () => {
 
   it('includes tip on warning checks', () => {
     const checks = checkContent(
-      makeInput({ focusKeyword: 'agence web ussel' }),
-      makeCtx({ wordCount: 200, normalizedKeyword: 'agence web ussel' }),
+      makeInput({ focusKeyword: 'web agency boston' }),
+      makeCtx({ wordCount: 200, normalizedKeyword: 'web agency boston' }),
     )
     const wcCheck = checks.find((c) => c.id === 'content-wordcount')
     expect(wcCheck?.status).toBe('warning')
@@ -1152,7 +1143,7 @@ describe('checkGeo (GEO — AI extractability)', () => {
   it('detects question-style headings', () => {
     const checks = checkGeo(
       makeInput(),
-      makeCtx({ allHeadings: [{ tag: 'h2', text: 'Comment optimiser le SEO ?' }] }),
+      makeCtx({ allHeadings: [{ tag: 'h2', text: 'How do I optimize SEO?' }] }),
     )
     expect(checks.find((c) => c.id === 'geo-question-headings')?.status).toBe('pass')
   })
@@ -1215,7 +1206,7 @@ describe('checkHreflang', () => {
   it('fails on an invalid hreflang code', () => {
     const checks = checkHreflang(
       makeInput({
-        localeAlternates: [{ hreflang: 'french', href: 'https://example.com/fr' }],
+        localeAlternates: [{ hreflang: 'english', href: 'https://example.com/en' }],
       }),
       makeCtx(),
     )
@@ -1225,7 +1216,7 @@ describe('checkHreflang', () => {
   it('warns when x-default is missing', () => {
     const checks = checkHreflang(
       makeInput({
-        localeAlternates: [{ hreflang: 'fr', href: 'https://example.com/fr' }],
+        localeAlternates: [{ hreflang: 'de', href: 'https://example.com/de' }],
       }),
       makeCtx(),
     )

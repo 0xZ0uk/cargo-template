@@ -261,8 +261,8 @@ describe('SEO-06 — external redirect destinations are gated', () => {
   })
 
   it('never blocks same-site paths', () => {
-    expect(validateRedirectDestination('/nouvelle-page', false).valid).toBe(true)
-    expect(validateRedirectDestination('ancienne-page', false).normalized).toBe('/ancienne-page')
+    expect(validateRedirectDestination('/new-page', false).valid).toBe(true)
+    expect(validateRedirectDestination('old-page', false).normalized).toBe('/old-page')
   })
 
   it('keeps rejecting the historical open-redirect payloads whatever the option', () => {
@@ -284,7 +284,7 @@ describe('SEO-06 — external redirect destinations are gated', () => {
     const hook = createAutoRedirectHook('seo-redirects')
     await hook({
       data: { slug: 'https://evil.example' },
-      originalDoc: { slug: 'ancienne-page' },
+      originalDoc: { slug: 'old-page' },
       operation: 'update',
       req: {
         payload: { find: vi.fn(async () => ({ docs: [] })), create, logger: multiAuthPayload.logger },
@@ -298,8 +298,8 @@ describe('SEO-06 — external redirect destinations are gated', () => {
     const create = vi.fn(async () => ({ id: 1 }))
     const hook = createAutoRedirectHook('seo-redirects')
     await hook({
-      data: { slug: 'nouvelle-page' },
-      originalDoc: { slug: 'ancienne-page' },
+      data: { slug: 'new-page' },
+      originalDoc: { slug: 'old-page' },
       operation: 'update',
       req: {
         payload: { find: vi.fn(async () => ({ docs: [] })), create, logger: multiAuthPayload.logger },
@@ -308,7 +308,7 @@ describe('SEO-06 — external redirect destinations are gated', () => {
     } as any)
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ from: '/ancienne-page', to: '/nouvelle-page' }),
+        data: expect.objectContaining({ from: '/old-page', to: '/new-page' }),
       }),
     )
   })
@@ -328,7 +328,7 @@ describe('SEO-07 — manual audit refresh is admin-only', () => {
   it('serves the cache instead of dropping it when a non-admin asks for nocache=1', async () => {
     process.env.SEO_REQUIRE_ADMIN_ROLE = '1'
     seoCache.set('audit', {
-      enrichedResults: [{ id: '1', title: 'Accueil' }],
+      enrichedResults: [{ id: '1', title: 'Home' }],
       stats: { total: 1 },
       capped: false,
     })
@@ -365,10 +365,10 @@ describe('SEO-08 — sitemap.xml honours noindex', () => {
 
   it('omits documents flagged noindex (top-level and under meta) but keeps the rest', async () => {
     const payload = makePayload([
-      { slug: 'accueil', _status: 'published' },
-      { slug: 'merci-achat', _status: 'published', noindex: true },
-      { slug: 'tarifs-prives', _status: 'published', meta: { noindex: true } },
-      { slug: 'brouillon', _status: 'draft' },
+      { slug: 'landing', _status: 'published' },
+      { slug: 'thank-you', _status: 'published', noindex: true },
+      { slug: 'private-pricing', _status: 'published', meta: { noindex: true } },
+      { slug: 'draft-page', _status: 'draft' },
     ])
     const res = await createSitemapHandler(['pages'])({
       payload,
@@ -377,10 +377,10 @@ describe('SEO-08 — sitemap.xml honours noindex', () => {
     } as any)
     const xml = await res.text()
 
-    expect(xml).toContain('/accueil')
-    expect(xml).not.toContain('merci-achat')
-    expect(xml).not.toContain('tarifs-prives')
-    expect(xml).not.toContain('brouillon')
+    expect(xml).toContain('/landing')
+    expect(xml).not.toContain('thank-you')
+    expect(xml).not.toContain('private-pricing')
+    expect(xml).not.toContain('draft-page')
   })
 })
 
@@ -441,13 +441,13 @@ describe('SEO-06 regression — the external gate only fires on a CHANGE', () =>
       typeof validate('https://evil.example/login', {
         operation: 'update',
         event: 'submit',
-        previousValue: '/ancienne-page',
+        previousValue: '/old-page',
       }),
     ).toBe('string')
   })
 
   it('keeps same-site paths and the opt-in untouched', () => {
-    expect(redirectToValidate()('/nouvelle-page', { operation: 'update', event: 'submit', previousValue: LEGACY_EXTERNAL })).toBe(true)
+    expect(redirectToValidate()('/new-page', { operation: 'update', event: 'submit', previousValue: LEGACY_EXTERNAL })).toBe(true)
     expect(redirectToValidate(true)('https://partner.example/offer', { operation: 'create', event: 'submit' })).toBe(true)
   })
 
@@ -464,7 +464,7 @@ describe('SEO-06 regression — the external gate only fires on a CHANGE', () =>
 describe('SEO-06 regression — PATCH /redirects on a legacy external row', () => {
   function makePatchReq(body: Record<string, unknown>, storedTo: string) {
     const update = vi.fn(async (args: Record<string, unknown>) => ({ id: 'r1', ...(args.data as object) }))
-    const findByID = vi.fn(async () => ({ id: 'r1', from: '/ancienne-page', to: storedTo, type: '301' }))
+    const findByID = vi.fn(async () => ({ id: 'r1', from: '/old-page', to: storedTo, type: '301' }))
     const req = {
       user: staff,
       method: 'PATCH',
@@ -478,7 +478,7 @@ describe('SEO-06 regression — PATCH /redirects on a legacy external row', () =
 
   it('accepts the unchanged destination the Redirect Manager always re-sends, and writes nothing to `to`', async () => {
     const { req, update } = makePatchReq(
-      { id: 'r1', from: '/ancienne-page', to: LEGACY_EXTERNAL, type: '302' },
+      { id: 'r1', from: '/old-page', to: LEGACY_EXTERNAL, type: '302' },
       LEGACY_EXTERNAL,
     )
     const res = await createRedirectsHandler('seo-redirects')(req)
@@ -486,7 +486,7 @@ describe('SEO-06 regression — PATCH /redirects on a legacy external row', () =
     expect(update).toHaveBeenCalledTimes(1)
     const data = update.mock.calls[0][0].data as Record<string, unknown>
     expect(data.type).toBe('302')
-    expect(data.from).toBe('/ancienne-page')
+    expect(data.from).toBe('/old-page')
     expect(data).not.toHaveProperty('to')
   })
 
@@ -609,7 +609,7 @@ describe('SEO-09 — the cache scope comes from the host config, not from ?local
       // `fallback: false` on purpose: Payload's sanitizeLocales() only rewrites an
       // unknown locale when a fallback exists, so even a localized site forwards
       // the raw query string in that case.
-      localization: { localeCodes: ['fr', 'en'], defaultLocale: 'fr', fallback: false },
+      localization: { localeCodes: ['de', 'en'], defaultLocale: 'de', fallback: false },
     },
     logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn() },
   }
@@ -629,7 +629,7 @@ describe('SEO-09 — the cache scope comes from the host config, not from ?local
   it('still throttles a non-admin refresh when the locale is forged', async () => {
     process.env.SEO_REQUIRE_ADMIN_ROLE = '1'
     seoCache.set('audit', {
-      enrichedResults: [{ id: '1', title: 'Accueil' }],
+      enrichedResults: [{ id: '1', title: 'Home' }],
       stats: { total: 1 },
       capped: false,
     })
@@ -669,19 +669,19 @@ describe('SEO-09 — the cache scope comes from the host config, not from ?local
   })
 
   // The other half of the contract: a real multi-locale site must keep one
-  // cache entry per locale, or the fix would serve French results in English.
+  // cache entry per locale, or the fix would serve German results in English.
   it('keeps declared locales isolated from one another', async () => {
-    seoCache.set('duplicate-content:fr:0.7', { duplicates: [] })
+    seoCache.set('duplicate-content:de:0.7', { duplicates: [] })
     const find = vi.fn(async () => ({ docs: [] }))
 
-    const frRes = await createDuplicateContentHandler(['pages'])({
+    const deRes = await createDuplicateContentHandler(['pages'])({
       user: staff,
-      locale: 'fr',
-      url: 'http://localhost/api/seo-plugin/duplicate-content?locale=fr',
+      locale: 'de',
+      url: 'http://localhost/api/seo-plugin/duplicate-content?locale=de',
       payload: { ...localizedPayload, find },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any)
-    expect((await frRes.json()).cached).toBe(true)
+    expect((await deRes.json()).cached).toBe(true)
     expect(find).not.toHaveBeenCalled()
 
     await createDuplicateContentHandler(['pages'])({
@@ -804,7 +804,7 @@ describe('SEO-11 — visitor-supplied log fields are length-capped', () => {
     const res = await createSeoLogsHandler()(
       makeLogsReq(
         {
-          url: '/page-absente',
+          url: '/missing-page',
           referrer: 'https://evil.example/?p=' + 'A'.repeat(200_000),
           userAgent: 'B'.repeat(200_000),
         },
@@ -824,7 +824,7 @@ describe('SEO-11 — visitor-supplied log fields are length-capped', () => {
     const userAgent =
       'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
 
-    await createSeoLogsHandler()(makeLogsReq({ url: '/autre-page', referrer, userAgent }, create))
+    await createSeoLogsHandler()(makeLogsReq({ url: '/other-page', referrer, userAgent }, create))
 
     const data = create.mock.calls[0][0].data as Record<string, string>
     expect(data.referrer).toBe(referrer)
@@ -838,7 +838,7 @@ describe('SEO-11 — visitor-supplied log fields are length-capped', () => {
       method: 'POST',
       headers: new Headers({ 'x-forwarded-for': '203.0.113.8' }),
       url: 'http://localhost/api/seo-plugin/seo-logs',
-      json: async () => ({ url: '/page-absente', referrer: 'C'.repeat(200_000) }),
+      json: async () => ({ url: '/missing-page', referrer: 'C'.repeat(200_000) }),
       payload: {
         ...multiAuthPayload,
         find: vi.fn(async () => ({ docs: [{ id: '1', count: 3 }] })),
@@ -1084,7 +1084,7 @@ describe('SEO-15 — POST /seo-logs is admin-gated and its bucket is not spoofab
     user: Record<string, unknown> | undefined,
     forwardedFor: string,
     hooks: { create?: ReturnType<typeof vi.fn>; count?: ReturnType<typeof vi.fn> } = {},
-    url = '/page-absente',
+    url = '/missing-page',
   ) {
     return {
       user,

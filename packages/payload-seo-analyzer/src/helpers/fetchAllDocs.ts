@@ -92,19 +92,17 @@ export async function fetchAllDocs(
             })
           }
         } catch (err) {
-          // Une erreur sur la page 1 signifie « collection absente » — c'est le cas
-          // toléré, géré par le catch extérieur. Une erreur sur la page 2 ou au-delà
-          // est autre chose : la collection existe, on a déjà lu des documents, et la
-          // pagination casse en cours de route.
+          // An error on page 1 means "collection missing" — the tolerated case, handled
+          // by the outer catch. An error on page 2 or later is something else: the
+          // collection exists, documents were already read, and pagination breaks midway.
           //
-          // Le catch extérieur avalait les deux indistinctement. Le résultat partiel
-          // remontait alors comme s'il était complet — et les analyses bâties dessus
-          // (pages orphelines, liens morts, cannibalisation) désignaient comme
-          // problématiques des documents simplement jamais chargés. Un rapport faux est
-          // pire qu'un rapport absent : on agit dessus.
+          // The outer catch used to swallow both alike. The partial result then came back
+          // as if it were complete — and the analyses built on it (orphan pages, broken
+          // links, cannibalization) flagged as problematic documents that were simply
+          // never loaded. A wrong report is worse than no report: people act on it.
           if (page === 1) throw err
           payload.logger?.error(
-            `[seo] fetchAllDocs: pagination interrompue sur « ${collectionSlug} » à la page ${page} (${results.length} documents déjà lus). Résultat INCOMPLET — analyses non fiables pour cette collection. ${err instanceof Error ? err.message : err}`,
+            `[seo] fetchAllDocs: pagination interrupted on "${collectionSlug}" at page ${page} (${results.length} documents already read). INCOMPLETE result — analyses unreliable for this collection. ${err instanceof Error ? err.message : err}`,
           )
           break
         }

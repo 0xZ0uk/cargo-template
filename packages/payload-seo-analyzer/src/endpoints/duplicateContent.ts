@@ -127,7 +127,7 @@ export function createDuplicateContentHandler(collections: string[]): PayloadHan
             allDocs.push({
               info: {
                 id: d.id,
-                title: d.title || '(sans titre)',
+                title: d.title || '(untitled)',
                 slug: d.slug || '',
                 collection: collectionSlug,
               },

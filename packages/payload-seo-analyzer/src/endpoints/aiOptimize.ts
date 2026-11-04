@@ -35,7 +35,7 @@ import {
 } from '../helpers/metaGeneration.js'
 import type { SeoConfig } from '../types.js'
 import { isSeoPanelUser } from '../helpers/isAdmin.js'
-import { aiApiKey, aiChat, aiLanguageName, aiModel } from '../helpers/aiClient.js'
+import { aiApiKey, aiChat, aiModel } from '../helpers/aiClient.js'
 
 // Server-side rule bounds — match the SEO engine's expectations so applied values are compliant.
 const TITLE_HARD_MAX = 70
@@ -82,16 +82,13 @@ async function callAiOptimize(
     currentMetaDescription: string
     issues: Array<{ label: string; message: string }>
     content: string
-    /** The site's analysis locale: every string of the answer is written in it. */
-    locale: string | undefined
   },
 ): Promise<AiSuggestions | null> {
-  const language = aiLanguageName(params.locale)
   const systemPrompt = `You are an SEO expert applying June 2026 best practices. You optimize ONLY a page's meta title and meta description (and may suggest a focus keyword). You NEVER rewrite body content.
 Strict rules (these mirror the site's own SEO engine — follow them exactly):
 - Meta title: natural and compelling, hard limit ${TITLE_HARD_MAX} characters, front-load the important words, do NOT keyword-stuff or repeat the brand/keyword.
 - Meta description: 120-160 characters, one or two sentences, action-oriented, includes the focus keyword ONCE and naturally. No keyword stuffing.
-- Write EVERYTHING (meta title, meta description, focus keyword and rationale) in ${language}, whatever the language of the content.
+- Write EVERYTHING (meta title, meta description, focus keyword and rationale) in English, whatever the language of the content.
 - Base everything on the ACTUAL content; never invent facts, prices, numbers, or claims not present in the content. Accuracy beats every other rule.
 - The detected issues are hints, not orders. Skip any you can't fix truthfully: put a number in the title ("5 tips", "Top 10") only if the content has exactly that many items or states that number, and phrase the title as a question only if the content answers it.
 ${
@@ -101,7 +98,7 @@ ${
 }
 Return ONLY a JSON object (no markdown, no prose, no code fences) with EXACTLY this shape:
 {"metaTitle": string, "metaDescription": string, "focusKeyword": string, "rationale": string[]}
-"rationale": 2-4 short strings, in ${language}, explaining what you improved and why, referencing the detected issues.`
+"rationale": 2-4 short strings, in English, explaining what you improved and why, referencing the detected issues.`
 
   const issuesText = params.issues.length
     ? params.issues.map((i) => `- ${i.label}: ${i.message}`).join('\n')
@@ -247,8 +244,8 @@ export async function optimizeDocMeta(
   let suggestions: AiSuggestions
   let method: 'ai' | 'heuristic'
   const heuristicFallback = (): AiSuggestions => ({
-    metaTitle: heuristicTitle(pageTitle, currentFocusKeyword, slug, mergedConfig.locale),
-    metaDescription: heuristicDescription(content, currentFocusKeyword, slug, mergedConfig.locale),
+    metaTitle: heuristicTitle(pageTitle, currentFocusKeyword, slug),
+    metaDescription: heuristicDescription(content, currentFocusKeyword, slug),
     focusKeyword: currentFocusKeyword,
     rationale: [],
   })
@@ -263,7 +260,6 @@ export async function optimizeDocMeta(
         currentMetaDescription,
         issues,
         content,
-        locale: mergedConfig.locale,
       })
       if (aiResult) {
         suggestions = aiResult
@@ -304,7 +300,6 @@ export async function optimizeDocMeta(
 export function createAiOptimizeHandler(
   targetCollections?: string[],
   seoConfig?: SeoConfig,
-  localeMapping?: Record<string, 'fr' | 'en'>,
 ): PayloadHandler {
   return async (req) => {
     try {
@@ -325,10 +320,7 @@ export function createAiOptimizeHandler(
         return Response.json({ error: 'Collection not allowed' }, { status: 403 })
       }
 
-      const { config: mergedConfig } = await loadMergedConfig(req.payload, seoConfig, {
-        reqLocale: req.locale as string | undefined,
-        localeMapping,
-      })
+      const { config: mergedConfig } = await loadMergedConfig(req.payload, seoConfig)
 
       const r = await optimizeDocMeta(req.payload, {
         collection,

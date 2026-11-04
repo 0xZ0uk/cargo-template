@@ -76,7 +76,7 @@ export function createBreadcrumbHandler(targetCollections: string[], seoConfig?:
 
       // 1. Fetch breadcrumb settings
       // Same default as buildJsonLd; the seo-settings value wins when set.
-      let homeLabel = seoConfig?.locale === 'fr' ? 'Accueil' : 'Home'
+      let homeLabel = 'Home'
       let enabled = true
       let showOnHome = false
       let siteName = seoConfig?.siteName

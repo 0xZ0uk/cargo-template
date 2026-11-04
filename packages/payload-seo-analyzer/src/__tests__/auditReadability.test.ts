@@ -19,7 +19,7 @@ const doc = {
 }
 const readabilityText = extractDocContent(doc).readabilityText
 
-async function auditReadability(locale: 'fr' | 'en'): Promise<number> {
+async function auditReadability(): Promise<number> {
   const background: Promise<unknown>[] = []
   const cache = new SeoSharedCache({ memory: new SeoCache(), waitUntil: (p) => void background.push(p) })
   const payload = {
@@ -30,7 +30,7 @@ async function auditReadability(locale: 'fr' | 'en'): Promise<number> {
     ),
     findGlobal: vi.fn(async () => null),
   }
-  const handler = createAuditHandler(['pages'], { locale }, [], undefined, cache)
+  const handler = createAuditHandler(['pages'], {}, [], undefined, cache)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const req = { user: { id: 1, collection: 'users' }, url: 'http://localhost/api/seo-plugin/audit', payload } as any
   expect((await handler(req)).status).toBe(202)
@@ -40,14 +40,8 @@ async function auditReadability(locale: 'fr' | 'en'): Promise<number> {
 }
 
 describe('audit readability', () => {
-  it('uses the English Flesch formula for an English site', async () => {
-    const score = await auditReadability('en')
-    expect(score).toBe(calculateFlesch(readabilityText, 'en'))
-  })
-
-  it('uses the French formula for a French site', async () => {
-    const score = await auditReadability('fr')
-    expect(score).toBe(calculateFlesch(readabilityText, 'fr'))
-    expect(score).not.toBe(await auditReadability('en'))
+  it('uses the English Flesch formula', async () => {
+    const score = await auditReadability()
+    expect(score).toBe(calculateFlesch(readabilityText))
   })
 })

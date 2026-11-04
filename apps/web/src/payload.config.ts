@@ -157,7 +157,6 @@ export default buildConfig({
     seoAnalyzerPlugin({
       collections: ['pages'],
       collectionRoutes: { pages: '' },
-      locale: 'en',
       siteName,
       siteUrl: process.env.SITE_URL || cloudflare.SITE_URL || undefined,
       uploadsCollection: 'media',

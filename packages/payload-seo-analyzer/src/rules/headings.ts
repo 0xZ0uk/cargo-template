@@ -8,7 +8,7 @@ import { getTranslations } from '../i18n.js'
 
 export function checkHeadings(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
   const checks: SeoCheck[] = []
-  const r = getTranslations(ctx.locale).rules.headings
+  const r = getTranslations().rules.headings
   const { allHeadings, normalizedKeyword, wordCount } = ctx
 
   // 15. H1 unique — count from heading nodes (includes post title added by buildContext)
@@ -47,7 +47,7 @@ export function checkHeadings(input: SeoInput, ctx: AnalysisContext): SeoCheck[]
     })
   }
 
-  // 16. Focus keyword in H1 (smart French matching, post title included by buildContext)
+  // 16. Focus keyword in H1 (smart matching, post title included by buildContext)
   if (normalizedKeyword) {
     const h1Headings = allHeadings.filter((h) => h.tag === 'h1')
     const allH1Text = h1Headings.map((h) => normalizeForComparison(h.text)).join(' ')
@@ -78,7 +78,7 @@ export function checkHeadings(input: SeoInput, ctx: AnalysisContext): SeoCheck[]
     group: 'headings',
   })
 
-  // 18. Focus keyword in at least one H2 (smart French matching)
+  // 18. Focus keyword in at least one H2 (smart matching)
   if (normalizedKeyword) {
     const h2s = allHeadings.filter((h) => h.tag === 'h2')
     const kwInH2 = h2s.some((h) => keywordMatchesText(normalizedKeyword, normalizeForComparison(h.text)))

@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Banner, Button, RefreshIcon } from '@payloadcms/ui'
-import { useDashboardT, useSeoLocale } from '../hooks/useSeoLocale.js'
+import { useDashboardT } from '../hooks/useSeoLocale.js'
 import { ContentBriefPanel } from './ContentBriefPanel.js'
 import { toCsv } from '../helpers/csv.js'
 import {
@@ -94,7 +94,6 @@ function ExpandableList({ items, label, seeLessLabel }: { items: string[]; label
 
 export function KeywordResearchView() {
   const seoApi = useSeoApi()
-  const locale = useSeoLocale()
   const t = useDashboardT()
 
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
@@ -279,7 +278,7 @@ export function KeywordResearchView() {
         )}
 
         {/* AI content brief (SEO 2026) */}
-        <ContentBriefPanel locale={locale} />
+        <ContentBriefPanel />
 
         <div className="seo-row">
           {filterTabs.map((tab) => (

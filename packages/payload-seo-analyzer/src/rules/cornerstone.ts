@@ -11,7 +11,7 @@ export function checkCornerstone(input: SeoInput, ctx: AnalysisContext): SeoChec
   if (!input.isCornerstone) return []
 
   const checks: SeoCheck[] = []
-  const r = getTranslations(ctx.locale).rules.cornerstone
+  const r = getTranslations().rules.cornerstone
 
   // 1. Word count >= CORNERSTONE_MIN_WORDS (cornerstone should be comprehensive)
   if (ctx.wordCount >= CORNERSTONE_MIN_WORDS) {

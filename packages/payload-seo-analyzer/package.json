@@ -1,7 +1,7 @@
 {
   "name": "@cargo/payload-seo-analyzer",
   "version": "5.0.0-beta.0",
-  "description": "Payload CMS 4 SEO plugin for Cargo (fork of @consilioweb/payload-seo-analyzer): 50+ checks, dashboard, Lexical JSON support, readability, i18n",
+  "description": "Payload CMS 4 SEO plugin for Cargo (fork of @consilioweb/payload-seo-analyzer): 50+ checks, dashboard, Lexical JSON support, readability",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -90,8 +90,6 @@
     "readability-score",
     "flesch",
     "lexical",
-    "i18n",
-    "french",
     "english",
     "structured-data",
     "json-ld",

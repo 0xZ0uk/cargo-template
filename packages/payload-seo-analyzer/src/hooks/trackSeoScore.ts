@@ -51,12 +51,9 @@ export function createTrackSeoScoreHook(seoConfig?: SeoConfig, options: TrackSeo
         if (await tooSoon(resolveStore, req, collectionSlug, String(doc.id))) return
 
         // Build SEO input and run analysis with the dashboard's config: SeoSettings
-        // merged in and the locale of the saved document resolved, or the history
-        // drifts from the scores shown everywhere else.
+        // merged in, or the history drifts from the scores shown everywhere else.
         const seoInput = buildSeoInputFromDoc(doc, collectionSlug)
-        const { config: mergedConfig } = await loadMergedConfig(req.payload, seoConfig, {
-          reqLocale: req.locale as string | undefined,
-        })
+        const { config: mergedConfig } = await loadMergedConfig(req.payload, seoConfig)
         const analysis = analyzeSeo(seoInput, mergedConfig)
 
         // Compute word count using shared extraction helper
@@ -124,9 +121,7 @@ export function createTrackSeoScoreGlobalHook(seoConfig?: SeoConfig, options: Tr
           ...buildSeoInputFromDoc(doc, discriminator),
           isGlobal: true,
         }
-        const { config: mergedConfig } = await loadMergedConfig(req.payload, seoConfig, {
-          reqLocale: req.locale as string | undefined,
-        })
+        const { config: mergedConfig } = await loadMergedConfig(req.payload, seoConfig)
         const analysis = analyzeSeo(seoInput, mergedConfig)
 
         // Compute word count using shared extraction helper

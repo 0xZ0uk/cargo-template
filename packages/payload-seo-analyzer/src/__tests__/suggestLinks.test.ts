@@ -3,7 +3,7 @@ import { createSuggestLinksHandler, SUGGEST_LINKS_CACHE_BASE } from '../endpoint
 import { seoCache } from '../cache.js'
 
 const CONTENT =
-  "Nous parlons de creation site internet et de referencement naturel dans cet article assez long pour declencher l analyse."
+  "We talk about website creation and organic search in this article, long enough to trigger the analysis."
 
 function makeReq(find: ReturnType<typeof vi.fn>, locale?: string) {
   return {
@@ -24,7 +24,7 @@ function makeFind() {
     if (collection !== 'pages') return { docs: [], hasNextPage: false }
     return {
       docs: [
-        { id: '1', title: 'Creation site internet', slug: 'creation-site-internet', focusKeyword: 'creation site internet' },
+        { id: '1', title: 'Website creation', slug: 'website-creation', focusKeyword: 'website creation' },
       ],
       hasNextPage: false,
     }
@@ -42,7 +42,7 @@ describe('/suggest-links', () => {
     const body = (await res.json()) as { suggestions: Array<Record<string, unknown>> }
 
     expect(body.suggestions).toHaveLength(1)
-    expect(body.suggestions[0].slug).toBe('creation-site-internet')
+    expect(body.suggestions[0].slug).toBe('website-creation')
     expect(body.suggestions[0].matchType).toBe('keyword')
   })
 
@@ -64,10 +64,10 @@ describe('/suggest-links', () => {
 
   it('scopes the cache key per locale so one locale cannot poison another', async () => {
     const find = makeFind()
-    await createSuggestLinksHandler(['pages'])(makeReq(find, 'fr'))
+    await createSuggestLinksHandler(['pages'])(makeReq(find, 'de'))
     await createSuggestLinksHandler(['pages'])(makeReq(find, 'en'))
     expect(find).toHaveBeenCalledTimes(2)
-    expect(seoCache.stats().keys).toContain(`${SUGGEST_LINKS_CACHE_BASE}:fr`)
+    expect(seoCache.stats().keys).toContain(`${SUGGEST_LINKS_CACHE_BASE}:de`)
     expect(seoCache.stats().keys).toContain(`${SUGGEST_LINKS_CACHE_BASE}:en`)
   })
 
@@ -75,9 +75,9 @@ describe('/suggest-links', () => {
   // which goes through invalidateByPrefix — invalidateKey would never match.
   it('is cleared by a prefix invalidation', async () => {
     const find = makeFind()
-    await createSuggestLinksHandler(['pages'])(makeReq(find, 'fr'))
+    await createSuggestLinksHandler(['pages'])(makeReq(find, 'de'))
     seoCache.invalidateByPrefix(SUGGEST_LINKS_CACHE_BASE)
-    await createSuggestLinksHandler(['pages'])(makeReq(find, 'fr'))
+    await createSuggestLinksHandler(['pages'])(makeReq(find, 'de'))
     expect(find).toHaveBeenCalledTimes(2)
   })
 
@@ -85,7 +85,7 @@ describe('/suggest-links', () => {
     const find = vi.fn(async (args: Record<string, unknown>) => {
       if (args.select) throw new Error('no such column: focusKeyword')
       return {
-        docs: [{ id: '1', title: 'Creation site internet', slug: 'creation-site-internet' }],
+        docs: [{ id: '1', title: 'Website creation', slug: 'website-creation' }],
         hasNextPage: false,
       }
     })

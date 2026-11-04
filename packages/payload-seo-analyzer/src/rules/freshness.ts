@@ -28,14 +28,13 @@ function daysSince(dateStr: string | undefined): number {
 
 function isEvergreenPage(slug: string | undefined): boolean {
   if (!slug) return false
-  // Check both FR and EN evergreen slugs — a site may mix languages
-  const allEvergreen = [...getEvergreenSlugs('fr'), ...getEvergreenSlugs('en')]
+  const allEvergreen = getEvergreenSlugs()
   return allEvergreen.some((s) => slug === s || slug.endsWith(`/${s}`))
 }
 
 export function checkFreshness(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
   const checks: SeoCheck[] = []
-  const r = getTranslations(ctx.locale).rules.freshness
+  const r = getTranslations().rules.freshness
   const evergreen = isEvergreenPage(input.slug)
 
   // 1. Content age (based on updatedAt)

@@ -142,10 +142,10 @@ describe('buildSeoMetadata', () => {
 
   it('builds hreflang languages from localeAlternates', () => {
     const md = buildSeoMetadata(
-      { ...doc, localeAlternates: [{ hreflang: 'fr', href: `${SITE}/fr/about` }, { hreflang: 'en', href: `${SITE}/en/about` }] },
+      { ...doc, localeAlternates: [{ hreflang: 'de', href: `${SITE}/de/about` }, { hreflang: 'en', href: `${SITE}/en/about` }] },
       { siteUrl: SITE },
     )
-    expect(md.alternates?.languages).toEqual({ fr: `${SITE}/fr/about`, en: `${SITE}/en/about` })
+    expect(md.alternates?.languages).toEqual({ de: `${SITE}/de/about`, en: `${SITE}/en/about` })
   })
 
   it('sets OG type article for posts and twitter card by image presence', () => {

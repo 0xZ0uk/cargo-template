@@ -134,7 +134,7 @@ export interface UnderLinkedOptions {
   homeIds?: string[]
 }
 
-const HOME_SLUGS = new Set(['home', '', 'accueil'])
+const HOME_SLUGS = new Set(['home', ''])
 // Orphans are the worst crawl-budget case: guarantee they always surface even
 // when they have no outbound links (otherwise importance, hence score, is 0).
 const ORPHAN_SCORE_FLOOR = 0.25
@@ -386,7 +386,7 @@ export function createLinkGraphHandler(targetCollections: string[], globals: str
       }
 
       // 3. Build nodes and edges
-      const homeSlugs = new Set(['home', '', 'accueil'])
+      const homeSlugs = new Set(['home', ''])
       const allSlugs = new Set(slugMap.keys())
       const nodes: GraphNode[] = []
       const edges: GraphEdge[] = []

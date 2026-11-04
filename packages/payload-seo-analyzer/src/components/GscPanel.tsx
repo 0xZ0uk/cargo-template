@@ -7,55 +7,29 @@ import { Card, DataTable, EmptyState, LoadingState, TonePill } from '../ui/index
 import { useSeoApi } from '../hooks/useSeoApi.js'
 import './GscPanel.css'
 
-const S = {
-  fr: {
-    title: 'Google Search Console',
-    subtitle: 'Connexion OAuth pour importer automatiquement clics, impressions et positions réelles.',
-    notConfigured:
-      "Intégration non configurée. Activez features.gscApi et définissez GSC_OAUTH_CLIENT_ID / GSC_OAUTH_CLIENT_SECRET côté serveur, puis enregistrez l'URI de redirection dans Google Cloud.",
-    redirectHint: 'URI de redirection à enregistrer :',
-    connect: 'Connecter Google Search Console',
-    disconnect: 'Déconnecter',
-    connectedAs: 'Connecté',
-    notConnected: 'Non connecté',
-    fetch: 'Récupérer les données (28 j)',
-    fetching: 'Chargement…',
-    byQuery: 'Par requête',
-    byPage: 'Par page',
-    query: 'Requête',
-    page: 'Page',
-    clicks: 'Clics',
-    impressions: 'Impressions',
-    ctr: 'CTR',
-    position: 'Position',
-    noData: 'Aucune donnée sur la période.',
-    refreshStatus: 'Rafraîchir le statut',
-    connectHint: 'Une fenêtre Google va s\'ouvrir. Après autorisation, revenez ici et rafraîchissez le statut.',
-  },
-  en: {
-    title: 'Google Search Console',
-    subtitle: 'OAuth connection to automatically import real clicks, impressions and positions.',
-    notConfigured:
-      'Integration not configured. Enable features.gscApi and set GSC_OAUTH_CLIENT_ID / GSC_OAUTH_CLIENT_SECRET on the server, then register the redirect URI in Google Cloud.',
-    redirectHint: 'Redirect URI to register:',
-    connect: 'Connect Google Search Console',
-    disconnect: 'Disconnect',
-    connectedAs: 'Connected',
-    notConnected: 'Not connected',
-    fetch: 'Fetch data (28 d)',
-    fetching: 'Loading…',
-    byQuery: 'By query',
-    byPage: 'By page',
-    query: 'Query',
-    page: 'Page',
-    clicks: 'Clicks',
-    impressions: 'Impressions',
-    ctr: 'CTR',
-    position: 'Position',
-    noData: 'No data for the period.',
-    refreshStatus: 'Refresh status',
-    connectHint: 'A Google window will open. After authorizing, come back here and refresh the status.',
-  },
+const s = {
+  title: 'Google Search Console',
+  subtitle: 'OAuth connection to automatically import real clicks, impressions and positions.',
+  notConfigured:
+    'Integration not configured. Enable features.gscApi and set GSC_OAUTH_CLIENT_ID / GSC_OAUTH_CLIENT_SECRET on the server, then register the redirect URI in Google Cloud.',
+  redirectHint: 'Redirect URI to register:',
+  connect: 'Connect Google Search Console',
+  disconnect: 'Disconnect',
+  connectedAs: 'Connected',
+  notConnected: 'Not connected',
+  fetch: 'Fetch data (28 d)',
+  fetching: 'Loading…',
+  byQuery: 'By query',
+  byPage: 'By page',
+  query: 'Query',
+  page: 'Page',
+  clicks: 'Clicks',
+  impressions: 'Impressions',
+  ctr: 'CTR',
+  position: 'Position',
+  noData: 'No data for the period.',
+  refreshStatus: 'Refresh status',
+  connectHint: 'A Google window will open. After authorizing, come back here and refresh the status.',
 } as const
 
 interface GscStatus {
@@ -74,10 +48,9 @@ interface GscRow {
   position: number
 }
 
-export function GscPanel({ locale }: { locale: 'fr' | 'en' }) {
+export function GscPanel() {
   const seoApi = useSeoApi()
   const gscEnabled = useSeoFeature('gscApi')
-  const s = S[locale] ?? S.fr
   const [status, setStatus] = useState<GscStatus | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)

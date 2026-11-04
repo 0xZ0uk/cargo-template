@@ -538,7 +538,7 @@ export interface SeoSetting {
      */
     keywordDensityMax?: number | null;
     /**
-     * Default: 40
+     * Default: 60
      */
     fleschScorePass?: number | null;
     /**

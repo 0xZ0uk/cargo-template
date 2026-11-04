@@ -22,7 +22,7 @@ import type { PayloadHandler, PayloadRequest } from 'payload'
 import type { SeoConfig } from '../types.js'
 import { resolveGscSiteUrl } from '../helpers/gscClient.js'
 import { parseJsonBody } from '../helpers/parseBody.js'
-import { aiApiKey, aiChat, aiLanguageName, aiModel } from '../helpers/aiClient.js'
+import { aiApiKey, aiChat, aiModel } from '../helpers/aiClient.js'
 import { buildPayloadApiUrl, payloadApiRoute } from '../helpers/seoApiUrl.js'
 
 const ALT_MAX = 125
@@ -110,14 +110,13 @@ async function generateAltText(
   model: string,
   base64: string,
   mediaType: string,
-  language: string,
   context: { filename: string; title?: string },
 ): Promise<string | null> {
   const systemPrompt = `You write concise, descriptive image ALT text for accessibility and SEO.
 Rules:
 - Describe what is actually visible in the image.
 - Maximum ${ALT_MAX} characters.
-- Write in ${aiLanguageName(language)}.
+- Write in English.
 - Do NOT start with "image of", "photo of", "picture of" or similar.
 - No quotes around the result. Return ONLY the alt text, nothing else.`
 
@@ -272,11 +271,10 @@ export function createAiAltTextHandler(uploadsCollection: string, seoConfig?: Se
       const base64 = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString('base64')
 
       const model = aiModel()
-      const language = seoConfig?.locale === 'en' ? 'en' : 'fr'
 
       let alt: string | null
       try {
-        alt = await generateAltText(apiKey, model, base64, mediaType, language, {
+        alt = await generateAltText(apiKey, model, base64, mediaType, {
           filename: (media.filename as string) || '',
           title: typeof body.context === 'string' ? body.context : undefined,
         })

@@ -869,7 +869,7 @@ export function SeoConfigView() {
                         <td className="seo-table__num">{entry.priority}</td>
                         <td className="seo-text--secondary">{entry.changefreq}</td>
                         <td className="seo-text--secondary">
-                          {entry.lastmod ? new Date(entry.lastmod).toLocaleDateString('fr-FR') : '-'}
+                          {entry.lastmod ? new Date(entry.lastmod).toLocaleDateString('en-US') : '-'}
                         </td>
                       </tr>
                     ))}

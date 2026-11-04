@@ -48,7 +48,7 @@ export function createCheckKeywordHandler(collections: string[], globals: string
             const d = doc as Record<string, unknown>
             results.push({
               id: d.id as string | number,
-              title: (d.title as string) || (d.slug as string) || 'Sans titre',
+              title: (d.title as string) || (d.slug as string) || 'Untitled',
               slug: (d.slug as string) || '',
               collection: collectionSlug,
             })
@@ -77,7 +77,7 @@ export function createCheckKeywordHandler(collections: string[], globals: string
               if (!results.some((r) => r.collection === collectionSlug && r.id === d.id)) {
                 results.push({
                   id: d.id as string | number,
-                  title: (d.title as string) || (d.slug as string) || 'Sans titre',
+                  title: (d.title as string) || (d.slug as string) || 'Untitled',
                   slug,
                   collection: collectionSlug,
                 })

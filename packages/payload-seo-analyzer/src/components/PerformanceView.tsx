@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState, useId } from 'react'
 import { Banner, Button, RefreshIcon, SortDownIcon, SortUpIcon, Tabs } from '@payloadcms/ui'
-import { useDashboardT, useSeoLocale } from '../hooks/useSeoLocale.js'
+import { useDashboardT } from '../hooks/useSeoLocale.js'
 import { Card, DataTable, EmptyState, Field, Grid, LoadingState, StatTile, ViewBody, ViewHeader, scoreTone, type Tone } from '../ui/index.js'
 import { CoreWebVitalsPanel } from './CoreWebVitalsPanel.js'
 import { HealthPanel } from './HealthPanel.js'
@@ -131,7 +131,6 @@ function SortTh({
 
 export function PerformanceView() {
   const seoApi = useSeoApi()
-  const locale = useSeoLocale()
   const t = useDashboardT()
   const uid = useId()
   const fileId = `${uid}-import-file`
@@ -224,12 +223,10 @@ export function PerformanceView() {
               }
 
               // Extract URL from various header formats
-              const urlVal = normalized.url || normalized.page || normalized.pages
-                || normalized['pages les plus populaires'] || ''
+              const urlVal = normalized.url || normalized.page || normalized.pages || ''
               // Extract query
               const queryVal = normalized.query || normalized.queries
-                || normalized['top queries'] || normalized['requêtes les plus fréquentes']
-                || normalized.requete || normalized['requête'] || ''
+                || normalized['top queries'] || ''
               // Extract date
               const dateVal = normalized.date || ''
 
@@ -243,7 +240,7 @@ export function PerformanceView() {
               allEntries.push({
                 url: urlVal || '/',
                 query: queryVal || undefined,
-                clicks: parseFloat(normalized.clicks || normalized.clics || '0') || 0,
+                clicks: parseFloat(normalized.clicks || '0') || 0,
                 impressions: parseFloat(normalized.impressions || '0') || 0,
                 ctr,
                 position: parseFloat((normalized.position || '0').replace(',', '.')) || 0,
@@ -469,15 +466,15 @@ export function PerformanceView() {
         />
 
         {/* SEO 2026 — module health, Core Web Vitals (PageSpeed), Google Search Console, rank tracking */}
-        <HealthPanel locale={locale} />
-        <IndexationHygienePanel locale={locale} />
-        <CoreWebVitalsPanel locale={locale} />
-        <GscPanel locale={locale} />
-        <RankTrackingPanel locale={locale} />
-        <CtrOpportunitiesPanel locale={locale} />
-        <ContentGradePanel locale={locale} />
-        <AlertsPanel locale={locale} />
-        <AltTextPanel locale={locale} />
+        <HealthPanel />
+        <IndexationHygienePanel />
+        <CoreWebVitalsPanel />
+        <GscPanel />
+        <RankTrackingPanel />
+        <CtrOpportunitiesPanel />
+        <ContentGradePanel />
+        <AlertsPanel />
+        <AltTextPanel />
 
         {/* Import section */}
         {showImport && (
@@ -534,7 +531,7 @@ export function PerformanceView() {
                   id={jsonId}
                   value={jsonText}
                   onChange={(e) => setJsonText(e.target.value)}
-                  placeholder={'[\n  { "url": "/page", "query": "mot clé", "clicks": 10, "impressions": 100, "ctr": 10, "position": 3.5, "date": "2025-01-15" }\n]'}
+                  placeholder={'[\n  { "url": "/page", "query": "your keyword", "clicks": 10, "impressions": 100, "ctr": 10, "position": 3.5, "date": "2025-01-15" }\n]'}
                   rows={4}
                   className="seo-textarea seo-mono"
                 />
@@ -585,8 +582,8 @@ export function PerformanceView() {
         {/* Summary cards */}
         {hasData && summary && (
           <Grid>
-            <StatTile label={t.performance.totalClicks} value={summary.totalClicks.toLocaleString(locale)} />
-            <StatTile label={t.performance.totalImpressions} value={summary.totalImpressions.toLocaleString(locale)} />
+            <StatTile label={t.performance.totalClicks} value={summary.totalClicks.toLocaleString('en-US')} />
+            <StatTile label={t.performance.totalImpressions} value={summary.totalImpressions.toLocaleString('en-US')} />
             <StatTile label={t.performance.averageCtr} tone={ctrTone(summary.avgCtr)} value={`${summary.avgCtr}%`} />
             <StatTile label={t.performance.averagePosition} tone={positionTone(summary.avgPosition)} value={summary.avgPosition} />
           </Grid>
@@ -635,8 +632,8 @@ export function PerformanceView() {
                     <td className="seo-perf__key seo-text--strong" title={page.url}>
                       {page.url}
                     </td>
-                    <td className="seo-table__num seo-text--strong">{page.clicks.toLocaleString(locale)}</td>
-                    <td className="seo-table__num">{page.impressions.toLocaleString(locale)}</td>
+                    <td className="seo-table__num seo-text--strong">{page.clicks.toLocaleString('en-US')}</td>
+                    <td className="seo-table__num">{page.impressions.toLocaleString('en-US')}</td>
                     <td className={`seo-table__num seo-text--strong ${toneText(ctrTone(page.ctr))}`}>{page.ctr}%</td>
                     <td className={`seo-table__num seo-text--strong ${toneText(positionTone(page.position))}`}>{page.position}</td>
                   </tr>
@@ -689,8 +686,8 @@ export function PerformanceView() {
                     <td className="seo-perf__key seo-text--strong" title={q.query}>
                       {q.query}
                     </td>
-                    <td className="seo-table__num seo-text--strong">{q.clicks.toLocaleString(locale)}</td>
-                    <td className="seo-table__num">{q.impressions.toLocaleString(locale)}</td>
+                    <td className="seo-table__num seo-text--strong">{q.clicks.toLocaleString('en-US')}</td>
+                    <td className="seo-table__num">{q.impressions.toLocaleString('en-US')}</td>
                     <td className={`seo-table__num seo-text--strong ${toneText(ctrTone(q.ctr))}`}>{q.ctr}%</td>
                     <td className={`seo-table__num seo-text--strong ${toneText(positionTone(q.position))}`}>{q.position}</td>
                   </tr>

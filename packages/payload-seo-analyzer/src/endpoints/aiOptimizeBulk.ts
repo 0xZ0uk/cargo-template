@@ -45,7 +45,6 @@ interface BulkRow {
 export function createAiOptimizeBulkHandler(
   targetCollections?: string[],
   seoConfig?: SeoConfig,
-  localeMapping?: Record<string, 'fr' | 'en'>,
 ): PayloadHandler {
   return async (req) => {
     try {
@@ -122,10 +121,7 @@ export function createAiOptimizeBulkHandler(
       const capped = targets.length > limit
       const slice = targets.slice(0, limit)
 
-      const { config: mergedConfig } = await loadMergedConfig(req.payload, seoConfig, {
-        reqLocale: req.locale as string | undefined,
-        localeMapping,
-      })
+      const { config: mergedConfig } = await loadMergedConfig(req.payload, seoConfig)
       const apiKey = aiApiKey()
       const model = aiModel()
 

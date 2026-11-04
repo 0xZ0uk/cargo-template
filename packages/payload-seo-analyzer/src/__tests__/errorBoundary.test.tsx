@@ -99,12 +99,12 @@ describe('SeoErrorBoundary — fallback', () => {
 
   it('uses the localized labels it is handed, and English otherwise', () => {
     const { unmount } = render(
-      <SeoErrorBoundary viewName="Test" labels={{ title: 'Erreur de chargement', retry: 'Réessayer' }}>
+      <SeoErrorBoundary viewName="Test" labels={{ title: 'Custom load error', retry: 'Try again' }}>
         <Boom />
       </SeoErrorBoundary>,
     )
-    expect(screen.getByText('Erreur de chargement')).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Réessayer' })).toBeTruthy()
+    expect(screen.getByText('Custom load error')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy()
     unmount()
 
     render(
