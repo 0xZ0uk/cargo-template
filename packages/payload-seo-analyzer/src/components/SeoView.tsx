@@ -600,6 +600,19 @@ export function SeoView() {
     setBulkPreview(null)
     closeModal(BULK_PREVIEW_MODAL_SLUG)
   }, [closeModal])
+  // `ModalProvider` lives at the admin root, so a preview that lands after the viewer left
+  // /admin/seo would leave the slug open there. Skip the open once unmounted, and close it on
+  // unmount (through a ref, so a new `closeModal` identity doesn't close an open dialog).
+  const mountedRef = useRef(true)
+  const closeModalRef = useRef(closeModal)
+  closeModalRef.current = closeModal
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      closeModalRef.current(BULK_PREVIEW_MODAL_SLUG)
+    }
+  }, [])
   // Escape and the header's close button close the modal on their own: drop the data with it.
   const wasBulkPreviewOpen = useRef(false)
   useEffect(() => {
@@ -965,6 +978,7 @@ export function SeoView() {
       })
       if (res.ok) {
         const data = await res.json()
+        if (!mountedRef.current) return
         const changed = ((data.results || []) as BulkPreviewRow[]).filter((r) => r.changed && !r.error)
         setBulkPreview({ results: changed, capped: !!data.capped, total: data.processed || 0 })
         openModal(BULK_PREVIEW_MODAL_SLUG)

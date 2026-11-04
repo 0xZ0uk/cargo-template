@@ -46,6 +46,9 @@ const modalApi = {
   toggleModal: (slug: string) => (openModals.has(slug) ? modalApi.closeModal(slug) : modalApi.openModal(slug)),
   isModalOpen: (slug: string) => openModals.has(slug),
 }
+/** The stub's modal registry, for tests that check what's left open after an unmount. */
+export const modalApiForTests = modalApi
+
 export const resetModalStub = () => {
   openModals.clear()
   publishModals()

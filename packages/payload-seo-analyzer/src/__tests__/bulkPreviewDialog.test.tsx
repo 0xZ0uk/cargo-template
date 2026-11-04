@@ -9,7 +9,7 @@ vi.mock('@payloadcms/ui', async () => ({
 }))
 
 import { SeoView } from '../components/SeoView.js'
-import { resetModalStub } from './helpers/payloadUiStub.js'
+import { modalApiForTests, resetModalStub } from './helpers/payloadUiStub.js'
 
 const page = {
   id: 1,
@@ -114,6 +114,35 @@ afterEach(() => {
 })
 
 describe('bulk preview dialog (Payload DialogModal)', () => {
+  it('leaves no dialog open when the view unmounts before the proposal arrives', async () => {
+    let releaseProposal: () => void = () => {}
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.includes('/audit?')) return new Response(JSON.stringify(auditBody), { status: 200 })
+        if (url.includes('/ai-optimize-bulk')) {
+          return new Promise<Response>((resolve) => {
+            releaseProposal = () => resolve(new Response(JSON.stringify(proposal), { status: 200 }))
+          })
+        }
+        return new Response(JSON.stringify({}), { status: 200 })
+      }),
+    )
+    const view = render(<SeoView />)
+    await screen.findByText('Coffee')
+    const trigger = screen.getByRole('button', { name: 'Optimize site' }) as HTMLButtonElement
+    await waitFor(() => expect(trigger.disabled).toBe(false))
+    fireEvent.click(trigger)
+    view.unmount()
+    await act(async () => {
+      releaseProposal()
+      await new Promise((r) => setTimeout(r, 0))
+    })
+    // The modal registry outlives the view (it's at the admin root): nothing may be left open.
+    const { isModalOpen } = modalApiForTests
+    expect(isModalOpen('seo-bulk-preview')).toBe(false)
+  })
+
   it('is closed until a proposal comes back, then opens as a labelled dialog', async () => {
     stubFetch()
     await openDialog()
