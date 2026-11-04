@@ -7,7 +7,7 @@
  */
 
 import { extractTextFromLexical } from '../helpers.js'
-import { buildDocUrl, type CollectionRoutes } from './docUrl.js'
+import { buildDocPath, type CollectionRoutes } from './docUrl.js'
 import { resolveSiteUrl } from './siteUrl.js'
 
 export const SCHEMA_TYPES = [
@@ -241,10 +241,12 @@ function buildLocalBusinessSchema(doc: Record<string, unknown>, siteUrl: string,
 function buildBreadcrumbSchema(
   doc: Record<string, unknown>,
   siteUrl: string,
+  // The document's public path (route prefix included, '' for the home page), so the trail
+  // matches the URL every other node advertises.
+  docPath: string,
   homeLabel: string,
 ): Record<string, unknown> {
-  const slug = (doc.slug as string) || ''
-  const parts = slug.split('/').filter(Boolean)
+  const parts = docPath.split('/').filter(Boolean)
 
   const items = [
     {
@@ -485,7 +487,8 @@ export function buildJsonLd(
   const schemaType = options.type || detectSchemaType(options.collection || '', doc)
   // Resolved once and threaded down: every node that points at "this document"
   // must use the same public URL, prefixed by the collection route.
-  const docUrl = buildDocUrl(siteUrl, (doc.slug as string) || '', options.collection, options.collectionRoutes)
+  const docPath = buildDocPath((doc.slug as string) || '', options.collection, options.collectionRoutes)
+  const docUrl = `${siteUrl}${docPath}`
 
   let jsonLd: Record<string, unknown>
   switch (schemaType) {
@@ -496,7 +499,7 @@ export function buildJsonLd(
       jsonLd = buildLocalBusinessSchema(doc, siteUrl, docUrl)
       break
     case 'BreadcrumbList':
-      jsonLd = buildBreadcrumbSchema(doc, siteUrl, options.homeLabel ?? (options.locale === 'fr' ? 'Accueil' : 'Home'))
+      jsonLd = buildBreadcrumbSchema(doc, siteUrl, docPath, options.homeLabel ?? (options.locale === 'fr' ? 'Accueil' : 'Home'))
       break
     case 'FAQPage':
       jsonLd = buildFAQSchema(doc)

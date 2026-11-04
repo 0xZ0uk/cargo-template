@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { buildAlertDigest, type AlertConfig } from '../endpoints/alerts.js'
+import { afterEach, describe, it, expect, vi } from 'vitest'
+import { buildAlertDigest, createAlertsRunHandler, deliverAlertDigest, type AlertConfig } from '../endpoints/alerts.js'
 
 const cfg: AlertConfig = {
   webhookUrl: '',
@@ -86,5 +86,103 @@ describe('buildAlertDigest', () => {
     })
     const d = await buildAlertDigest(payload, cfg)
     expect(d.totalIssues).toBe(2)
+  })
+})
+
+describe('deliverAlertDigest', () => {
+  const digest = {
+    since: '2026-11-03T00:00:00Z',
+    generatedAt: '2026-11-04T00:00:00Z',
+    scoreRegressions: [],
+    newNotFound: [{ url: '/gone', count: 2, lastSeen: '2026-11-04' }],
+    rankDrops: [],
+    totalIssues: 1,
+  }
+  const logger = () => ({ warn: vi.fn(), error() {}, info() {} })
+
+  afterEach(() => vi.restoreAllMocks())
+
+  it('posts the digest to the webhook and reports it sent on a 2xx', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }))
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const r = await deliverAlertDigest({ logger: logger() } as any, digest, { ...cfg, webhookUrl: 'https://hook.test/x' }, 'https://site.test')
+    expect(r).toEqual({ sent: true, reason: undefined, channels: { webhook: true, email: false } })
+    const [url, init] = spy.mock.calls[0]!
+    expect(url).toBe('https://hook.test/x')
+    expect(JSON.parse(String(init!.body))).toMatchObject({ type: 'seo-alert-digest', siteUrl: 'https://site.test', digest })
+    expect(init!.signal).toBeInstanceOf(AbortSignal)
+  })
+
+  it('treats a 4xx/5xx from the webhook as a failed delivery, and logs the status', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('gone', { status: 404 }))
+    const log = logger()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const r = await deliverAlertDigest({ logger: log } as any, digest, { ...cfg, webhookUrl: 'https://hook.test/x' })
+    expect(r).toEqual({ sent: false, reason: 'delivery_failed', channels: { webhook: false, email: false } })
+    expect(log.warn).toHaveBeenCalledWith(expect.stringContaining('HTTP 404'))
+  })
+
+  it('says no channel is configured only when none is', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const r = await deliverAlertDigest({ logger: logger() } as any, digest, cfg)
+    expect(r.reason).toBe('no_channel_configured')
+  })
+
+  it("doesn't count Payload's console fallback adapter as an email delivery", async () => {
+    // What Payload installs without `config.email`: a sendEmail that only logs and resolves.
+    const consoleSend = vi.fn().mockResolvedValue(undefined)
+    const log = logger()
+    const r = await deliverAlertDigest(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { logger: log, email: { name: 'console' }, sendEmail: consoleSend } as any,
+      digest,
+      { ...cfg, emails: ['a@b.test'] },
+    )
+    expect(r).toEqual({ sent: false, reason: 'delivery_failed', channels: { webhook: false, email: false } })
+    expect(consoleSend).not.toHaveBeenCalled()
+    expect(log.warn).toHaveBeenCalledWith(expect.stringContaining('no email adapter'))
+  })
+
+  it('sends through a real email adapter', async () => {
+    const send = vi.fn().mockResolvedValue({})
+    const r = await deliverAlertDigest(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { logger: logger(), email: { name: 'resend' }, sendEmail: send } as any,
+      digest,
+      { ...cfg, emails: ['a@b.test'] },
+    )
+    expect(r.channels.email).toBe(true)
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ to: ['a@b.test'], subject: expect.stringContaining('1 issue') }))
+  })
+
+  it('sends nothing when there is nothing to report', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const r = await deliverAlertDigest({ logger: logger() } as any, { ...digest, newNotFound: [], totalIssues: 0 }, { ...cfg, webhookUrl: 'https://hook.test/x' })
+    expect(r.reason).toBe('nothing_to_report')
+    expect(spy).not.toHaveBeenCalled()
+  })
+})
+
+describe('POST /alerts-run', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it("names the site by the request's origin when no site URL is configured", async () => {
+    vi.stubEnv('SEO_ALERT_WEBHOOK_URL', 'https://hook.test/x')
+    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 200 }))
+    const store = {
+      scoreHistory: { list: async () => [] },
+      notFound: { list: async () => [{ url: '/gone', count: 1, lastSeen: '2026-11-04' }] },
+      rankHistory: { list: async () => [] },
+    }
+    const handler = createAlertsRunHandler(undefined, (() => store) as never)
+    const res = await handler({
+      url: 'https://cargo.example/api/seo-plugin/alerts-run',
+      user: { id: 1, collection: 'users' },
+      payload: { config: { admin: { user: 'users' } }, logger: { warn() {}, error() {}, info() {} } },
+    } as never)
+    expect((await res.json()).delivery.sent).toBe(true)
+    expect(JSON.parse(String(spy.mock.calls[0]![1]!.body)).siteUrl).toBe('https://cargo.example')
+    vi.unstubAllEnvs()
   })
 })
