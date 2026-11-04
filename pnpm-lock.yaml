@@ -253,9 +253,39 @@ importers:
 
   apps/web:
     dependencies:
+      '@cargo/onpage-core':
+        specifier: workspace:*
+        version: link:../../packages/onpage/core
+      '@cargo/onpage-lexical':
+        specifier: workspace:*
+        version: link:../../packages/onpage/lexical
+      '@cargo/onpage-plugin':
+        specifier: workspace:*
+        version: link:../../packages/onpage/plugin
+      '@cargo/onpage-react':
+        specifier: workspace:*
+        version: link:../../packages/onpage/react
+      '@cargo/onpage-tanstack-start':
+        specifier: workspace:*
+        version: link:../../packages/onpage/tanstack-start
       '@cargo/payload-seo-analyzer':
         specifier: workspace:*
         version: link:../../packages/payload-seo-analyzer
+      '@lexical/list':
+        specifier: 'catalog:'
+        version: 0.53.0(typescript@6.0.3)
+      '@lexical/react':
+        specifier: 'catalog:'
+        version: 0.53.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(typescript@6.0.3)(yjs@13.6.33)
+      '@lexical/rich-text':
+        specifier: 'catalog:'
+        version: 0.53.0(typescript@6.0.3)
+      '@lexical/selection':
+        specifier: 'catalog:'
+        version: 0.53.0(typescript@6.0.3)
+      '@lexical/utils':
+        specifier: 'catalog:'
+        version: 0.53.0(typescript@6.0.3)
       '@payloadcms/db-d1-sqlite':
         specifier: 'catalog:'
         version: 4.0.0-beta.6(@libsql/client@0.14.0)(payload@4.0.0-beta.6(patch_hash=a9abd1297b478daa72f3d031352b2d5dcaaba1e9a47f001defbfd3ea54267c48)(graphql@16.14.2)(supports-color@7.2.0)(typescript@6.0.3))(supports-color@7.2.0)
@@ -304,6 +334,9 @@ importers:
       graphql:
         specifier: ^16.8.1
         version: 16.14.2
+      lexical:
+        specifier: 'catalog:'
+        version: 0.53.0(typescript@6.0.3)
       payload:
         specifier: 'catalog:'
         version: 4.0.0-beta.6(patch_hash=a9abd1297b478daa72f3d031352b2d5dcaaba1e9a47f001defbfd3ea54267c48)(graphql@16.14.2)(supports-color@7.2.0)(typescript@6.0.3)

@@ -10,7 +10,7 @@ type LoadPageInput = {
 }
 
 export type LoadPageResult = {
-  /** True when a logged-in user asked for the draft, which turns on live preview. */
+  /** True when the draft is shown (live preview, on-page editing or a preview link). */
   draft: boolean
   /** Structured data nodes, serialized and safe to embed in `<script type="application/ld+json">`. */
   jsonLd: string[]
@@ -26,22 +26,31 @@ export const loadPage = createServerFn({ method: 'GET', strict: { output: false 
   .handler(async ({ data }): Promise<LoadPageResult> => {
     const { getPayload } = await import('payload')
     const { getRequestHeaders, getRequestUrl } = await import('@tanstack/react-start/server')
-
+    // Loaded after the Payload config: `tanstackSession()` in the config hands the session
+    // helpers the secret they verify cookies with.
     const payload = await getPayload({ config: (await import('@payload-config')).default })
+    const { isDraftEnabled, isSharedPreview, onpageContext } =
+      await import('@cargo/onpage-tanstack-start/session')
 
-    // Only authenticated users can see drafts. Anyone else gets the published version, even
-    // with `?draft=true`.
-    const user = data.draft
-      ? (await payload.auth({ headers: new Headers(getRequestHeaders()) })).user
-      : null
-    const draft = Boolean(user)
+    // Drafts show for a logged-in user who asked with `?draft=true` (live preview) or turned
+    // on on-page editing, and for whoever opened a preview link to this page. Anyone else gets
+    // the published version.
+    const onpageDraft = await isDraftEnabled()
+    const user =
+      data.draft || onpageDraft
+        ? (await payload.auth({ headers: new Headers(getRequestHeaders()) })).user
+        : null
+    // A preview link carries no Payload user: its sealed grant (checked against this request's
+    // path) stands in for read access, for this one page.
+    const sharedPreview = !user && onpageDraft && (await isSharedPreview())
+    const draft = Boolean(user) || sharedPreview
 
     const result = await payload.find({
       collection: 'pages',
       depth: 2,
       draft,
       limit: 1,
-      overrideAccess: false,
+      overrideAccess: sharedPreview,
       pagination: false,
       user,
       where: {
@@ -49,6 +58,8 @@ export const loadPage = createServerFn({ method: 'GET', strict: { output: false 
           equals: data.slug,
         },
       },
+      // In edit mode, strings come back with invisible markers that map them to their fields.
+      ...(await onpageContext()),
     })
 
     let page: LoadPageResult['page'] = result.docs[0] ?? null

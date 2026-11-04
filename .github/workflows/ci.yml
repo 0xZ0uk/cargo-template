@@ -104,8 +104,9 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Build the SEO analyzer plugin
-        run: pnpm --filter @cargo/payload-seo-analyzer build
+      # The app imports the plugins' dist (the SEO analyzer and packages/onpage/*).
+      - name: Build the workspace plugins
+        run: pnpm turbo run build --filter='./packages/**'
 
       - name: Read the Playwright version
         id: playwright
