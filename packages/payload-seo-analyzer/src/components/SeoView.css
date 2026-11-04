@@ -211,41 +211,9 @@
 
 /* ---------- Bulk preview dialog ------------------------------------------- */
 
-.seo-audit__overlay {
-  position: fixed;
-  inset: 0;
-  z-index: var(--z-modal);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--spacer-4);
-  background: var(--color-modalbackdrop);
-}
-
-.seo-audit__modal {
-  display: flex;
-  flex-direction: column;
-  width: min(56rem, 100%);
-  max-height: 85vh;
-  overflow: hidden;
-  color: var(--color-text);
-  background: var(--color-bg);
-  border: var(--stroke-width-small) solid var(--color-border);
-  border-radius: var(--radius-large);
-}
-
-.seo-audit__modal-header {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacer-1);
-  padding: var(--spacer-3) var(--spacer-4);
-  border-bottom: var(--stroke-width-small) solid var(--color-border);
-}
-
-.seo-audit__modal-body {
-  flex: 1;
-  padding: var(--spacer-2) var(--spacer-4);
-  overflow-y: auto;
+.seo-audit__dialog-export {
+  /* Export sits at the start of the footer; Cancel and Apply stay at the end. */
+  margin-inline-end: auto;
 }
 
 .seo-audit__change {
@@ -262,13 +230,4 @@
 .seo-audit__before {
   text-decoration: line-through;
   opacity: 0.75;
-}
-
-.seo-audit__modal-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--spacer-2);
-  padding: var(--spacer-2) var(--spacer-4);
-  border-top: var(--stroke-width-small) solid var(--color-border);
 }

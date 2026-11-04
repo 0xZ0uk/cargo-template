@@ -173,13 +173,9 @@ describe('a11y contract — buttons', () => {
         }
       }
     }
-    // One documented exception remains, a pure mouse convenience: the
-    // bulk-preview modal overlay, where click-to-dismiss belongs to the dialog
-    // work (focus trap, Escape) rather than to this pass. (The audit table row's
-    // expand-on-click now lives on the <tr> itself and duplicates the title
-    // <button> the keyboard uses.)
-    expect(offenders).toEqual([
-      'components/SeoView.tsx onClick={() => { if (!bulkApplying) setBulkPreview(null) }}',
-    ])
+    // The audit table row's expand-on-click lives on the <tr> itself and duplicates the
+    // title <button> the keyboard uses. The bulk-preview dialog is Payload's DialogModal
+    // (focus trap, Escape, close button), so no click-to-dismiss overlay is left.
+    expect(offenders).toEqual([])
   })
 })

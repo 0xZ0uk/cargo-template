@@ -9,7 +9,8 @@ correct in light and dark mode. Payload 4 removed the v3 tokens (`--theme-elevat
 
 1. **`@payloadcms/ui` components**: `Button`, `Pill`, `Banner`, `Collapsible`, `Tabs`,
    `Tooltip`, `Spinner`, `ShimmerEffect`, `Drawer`/`DrawerToggler`/`useModal`,
-   `ConfirmationModal`, `Popup`/`PopupList`, `CopyToClipboard`, `Link`, and the icons
+   `ConfirmationModal`, `DialogModal` with `DialogHeader`/`DialogBody`/`DialogFooter` (a custom
+   dialog: never a hand-rolled overlay, it has no focus trap or Escape), `Popup`/`PopupList`, `CopyToClipboard`, `Link`, and the icons
    (`CheckIcon`, `XIcon`, `EditIcon`, `TrashIcon`, `PlusIcon`, `SearchIcon`,
    `RefreshIcon`, `ChevronIcon`, `WarningIcon`, `InfoIcon`, `NewTabIcon`,
    `LinkIcon`, `CopyIcon`, `SuccessIcon`, `ErrorIcon`, `SortUpIcon`/`SortDownIcon`…).
