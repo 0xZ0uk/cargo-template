@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState, useMemo, useCallback, useId } from 'react'
+import React, { useEffect, useState, useMemo, useCallback, useId, useRef } from 'react'
 import {
   Banner,
   Button,
@@ -114,6 +114,19 @@ interface AuditPage {
   notBuilt?: boolean
   pagination?: { page: number; totalPages: number }
 }
+
+/** What `/audit` says about the freshness of the audit it served. */
+export interface AuditFreshness {
+  /** When the shown audit was built (epoch ms), if known. */
+  builtAt?: number
+  /** Content or settings changed since it was built. */
+  stale: boolean
+  /** A newer audit is being built. */
+  refreshing: boolean
+}
+
+/** Delay between dashboard polls (ms). */
+const AUDIT_POLL_MS = 3000
 
 /**
  * `/audit` returns one page of results. Fetch the remaining pages of the cached audit
@@ -565,52 +578,115 @@ export function SeoView() {
   const [bulkPreview, setBulkPreview] = useState<{ results: BulkPreviewRow[]; capped: boolean; total: number } | null>(null)
   const PAGE_SIZE = 50
 
+  // Freshness of the shown audit: set while an older audit is shown during a rebuild.
+  const [freshness, setFreshness] = useState<AuditFreshness | null>(null)
+  // Bumped by every fetchAudit call and on unmount, so a superseded refresh loop stops.
+  const fetchSeq = useRef(0)
+
   // mode: 'peek' reads the cache WITHOUT triggering a build (dashboard open — never auto-builds,
   //       which is heavy on large/rich sites); 'run' triggers the throttled background build and
-  //       polls; 'refresh' drops the cache and rebuilds.
+  //       polls; 'refresh' asks for a rebuild (the current audit stays on screen meanwhile).
   const fetchAudit = useCallback(async (mode: 'peek' | 'run' | 'refresh' = 'run') => {
+    const seq = ++fetchSeq.current
+    const live = () => seq === fetchSeq.current
     setLoading(true)
     setError(null)
     setBuilding(false)
     setNotBuilt(false)
+    setFreshness(null)
+    // The endpoint pages its results (max 500 per request); the first request asks for the
+    // largest page, and `loadRemainingAuditPages` fetches the rest so filters, counts and
+    // exports cover every analyzed page.
+    const base = seoApi(`/audit?limit=${AUDIT_PAGE_LIMIT}`)
+
+    // Show an audit response. Returns its freshness (null when it's current and final).
+    const show = async (data: AuditPage & { stats?: AuditStats; builtAt?: number; stale?: boolean; refreshing?: boolean }) => {
+      const all = await loadRemainingAuditPages(data, base)
+      if (!live()) return null
+      setItems(all)
+      setStats(data.stats || null)
+      const f: AuditFreshness | null =
+        data.stale || data.refreshing
+          ? { builtAt: data.builtAt, stale: !!data.stale, refreshing: !!data.refreshing }
+          : null
+      setFreshness(f)
+      return f
+    }
+
+    // An older audit is on screen: keep polling (a poll without `noBuild` starts the rebuild
+    // if none is running) and swap in each audit that finishes, until a current one arrives.
+    const keepRefreshing = async (shown: AuditFreshness) => {
+      let builtAt = shown.builtAt
+      let wait = shown.refreshing ? AUDIT_POLL_MS : 0
+      for (let attempt = 0; attempt < 90 && live(); attempt++) {
+        if (wait) await new Promise((r) => setTimeout(r, wait))
+        if (!live()) return
+        wait = AUDIT_POLL_MS
+        let res: Response
+        try {
+          res = await fetch(base, { credentials: 'include', cache: 'no-store' })
+        } catch {
+          continue
+        }
+        if (res.status === 202 || res.status === 429) {
+          if (res.status === 429) wait = 2 * AUDIT_POLL_MS
+          continue
+        }
+        if (!res.ok) break
+        const data = await res.json()
+        if (!live()) return
+        if (data.builtAt !== builtAt) {
+          builtAt = data.builtAt
+          if (!(await show(data))) return
+        } else {
+          setFreshness(
+            data.stale || data.refreshing
+              ? { builtAt: data.builtAt, stale: !!data.stale, refreshing: !!data.refreshing }
+              : null,
+          )
+          if (!data.stale && !data.refreshing) return
+        }
+      }
+      // Gave up waiting: keep the note, without "refreshing".
+      if (live()) setFreshness((f) => (f ? { ...f, refreshing: false } : f))
+    }
+
     try {
-      // The endpoint pages its results (max 500 per request); the first request asks for the
-      // largest page, and `loadRemainingAuditPages` fetches the rest so filters, counts and
-      // exports cover every analyzed page.
-      const base = seoApi(`/audit?limit=${AUDIT_PAGE_LIMIT}`)
       const firstUrl =
         mode === 'peek' ? `${base}&noBuild=1` : mode === 'refresh' ? `${base}&nocache=1` : base
       let res = await fetch(firstUrl, { credentials: 'include', cache: 'no-store' })
 
       // Peek (dashboard open) never triggers a build: show the "run" CTA when nothing is cached
       // yet. (If a build is already running, the server returns 202 → fall through and poll it.)
+      // An older audit is shown right away; refreshing it is then up to `keepRefreshing`.
+      let shown: AuditFreshness | null = null
       if (mode === 'peek' && res.status === 200) {
         const data = await res.json()
         if (data.notBuilt) setNotBuilt(true)
-        else {
-          setItems(await loadRemainingAuditPages(data, base))
-          setStats(data.stats || null)
+        else shown = await show(data)
+      } else {
+        let attempts = 0
+        const MAX_POLLS = 90 // ~4.5 min at 3s — enough for very large sites
+        // While building, the server returns 202. A transient 429 (rate limit) during a long build
+        // is also non-fatal — back off and keep polling rather than surfacing an error.
+        while ((res.status === 202 || res.status === 429) && attempts < MAX_POLLS) {
+          setBuilding(true)
+          await new Promise((r) => setTimeout(r, res.status === 429 ? 2 * AUDIT_POLL_MS : AUDIT_POLL_MS))
+          if (!live()) return
+          res = await fetch(base, { credentials: 'include', cache: 'no-store' })
+          attempts++
         }
-        setLoading(false)
-        return
+        if (res.status === 202 || res.status === 429) throw new Error(t.seoView.buildTimeout)
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        shown = await show(await res.json())
       }
-
-      let attempts = 0
-      const MAX_POLLS = 90 // ~4.5 min at 3s — enough for very large sites
-      // While building, the server returns 202. A transient 429 (rate limit) during a long build
-      // is also non-fatal — back off and keep polling rather than surfacing an error.
-      while ((res.status === 202 || res.status === 429) && attempts < MAX_POLLS) {
-        setBuilding(true)
-        await new Promise((r) => setTimeout(r, res.status === 429 ? 6000 : 3000))
-        res = await fetch(base, { credentials: 'include', cache: 'no-store' })
-        attempts++
-      }
-      if (res.status === 202 || res.status === 429) throw new Error(t.seoView.buildTimeout)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = await res.json()
-      setItems(await loadRemainingAuditPages(data, base))
-      setStats(data.stats || null)
+      if (!live()) return
+      setBuilding(false)
+      setLoading(false)
+      if (shown) await keepRefreshing(shown)
+      return
     } catch (e: unknown) {
+      if (!live()) return
       setError(e instanceof Error ? e.message : t.common.loadingError)
     }
     setBuilding(false)
@@ -620,6 +696,9 @@ export function SeoView() {
   useEffect(() => {
     // Dashboard open = peek only (no auto-build).
     fetchAudit('peek')
+    return () => {
+      fetchSeq.current++
+    }
   }, [fetchAudit])
 
   const collections = useMemo(() => {
@@ -1304,6 +1383,20 @@ export function SeoView() {
         {/* The audit can run for minutes; without this the only signal that it
             finished is a visual one. */}
         <LiveRegion message={`${stats?.totalPages || 0} ${t.seoView.pagesAnalyzed}`} />
+
+        {/* An older audit is shown while a newer one builds (or after content changed). */}
+        {freshness && (
+          <Banner type="default">
+            <span>
+              {freshness.builtAt
+                ? (freshness.refreshing ? t.seoView.staleAuditRefreshing : t.seoView.staleAudit).replace(
+                    '{time}',
+                    new Date(freshness.builtAt).toLocaleString(locale),
+                  )
+                : t.seoView.auditRefreshing}
+            </span>
+          </Banner>
+        )}
 
         {/* Bulk apply confirmation — avoids an auto-rebuild; user refreshes once when done */}
         {bulkApplied && (

@@ -53,6 +53,10 @@ export interface DashboardTranslations {
   seoView: {
     loadingAudit: string
     buildingAudit: string
+    /** `{time}`: when the shown audit was built. */
+    staleAuditRefreshing: string
+    staleAudit: string
+    auditRefreshing: string
     buildTimeout: string
     runAudit: string
     auditNotRun: string
@@ -674,6 +678,9 @@ const fr: DashboardTranslations = {
   seoView: {
     loadingAudit: 'Chargement de l\'audit SEO...',
     buildingAudit: 'Génération de l\'audit SEO en cours… (calculé en arrière-plan pour ne pas surcharger le serveur, cela peut prendre un moment sur un gros site)',
+    staleAuditRefreshing: 'Showing results from {time}; refreshing…',
+    staleAudit: 'Showing results from {time}. Content has changed since; refresh to update.',
+    auditRefreshing: 'Showing earlier results; refreshing…',
     buildTimeout: 'La génération de l\'audit prend plus de temps que prévu. Réessayez dans quelques instants.',
     runAudit: 'Lancer l\'audit du site',
     auditNotRun: 'L\'audit analyse toutes vos pages et articles. Il s\'exécute en arrière-plan (throttlé pour ne pas ralentir le site) — lancez-le quand vous le souhaitez.',
@@ -1292,6 +1299,9 @@ const en: DashboardTranslations = {
   seoView: {
     loadingAudit: 'Loading SEO audit...',
     buildingAudit: 'Building the SEO audit… (computed in the background to avoid overloading the server — this can take a moment on a large site)',
+    staleAuditRefreshing: 'Showing results from {time}; refreshing…',
+    staleAudit: 'Showing results from {time}. Content has changed since; refresh to update.',
+    auditRefreshing: 'Showing earlier results; refreshing…',
     buildTimeout: 'The audit is taking longer than expected. Please try again in a moment.',
     runAudit: 'Run site audit',
     auditNotRun: 'The audit analyzes all your pages and posts. It runs in the background (throttled so it won\'t slow the site down) — start it whenever you like.',
