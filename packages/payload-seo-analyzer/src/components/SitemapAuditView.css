@@ -131,3 +131,30 @@ td.seo-sitemap__check {
   margin-top: var(--spacer-1);
   font-style: italic;
 }
+
+/* Scan state above the External tab's stats bar (capped list, partial scan, continue error). */
+.seo-sitemap__notices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacer-2);
+  padding: var(--spacer-2) var(--spacer-3);
+  border-bottom: var(--stroke-width-small) solid var(--color-border);
+}
+
+.seo-sitemap__notices .banner {
+  margin: 0;
+}
+
+.seo-sitemap__notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacer-2);
+}
+
+.seo-sitemap__note {
+  margin: 0;
+  padding: var(--spacer-2) var(--spacer-3);
+  border-bottom: var(--stroke-width-small) solid var(--color-border);
+}
