@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import {
   RETENTION_TARGETS,
+  RETENTION_DEFAULTS,
   resolveRetention,
   describeRetention,
   purgeRetention,
@@ -44,9 +45,31 @@ describe('retention — target definitions', () => {
 })
 
 describe('retention — resolveRetention', () => {
-  it('is opt-in: no config means no purge', () => {
+  it('purges nothing when no feature is on and nothing is named', () => {
     expect(resolveRetention(undefined)).toEqual([])
     expect(resolveRetention({})).toEqual([])
+  })
+
+  it('is mandatory for enabled datasets: defaults apply without any config', () => {
+    const resolved = resolveRetention(undefined, { enabled: ['seo-logs', 'seo-score-history'] })
+    expect(resolved).toEqual([
+      { slug: 'seo-score-history', dateField: 'snapshotDate', ...RETENTION_DEFAULTS['seo-score-history'] },
+      { slug: 'seo-logs', dateField: 'lastSeen', ...RETENTION_DEFAULTS['seo-logs'] },
+    ])
+  })
+
+  it('lets a valid window and row cap override the defaults, and ignores invalid ones', () => {
+    const resolved = resolveRetention(
+      { 'seo-performance': 30, 'seo-score-history': 0 },
+      {
+        enabled: ['seo-performance', 'seo-score-history'],
+        maxRows: { 'seo-performance': 10, 'seo-score-history': -1 },
+      },
+    )
+    expect(resolved).toEqual([
+      { slug: 'seo-score-history', dateField: 'snapshotDate', ...RETENTION_DEFAULTS['seo-score-history'] },
+      { slug: 'seo-performance', dateField: 'date', days: 30, maxRows: 10 },
+    ])
   })
 
   it('drops values that would mean "delete everything" instead of clamping them', () => {
@@ -63,7 +86,9 @@ describe('retention — resolveRetention', () => {
 
   it('accepts a positive window and floors it', () => {
     const resolved = resolveRetention({ 'seo-logs': 90.9 })
-    expect(resolved).toEqual([{ slug: 'seo-logs', dateField: 'lastSeen', days: 90 }])
+    expect(resolved).toEqual([
+      { slug: 'seo-logs', dateField: 'lastSeen', days: 90, maxRows: RETENTION_DEFAULTS['seo-logs'].maxRows },
+    ])
   })
 
   it('ignores an unknown collection slug', () => {
@@ -85,6 +110,7 @@ describe('retention — describeRetention (dry run)', () => {
         collection: 'seo-logs',
         dateField: 'lastSeen',
         days: 90,
+        maxRows: RETENTION_DEFAULTS['seo-logs'].maxRows,
         cutoff: new Date('2026-06-10T12:00:00.000Z').toISOString(),
       },
     ])

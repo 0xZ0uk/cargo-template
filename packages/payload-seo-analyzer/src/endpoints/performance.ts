@@ -113,8 +113,9 @@ function getDateThreshold(period: string): Date {
 // ---------------------------------------------------------------------------
 
 import { isSeoAdminRequest as isAdmin, isSeoPanelUser } from '../helpers/isAdmin.js'
+import { payloadStoreResolver, type PerformanceRow, type SeoDataStoreResolver } from '../store/index.js'
 
-export function createPerformanceHandler(): PayloadHandler {
+export function createPerformanceHandler(resolveStore: SeoDataStoreResolver = payloadStoreResolver): PayloadHandler {
   return async (req) => {
     try {
       if (!isSeoPanelUser(req)) {
@@ -134,21 +135,12 @@ export function createPerformanceHandler(): PayloadHandler {
         const threshold = getDateThreshold(period)
 
         // Fetch all performance entries within the period
-        const result = await req.payload.find({
-          collection: 'seo-performance',
+        const docs = await resolveStore(req.payload).performance.list({
+          since: threshold.toISOString(),
+          urlContains: filterUrl || undefined,
+          queryContains: filterQuery || undefined,
           limit: 10000,
-          depth: 0,
-          overrideAccess: true,
-          where: {
-            date: { greater_than_equal: threshold.toISOString() },
-            ...(filterUrl ? { url: { contains: filterUrl } } : {}),
-            ...(filterQuery ? { query: { contains: filterQuery } } : {}),
-          },
-          sort: '-date',
         })
-
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const docs = result.docs as any[]
 
         // Summary
         let totalClicks = 0
@@ -331,118 +323,30 @@ export function createPerformanceHandler(): PayloadHandler {
           entries = entries.slice(0, MAX_ENTRIES)
         }
 
-        let imported = 0
-        let updated = 0
+        // Normalise dates (one row per url + query + day) and drop invalid entries
         let errors = 0
-
-        // Pre-process: normalize dates and filter invalid entries
-        interface NormalizedEntry extends PerformanceEntry {
-          dateISO: string
-          key: string // url+query+date composite key
-        }
-        const normalizedEntries: NormalizedEntry[] = []
+        const rows: PerformanceRow[] = []
         for (const entry of entries) {
-          try {
-            const d = new Date(entry.date)
-            if (isNaN(d.getTime())) { errors++; continue }
-            const dateISO = d.toISOString().split('T')[0] + 'T00:00:00.000Z'
-            const key = `${entry.url}::${entry.query || ''}::${dateISO}`
-            normalizedEntries.push({ ...entry, dateISO, key })
-          } catch {
+          const d = new Date(entry.date)
+          if (isNaN(d.getTime())) {
             errors++
-          }
-        }
-
-        // Process in batches of 50
-        const BATCH_SIZE = 50
-        for (let i = 0; i < normalizedEntries.length; i += BATCH_SIZE) {
-          const batch = normalizedEntries.slice(i, i + BATCH_SIZE)
-          const batchUrls = [...new Set(batch.map((e) => e.url))]
-
-          // Single query to find all existing entries for this batch's URLs
-          let existingDocs: Array<Record<string, unknown>> = []
-          try {
-            const result = await req.payload.find({
-              collection: 'seo-performance',
-              limit: batch.length * 2,
-              depth: 0,
-              overrideAccess: true,
-              where: { url: { in: batchUrls } },
-            })
-            existingDocs = result.docs as Array<Record<string, unknown>>
-          } catch {
-            // If bulk find fails, count all as errors
-            errors += batch.length
             continue
           }
-
-          // Build a lookup map: "url::query::date" -> existing doc
-          const existingMap = new Map<string, Record<string, unknown>>()
-          for (const doc of existingDocs) {
-            const docUrl = (doc.url as string) || ''
-            const docQuery = (doc.query as string) || ''
-            const docDate = (doc.date as string) || ''
-            const key = `${docUrl}::${docQuery}::${docDate}`
-            existingMap.set(key, doc)
-          }
-
-          // Separate into creates and updates
-          const toCreate: NormalizedEntry[] = []
-          const toUpdate: Array<{ id: string | number; entry: NormalizedEntry }> = []
-          for (const entry of batch) {
-            const existing = existingMap.get(entry.key)
-            if (existing) {
-              toUpdate.push({ id: existing.id as string | number, entry })
-            } else {
-              toCreate.push(entry)
-            }
-          }
-
-          // Process updates + creates SEQUENTIALLY. SQLite is single-writer:
-          // parallel `Promise.all` writes trigger `SQLITE_BUSY` / "database is
-          // locked" on contended hosts (same rule as sequential seeding).
-          for (const { id, entry } of toUpdate) {
-            try {
-              await req.payload.update({
-                collection: 'seo-performance',
-                id,
-                data: {
-                  clicks: entry.clicks,
-                  impressions: entry.impressions,
-                  ctr: entry.ctr,
-                  position: entry.position,
-                  source: 'csv',
-                },
-                overrideAccess: true,
-              })
-              updated++
-            } catch {
-              errors++
-            }
-          }
-
-          for (const entry of toCreate) {
-            try {
-              await req.payload.create({
-                collection: 'seo-performance',
-                data: {
-                  url: entry.url,
-                  query: entry.query || '',
-                  clicks: entry.clicks,
-                  impressions: entry.impressions,
-                  ctr: entry.ctr,
-                  position: entry.position,
-                  date: entry.dateISO,
-                  source: 'csv',
-                },
-                overrideAccess: true,
-              })
-              imported++
-            } catch {
-              errors++
-            }
-          }
+          rows.push({
+            url: entry.url,
+            query: entry.query || '',
+            clicks: entry.clicks,
+            impressions: entry.impressions,
+            ctr: entry.ctr,
+            position: entry.position,
+            date: d.toISOString().split('T')[0] + 'T00:00:00.000Z',
+            source: 'csv',
+          })
         }
+
+        const result = await resolveStore(req.payload).performance.upsert(rows)
+        const { imported, updated } = result
+        errors += result.errors
 
         return Response.json({
           imported,

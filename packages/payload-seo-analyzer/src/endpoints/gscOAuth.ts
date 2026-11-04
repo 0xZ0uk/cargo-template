@@ -9,7 +9,7 @@
  *   POST /gsc/disconnect  → clears the stored token (admin)
  *
  * Security:
- *   - Refresh token is encrypted at rest (AES-256-GCM, helpers/tokenCrypto.ts) and stored
+ *   - Refresh token is encrypted at rest (AES-256-GCM via WebCrypto, helpers/tokenCrypto.ts) and stored
  *     in the `seo-gsc-auth` collection whose token field has `read: () => false`.
  *   - CSRF: a random `state` is stored server-side and verified (timing-safe) on callback.
  *   - OAuth client credentials come from env (GSC_OAUTH_CLIENT_ID / GSC_OAUTH_CLIENT_SECRET),
@@ -17,10 +17,11 @@
  *   - All write/data operations require an admin user.
  *
  * Host setup required (cannot be automated): create a Google Cloud OAuth client, enable the
- * Search Console API, and register the redirect URI `<siteUrl>/api<basePath>/gsc/callback`.
+ * Search Console API, and register the redirect URI `<site URL><routes.api><basePath>/gsc/callback`
+ * (`GET /gsc/status` returns the exact value). The site URL is the `siteUrl` option, then
+ * `SITE_URL`, then the origin of the request.
  */
 import type { PayloadHandler } from 'payload'
-import { randomBytes } from 'node:crypto'
 import type { SeoConfig } from '../types.js'
 import { encryptToken, safeEqual } from '../helpers/tokenCrypto.js'
 import { escapeHtml } from '../helpers/escapeHtml.js'
@@ -44,7 +45,7 @@ export function createGscStatusHandler(basePath: string, seoConfig?: SeoConfig):
   return async (req) => {
     try {
       if (!isSeoPanelUser(req)) return Response.json({ error: 'Unauthorized' }, { status: 401 })
-      const cfg = getOAuthConfig(basePath, seoConfig, payloadApiRoute(req.payload))
+      const cfg = getOAuthConfig(basePath, seoConfig, payloadApiRoute(req.payload), req)
       const doc = await getOrCreateAuthDoc(req.payload)
       return Response.json(
         {
@@ -72,7 +73,7 @@ export function createGscAuthStartHandler(basePath: string, seoConfig?: SeoConfi
   return async (req) => {
     try {
       if (!isAdmin(req)) return Response.json({ error: 'Forbidden' }, { status: 403 })
-      const cfg = getOAuthConfig(basePath, seoConfig, payloadApiRoute(req.payload))
+      const cfg = getOAuthConfig(basePath, seoConfig, payloadApiRoute(req.payload), req)
       if (!cfg) {
         return Response.json(
           { error: 'GSC OAuth not configured. Set GSC_OAUTH_CLIENT_ID, GSC_OAUTH_CLIENT_SECRET and siteUrl.' },
@@ -80,7 +81,7 @@ export function createGscAuthStartHandler(basePath: string, seoConfig?: SeoConfi
         )
       }
 
-      const state = randomBytes(24).toString('hex')
+      const state = Array.from(crypto.getRandomValues(new Uint8Array(24)), (b) => b.toString(16).padStart(2, '0')).join('')
       const doc = await getOrCreateAuthDoc(req.payload)
       await req.payload.update({
         collection: AUTH_COLLECTION,
@@ -137,7 +138,7 @@ export function createGscCallbackHandler(basePath: string, seoConfig?: SeoConfig
       if (!isAdmin(req)) {
         return htmlPage('Connection failed', 'You must be signed in as an admin to connect Google Search Console.')
       }
-      const cfg = getOAuthConfig(basePath, seoConfig, payloadApiRoute(req.payload))
+      const cfg = getOAuthConfig(basePath, seoConfig, payloadApiRoute(req.payload), req)
       if (!cfg) return htmlPage('Connection failed', 'GSC OAuth is not configured on the server.')
 
       const url = new URL(req.url as string)
@@ -180,7 +181,7 @@ export function createGscCallbackHandler(basePath: string, seoConfig?: SeoConfig
       }
 
       const secret = (req.payload as unknown as { secret?: string }).secret || ''
-      const refreshTokenEnc = encryptToken(refreshToken, secret)
+      const refreshTokenEnc = await encryptToken(refreshToken, secret)
 
       await req.payload.update({
         collection: AUTH_COLLECTION,
@@ -212,7 +213,7 @@ export function createGscDataHandler(basePath: string, seoConfig?: SeoConfig): P
   return async (req) => {
     try {
       if (!isAdmin(req)) return Response.json({ error: 'Forbidden' }, { status: 403 })
-      const cfg = getOAuthConfig(basePath, seoConfig, payloadApiRoute(req.payload))
+      const cfg = getOAuthConfig(basePath, seoConfig, payloadApiRoute(req.payload), req)
       if (!cfg) return Response.json({ error: 'GSC OAuth not configured.' }, { status: 400 })
 
       const doc = await getOrCreateAuthDoc(req.payload)

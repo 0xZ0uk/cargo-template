@@ -16,12 +16,29 @@ import { buildSeoInputFromDoc } from '../endpoints/validate.js'
 import { countWords } from '../helpers.js'
 import { extractDocContent } from '../helpers/extractDocContent.js'
 import { loadMergedConfig } from '../helpers/loadMergedConfig.js'
+import type { SeoWaitUntil } from '../cache.js'
+import { payloadStoreResolver, type SeoDataStoreResolver } from '../store/index.js'
 
 /** Minimum interval between snapshots in milliseconds (1 hour) */
 const RATE_LIMIT_MS = 60 * 60 * 1000
 
 
-export function createTrackSeoScoreHook(seoConfig?: SeoConfig): CollectionAfterChangeHook {
+export interface TrackSeoScoreOptions {
+  /** Where snapshots are stored (default: the `seo-score-history` collection). */
+  resolveStore?: SeoDataStoreResolver
+  /** Keeps the snapshot write alive after the response (Workers' `waitUntil`). */
+  waitUntil?: SeoWaitUntil
+}
+
+/** True when the newest snapshot is under an hour old. */
+async function tooSoon(resolveStore: SeoDataStoreResolver, req: { payload: Parameters<SeoDataStoreResolver>[0] }, collection: string, documentId: string) {
+  const [last] = await resolveStore(req.payload).scoreHistory.list({ collection, documentId, limit: 1 })
+  const lastDate = last?.snapshotDate ? new Date(last.snapshotDate).getTime() : 0
+  return Date.now() - lastDate < RATE_LIMIT_MS
+}
+
+export function createTrackSeoScoreHook(seoConfig?: SeoConfig, options: TrackSeoScoreOptions = {}): CollectionAfterChangeHook {
+  const resolveStore = options.resolveStore ?? payloadStoreResolver
   return async ({ doc, collection, req }) => {
     // Fire-and-forget — don't block the save
     const doTrack = async () => {
@@ -30,30 +47,8 @@ export function createTrackSeoScoreHook(seoConfig?: SeoConfig): CollectionAfterC
           typeof collection === 'string' ? collection : collection?.slug
         if (!collectionSlug || !doc?.id) return
 
-        // Rate limit: check if last snapshot is recent enough
-        const recentSnapshots = await req.payload.find({
-          collection: 'seo-score-history',
-          where: {
-            and: [
-              { documentId: { equals: String(doc.id) } },
-              { collection: { equals: collectionSlug } },
-            ],
-          },
-          sort: '-snapshotDate',
-          limit: 1,
-          depth: 0,
-          overrideAccess: true,
-        })
-
-        if (recentSnapshots.docs.length > 0) {
-          const lastSnapshot = recentSnapshots.docs[0] as Record<string, unknown>
-          const lastDate = lastSnapshot.snapshotDate
-            ? new Date(lastSnapshot.snapshotDate as string).getTime()
-            : 0
-          if (Date.now() - lastDate < RATE_LIMIT_MS) {
-            return // Too soon — skip
-          }
-        }
+        // Rate limit: at most one snapshot per document per hour.
+        if (await tooSoon(resolveStore, req, collectionSlug, String(doc.id))) return
 
         // Build SEO input and run analysis with the dashboard's config: SeoSettings
         // merged in and the locale of the saved document resolved, or the history
@@ -75,19 +70,15 @@ export function createTrackSeoScoreHook(seoConfig?: SeoConfig): CollectionAfterC
         }
 
         // Save snapshot
-        await req.payload.create({
-          collection: 'seo-score-history',
-          data: {
-            documentId: String(doc.id),
-            collection: collectionSlug,
-            score: analysis.score,
-            level: analysis.level,
-            focusKeyword: seoInput.focusKeyword || '',
-            wordCount,
-            checksSummary,
-            snapshotDate: new Date().toISOString(),
-          },
-          overrideAccess: true,
+        await resolveStore(req.payload).scoreHistory.insert({
+          documentId: String(doc.id),
+          collection: collectionSlug,
+          score: analysis.score,
+          level: analysis.level,
+          focusKeyword: seoInput.focusKeyword || '',
+          wordCount,
+          checksSummary,
+          snapshotDate: new Date().toISOString(),
         })
 
         // (Caches are invalidated by the dedicated hook in hooks/invalidateSeoCaches.ts,
@@ -98,8 +89,9 @@ export function createTrackSeoScoreHook(seoConfig?: SeoConfig): CollectionAfterC
       }
     }
 
-    // Run async without awaiting (fire-and-forget)
-    void doTrack()
+    // Don't block the save. On Workers, `waitUntil` keeps the write alive after the response.
+    if (options.waitUntil) options.waitUntil(doTrack())
+    else void doTrack()
 
     return doc
   }
@@ -110,7 +102,8 @@ export function createTrackSeoScoreHook(seoConfig?: SeoConfig): CollectionAfterC
  * Same fire-and-forget pattern as the collection variant, but uses
  * `global.slug` and stores `collection: 'global:<slug>'` as discriminator.
  */
-export function createTrackSeoScoreGlobalHook(seoConfig?: SeoConfig): GlobalAfterChangeHook {
+export function createTrackSeoScoreGlobalHook(seoConfig?: SeoConfig, options: TrackSeoScoreOptions = {}): GlobalAfterChangeHook {
+  const resolveStore = options.resolveStore ?? payloadStoreResolver
   return async ({ doc, global, req }) => {
     // Fire-and-forget — don't block the save
     const doTrack = async () => {
@@ -123,30 +116,8 @@ export function createTrackSeoScoreGlobalHook(seoConfig?: SeoConfig): GlobalAfte
         // For globals there is no per-document id, use the slug as documentId
         const documentId = globalSlug
 
-        // Rate limit: check if last snapshot is recent enough
-        const recentSnapshots = await req.payload.find({
-          collection: 'seo-score-history',
-          where: {
-            and: [
-              { documentId: { equals: documentId } },
-              { collection: { equals: discriminator } },
-            ],
-          },
-          sort: '-snapshotDate',
-          limit: 1,
-          depth: 0,
-          overrideAccess: true,
-        })
-
-        if (recentSnapshots.docs.length > 0) {
-          const lastSnapshot = recentSnapshots.docs[0] as Record<string, unknown>
-          const lastDate = lastSnapshot.snapshotDate
-            ? new Date(lastSnapshot.snapshotDate as string).getTime()
-            : 0
-          if (Date.now() - lastDate < RATE_LIMIT_MS) {
-            return // Too soon — skip
-          }
-        }
+        // Rate limit: at most one snapshot per document per hour.
+        if (await tooSoon(resolveStore, req, discriminator, documentId)) return
 
         // Build SEO input and run analysis
         const seoInput = {
@@ -169,19 +140,15 @@ export function createTrackSeoScoreGlobalHook(seoConfig?: SeoConfig): GlobalAfte
         }
 
         // Save snapshot
-        await req.payload.create({
-          collection: 'seo-score-history',
-          data: {
-            documentId,
-            collection: discriminator,
-            score: analysis.score,
-            level: analysis.level,
-            focusKeyword: seoInput.focusKeyword || '',
-            wordCount,
-            checksSummary,
-            snapshotDate: new Date().toISOString(),
-          },
-          overrideAccess: true,
+        await resolveStore(req.payload).scoreHistory.insert({
+          documentId,
+          collection: discriminator,
+          score: analysis.score,
+          level: analysis.level,
+          focusKeyword: seoInput.focusKeyword || '',
+          wordCount,
+          checksSummary,
+          snapshotDate: new Date().toISOString(),
         })
 
         // (Caches are invalidated by the dedicated hook in hooks/invalidateSeoCaches.ts,
@@ -192,8 +159,9 @@ export function createTrackSeoScoreGlobalHook(seoConfig?: SeoConfig): GlobalAfte
       }
     }
 
-    // Run async without awaiting (fire-and-forget)
-    void doTrack()
+    // Don't block the save. On Workers, `waitUntil` keeps the write alive after the response.
+    if (options.waitUntil) options.waitUntil(doTrack())
+    else void doTrack()
 
     return doc
   }

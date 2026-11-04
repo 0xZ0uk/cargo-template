@@ -136,6 +136,11 @@ export function isPrivateIP(rawIp: string): boolean {
   return false
 }
 
+/** Strip the root-label dot (`localhost.` is the same host as `localhost`). */
+function normalizeHostname(hostname: string): string {
+  return hostname.toLowerCase().replace(/\.+$/, '')
+}
+
 /** Hostname-level checks: localhost aliases, raw IP literals, non-web ports. */
 export function isPrivateUrl(urlString: string): boolean {
   let parsed: URL
@@ -149,7 +154,7 @@ export function isPrivateUrl(urlString: string): boolean {
   // Port allowlist: without it the checker doubles as an internal port scanner.
   if (!ALLOWED_PORTS.has(parsed.port)) return true
 
-  const hostname = parsed.hostname.toLowerCase()
+  const hostname = normalizeHostname(parsed.hostname)
   if (hostname === 'localhost' || hostname.endsWith('.localhost')) return true
   if (hostname === '' || hostname === '0') return true
 
@@ -157,32 +162,195 @@ export function isPrivateUrl(urlString: string): boolean {
   return isPrivateIP(rawIp)
 }
 
+// ---------------------------------------------------------------------------
+// DNS resolution
+// ---------------------------------------------------------------------------
+
 /**
- * DNS-rebinding protection: resolve the hostname and reject if ANY returned
- * address is private. Checking only the first answer left a trivial bypass —
- * a name with one public and one internal A record.
+ * Resolves a hostname to the strings its DNS answers contain. Entries that aren't IP
+ * literals (workerd also returns CNAME targets, e.g. `dyna.wikimedia.org.`) are ignored
+ * by the guard, so a resolver may return its raw answer.
  */
-export async function resolveAndCheckPrivate(hostname: string): Promise<boolean> {
+export type HostResolver = (hostname: string) => Promise<string[]>
+
+/** Why a URL was refused. DNS reasons are all fail-closed. */
+export type BlockReason =
+  | 'invalid-url' //       unparseable, not http(s), or a port other than 80/443
+  | 'private-address' //   a literal or any resolved address is loopback/private/link-local/reserved
+  | 'dns-not-found' //     the name doesn't exist (NXDOMAIN / no address records)
+  | 'dns-timeout' //       the lookup didn't answer in time
+  | 'dns-error' //         the lookup failed some other way (SERVFAIL, bad response, unsupported)
+  | 'dns-no-address' //    the lookup answered but gave no usable IP address
+
+export interface GuardVerdict {
+  blocked: boolean
+  reason?: BlockReason
+}
+
+export interface GuardOptions {
+  /** Defaults to `defaultHostResolver`. */
+  resolver?: HostResolver
+  /** Give up on a lookup after this long (default 4s). */
+  timeoutMs?: number
+  /**
+   * Called right before each DNS lookup, so a caller can count it against the Workers
+   * subrequest budget. If it throws, the error propagates (the lookup is not run).
+   */
+  onLookup?: () => void
+}
+
+const DEFAULT_DNS_TIMEOUT_MS = 4000
+
+/** True on Cloudflare Workers (workerd sets this user agent). */
+export function isWorkersRuntime(): boolean {
+  return typeof navigator !== 'undefined' && navigator.userAgent === 'Cloudflare-Workers'
+}
+
+/** DNS lookups the default resolver makes per hostname (A + AAAA on Workers, one `lookup` on Node). */
+export function dnsLookupCost(): number {
+  return isWorkersRuntime() ? 2 : 1
+}
+
+function errCode(e: unknown): string {
+  return typeof (e as { code?: unknown })?.code === 'string' ? (e as { code: string }).code : ''
+}
+
+const NOT_FOUND_CODES = new Set(['ENOTFOUND', 'ENODATA', 'NXDOMAIN'])
+
+/**
+ * The default resolver.
+ *
+ * - Node (and anything else): `dns.lookup(host, { all: true })`, i.e. getaddrinfo, the same
+ *   resolution `fetch` uses, so there is no gap between what we vet and what we connect to.
+ * - Workers: `dns.resolve4` + `dns.resolve6`. workerd implements `node:dns` over DNS-over-HTTPS
+ *   (1.1.1.1). Cloudflare's docs list `lookup` as "not implemented" even though it works in
+ *   workerd 1.20261023, so the documented functions are used instead. Each call is a
+ *   subrequest (two per host: see `dnsLookupCost`). Either family failing for any reason
+ *   other than "no such record" fails the whole lookup (closed): a flaky AAAA must not hide
+ *   a private IPv6 address.
+ */
+export const defaultHostResolver: HostResolver = async (hostname) => {
+  if (!isWorkersRuntime()) {
+    const answers = await dns.lookup(hostname, { all: true })
+    return answers.map((a) => a.address)
+  }
+  const [v4, v6] = await Promise.allSettled([dns.resolve4(hostname), dns.resolve6(hostname)])
+  const failure = [v4, v6].find(
+    (r): r is PromiseRejectedResult => r.status === 'rejected' && !NOT_FOUND_CODES.has(errCode(r.reason)),
+  )
+  if (failure) throw failure.reason
+  const addresses = [v4, v6].flatMap((r) => (r.status === 'fulfilled' ? r.value : []))
+  if (!addresses.length) {
+    const notFound = Object.assign(new Error(`ENOTFOUND ${hostname}`), { code: 'ENOTFOUND' })
+    throw notFound
+  }
+  return addresses
+}
+
+function isIPLiteral(s: string): boolean {
+  return parseIPv4(s) !== null || parseIPv6(s) !== null
+}
+
+class LookupTimeout extends Error {}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new LookupTimeout('dns lookup timed out')), ms)
+  })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
+}
+
+/**
+ * DNS-rebinding protection: resolve the hostname and block if ANY returned address is
+ * private. Checking only the first answer left a trivial bypass — a name with one public
+ * and one internal A record. Every failure blocks, with the reason.
+ */
+export async function inspectHost(hostname: string, opts: GuardOptions = {}): Promise<GuardVerdict> {
+  const host = normalizeHostname(hostname).replace(/^\[/, '').replace(/\]$/, '')
+  if (!host) return { blocked: true, reason: 'invalid-url' }
+  // Literals need no lookup (and workerd's `resolve4` rejects them).
+  if (isIPLiteral(host)) return isPrivateIP(host) ? { blocked: true, reason: 'private-address' } : { blocked: false }
+
+  const resolver = opts.resolver ?? defaultHostResolver
+  opts.onLookup?.()
+  let answers: string[]
   try {
-    const addresses = await dns.lookup(hostname, { all: true })
-    if (!addresses.length) return true
-    return addresses.some((a) => isPrivateIP(a.address))
+    answers = await withTimeout(resolver(host), opts.timeoutMs ?? DEFAULT_DNS_TIMEOUT_MS)
+  } catch (e) {
+    if (e instanceof LookupTimeout) return { blocked: true, reason: 'dns-timeout' }
+    return { blocked: true, reason: NOT_FOUND_CODES.has(errCode(e)) ? 'dns-not-found' : 'dns-error' }
+  }
+  const ips = Array.isArray(answers) ? answers.filter((a) => typeof a === 'string' && isIPLiteral(a)) : []
+  if (!ips.length) return { blocked: true, reason: 'dns-no-address' }
+  return ips.some((ip) => isPrivateIP(ip)) ? { blocked: true, reason: 'private-address' } : { blocked: false }
+}
+
+/** Hostname/port policy + DNS-resolved addresses, with the reason when blocked. */
+export async function inspectUrl(url: string, opts: GuardOptions = {}): Promise<GuardVerdict> {
+  let parsed: URL
+  try {
+    parsed = new URL(url)
   } catch {
-    return true // DNS failure → block
+    return { blocked: true, reason: 'invalid-url' }
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return { blocked: true, reason: 'invalid-url' }
+  if (!ALLOWED_PORTS.has(parsed.port)) return { blocked: true, reason: 'invalid-url' }
+  if (isPrivateUrl(url)) return { blocked: true, reason: 'private-address' }
+  return inspectHost(parsed.hostname, opts)
+}
+
+/**
+ * Guard that remembers its verdict per hostname, so a scan resolves each host once
+ * (links to the same site, redirect hops back to it) instead of once per URL.
+ */
+export interface UrlGuard {
+  inspectUrl(url: string): Promise<GuardVerdict>
+  /** Hosts resolved so far. */
+  readonly lookups: number
+}
+
+export function createUrlGuard(opts: GuardOptions = {}): UrlGuard {
+  const verdicts = new Map<string, Promise<GuardVerdict>>()
+  let lookups = 0
+  const counted: GuardOptions = {
+    ...opts,
+    onLookup: () => {
+      opts.onLookup?.()
+      lookups++
+    },
+  }
+  return {
+    get lookups() {
+      return lookups
+    },
+    async inspectUrl(url) {
+      let parsed: URL
+      try {
+        parsed = new URL(url)
+      } catch {
+        return { blocked: true, reason: 'invalid-url' }
+      }
+      // The URL-level rules are cheap and depend on the port, so only the DNS part is memoized.
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return { blocked: true, reason: 'invalid-url' }
+      if (!ALLOWED_PORTS.has(parsed.port)) return { blocked: true, reason: 'invalid-url' }
+      if (isPrivateUrl(url)) return { blocked: true, reason: 'private-address' }
+      const key = normalizeHostname(parsed.hostname)
+      let verdict = verdicts.get(key)
+      if (!verdict) {
+        verdict = inspectHost(parsed.hostname, counted)
+        verdicts.set(key, verdict)
+      }
+      return verdict
+    },
   }
 }
 
+export async function resolveAndCheckPrivate(hostname: string, opts?: GuardOptions): Promise<boolean> {
+  return (await inspectHost(hostname, opts)).blocked
+}
+
 /** Full gate: hostname/port policy + DNS-resolved addresses. */
-export async function isUrlBlocked(url: string): Promise<boolean> {
-  if (isPrivateUrl(url)) return true
-  try {
-    const parsed = new URL(url)
-    const hostname = parsed.hostname.startsWith('[')
-      ? parsed.hostname.slice(1, -1)
-      : parsed.hostname
-    if (await resolveAndCheckPrivate(hostname)) return true
-  } catch {
-    return true
-  }
-  return false
+export async function isUrlBlocked(url: string, opts?: GuardOptions): Promise<boolean> {
+  return (await inspectUrl(url, opts)).blocked
 }

@@ -9,6 +9,7 @@
  */
 
 import type { PayloadHandler } from 'payload'
+import { getSeoDataStore, seoDatasetEnabled } from '../store/index.js'
 import { seoCache } from '../cache.js'
 import { fetchAllDocs } from '../helpers/fetchAllDocs.js'
 import { isSeoAdminRequest, isSeoPanelUser } from '../helpers/isAdmin.js'
@@ -116,30 +117,22 @@ export function createCannibalizationHandler(collections: string[], globals: str
         }
       }
 
-      // Try to fetch scores from seo-score-history for enrichment
+      // Latest score per document from the score history, for enrichment
       const scoreMap = new Map<string, number>()
-      try {
-        const historyResults = await req.payload.find({
-          collection: 'seo-score-history',
-          limit: 1000,
-          sort: '-snapshotDate',
-          depth: 0,
-          overrideAccess: true,
-        })
-
-        // Keep the most recent score per document
-        const seen = new Set<string>()
-        for (const h of historyResults.docs) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const entry = h as any
-          const key = `${entry.collection}::${entry.documentId}`
-          if (!seen.has(key)) {
-            seen.add(key)
-            scoreMap.set(key, entry.score || 0)
+      if (seoDatasetEnabled(req.payload, 'seo-score-history')) {
+        try {
+          const history = await getSeoDataStore(req.payload).scoreHistory.list({ limit: 1000 })
+          const seen = new Set<string>()
+          for (const h of history) {
+            const key = `${h.collection}::${h.documentId}`
+            if (!seen.has(key)) {
+              seen.add(key)
+              scoreMap.set(key, h.score || 0)
+            }
           }
+        } catch {
+          // no score history
         }
-      } catch {
-        // seo-score-history might not exist
       }
 
       // Filter: only keywords used by 2+ pages are conflicts

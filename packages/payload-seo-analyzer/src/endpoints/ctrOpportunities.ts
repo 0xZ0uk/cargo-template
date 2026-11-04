@@ -139,7 +139,7 @@ export function createCtrOpportunitiesHandler(
     try {
       if (!isGscAdminRequest(req)) return Response.json({ error: 'Forbidden' }, { status: 403 })
 
-      const cfg = getGscOAuthConfig(basePath, seoConfig, payloadApiRoute(req.payload))
+      const cfg = getGscOAuthConfig(basePath, seoConfig, payloadApiRoute(req.payload), req)
       if (!cfg) return Response.json({ error: 'GSC OAuth not configured.' }, { status: 400 })
 
       const authDoc = await getOrCreateGscAuthDoc(req.payload)

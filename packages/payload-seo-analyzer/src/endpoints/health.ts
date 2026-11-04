@@ -9,6 +9,7 @@
  * No secret values are returned — only booleans (configured / connected) and timestamps. Admin only.
  */
 import type { PayloadHandler } from 'payload'
+import { getSeoDataStore, seoDatasetEnabled } from '../store/index.js'
 import type { SeoConfig } from '../types.js'
 import { seoCache } from '../cache.js'
 import { getGscOAuthConfig, getOrCreateGscAuthDoc } from '../helpers/gscClient.js'
@@ -28,7 +29,7 @@ export function createSeoHealthHandler(basePath: string, seoConfig?: SeoConfig):
         aiKey: !!process.env.ANTHROPIC_API_KEY,
         aiModel: aiModel(),
         pageSpeedKey: !!(process.env.PAGESPEED_API_KEY || process.env.GOOGLE_PAGESPEED_API_KEY),
-        gscConfigured: !!getGscOAuthConfig(basePath, seoConfig, payloadApiRoute(req.payload)),
+        gscConfigured: !!getGscOAuthConfig(basePath, seoConfig, payloadApiRoute(req.payload), req),
         gscEncryptionKey: !!process.env.SEO_GSC_ENCRYPTION_KEY,
         alertWebhook: !!process.env.SEO_ALERT_WEBHOOK_URL,
         alertEmail: !!process.env.SEO_ALERT_EMAIL,
@@ -51,17 +52,13 @@ export function createSeoHealthHandler(basePath: string, seoConfig?: SeoConfig):
       } catch {
         /* collection absent */
       }
-      try {
-        const latest = await req.payload.find({
-          collection: 'seo-rank-history',
-          sort: '-snapshotDate',
-          limit: 1,
-          depth: 0,
-          overrideAccess: true,
-        })
-        lastRankSnapshot = (latest.docs[0]?.snapshotDate as string) || null
-      } catch {
-        /* collection absent */
+      if (seoDatasetEnabled(req.payload, 'seo-rank-history')) {
+        try {
+          const [latest] = await getSeoDataStore(req.payload).rankHistory.list({ limit: 1 })
+          lastRankSnapshot = latest?.snapshotDate || null
+        } catch {
+          /* store unreachable */
+        }
       }
 
       // --- Derived warnings (what to fix) ---

@@ -4,7 +4,8 @@
  *   GET  /alerts-digest → build and return the current digest (admin) — preview, no send
  *   POST /alerts-run    → build and DELIVER the digest now (admin) — webhook + email
  *
- * Sources (all best-effort, skipped silently if the collection is absent):
+ * Sources (all best-effort, skipped silently if the dataset is absent), read from the
+ * plugin's data store (`dataStore` option):
  *   - Score regressions  (seo-score-history): pages whose score dropped ≥ threshold in window
  *   - New 404s           (seo-logs):          404s seen within the window
  *   - Ranking drops      (seo-rank-history):  queries that fell ≥ threshold positions
@@ -21,6 +22,7 @@ import type { Payload, PayloadHandler } from 'payload'
 
 import { isSeoAdminRequest as isAdmin } from '../helpers/isAdmin.js'
 import { escapeHtml } from '../helpers/escapeHtml.js'
+import { payloadStoreResolver, type RankSnapshot, type ScoreSnapshot, type SeoDataStoreResolver } from '../store/index.js'
 
 export interface AlertConfig {
   webhookUrl: string
@@ -54,40 +56,40 @@ export interface AlertDigest {
 
 const round1 = (n: number) => Math.round(n * 10) / 10
 
-export async function buildAlertDigest(payload: Payload, cfg: AlertConfig): Promise<AlertDigest> {
+export async function buildAlertDigest(
+  payload: Payload,
+  cfg: AlertConfig,
+  resolveStore: SeoDataStoreResolver = payloadStoreResolver,
+): Promise<AlertDigest> {
+  const store = resolveStore(payload)
   const now = Date.now()
   const since = new Date(now - cfg.windowHours * 3_600_000).toISOString()
 
   // --- Score regressions (compare latest vs oldest snapshot within a 14-day window) ---
   const scoreRegressions: AlertDigest['scoreRegressions'] = []
   try {
-    const hist = await payload.find({
-      collection: 'seo-score-history',
-      where: { snapshotDate: { greater_than: new Date(now - 14 * 86_400_000).toISOString() } },
-      sort: '-snapshotDate',
+    const hist = await store.scoreHistory.list({
+      since: new Date(now - 14 * 86_400_000).toISOString(),
       limit: 5000,
-      depth: 0,
-      overrideAccess: true,
     })
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const byDoc = new Map<string, any[]>()
-    for (const h of hist.docs) {
+    const byDoc = new Map<string, ScoreSnapshot[]>()
+    for (const h of hist) {
       const key = `${h.documentId}::${h.collection}`
       const arr = byDoc.get(key)
       if (arr) arr.push(h)
       else byDoc.set(key, [h])
     }
     for (const [key, snaps] of byDoc) {
-      const latest = snaps[0] // newest (global desc sort)
-      const oldest = snaps[snaps.length - 1]
-      const drop = (oldest.score as number) - (latest.score as number)
+      const latest = snaps[0]! // newest (global desc sort)
+      const oldest = snaps[snaps.length - 1]!
+      const drop = oldest.score - latest.score
       if (drop >= cfg.scoreDrop) {
         const [documentId, collection] = key.split('::')
         scoreRegressions.push({
           documentId: documentId!,
           collection: collection!,
-          from: oldest.score as number,
-          to: latest.score as number,
+          from: oldest.score,
+          to: latest.score,
           drop,
         })
       }
@@ -100,22 +102,9 @@ export async function buildAlertDigest(payload: Payload, cfg: AlertConfig): Prom
   // --- New 404s within the window ---
   const newNotFound: AlertDigest['newNotFound'] = []
   try {
-    const logs = await payload.find({
-      collection: 'seo-logs',
-      where: {
-        and: [{ lastSeen: { greater_than: since } }, { ignored: { not_equals: true } }],
-      },
-      sort: '-count',
-      limit: 50,
-      depth: 0,
-      overrideAccess: true,
-    })
-    for (const l of logs.docs) {
-      newNotFound.push({
-        url: (l.url as string) || '',
-        count: (l.count as number) || 1,
-        lastSeen: (l.lastSeen as string) || '',
-      })
+    const logs = await store.notFound.list({ seenSince: since, limit: 50 })
+    for (const l of logs) {
+      newNotFound.push({ url: l.url || '', count: l.count || 1, lastSeen: l.lastSeen || '' })
     }
   } catch {
     // collection absent — skip
@@ -124,30 +113,25 @@ export async function buildAlertDigest(payload: Payload, cfg: AlertConfig): Prom
   // --- Ranking drops (latest vs previous distinct day) ---
   const rankDrops: AlertDigest['rankDrops'] = []
   try {
-    const ranks = await payload.find({
-      collection: 'seo-rank-history',
-      where: { snapshotDate: { greater_than: new Date(now - 35 * 86_400_000).toISOString() } },
-      sort: '-snapshotDate',
+    const ranks = await store.rankHistory.list({
+      since: new Date(now - 35 * 86_400_000).toISOString(),
       limit: 5000,
-      depth: 0,
-      overrideAccess: true,
     })
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const byQuery = new Map<string, any[]>()
-    for (const r of ranks.docs) {
-      const q = r.query as string
+    const byQuery = new Map<string, RankSnapshot[]>()
+    for (const r of ranks) {
+      const q = r.query
       const arr = byQuery.get(q)
       if (arr) arr.push(r)
       else byQuery.set(q, [r])
     }
     for (const [query, snaps] of byQuery) {
-      const latest = snaps[0]
+      const latest = snaps[0]!
       const previous = snaps.find((s) => s.dateKey !== latest.dateKey)
       if (!previous) continue
       // position is "lower is better" — a drop means latest position is larger than previous.
-      const drop = round1((latest.position as number) - (previous.position as number))
+      const drop = round1(latest.position - previous.position)
       if (drop >= cfg.positionDrop) {
-        rankDrops.push({ query, from: previous.position as number, to: latest.position as number, drop })
+        rankDrops.push({ query, from: previous.position, to: latest.position, drop })
       }
     }
     rankDrops.sort((a, b) => b.drop - a.drop)
@@ -259,12 +243,12 @@ export async function deliverAlertDigest(
 // ---------------------------------------------------------------------------
 // GET /alerts-digest — preview (admin)
 // ---------------------------------------------------------------------------
-export function createAlertsDigestHandler(): PayloadHandler {
+export function createAlertsDigestHandler(resolveStore: SeoDataStoreResolver = payloadStoreResolver): PayloadHandler {
   return async (req) => {
     try {
       if (!isAdmin(req)) return Response.json({ error: 'Forbidden' }, { status: 403 })
       const cfg = getAlertConfig()
-      const digest = await buildAlertDigest(req.payload, cfg)
+      const digest = await buildAlertDigest(req.payload, cfg, resolveStore)
       return Response.json(
         {
           digest,
@@ -289,12 +273,15 @@ export function createAlertsDigestHandler(): PayloadHandler {
 // ---------------------------------------------------------------------------
 // POST /alerts-run — build + deliver now (admin)
 // ---------------------------------------------------------------------------
-export function createAlertsRunHandler(siteUrl?: string): PayloadHandler {
+export function createAlertsRunHandler(
+  siteUrl?: string,
+  resolveStore: SeoDataStoreResolver = payloadStoreResolver,
+): PayloadHandler {
   return async (req) => {
     try {
       if (!isAdmin(req)) return Response.json({ error: 'Forbidden' }, { status: 403 })
       const cfg = getAlertConfig()
-      const digest = await buildAlertDigest(req.payload, cfg)
+      const digest = await buildAlertDigest(req.payload, cfg, resolveStore)
       const delivery = await deliverAlertDigest(req.payload, digest, cfg, siteUrl)
       return Response.json({ digest, delivery }, { headers: { 'Cache-Control': 'no-store' } })
     } catch (error) {

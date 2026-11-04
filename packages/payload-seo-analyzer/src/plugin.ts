@@ -93,7 +93,9 @@ import { startRankTracker } from './rankTracker.js'
 import { startAlertsScheduler } from './alertsScheduler.js'
 import { startRetentionPurge } from './retentionScheduler.js'
 import { resolveSeoJobsOptions, seoJobTasks, type SeoJobsOptions } from './jobs.js'
-import { resolveRetention, type RetentionConfig } from './retention.js'
+import { resolveRetention, type RetentionConfig, type RetentionMaxRows } from './retention.js'
+import type { RetentionRunOptions } from './retentionScheduler.js'
+import { seoDataStoreResolver, type SeoDataStore, type SeoDataset, type SeoStoreRuntime } from './store/index.js'
 import { createRetentionPurgeHandler, createRetentionStatusHandler } from './endpoints/retention.js'
 import { createAlertsDigestHandler, createAlertsRunHandler } from './endpoints/alerts.js'
 import { resolveGscSiteUrl } from './helpers/gscClient.js'
@@ -257,24 +259,42 @@ export interface SeoPluginConfig {
   /** Custom TypeScript interface name for the generated meta group type (e.g. 'SharedSEO') */
   interfaceName?: string
   /**
-   * Days of history to keep, per time-series collection. OPT-IN: with this
-   * option absent nothing is ever deleted, which is what every install does
-   * today.
+   * Where the time-series data lives: score history, Search Console performance imports,
+   * rank snapshots and 404 logs. Every endpoint, hook and job that reads or writes them
+   * goes through this store.
    *
-   * `seo-rank-history`, `seo-score-history`, `seo-performance` and `seo-logs`
-   * are append-only and grow without bound. Naming one here schedules a daily
-   * purge of the rows older than the window, and registers
-   * `GET/POST <basePath>/retention` for SEO admins (dry run / run now).
+   * - Set (e.g. `createSqlSeoDataStore(env.SEO_D1)`, a second D1 database on Workers): the
+   *   data stays out of the main database, and the four `seo-*` collections are NOT
+   *   registered. The SQL store creates and migrates its own tables.
+   * - Omitted: the upstream Payload collections (`seo-score-history`, `seo-performance`,
+   *   `seo-rank-history`, `seo-logs`) in the main database, as before. Fine on a Node host;
+   *   on Workers + D1 it puts append-only data in the main database (a warning is logged).
+   */
+  dataStore?: SeoDataStore
+  /**
+   * Days of history to keep, per time-series dataset. Retention is MANDATORY for enabled
+   * features: a dataset whose feature is on is pruned daily with `RETENTION_DEFAULTS`
+   * (rank history 400 days, score history 365, performance 490, 404 logs 90) unless this
+   * names another window. Naming a dataset whose feature is off also purges it.
    *
-   * A value that is not a finite number of at least 1 is ignored rather than
-   * clamped — `0` would mean "delete everything".
+   * Pruning runs as the `seoRetentionPurge` job (with `jobs`) or a daily timer (Node), and
+   * `GET/POST <basePath>/retention` lets SEO admins preview it or run it now.
+   *
+   * A value that is not a finite number of at least 1 is ignored rather than clamped
+   * (`0` would mean "delete everything"); the default applies instead.
    *
    * @example
    * ```ts
-   * retentionDays: { 'seo-rank-history': 365, 'seo-logs': 90 }
+   * retentionDays: { 'seo-rank-history': 365, 'seo-logs': 30 }
    * ```
    */
   retentionDays?: RetentionConfig
+  /**
+   * Row cap per dataset, applied by the same purge after the age window (newest rows
+   * kept). Defaults in `RETENTION_DEFAULTS`. The 404 log's cap is also enforced on every
+   * new URL; `SEO_LOGS_MAX_ROWS` overrides its default.
+   */
+  retentionMaxRows?: RetentionMaxRows
 }
 
 /** Build a resolved SeoConfig from plugin config for use by analyzeSeo() */
@@ -383,6 +403,22 @@ export const seoAnalyzerPlugin =
 
     const trackHistory = pluginConfig.trackScoreHistory !== false && features.scoreHistory
 
+    // Time-series data (score history, performance, rank history, 404 logs): the host's
+    // `dataStore`, else the upstream collections.
+    const resolveStore = seoDataStoreResolver(pluginConfig.dataStore)
+    const enabledDatasets: SeoDataset[] = [
+      ...(features.gscApi ? (['seo-rank-history'] as const) : []),
+      ...(trackHistory ? (['seo-score-history'] as const) : []),
+      ...(features.performance ? (['seo-performance'] as const) : []),
+      ...(features.seoLogs ? (['seo-logs'] as const) : []),
+    ]
+    const retentionOptions: RetentionRunOptions = {
+      enabled: enabledDatasets,
+      maxRows: pluginConfig.retentionMaxRows,
+      resolveStore,
+    }
+    const trackScoreOptions = { resolveStore, waitUntil: pluginConfig.waitUntil }
+
     // Helper: build the final fields array, optionally wrapping in tabs
     function assembleFields(
       existingFields: Field[],
@@ -489,7 +525,7 @@ export const seoAnalyzerPlugin =
               ...updated.hooks,
               afterChange: [
                 ...(Array.isArray(existingHooks) ? existingHooks : [existingHooks]),
-                createTrackSeoScoreHook(seoConfig),
+                createTrackSeoScoreHook(seoConfig, trackScoreOptions),
               ],
             }
           }
@@ -549,7 +585,7 @@ export const seoAnalyzerPlugin =
             ...updated.hooks,
             afterChange: [
               ...(Array.isArray(existingHooks) ? existingHooks : [existingHooks]),
-              createTrackSeoScoreGlobalHook(seoConfig),
+              createTrackSeoScoreGlobalHook(seoConfig, trackScoreOptions),
             ],
           }
         }
@@ -563,12 +599,16 @@ export const seoAnalyzerPlugin =
     const allowExternalRedirects = pluginConfig.allowExternalRedirects === true
     const hasExistingRedirects = config.collections?.some((c) => c.slug === redirectsSlug)
     const pluginCollections = []
-    if (trackHistory) pluginCollections.push(createSeoScoreHistoryCollection())
+    // With a `dataStore`, the time-series collections are not registered at all.
+    const timeSeriesCollections = !pluginConfig.dataStore
+    if (trackHistory && timeSeriesCollections) pluginCollections.push(createSeoScoreHistoryCollection())
     if (features.settings) pluginCollections.push(createSeoSettingsCollection())
     if (features.redirects && !hasExistingRedirects) pluginCollections.push(createSeoRedirectsCollection(redirectsSlug, allowExternalRedirects))
-    if (features.performance) pluginCollections.push(createSeoPerformanceCollection())
-    if (features.seoLogs) pluginCollections.push(createSeoLogsCollection())
-    if (features.gscApi) pluginCollections.push(createSeoGscAuthCollection(), createSeoRankHistoryCollection())
+    if (features.performance && timeSeriesCollections) pluginCollections.push(createSeoPerformanceCollection())
+    if (features.seoLogs && timeSeriesCollections) pluginCollections.push(createSeoLogsCollection())
+    // GSC OAuth tokens are small config data: always a collection in the main database.
+    if (features.gscApi) pluginCollections.push(createSeoGscAuthCollection())
+    if (features.gscApi && timeSeriesCollections) pluginCollections.push(createSeoRankHistoryCollection())
     config.collections = [
       ...(config.collections || []),
       ...pluginCollections,
@@ -690,7 +730,7 @@ export const seoAnalyzerPlugin =
       pluginEndpoints.push({
         path: `${basePath}/history`,
         method: 'get',
-        handler: createHistoryHandler(),
+        handler: createHistoryHandler(resolveStore),
       })
     }
 
@@ -776,15 +816,15 @@ export const seoAnalyzerPlugin =
       pluginEndpoints.push({
         path: `${basePath}/external-links`,
         method: 'post',
-        handler: withRateLimit(createExternalLinksHandler(targetCollections, targetGlobals, seoConfig)),
+        handler: withRateLimit(createExternalLinksHandler(targetCollections, targetGlobals, seoConfig, sharedCache)),
       })
     }
 
     // Performance (GSC import)
     if (features.performance) {
       pluginEndpoints.push(
-        { path: `${basePath}/performance`, method: 'get', handler: withRateLimit(createPerformanceHandler()) },
-        { path: `${basePath}/performance`, method: 'post', handler: withRateLimit(createPerformanceHandler()) },
+        { path: `${basePath}/performance`, method: 'get', handler: withRateLimit(createPerformanceHandler(resolveStore)) },
+        { path: `${basePath}/performance`, method: 'post', handler: withRateLimit(createPerformanceHandler(resolveStore)) },
         // Core Web Vitals via PageSpeed Insights — informational, on-demand, SSRF-safe
         { path: `${basePath}/core-web-vitals`, method: 'get', handler: withRateLimit(createCoreWebVitalsHandler(seoConfig)) },
         // Indexation hygiene (cross-page noindex / canonical problems). A whole-site scan, so
@@ -806,8 +846,8 @@ export const seoAnalyzerPlugin =
         { path: `${basePath}/gsc/callback`, method: 'get', handler: createGscCallbackHandler(basePath, seoConfig) },
         { path: `${basePath}/gsc/data`, method: 'get', handler: withRateLimit(createGscDataHandler(basePath, seoConfig)) },
         { path: `${basePath}/gsc/disconnect`, method: 'post', handler: createGscDisconnectHandler() },
-        { path: `${basePath}/rank-snapshot`, method: 'post', handler: withRateLimit(createRankSnapshotHandler(basePath, seoConfig)) },
-        { path: `${basePath}/rank-history`, method: 'get', handler: createRankHistoryHandler() },
+        { path: `${basePath}/rank-snapshot`, method: 'post', handler: withRateLimit(createRankSnapshotHandler(basePath, seoConfig, resolveStore)) },
+        { path: `${basePath}/rank-history`, method: 'get', handler: createRankHistoryHandler(resolveStore) },
         { path: `${basePath}/ctr-opportunities`, method: 'get', handler: createCtrOpportunitiesHandler(basePath, targetCollections, seoConfig) },
         // Content grade (Surfer/Clearscope-lite via GSC) — A–F grade of ONE doc vs its real queries
         { path: `${basePath}/content-grade`, method: 'get', handler: withRateLimit(createContentGradeHandler(basePath, targetCollections, seoConfig)) },
@@ -817,18 +857,18 @@ export const seoAnalyzerPlugin =
     // Monitoring & alerts (opt-in)
     if (features.alerts) {
       pluginEndpoints.push(
-        { path: `${basePath}/alerts-digest`, method: 'get', handler: createAlertsDigestHandler() },
-        { path: `${basePath}/alerts-run`, method: 'post', handler: withRateLimit(createAlertsRunHandler(resolveGscSiteUrl(seoConfig))) },
+        { path: `${basePath}/alerts-digest`, method: 'get', handler: createAlertsDigestHandler(resolveStore) },
+        { path: `${basePath}/alerts-run`, method: 'post', handler: withRateLimit(createAlertsRunHandler(resolveGscSiteUrl(seoConfig), resolveStore)) },
       )
     }
 
-    // Retention purge (opt-in) — only exists when a window is actually configured,
-    // so a host that never asked for it has no delete route at all.
-    const retentionTargets = resolveRetention(pluginConfig.retentionDays)
+    // Retention purge — mandatory for enabled time-series features, and for datasets
+    // `retentionDays` names. With nothing to purge, no delete route exists at all.
+    const retentionTargets = resolveRetention(pluginConfig.retentionDays, retentionOptions)
     if (retentionTargets.length > 0) {
       pluginEndpoints.push(
-        { path: `${basePath}/retention`, method: 'get', handler: createRetentionStatusHandler(pluginConfig.retentionDays!) },
-        { path: `${basePath}/retention`, method: 'post', handler: withRateLimit(createRetentionPurgeHandler(pluginConfig.retentionDays!)) },
+        { path: `${basePath}/retention`, method: 'get', handler: createRetentionStatusHandler(pluginConfig.retentionDays, retentionOptions) },
+        { path: `${basePath}/retention`, method: 'post', handler: withRateLimit(createRetentionPurgeHandler(pluginConfig.retentionDays, retentionOptions)) },
       )
     }
 
@@ -861,9 +901,9 @@ export const seoAnalyzerPlugin =
     // SEO Logs (404 tracking)
     if (features.seoLogs) {
       pluginEndpoints.push(
-        { path: `${basePath}/seo-logs`, method: 'get', handler: createSeoLogsHandler(pluginConfig.seoLogsSecret, pluginConfig.rateLimit) },
-        { path: `${basePath}/seo-logs`, method: 'post', handler: createSeoLogsHandler(pluginConfig.seoLogsSecret, pluginConfig.rateLimit) },
-        { path: `${basePath}/seo-logs`, method: 'delete', handler: createSeoLogsHandler(pluginConfig.seoLogsSecret, pluginConfig.rateLimit) },
+        { path: `${basePath}/seo-logs`, method: 'get', handler: createSeoLogsHandler(pluginConfig.seoLogsSecret, pluginConfig.rateLimit, resolveStore, pluginConfig.retentionMaxRows) },
+        { path: `${basePath}/seo-logs`, method: 'post', handler: createSeoLogsHandler(pluginConfig.seoLogsSecret, pluginConfig.rateLimit, resolveStore, pluginConfig.retentionMaxRows) },
+        { path: `${basePath}/seo-logs`, method: 'delete', handler: createSeoLogsHandler(pluginConfig.seoLogsSecret, pluginConfig.rateLimit, resolveStore, pluginConfig.retentionMaxRows) },
       )
     }
 
@@ -1060,6 +1100,19 @@ export const seoAnalyzerPlugin =
       },
     }
 
+    // Server-only: lets code holding just a `payload` (deep audit helpers, the host's
+    // `recordSeoNotFound`) find the data store and the enabled datasets.
+    const storeRuntime: SeoStoreRuntime = {
+      resolveStore,
+      enabled: enabledDatasets,
+      maxRows: pluginConfig.retentionMaxRows,
+    }
+    const custom = (config.custom ?? {}) as Record<string, unknown>
+    config.custom = {
+      ...custom,
+      seoAnalyzer: { ...((custom.seoAnalyzer as Record<string, unknown> | undefined) ?? {}), store: storeRuntime },
+    }
+
     // 5. Background work as Payload jobs (`jobs` option)
     const jobsOptions = resolveSeoJobsOptions(pluginConfig.jobs)
     if (jobsOptions) {
@@ -1072,6 +1125,8 @@ export const seoAnalyzerPlugin =
         basePath,
         gscSiteUrl: resolveGscSiteUrl(seoConfig),
         retentionDays: pluginConfig.retentionDays,
+        retention: retentionOptions,
+        resolveStore,
         cache: sharedCache,
       })
       if (tasks.length > 0) {
@@ -1089,6 +1144,11 @@ export const seoAnalyzerPlugin =
       // background schedulers there; use the on-demand endpoints (or Payload jobs on a
       // cron trigger) instead.
       if (isServerlessIsolate()) {
+        if (!pluginConfig.dataStore && enabledDatasets.length > 0) {
+          payload.logger.warn(
+            `[seo-analyzer] ${enabledDatasets.join(', ')} are stored as Payload collections in the main database. On Workers + D1, pass \`dataStore\` (e.g. \`createSqlSeoDataStore(env.SEO_D1)\`) to keep append-only data out of it.`,
+          )
+        }
         if (features.dashboard && (!pluginConfig.cacheStore || !pluginConfig.waitUntil)) {
           payload.logger.warn(
             '[seo-analyzer] On serverless isolates the dashboard audit needs both `cacheStore` (shared cache) and `waitUntil` (background build); without them it may never finish building.',
@@ -1099,7 +1159,7 @@ export const seoAnalyzerPlugin =
             '[seo-analyzer] `auditCacheFile` needs a filesystem and is ignored on serverless isolates; set `cacheStore` instead.',
           )
         }
-        if (!jobsOptions && (features.gscApi || features.alerts || pluginConfig.retentionDays)) {
+        if (!jobsOptions && (features.gscApi || features.alerts || retentionTargets.length > 0)) {
           payload.logger.warn(
             '[seo-analyzer] Background schedulers (rank tracking, alerts, retention purge) do not run on serverless isolates; set the `jobs` option and run them from a cron.',
           )
@@ -1114,14 +1174,15 @@ export const seoAnalyzerPlugin =
       if (jobsOptions) return
       // Daily GSC rank snapshots (only when Search Console is enabled)
       if (features.gscApi) {
-        startRankTracker(payload, basePath, seoConfig)
+        startRankTracker(payload, basePath, seoConfig, resolveStore)
       }
       // Proactive monitoring digest (only when alerts are enabled)
       if (features.alerts) {
-        startAlertsScheduler(payload, resolveGscSiteUrl(seoConfig))
+        startAlertsScheduler(payload, resolveGscSiteUrl(seoConfig), resolveStore)
       }
-      // Daily retention purge — a no-op unless `retentionDays` was configured
-      startRetentionPurge(payload, pluginConfig.retentionDays)
+      // Daily retention purge — a no-op when no time-series feature is on and
+      // `retentionDays` names nothing
+      startRetentionPurge(payload, pluginConfig.retentionDays, retentionOptions)
     }
 
     return config

@@ -9,6 +9,7 @@
 import type { Payload } from 'payload'
 import type { SeoConfig } from './types.js'
 import { runRankSnapshot } from './endpoints/rankTracking.js'
+import type { SeoDataStoreResolver } from './store/index.js'
 
 const SNAPSHOT_INTERVAL = 24 * 60 * 60 * 1000 // 24 hours
 const STARTUP_DELAY = 30 * 1000 // 30 seconds after init
@@ -17,9 +18,14 @@ let intervalId: ReturnType<typeof setInterval> | null = null
 let listenersAttached = false
 
 /** One rank snapshot, logged (also run by the `seoRankSnapshot` job). Never throws. */
-export async function runRankSnapshotLogged(payload: Payload, basePath: string, seoConfig?: SeoConfig): Promise<void> {
+export async function runRankSnapshotLogged(
+  payload: Payload,
+  basePath: string,
+  seoConfig?: SeoConfig,
+  resolveStore?: SeoDataStoreResolver,
+): Promise<void> {
   try {
-    const result = await runRankSnapshot(payload, basePath, seoConfig)
+    const result = await runRankSnapshot(payload, basePath, seoConfig, undefined, resolveStore)
     if (result.ok) {
       payload.logger.info(`[seo] rank-tracker: snapshot stored ${result.stored}/${result.scanned} queries`)
     } else if (result.reason !== 'not_connected' && result.reason !== 'not_configured') {
@@ -31,16 +37,21 @@ export async function runRankSnapshotLogged(payload: Payload, basePath: string, 
   }
 }
 
-export function startRankTracker(payload: Payload, basePath: string, seoConfig?: SeoConfig): void {
+export function startRankTracker(
+  payload: Payload,
+  basePath: string,
+  seoConfig?: SeoConfig,
+  resolveStore?: SeoDataStoreResolver,
+): void {
   // Idempotent — avoid leaking a previous interval / doubling the daily job on re-init.
   stopRankTracker()
 
   setTimeout(() => {
-    void runRankSnapshotLogged(payload, basePath, seoConfig)
+    void runRankSnapshotLogged(payload, basePath, seoConfig, resolveStore)
   }, STARTUP_DELAY)
 
   intervalId = setInterval(() => {
-    void runRankSnapshotLogged(payload, basePath, seoConfig)
+    void runRankSnapshotLogged(payload, basePath, seoConfig, resolveStore)
   }, SNAPSHOT_INTERVAL)
 
   if (!listenersAttached) {

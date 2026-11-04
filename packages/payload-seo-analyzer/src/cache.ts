@@ -119,10 +119,20 @@ export type SeoWaitUntil = (promise: Promise<unknown>) => void
 /**
  * Cache bases persisted in the `cacheStore` when one is configured. These are the caches
  * the admin UI polls or re-reads across requests (dashboard audit, indexation audit,
- * sitemap audit, redirect chains), so a per-isolate copy would show stale or missing data. Every other
+ * sitemap audit, redirect chains, external links), so a per-isolate copy would show stale or missing data. Every other
  * base stays in the per-isolate in-memory cache (bounded by its TTL).
  */
-export const PERSISTENT_CACHE_BASES = ['audit', 'indexation-audit', 'sitemap-audit', 'redirect-chains'] as const
+export const PERSISTENT_CACHE_BASES = [
+  'audit',
+  'indexation-audit',
+  'sitemap-audit',
+  'redirect-chains',
+  // The external-links result, and the per-URL checks it is built from (`external-link-checks`
+  // is not in CONTENT_CACHE_BASES: a link's health doesn't change when a page is saved). A
+  // scan on Workers takes several requests when links are slow, so the checks must outlive an isolate.
+  'external-links',
+  'external-link-checks',
+] as const
 
 /**
  * Caches derived from document content. Invalidated on every save/delete of a target

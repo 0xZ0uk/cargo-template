@@ -69,13 +69,57 @@ export type CoercedEnvSchema = {
    */
   SEO_FETCH_MAX_DOCS?: number;
   
+  /**
+   * **GSC_OAUTH_CLIENT_ID**  
+   * Google Search Console OAuth client (SEO analyzer, `features.gscApi`, off in this template).  
+   * Create an OAuth client in Google Cloud, enable the Search Console API and register the  
+   * redirect URI `<SITE_URL>/api/seo-plugin/gsc/callback` (`GET /api/seo-plugin/gsc/status`  
+   * prints the exact value; without SITE_URL it uses the request's origin). The refresh token is  
+   * stored encrypted in D1 (AES-256-GCM through WebCrypto).  
+   * ![icon](data:image/svg+xml;utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2220%22%20height%3D%2220%22%20viewBox%3D%220%200%2032%2032%22%3E%3Cpath%20fill%3D%22%23808080%22%20d%3D%22M29%2022h-5a2.003%202.003%200%200%201-2-2v-6a2%202%200%200%201%202-2h5v2h-5v6h5ZM18%2012h-4V8h-2v14h6a2.003%202.003%200%200%200%202-2v-6a2%202%200%200%200-2-2m-4%208v-6h4v6Zm-6-8H3v2h5v2H4a2%202%200%200%200-2%202v2a2%202%200%200%200%202%202h6v-8a2%202%200%200%200-2-2m0%208H4v-2h4Z%22%2F%3E%3C%2Fsvg%3E)   
+   */
+  GSC_OAUTH_CLIENT_ID?: string;
+  
+  /**
+   * **GSC_OAUTH_CLIENT_SECRET** 🔐 _sensitive_  
+   * ![icon](data:image/svg+xml;utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2220%22%20height%3D%2220%22%20viewBox%3D%220%200%2032%2032%22%3E%3Cpath%20fill%3D%22%23808080%22%20d%3D%22M29%2022h-5a2.003%202.003%200%200%201-2-2v-6a2%202%200%200%201%202-2h5v2h-5v6h5ZM18%2012h-4V8h-2v14h6a2.003%202.003%200%200%200%202-2v-6a2%202%200%200%200-2-2m-4%208v-6h4v6Zm-6-8H3v2h5v2H4a2%202%200%200%200-2%202v2a2%202%200%200%200%202%202h6v-8a2%202%200%200%200-2-2m0%208H4v-2h4Z%22%2F%3E%3C%2Fsvg%3E)   
+   */
+  GSC_OAUTH_CLIENT_SECRET?: string;
+  
+  /**
+   * **SEO_GSC_ENCRYPTION_KEY** 🔐 _sensitive_  
+   * Optional key for the stored GSC refresh token: 32 bytes as hex (`openssl rand -hex 32`) or  
+   * base64. Unset, the key derives from PAYLOAD_SECRET and rotating that secret forces a GSC  
+   * reconnect. Changing this key does the same.  
+   * ![icon](data:image/svg+xml;utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2220%22%20height%3D%2220%22%20viewBox%3D%220%200%2032%2032%22%3E%3Cpath%20fill%3D%22%23808080%22%20d%3D%22M29%2022h-5a2.003%202.003%200%200%201-2-2v-6a2%202%200%200%201%202-2h5v2h-5v6h5ZM18%2012h-4V8h-2v14h6a2.003%202.003%200%200%200%202-2v-6a2%202%200%200%200-2-2m-4%208v-6h4v6Zm-6-8H3v2h5v2H4a2%202%200%200%200-2%202v2a2%202%200%200%200%202%202h6v-8a2%202%200%200%200-2-2m0%208H4v-2h4Z%22%2F%3E%3C%2Fsvg%3E)   
+   */
+  SEO_GSC_ENCRYPTION_KEY?: string;
+  
+  /**
+   * **SEO_EXTERNAL_LINKS_MAX**  
+   * SEO analyzer external-links checker (off by default): unique URLs checked per scan  
+   * (default 100). A scan that doesn't fit one request answers `partial: true` and continues  
+   * from saved results on the next call. See packages/payload-seo-analyzer/PLAN.md.  
+   * ![icon](data:image/svg+xml;utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2220%22%20height%3D%2220%22%20viewBox%3D%220%200%2032%2032%22%3E%3Cpath%20fill%3D%22%23808080%22%20d%3D%22M26%2012h-4v2h4v2h-3v2h3v2h-4v2h4a2.003%202.003%200%200%200%202-2v-6a2%202%200%200%200-2-2m-7%2010h-6v-4a2%202%200%200%201%202-2h2v-2h-4v-2h4a2%202%200%200%201%202%202v2a2%202%200%200%201-2%202h-2v2h4ZM8%2020v-8H6v1H4v2h2v5H4v2h6v-2z%22%2F%3E%3C%2Fsvg%3E)   
+   */
+  SEO_EXTERNAL_LINKS_MAX?: number;
+  
+  /**
+   * **SEO_EXTERNAL_LINKS_MAX_SUBREQUESTS**  
+   * Subrequests one external-links request may spend on checks (default 1000). Every fetch,  
+   * redirect hop and DNS lookup counts; Workers allow 10,000 per invocation on the paid plan and  
+   * 50 on Free (use about 30 there, with SEO_EXTERNAL_LINKS_MAX around 10).  
+   * ![icon](data:image/svg+xml;utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2220%22%20height%3D%2220%22%20viewBox%3D%220%200%2032%2032%22%3E%3Cpath%20fill%3D%22%23808080%22%20d%3D%22M26%2012h-4v2h4v2h-3v2h3v2h-4v2h4a2.003%202.003%200%200%200%202-2v-6a2%202%200%200%200-2-2m-7%2010h-6v-4a2%202%200%200%201%202-2h2v-2h-4v-2h4a2%202%200%200%201%202%202v2a2%202%200%200%201-2%202h-2v2h4ZM8%2020v-8H6v1H4v2h2v5H4v2h6v-2z%22%2F%3E%3C%2Fsvg%3E)   
+   */
+  SEO_EXTERNAL_LINKS_MAX_SUBREQUESTS?: number;
+  
 };
 
-type _CoercedEnvSchema_b10f07c0 = CoercedEnvSchema;
+type _CoercedEnvSchema_836e15c9 = CoercedEnvSchema;
 
 declare module 'varlock/env' {
-  export interface TypedEnvSchema extends Readonly<_CoercedEnvSchema_b10f07c0> {}
-  export interface PublicTypedEnvSchema extends Readonly<Pick<_CoercedEnvSchema_b10f07c0, 'APP_ENV' | 'PAYLOAD_LOG_LEVEL' | 'SITE_URL' | 'SEO_LLMS_TXT' | 'SEO_AUDIT_MAX_DOCS' | 'SEO_AUDIT_STEP_DOCS' | 'SEO_FETCH_MAX_DOCS'>> {}
+  export interface TypedEnvSchema extends Readonly<_CoercedEnvSchema_836e15c9> {}
+  export interface PublicTypedEnvSchema extends Readonly<Pick<_CoercedEnvSchema_836e15c9, 'APP_ENV' | 'PAYLOAD_LOG_LEVEL' | 'SITE_URL' | 'SEO_LLMS_TXT' | 'SEO_AUDIT_MAX_DOCS' | 'SEO_AUDIT_STEP_DOCS' | 'SEO_FETCH_MAX_DOCS' | 'GSC_OAUTH_CLIENT_ID' | 'SEO_EXTERNAL_LINKS_MAX' | 'SEO_EXTERNAL_LINKS_MAX_SUBREQUESTS'>> {}
 }
 
 
@@ -85,11 +129,11 @@ export type EnvSchemaAsStrings = {
       : (NonNullable<CoercedEnvSchema[Property]> extends boolean ? ('true' | 'false') : string)
 };
 
-type _EnvSchemaAsStrings_b10f07c0 = EnvSchemaAsStrings;
+type _EnvSchemaAsStrings_836e15c9 = EnvSchemaAsStrings;
 declare global {
 
   // add types for global import.meta.env
-  interface ImportMetaEnv extends _EnvSchemaAsStrings_b10f07c0 {}
+  interface ImportMetaEnv extends _EnvSchemaAsStrings_836e15c9 {}
   interface ImportMeta {
     readonly env: ImportMetaEnv;
   }
