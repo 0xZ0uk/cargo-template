@@ -583,9 +583,11 @@ export function SeoView() {
   // Bumped by every fetchAudit call and on unmount, so a superseded refresh loop stops.
   const fetchSeq = useRef(0)
 
-  // mode: 'peek' reads the cache WITHOUT triggering a build (dashboard open — never auto-builds,
-  //       which is heavy on large/rich sites); 'run' triggers the throttled background build and
-  //       polls; 'refresh' asks for a rebuild (the current audit stays on screen meanwhile).
+  // mode: 'peek' reads the cache without starting a build (dashboard open: a first build is
+  //       opt-in, since it's heavy on large/rich sites). If the peek finds a stale audit (a save
+  //       since it was built), `keepRefreshing` follows up with normal polls, which start the
+  //       rebuild while the old audit stays on screen. 'run' triggers the throttled background
+  //       build and polls; 'refresh' asks for a rebuild (the current audit stays on screen meanwhile).
   const fetchAudit = useCallback(async (mode: 'peek' | 'run' | 'refresh' = 'run') => {
     const seq = ++fetchSeq.current
     const live = () => seq === fetchSeq.current

@@ -160,8 +160,9 @@ export const CONTENT_CACHE_BASES = [
 ] as const
 
 /**
- * Bases whose last finished value is kept and served, marked stale, when it goes out of date
- * (a save moved the generation, or the TTL ran out) until the next build replaces it. Only
+ * Bases whose last finished value is kept and served when it goes out of date, until the next
+ * build replaces it. It's marked stale only when a save moved the generation; once just the
+ * TTL has run out it is served as current, since nothing it depends on has changed. Only
  * the dashboard audit: it's built in the background over several requests, so without this a
  * site edited often would show "building" most of the time. The other scans compute inside
  * the request and always answer with their own result.
@@ -205,7 +206,10 @@ export interface CacheLookup<T> {
   gen: string
   /** Epoch ms when `data` was built, when known. */
   builtAt?: number
-  /** `data` is out of date (the generation moved or the TTL ran out); only with `allowStale`. */
+  /**
+   * `data` is out of date: a save moved the generation since it was built. Only with
+   * `allowStale`; an entry past its TTL whose generation still matches is returned as current.
+   */
   stale?: boolean
 }
 
@@ -366,15 +370,15 @@ export class SeoSharedCache {
       const data = this.memory.get<T>(key)
       const good = allowStale ? this.lastGood.get(key) : undefined
       if (data != null) return { data, gen, ...(good?.data === data ? { builtAt: good.builtAt } : {}) }
-      if (good) return { data: good.data as T, gen, builtAt: good.builtAt, stale: true }
+      if (good) return { data: good.data as T, gen, builtAt: good.builtAt, ...(good.gen !== gen ? { stale: true } : {}) }
       return { data: null, gen }
     }
     const [genRaw, entryRaw] = await Promise.all([store.get(`gen/${base}`), store.get(`entry/${key}`)])
     const gen = genRaw ?? '0'
     const entry = parseJson<StoredEntry<T>>(entryRaw)
     if (!entry || entry.v !== STORE_FORMAT || typeof entry.builtAt !== 'number') return { data: null, gen }
-    const stale = entry.gen !== gen || Date.now() - entry.builtAt > this.ttlMs
-    if (stale && !allowStale) return { data: null, gen }
+    const stale = entry.gen !== gen
+    if (!allowStale && (stale || Date.now() - entry.builtAt > this.ttlMs)) return { data: null, gen }
     return { data: entry.data, gen, builtAt: entry.builtAt, ...(stale ? { stale: true } : {}) }
   }
 

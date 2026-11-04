@@ -709,15 +709,17 @@ export function createAuditHandler(
         }
       }
 
-      // `allowStale`: after a save (or once the TTL runs out) the last finished audit is still
-      // returned, flagged `stale`, so the dashboard keeps showing it while the next build runs.
+      // `allowStale`: after a save the last finished audit is still returned, flagged `stale`, so
+      // the dashboard keeps showing it while the next build runs. An audit past its TTL with no
+      // save since is served as current: nothing it depends on changed, so no rebuild starts.
       const lookup = await cache.lookup<CachedAudit>(CACHE_KEY, cacheKey, { allowStale: true })
       let cached = lookup.data
       let stale = !!lookup.stale
-      // Peek mode: opening the dashboard must NOT auto-trigger the (heavy) build on a big/rich
-      // site. With `noBuild=1` we return cached results if present, or "not built" otherwise —
-      // the build starts only when the user explicitly requests it (a poll WITHOUT noBuild).
-      // A peek never starts a build, but it does run the next step of one already running.
+      // Peek mode (`noBuild=1`): the request itself never starts a build; it returns cached
+      // results if present, or "not built" otherwise, and runs the next step of a build that's
+      // already running. A first build is opt-in (the user asks for it). When the peek finds a
+      // stale audit (a save since it was built), the dashboard follows up with a normal poll,
+      // which starts the rebuild while the old audit stays on screen.
       const noBuild = url.searchParams.get('noBuild') === '1'
 
       // Build-time file cache: on a miss, hydrating from the pre-computed JSON is cheap (a file
@@ -794,7 +796,7 @@ export function createAuditHandler(
         capped,
         // When this audit was built (absent for one hydrated from the build-time file).
         ...(typeof lookup.builtAt === 'number' && cached === lookup.data ? { builtAt: lookup.builtAt } : {}),
-        // Out of date: content or settings changed since it was built (or its TTL ran out).
+        // Out of date: content or settings changed since it was built.
         ...(stale ? { stale: true } : {}),
         // A newer audit is being built; poll again to get it.
         ...(refreshing ? { refreshing: true, ...progress } : {}),

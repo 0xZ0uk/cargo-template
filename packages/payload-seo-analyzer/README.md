@@ -324,7 +324,7 @@ With `jobs`, the plugin registers scheduled Payload tasks and starts no timers. 
 
 The host runs the queue: `runSeoJobs(payload)` from a Workers `scheduled` handler (see [step 3](#3-worker-entry-run-the-jobs-on-the-cron-trigger)), or Payload's `jobs.autoRun` on Node. A scheduled task is queued for the cron's *next* run time, so the first tick only queues and the second runs. Keep Payload's `deleteJobOnComplete` so finished jobs don't pile up.
 
-A step build stops after `SEO_AUDIT_STEP_DOCS` docs or `SEO_AUDIT_STEP_MS`, saves its cursor and partial results in `cacheStore`, and pauses. A pause with no new step for `SEO_AUDIT_PAUSED_STALE_MS` is abandoned. A save during a build makes the result stale, so on a site edited every few minutes a big audit may keep rebuilding (PLAN.md, P3 item 21).
+A step build stops after `SEO_AUDIT_STEP_DOCS` docs or `SEO_AUDIT_STEP_MS`, saves its cursor and partial results in `cacheStore`, and pauses. A pause with no new step for `SEO_AUDIT_PAUSED_STALE_MS` is abandoned. While a build runs, `/audit` keeps serving the last finished audit with `builtAt`, `stale` (a save since it was built) and `refreshing`, and a build that a save landed on still gets served (marked stale). Opening the dashboard never starts a first build, but when it finds a stale audit it starts the rebuild and keeps the old one on screen. An audit past its 15-minute TTL with no save since is served as current and only rebuilt on request.
 
 ### Environment variables
 

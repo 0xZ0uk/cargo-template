@@ -92,7 +92,7 @@ describe('SeoSharedCache with a store — consistency across isolates', () => {
     expect(fresh.stale).toBeUndefined()
   })
 
-  it('serves an expired audit as stale, and never serves other bases stale', async () => {
+  it('serves an expired audit as current (no save since), and never serves other bases past their TTL', async () => {
     vi.useFakeTimers()
     try {
       const store = fakeStore()
@@ -100,8 +100,15 @@ describe('SeoSharedCache with a store — consistency across isolates', () => {
       await a.set('audit', 'audit', 1)
       await a.set('sitemap-audit', 'sitemap-audit', 1)
       vi.advanceTimersByTime(1001)
-      expect(await a.lookup('audit', 'audit', { allowStale: true })).toMatchObject({ data: 1, stale: true })
+      const expired = await a.lookup('audit', 'audit', { allowStale: true })
+      expect(expired.data).toBe(1)
+      expect(expired.stale).toBeUndefined()
+      // Without allowStale an expired entry is still a miss.
+      expect((await a.lookup('audit', 'audit')).data).toBeNull()
       expect((await a.lookup('sitemap-audit', 'sitemap-audit', { allowStale: true })).data).toBeNull()
+      // A save after that marks it stale.
+      await a.invalidate(['audit'])
+      expect(await a.lookup('audit', 'audit', { allowStale: true })).toMatchObject({ data: 1, stale: true })
     } finally {
       vi.useRealTimers()
     }
