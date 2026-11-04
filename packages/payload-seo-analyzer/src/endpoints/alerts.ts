@@ -12,7 +12,8 @@
  *
  * Delivery + thresholds are configured via ENV (consistent with the rest of the plugin —
  * keeps URLs/recipients out of tracked config):
- *   SEO_ALERT_WEBHOOK_URL, SEO_ALERT_EMAIL (comma-separated),
+ *   SEO_ALERT_WEBHOOK_URL, SEO_ALERT_WEBHOOK_FORMAT (json | slack | discord; default: guessed
+ *   from the URL's host), SEO_ALERT_EMAIL (comma-separated),
  *   SEO_ALERT_SCORE_DROP (default 10), SEO_ALERT_POSITION_DROP (default 5),
  *   SEO_ALERT_WINDOW_HOURS (default 24)
  *
@@ -23,10 +24,19 @@ import type { Payload, PayloadHandler } from 'payload'
 import { isSeoAdminRequest as isAdmin } from '../helpers/isAdmin.js'
 import { escapeHtml } from '../helpers/escapeHtml.js'
 import { requestOrigin } from '../helpers/siteUrl.js'
-import { payloadStoreResolver, type RankSnapshot, type ScoreSnapshot, type SeoDataStoreResolver } from '../store/index.js'
+import { buildAlertWebhookBody, resolveAlertWebhookFormat } from '../alertWebhook.js'
+import {
+  payloadStoreResolver,
+  seoStoreRuntime,
+  type RankSnapshot,
+  type ScoreSnapshot,
+  type SeoDataStoreResolver,
+} from '../store/index.js'
 
 export interface AlertConfig {
   webhookUrl: string
+  /** Raw `SEO_ALERT_WEBHOOK_FORMAT`; checked when the digest is sent. */
+  webhookFormat?: string
   emails: string[]
   scoreDrop: number
   positionDrop: number
@@ -36,6 +46,7 @@ export interface AlertConfig {
 export function getAlertConfig(): AlertConfig {
   return {
     webhookUrl: process.env.SEO_ALERT_WEBHOOK_URL || '',
+    webhookFormat: process.env.SEO_ALERT_WEBHOOK_FORMAT || undefined,
     emails: (process.env.SEO_ALERT_EMAIL || '')
       .split(',')
       .map((s) => s.trim())
@@ -213,10 +224,20 @@ export async function deliverAlertDigest(
 
   if (cfg.webhookUrl) {
     try {
+      const { format, invalidEnv } = resolveAlertWebhookFormat({
+        env: cfg.webhookFormat,
+        option: seoStoreRuntime(payload)?.alertWebhookFormat,
+        url: cfg.webhookUrl,
+      })
+      if (invalidEnv) {
+        payload.logger.warn(
+          `[seo] alerts: SEO_ALERT_WEBHOOK_FORMAT "${invalidEnv}" is not json, slack or discord; using ${format}`,
+        )
+      }
       const res = await fetch(cfg.webhookUrl, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ type: 'seo-alert-digest', siteUrl, digest }),
+        body: JSON.stringify(buildAlertWebhookBody(format, digest, siteUrl)),
         signal: AbortSignal.timeout(WEBHOOK_TIMEOUT_MS),
       })
       // A 4xx/5xx (revoked hook, wrong URL, payload rejected) is a failed delivery, not a sent one.
@@ -269,6 +290,13 @@ export function createAlertsDigestHandler(resolveStore: SeoDataStoreResolver = p
           digest,
           config: {
             webhookConfigured: !!cfg.webhookUrl,
+            webhookFormat: cfg.webhookUrl
+              ? resolveAlertWebhookFormat({
+                  env: cfg.webhookFormat,
+                  option: seoStoreRuntime(req.payload)?.alertWebhookFormat,
+                  url: cfg.webhookUrl,
+                }).format
+              : undefined,
             emailConfigured: cfg.emails.length > 0,
             scoreDrop: cfg.scoreDrop,
             positionDrop: cfg.positionDrop,

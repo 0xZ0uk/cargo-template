@@ -91,6 +91,8 @@ import { createTrackSeoScoreGlobalHook } from './hooks/trackSeoScore.js'
 import { startCacheWarmUp } from './warmCache.js'
 import { startRankTracker } from './rankTracker.js'
 import { startAlertsScheduler } from './alertsScheduler.js'
+import type { AlertWebhookFormat } from './alertWebhook.js'
+import type { NotFoundProbeFilterOption } from './helpers/probePaths.js'
 import { startRetentionPurge } from './retentionScheduler.js'
 import { resolveSeoJobsOptions, seoJobTasks, type SeoJobsOptions } from './jobs.js'
 import { resolveRetention, type RetentionConfig, type RetentionMaxRows } from './retention.js'
@@ -173,6 +175,26 @@ export interface SeoPluginConfig {
    * collection's own `create` ACL), so a panel editor cannot write rows the collection refuses them.
    */
   seoLogsSecret?: string
+  /**
+   * Scanner probes (`*.php`, `/wp-login`, `/.env`, `/.git`, `/cgi-bin`, `/phpmyadmin`, root-level
+   * `.sql` / `.zip` backups…) are dropped before they reach the 404 log, so they don't fill its row
+   * cap. It looks at the path only, never the user agent: search-engine crawlers' 404s are the
+   * rows worth keeping. Applies to `recordSeoNotFound` and `POST /seo-logs`; the built-in list is
+   * `PROBE_PATH_PATTERNS`.
+   *
+   * - omitted / `true`: the built-in list
+   * - `false`: log everything
+   * - `{ extra: ['/xmlrpc-legacy', /\.cfm$/] }`: the built-in list plus yours (a string is a
+   *   case-insensitive path prefix, a RegExp is tested against the lower-cased, decoded path)
+   */
+  notFoundProbeFilter?: NotFoundProbeFilterOption
+  /**
+   * Body format of the alerts digest webhook (`SEO_ALERT_WEBHOOK_URL`): `json` (the plugin's own
+   * `{ type, siteUrl, digest }`), `slack` (`{ text }`) or `discord` (`{ content }`). The
+   * `SEO_ALERT_WEBHOOK_FORMAT` env var overrides it; with neither set, the format follows the URL's
+   * host (`hooks.slack.com` → slack, `discord.com/api/webhooks/` → discord, else json).
+   */
+  alertWebhookFormat?: AlertWebhookFormat
   /** Locale for language-specific analysis (default: 'fr') */
   locale?: 'fr' | 'en'
   /** Collection slug for uploads/media (used for meta.image relationTo). Default: 'media' */
@@ -1107,6 +1129,8 @@ export const seoAnalyzerPlugin =
       resolveStore,
       enabled: enabledDatasets,
       maxRows: pluginConfig.retentionMaxRows,
+      notFoundProbeFilter: pluginConfig.notFoundProbeFilter,
+      alertWebhookFormat: pluginConfig.alertWebhookFormat,
     }
     const custom = (config.custom ?? {}) as Record<string, unknown>
     config.custom = {
