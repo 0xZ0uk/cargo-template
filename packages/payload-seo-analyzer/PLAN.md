@@ -1,6 +1,6 @@
 # SEO analyzer: port status and plan
 
-Handoff for whoever continues porting `@cargo/payload-seo-analyzer`. Last updated 2026-11-04 (after P0 + P1, their leftovers, P2 items 9–13, the deployed check of 10–13, CI + the README rewrite, and `schemaBuilder` + `alerts` on a deployed Worker).
+Handoff for whoever continues porting `@cargo/payload-seo-analyzer`. Last updated 2026-11-04 (after P0 + P1, their leftovers, P2 items 9–13, the deployed check of 10–13, CI + the README rewrite, `schemaBuilder` + `alerts` on a deployed Worker, and the loose-ends / P3 cleanup batch, PRs #19–#24).
 
 ## TL;DR
 
@@ -17,6 +17,8 @@ Handoff for whoever continues porting `@cargo/payload-seo-analyzer`. Last update
 - **The external links checker fits Workers limits** (P2 item 13) and **GSC token crypto is WebCrypto** (P2 item 12). Both verified on deployed Workers.
 - `apps/web` now turns on `performance`, `scoreHistory`, `seoLogs`, `externalLinks`, `aiFeatures`, `schemaBuilder` and `alerts` (no delivery channel set yet). `gscApi` stays off until a Google OAuth client exists. The whole-site scans and `indexNow` are in the backlog until the real site exists.
 - **AI features run on OpenRouter** (P2 item 11), DeepSeek V4.1 Flash by default. **Verified on the deployed Worker** with a real key (2026-11-04); that run also fixed the optimize prompt, which invented numbers in titles.
+- **The package is English only** (PR #23, 2026-11-04): no French dictionaries, rules, docs or `locale` option.
+- **Loose ends and P3 cleanup done** (PRs #19–#24, 2026-11-04): schema/breadcrumb fixes, the stale-audit dashboard (item 21), the external links gaps, Slack/Discord alert formats, the 404 probe filter, the bulk-preview `Modal` (item 14) and the e2e specs (item 16). Checked locally (unit, int, e2e, workerd preview); **not yet on a deployed Worker**. See "Done on 2026-11-04 (loose ends and P3 cleanup)".
 
 ## Where things are
 
@@ -27,7 +29,7 @@ Handoff for whoever continues porting `@cargo/payload-seo-analyzer`. Last update
 | Shared UI layer | `src/ui/` (`styles.css`, `tone.ts`, `primitives.tsx`) |
 | How the app uses it | `apps/web/src/payload.config.ts` (`seoAnalyzerPlugin({...})`; the feature flags live there) |
 | Its migration in the app | `apps/web/src/db/migrations/20261103_110003_seo_analyzer.ts` (`seo_redirects`, `seo_settings`, `pages.focus_keyword`, `pages.is_cornerstone`, `pages_focus_keywords`) |
-| Docs | `README.md` (rewritten for Payload 4 + Workers, with the per-feature Workers status), `docs/THREAT-MODEL.md` (updated, with a Workers section). `CHANGELOG.md` is upstream's history up to 4.2.2; `docs/*-2026*.md` are upstream product notes |
+| Docs | `README.md` (rewritten for Payload 4 + Workers, with the per-feature Workers status), `docs/THREAT-MODEL.md` (updated, with a Workers section). `CHANGELOG.md` is upstream's history up to 4.2.2. Upstream's French product notes (`docs/*-2026*.md`) were deleted with the French support |
 | CI | `.github/workflows/ci.yml` (lint, typecheck, unit + int tests, build, migration/generated-files drift, Playwright). PR reviews: Pullfrog, `.github/pullfrog/` |
 | History | Imported with `git subtree`. `git log -- packages/payload-seo-analyzer` covers upstream v1.20.0 → 4.2.2 plus the port commits |
 
@@ -51,6 +53,7 @@ After that, in this repo:
 - `feat/ci-pullfrog-readme`: CI, the SEO e2e specs, Pullfrog reviews, the README and threat-model rewrite (P3 items 16 and 17)
 - `feat/seo-analyzer-ai-deployed`: P2 item 11's deployed check, `aiFeatures` on in `apps/web`, the optimize prompt fix
 - `feat/seo-analyzer-schema-alerts`: `schemaBuilder` and `alerts` checked on the deployed Worker and on in `apps/web`, with their fixes; `indexNow` to the backlog
+- Loose ends and P3 cleanup (2026-11-04), one PR each: #19 `fix/seo-analyzer-schema-breadcrumbs`, #20 `feat/seo-analyzer-stale-audit`, #21 `fix/seo-analyzer-external-links`, #22 `feat/seo-analyzer-alerts-chat-404-probes`, #23 `refactor/seo-analyzer-english-only`, #24 `chore/seo-analyzer-modal-e2e`
 
 ## Working on it
 
@@ -78,6 +81,7 @@ Ground rules:
 - **Tests that mock `@payloadcms/ui`** spread `src/__tests__/helpers/payloadUiStub.tsx`. Add a stub there when a component starts using a new Payload component.
 - **SEO store migrations** (`SEO_STORE_MIGRATIONS` in `src/store/`) are append-only, and every statement must be safe to run twice. Applied ones are recorded in `seo_store_migrations`.
 - **Token crypto is async:** `encryptToken` / `decryptToken` return promises.
+- **English only:** strings live in one English dictionary each (`i18n.ts`, `dashboard-i18n.ts`, the panels' local `s` tables). Don't reintroduce a locale switch. `translations.ts` (the plugin's admin labels in Payload's other admin languages) is the exception and is kept on purpose.
 
 Gotchas:
 - **Dev-push data-loss prompt:** while the plugin's tables exist in your local D1 (`apps/web/.wrangler/state`), any branch or config without them makes Payload's dev push stop at an interactive "data loss" prompt. Tests and scripts then hang until they time out.
@@ -89,7 +93,7 @@ Gotchas:
   - A local D1 created by Payload's dev push makes `pnpm web migrate` stop at the "data loss" prompt. Back up `.wrangler/state` and migrate a fresh copy.
   - The build writes the secret to `dist/server/.dev.vars`. It's gitignored, but it's on disk.
   - `/cdn-cgi/local/explorer/api` lists R2 objects and request traces. It shows no CPU time.
-- **Env vars on Workers:** varlock only passes variables declared in `apps/web/.env.schema` to workerd. A plugin `SEO_*` variable does nothing there until it's declared (today: `SEO_LLMS_TXT`, `SEO_AUDIT_MAX_DOCS`, `SEO_AUDIT_STEP_DOCS`, `SEO_FETCH_MAX_DOCS`, `SEO_EXTERNAL_LINKS_MAX`, `SEO_EXTERNAL_LINKS_MAX_SUBREQUESTS`, `GSC_OAUTH_CLIENT_ID`, `GSC_OAUTH_CLIENT_SECRET`, `SEO_GSC_ENCRYPTION_KEY`, the `OPENROUTER_API_KEY` / `SEO_AI_*` set, and `SEO_ALERT_WEBHOOK_URL`, `SEO_ALERT_EMAIL`, `SEO_ALERT_SCORE_DROP`, `SEO_ALERT_POSITION_DROP`, `SEO_ALERT_WINDOW_HOURS`).
+- **Env vars on Workers:** varlock only passes variables declared in `apps/web/.env.schema` to workerd. A plugin `SEO_*` variable does nothing there until it's declared (today: `SEO_LLMS_TXT`, `SEO_AUDIT_MAX_DOCS`, `SEO_AUDIT_STEP_DOCS`, `SEO_FETCH_MAX_DOCS`, `SEO_EXTERNAL_LINKS_MAX`, `SEO_EXTERNAL_LINKS_MAX_SUBREQUESTS`, `GSC_OAUTH_CLIENT_ID`, `GSC_OAUTH_CLIENT_SECRET`, `SEO_GSC_ENCRYPTION_KEY`, the `OPENROUTER_API_KEY` / `SEO_AI_*` set, and `SEO_ALERT_WEBHOOK_URL`, `SEO_ALERT_WEBHOOK_FORMAT`, `SEO_ALERT_EMAIL`, `SEO_ALERT_SCORE_DROP`, `SEO_ALERT_POSITION_DROP`, `SEO_ALERT_WINDOW_HOURS`).
   - To override a declared variable for one deploy, set it in the shell: `SEO_AUDIT_STEP_DOCS=1 varlock-wrangler deploy`. `--var SEO_AUDIT_STEP_DOCS:1` is silently replaced by the schema's value (empty here). An undeclared variable does pass through `--var`.
 - **Cron Triggers after a deploy:** a new or changed schedule can take a few minutes to start firing. On 2026-11-03 the first tick after deploying came at 23:05; the 23:00 tick never fired. Ticks land a few seconds after the minute (`:52` there).
 - **`vite preview`** needs `PAYLOAD_SECRET` in the shell env. Enabling features in a local config regenerates `importMap.js` on build; revert it before committing.
@@ -98,6 +102,14 @@ Gotchas:
 - **Scheduled jobs have no request origin:** the rank snapshot job needs the `siteUrl` option or `SITE_URL`, and the alerts digest sent by its job carries no `siteUrl` without one (`/alerts-run` falls back to the request origin).
 - **A Worker can't fetch another Worker on the same account's `workers.dev`:** the request never reaches it and comes back 404. An alerts webhook (or any outbound URL) pointing at a sibling Worker needs a custom domain or a service binding. Found with a throwaway receiver on 2026-11-04.
 - **Live tests of chunked builds:** the dashboard's "force refresh" (`?nocache=1`) is refused for 5 minutes after the last build (`SEO_AUDIT_MIN_REFRESH_MS`) and returns the cached audit. To make a small site pause between steps, deploy with `SEO_AUDIT_STEP_DOCS=1` and `SEO_AUDIT_BATCH_SIZE=1`. Steps stop between DB pages, so a page holding every doc never pauses.
+- **Cron ticks in local workerd:** ticks within the same 5-minute window only queue `seoAuditContinue`; a tick after the next `*/5` mark runs it. Dashboard peeks also advance paused builds, so test the Cron path with no peeks in between.
+- **Local D1 and `pnpm web migrate`:** any `payload` command (`generate:types`, `migrate:create`) dev-pushes the local D1, after which `pnpm web migrate` stops at the data-loss prompt. Wipe `apps/web/.wrangler/state` and run `NODE_ENV=production pnpm migrate`, then `NODE_ENV=production pnpm seo-store:migrate` (from `apps/web`).
+- **External links locally:** the SSRF guard blocks loopback, so a local mock server can't be a link target. Use `httpbin.org/status/<code>` and `/delay/<s>`.
+- **e2e:**
+  - Playwright runs with `workers: 1` everywhere: each spec file deletes and recreates the same admin user.
+  - A dev server Playwright starts itself sometimes dies mid-suite locally (`ERR_CONNECTION_REFUSED`, workerd `SQLITE_BUSY`; `master` too). Start `pnpm dev --port N` first and point `E2E_PORT` at it for reliable local runs.
+  - Specs create pages through REST as the logged-in admin, not the Local API, which raced the dev server's autosaves for the SQLite file. SEO_D1 rows they leave are removed with `apps/web/tests/helpers/seoStore.ts`.
+  - Frontend redirects take up to 60 s to reflect a change (per-isolate cache), so the redirect spec polls and takes ~2 minutes.
 
 ### Visual check (what was used for the UI rebuild)
 
@@ -124,7 +136,7 @@ Results are in "Done on 2026-11-03".
 | Feature flag | What it is | In `apps/web` | Port status | Verified (Node) | Workers concerns |
 |---|---|---|---|---|---|
 | `analyzer` (always on) | Score sidebar on Pages, 50+ rules, Lexical parsing | on | done | yes, live editing and `POST /validate` | none known |
-| `dashboard` | `/admin/seo` site audit, filters, bulk actions, CSV/PDF export | on | done | yes | **deployed: pass.** Persisted in R2 and built via `waitUntil` in steps of 800 docs, with the Cron Trigger finishing paused builds (P2 item 9); capped at 5000 docs |
+| `dashboard` | `/admin/seo` site audit, filters, bulk actions, CSV/PDF export | on | done | yes | **deployed: pass.** Persisted in R2 and built via `waitUntil` in steps of 800 docs, with the Cron Trigger finishing paused builds (P2 item 9); capped at 5000 docs. While a build runs, the last finished audit is served marked stale (PR #20, local workerd) |
 | `redirects` | `seo-redirects` collection, `/admin/redirects`, auto-redirect on slug change, CSV import/export | on | done | yes | **local workerd: pass**, including the frontend 301/302 |
 | `sitemapAudit` | `/admin/sitemap-audit`: orphans, weak pages, hubs, broken links (the 404 and External tabs follow `seoLogs` / `externalLinks`) | on | done | yes | **local workerd: pass.** ~0.4 ms per doc uncached, persisted in R2 |
 | `settings` | `seo-settings` collection, `/admin/seo-config` | on | done | yes | **local workerd: pass**, including saving |
@@ -132,15 +144,15 @@ Results are in "Done on 2026-11-03".
 | `cannibalization` | `/admin/cannibalization` | off | UI done | renders (empty data) | whole-site scan; **backlog** (see Backlog) |
 | `keywords` | `/admin/keyword-research` + AI content brief | off | UI done | renders (empty data) | whole-site scan, **backlog**; the brief runs on AI (`aiFeatures`, verified) |
 | `linkGraph` | `/admin/link-graph`, crawl budget | off | UI done | renders with data | whole-site scan, **backlog**; client-side force simulation is fine |
-| `schemaBuilder` | `/admin/schema-builder` JSON-LD builder, `GET /schema-generator` | on | done | renders | **deployed: pass** (2026-11-04). The view renders with a live preview; `/schema-generator` answers in ≤ 1.3 s and now uses the request origin and `collectionRoutes` (it printed `http://localhost:3000` URLs) |
+| `schemaBuilder` | `/admin/schema-builder` JSON-LD builder, `GET /schema-generator` | on | done | renders | **deployed: pass** (2026-11-04). The view renders with a live preview; `/schema-generator` answers in ≤ 1.3 s and now uses the request origin and `collectionRoutes` (it printed `http://localhost:3000` URLs). PR #19 (local): pages are `WebPage` unless they look like articles, no empty `FAQPage`, names without the meta-title suffix |
 | `duplicateContent` | duplicate content endpoint | off | compiles | no | whole-site scan; **backlog** |
-| `externalLinks` | outbound link checker (SSRF-guarded) | on | done | no (workerd instead) | **deployed: pass** (P2 item 13). The guard uses `resolve4`/`resolve6` on Workers, `lookup` on Node. Capped at 100 links (`SEO_EXTERNAL_LINKS_MAX`) and 1000 subrequests per call (`SEO_EXTERNAL_LINKS_MAX_SUBREQUESTS`), 5 at a time; a scan that doesn't fit resumes from results saved in R2, and a finished scan is cached. The External tab doesn't show `capped`/`partial` yet |
+| `externalLinks` | outbound link checker (SSRF-guarded) | on | done | no (workerd instead) | **deployed: pass** (P2 item 13). The guard uses `resolve4`/`resolve6` on Workers, `lookup` on Node. Capped at 100 links (`SEO_EXTERNAL_LINKS_MAX`) and 1000 subrequests per call (`SEO_EXTERNAL_LINKS_MAX_SUBREQUESTS`), 5 at a time; a scan that doesn't fit resumes from results saved in R2, and a finished scan is cached. PR #21 (local workerd): stats buckets add up to `total`, 401/403/429/451/999 are "couldn't verify", and the External tab shows capped/partial scans with a Continue button |
 | `aiFeatures` | generate meta, optimize, rewrite, alt text, content brief (OpenRouter Chat Completions via `fetch`) | on | done | yes, with a real key | **deployed: pass** (P2 item 11): all six endpoints, alt text on an R2 image, the sidebar's "Optimize with AI"; ≤ 0.2 s CPU per call. Needs `OPENROUTER_API_KEY` as a Worker secret, with a credit limit on the key as the spend cap. Alt text reads the image through Payload's file route in-process (R2), not over the network |
 | `performance` | `seo-performance` collection, GSC CSV/JSON/XLSX import, `/admin/performance` + 9 panels (CWV, indexation, content grade, CTR, alt text, health…), `/indexation-audit` | on | UI done | renders with empty data | **deployed: pass.** Rows in SEO_D1 through `dataStore` (P2 item 10; CSV import + read), pruned after 490 days / 100k rows. XLSX import only works if the host maps `xlsx`. `/indexation-audit` is cached and capped |
 | `scoreHistory` | score snapshot on every save + chart | on | done | no (workerd instead) | **deployed: pass.** Rows in SEO_D1 through `dataStore` (P2 item 10; snapshot on save + `/history`), pruned after 365 days / 50k rows. The snapshot write is kept alive with `waitUntil` |
-| `seoLogs` | 404 log, admin 404 tab | on | done | no (workerd instead) | **deployed: pass.** Rows in SEO_D1 through `dataStore` (P2 item 10). `apps/web` records 404s in-process from `resolveRedirect` via `waitUntil`. Capped at 5k rows (`SEO_LOGS_MAX_ROWS`) and 90 days. Record, repeat count, list, ignore, delete pass |
+| `seoLogs` | 404 log, admin 404 tab | on | done | no (workerd instead) | **deployed: pass.** Rows in SEO_D1 through `dataStore` (P2 item 10). `apps/web` records 404s in-process from `resolveRedirect` via `waitUntil`. Capped at 5k rows (`SEO_LOGS_MAX_ROWS`) and 90 days. Record, repeat count, list, ignore, delete pass. Scanner probes are dropped before recording (`notFoundProbeFilter`, PR #22, local workerd) |
 | `gscApi` | Google Search Console OAuth, rank tracker (`seo-gsc-auth`, `seo-rank-history`) | off | compiles | no | token crypto is WebCrypto (AES-GCM + HKDF), **verified on a deployed Worker**; legacy `v1` tokens decrypt through a lazy `node:crypto`. The redirect URI uses `siteUrl`, then `SITE_URL`, then the request origin. Rank history rows go to SEO_D1 (400 days / 100k rows). `seo-gsc-auth` stays a collection in the main D1 and needs a migration when the feature is enabled. The endpoints haven't run on a deployed Worker, and the OAuth flow hasn't been run against Google (needs an OAuth client) |
-| `alerts` | digest via webhook/email, panel on `/admin/performance` | on (no channel) | done | no (deployed instead) | **deployed: pass** (2026-11-04): preview, "send now" and the scheduled `seoAlertsDigest` job delivered to a webhook (96 ms CPU per run). Email needs a Payload email adapter (none in `apps/web`). Nothing is sent until `SEO_ALERT_WEBHOOK_URL` / `SEO_ALERT_EMAIL` is set |
+| `alerts` | digest via webhook/email, panel on `/admin/performance` | on (no channel) | done | no (deployed instead) | **deployed: pass** (2026-11-04): preview, "send now" and the scheduled `seoAlertsDigest` job delivered to a webhook (96 ms CPU per run). Email needs a Payload email adapter (none in `apps/web`). Nothing is sent until `SEO_ALERT_WEBHOOK_URL` / `SEO_ALERT_EMAIL` is set. PR #22 (local mock only): `json` / `slack` / `discord` webhook formats |
 | `indexNow` | ping search engines on publish | off | compiles | no | needs `SEO_INDEXNOW_KEY`; **backlog** (item 23) |
 | `warmCache` | pre-builds the audit on startup | off | **skipped on Workers by design** | n/a | not meaningful on Workers |
 | `retentionDays` (option) | daily purge of time-series data | not set (defaults apply) | done | no | **mandatory** for enabled time-series features (defaults in `RETENTION_DEFAULTS`, overridable with `retentionDays` / `retentionMaxRows`; an invalid value means the default, never "delete everything"). Runs as the daily `seoRetentionPurge` job against the store (04:00 UTC). Deployed: `POST /retention` deleted only the stale rows of each dataset, and the Cron Trigger queued the job |
@@ -155,8 +167,8 @@ Upstream behaviour that doesn't work, or has no equivalent, in this fork today:
 3. *(done, P2 item 10)* **404 logging.** `apps/web` records 404s from `resolveRedirect` (`redirects.functions.ts`) with the exported `recordSeoNotFound`. It does nothing while `seoLogs` is off.
 4. *(done)* Root sitemap/robots/llms.txt: `apps/web/src/app/{sitemap[.]xml,robots[.]txt,llms[.]txt}.ts` hand the request to Payload's API handler in-process (`servePluginFile.ts`).
 5. **Build-time audit cache** (`auditCacheFile`, `buildAuditToFile()`): Node only. It's ignored with a warning when `cacheStore` is set or on Workers.
-6. **E2E harness.** `e2e/` and `e2e/ui/` are upstream's Next.js 16 + Payload 3 test apps. They're not workspace members (only `packages/*` is) and don't run. Its package scripts were removed.
-7. **Locales.** Analysis and UI strings are French and English only (`SeoLocale = 'fr' | 'en'`). Other admin languages fall back to English.
+6. *(done, P3 item 16)* **E2E harness.** Upstream's Next.js `e2e/` apps are deleted; SEO coverage lives in `apps/web/tests/e2e/`.
+7. **Locales.** English only, by choice (PR #23). Upstream's French analysis (readability formula, word lists, templates) and French UI are gone; there's no `locale` option.
 8. **Publishing.** The package is `private`. Upstream's npm release flow, `prepublishOnly`, CI and dependabot were removed.
 9. **`scripts/uninstall.mjs`** (upstream `bin`): kept but not checked against Payload 4 / D1.
 
@@ -252,7 +264,7 @@ Order agreed on 2026-11-03: foundations first: 9 (done) → 10 → 12 → 13 →
    - Caps: the dashboard audit's `SEO_AUDIT_MAX_DOCS` default went from 1500 to 5000. `/indexation-audit` still scans in one request, so it got its own `SEO_INDEXATION_MAX_DOCS` (default 1500).
    - `apps/web`: `src/server.ts` is the Worker entry (`main` in `wrangler.jsonc`). It wraps TanStack Start's `fetch` and adds `scheduled`, which calls `runSeoJobs`. Pointing `main` at `@tanstack/react-start/server-entry` bypasses `src/server.ts`. Cron Trigger `*/5 * * * *`. Migration `20261103_201707_seo_jobs` adds `payload_jobs`, `payload_jobs_log` and `payload_jobs_stats`. `deleteJobOnComplete` keeps them near-empty.
    - Payload queues a scheduled task for the cron's next run time (counted from `lastScheduledRun` in `payload_jobs_stats`). So the first tick only queues, the second runs, and from then on each tick queues and runs in one go.
-   - Known limit: a save during a multi-step build makes the finished audit stale (same generation rule as before), so on a site edited every few minutes a big audit may keep rebuilding. See P3 item 21.
+   - *(Resolved by P3 item 21.)* A save during a multi-step build used to make the finished audit unservable, so a site edited often could keep rebuilding.
    - Verified in local workerd (620 pages, `SEO_AUDIT_STEP_DOCS=200`): dashboard polls went 200 → 400 → 600 → 620 done. With no requests, one Cron tick (`/cdn-cgi/handler/scheduled`) ran `seoAuditContinue` and moved a paused build from 400 to 600 docs, and the finished job was deleted.
    - **Verified on the deployed Worker** (2026-11-03, master `dfc8165`, versions `2304ec72` and `f7b34497`): the remote migration added the three jobs tables, and the deploy registered `schedule: */5 * * * *`. From the `wrangler tail` logs:
 
@@ -273,7 +285,7 @@ Order agreed on 2026-11-03: foundations first: 9 (done) → 10 → 12 → 13 →
     - **Retention is mandatory** for enabled features: rank history 400 days / 100k rows, score history 365 / 50k, performance 490 / 100k, 404 logs 90 / 5k. A dataset whose feature is on is pruned with the defaults even if `retentionDays` doesn't name it; hosts can only lengthen the window. The purge job, timer and `/retention` routes exist whenever one of these features is on.
     - **404s stay in SQL**, not Analytics Engine: the admin needs to upsert, ignore, delete and sort by count.
     - Verified: 831 plugin tests at the time (14 new ones run the SQL store on `node:sqlite` behind a wrapper with D1's limits), app int tests, and `migrate:create --skip-empty` finds no main-D1 changes with `performance`, `scoreHistory` and `seoLogs` on. In local workerd, one write and one read per feature passed, the main D1 got none of the four tables, and a Cron tick queued the jobs without errors. Rank history rows were written with the store's `insertDaily` from Node, because `/rank-snapshot` needs a GSC account.
-    - **Open:** the 404 recorder bypasses the `seo-logs` rate limit (growth is bounded by the row cap; each new URL costs one `COUNT(*)` over ≤5k rows). Consider filtering bots.
+    - **Open:** the 404 recorder bypasses the `seo-logs` rate limit (growth is bounded by the row cap; each new URL costs one `COUNT(*)` over ≤5k rows). Scanner probes are filtered since PR #22 (by path, never by user agent, so crawler 404s stay).
     - **Production database:** `cargo-template-seo` (`bf11c24a-599f-42c8-b700-de5f56c3a377`, WEUR, no jurisdiction, like the main D1), created with `cf d1 create` on 2026-11-04. `pnpm web run deploy` applied the store's schema remotely (`seo_logs`, `seo_performance`, `seo_rank_history`, `seo_score_history`, `seo_store_migrations`).
     - **Verified on the deployed Worker** (2026-11-04, versions `06d69b4b` with the four features on, then `42c48bb1` from this branch). Checked over REST with a temporary API-key user, deleted afterwards. All test rows were cleared.
       - `scoreHistory`: a page save wrote a snapshot through `waitUntil`, and `/history` returned it.
@@ -293,8 +305,8 @@ Order agreed on 2026-11-03: foundations first: 9 (done) → 10 → 12 → 13 →
     - **Env** (declared in `apps/web/.env.schema`): `OPENROUTER_API_KEY` (`@sensitive`), `SEO_AI_MODEL`, `SEO_AI_BASE_URL` (e.g. Cloudflare AI Gateway's OpenRouter endpoint, for logs and caching), `SEO_AI_REASONING`, `SEO_AI_DATA_COLLECTION`. UI strings, `/health` and the README/threat model now name OpenRouter.
     - **Verified:** 17 new tests (`aiClient.test.ts`: config, request body, response parsing, errors, optimize fallback, alt text in-process read and fallback, bulk concurrency and order), 947 plugin tests in all. In local workerd (fresh D1, `aiFeatures` on, `SEO_AI_BASE_URL` pointed at a mock OpenRouter in Node): all five endpoints returned `method: "ai"` / model answers; alt text sent the full 7,858-byte PNG read from local R2 as a data URL with no network fetch of the image; optimize and brief sent their schemas with `require_parameters`; `/health` reported the key and model; `/admin/seo` and `/admin/performance` returned 200; no errors in the log. No `migrate:create` change: the feature adds no collections.
     - **First live run** (Node dev server, real OpenRouter key, 2026-11-04): "Optimize with AI" got a DeepSeek V4.1 Flash answer through `data_collection: 'deny'` + `require_parameters`. Fixed from that run:
-      - "Generate meta" (`/ai-generate`) never calls the model: it's the template generator, whose templates were French only. `helpers/metaGeneration.ts` now has English templates, and `/ai-generate`, `/ai-rewrite` and the `/ai-optimize` fallback follow the analysis locale (default `fr`, like the analyzer).
-      - The prompts asked for "the page's language", and a four-word page came back with an Italian rationale. Every prompt now names the analysis locale's language (`aiLanguageName`).
+      - "Generate meta" (`/ai-generate`) never calls the model: it's the template generator, whose templates were French only. `helpers/metaGeneration.ts` now has English templates, and `/ai-generate`, `/ai-rewrite` and the `/ai-optimize` fallback followed the analysis locale (default `fr`, like the analyzer); English only since PR #23.
+      - The prompts asked for "the page's language", and a four-word page came back with an Italian rationale. Every prompt then named the analysis locale's language (`aiLanguageName`); since PR #23 they just say English.
       - "Optimize with AI" was always disabled: the sidebar read the document id from the form state, which Payload 4 doesn't fill. It now uses `useDocumentInfo()` (id and collection), which also fixes the duplicate-keyword check and internal-link suggestions excluding the current page.
       - With `aiFeatures` off, the sidebar's AI buttons and the dashboard's "Optimize site" / bulk "Optimize meta" stayed visible and answered 404. They now follow `features.aiFeatures`.
     - **Verified on the deployed Worker** (2026-11-04, versions `28a9c37f`, then `af15d6ba` with the prompt fix). `aiFeatures` is on in `apps/web`. `varlock-wrangler deploy` uploads `OPENROUTER_API_KEY` from `apps/web/.env` as a `secret_text`; the key has a $5 credit limit in OpenRouter. Checked over REST with a temporary API-key user and a 960×720 JPEG uploaded to R2, both deleted afterwards:
@@ -306,7 +318,7 @@ Order agreed on 2026-11-03: foundations first: 9 (done) → 10 → 12 → 13 →
     - **Open:**
       - Titles still lean on the power words the engine asks for ("The Ultimate Guide…") on thin pages. Fine on real content; revisit if editors complain.
       - fp4 endpoints served everything and the output was good. If quality drops on long pages, pin providers or quantizations through `provider` (not exposed yet).
-      - The alt-text system prompt only knows French and English (`seoConfig.locale`).
+      - *(moot since PR #23)* The alt-text prompt was French or English; it's English now.
 12. **GSC on Workers. Done (2026-11-04; the crypto is verified on a deployed Worker, the endpoints aren't).**
     - `node:crypto` `scryptSync` and AES-GCM work in local workerd (22 ms CPU per scrypt at N=16384, r=8, 16 MiB). They were dropped anyway: deployed limits can't be checked locally (see the PBKDF2 patch), and scrypt costs CPU on every call.
     - `helpers/tokenCrypto.ts` is WebCrypto: AES-256-GCM with a key from HKDF-SHA-256, format `v2:<salt>:<iv>:<ct+tag>`. The key comes from `SEO_GSC_ENCRYPTION_KEY` (32 bytes, hex or base64) or Payload's secret. Legacy `v1:` tokens decrypt through a lazy `import('node:crypto')`; without it, the error says to reconnect GSC. Wrong keys and tampering throw explicit errors, and `getGscAccessToken` logs the cause (never the token or key). The `v1` reader can go in a later major version.
@@ -334,8 +346,8 @@ Order agreed on 2026-11-03: foundations first: 9 (done) → 10 → 12 → 13 →
       - A full scan took 92 subrequests and 1.4 s. The next call was `cached: true`. After a save it was rescanned from saved checks with 0 subrequests.
       - A temporary deploy with `SEO_EXTERNAL_LINKS_MAX=20` and `SEO_EXTERNAL_LINKS_MAX_SUBREQUESTS=12` gave `capped: true` (48 found, 20 kept). It stopped at exactly 12 subrequests per call (`stoppedBy: "budget"`) and finished over 7 calls, then was cached.
       - At most 65 ms CPU per call.
-    - **Stats gap:** `stats.ok`, `broken` and `timeout` don't count blocked and DNS failures, so they don't add up to `total` (5 + 33 + 0 of 48 in the run above). Add a `blocked` / `error` count.
-    - **Open:** whether a slow 25 s step fits through the edge (no slow hosts in the deployed test). Show `capped`/`partial`/`pending` in the External tab and continue partial scans from the button; treat 429/999 as unverified, not broken. On Node the guard can't pin the resolved IP for `fetch` (DNS rebinding gap); on Workers `fetch` can't reach private networks anyway.
+    - *(done, PR #21)* Stats gap, the External tab's capped/partial state and 429/999: see "Done on 2026-11-04 (loose ends and P3 cleanup)".
+    - **Open:** whether a slow 25 s step fits through the edge (no slow hosts in the deployed test). On Node the guard can't pin the resolved IP for `fetch` (DNS rebinding gap); on Workers `fetch` can't reach private networks anyway.
 
 ### Done on 2026-11-04 (`schemaBuilder`, `alerts`)
 
@@ -344,12 +356,55 @@ Branch `feat/seo-analyzer-schema-alerts`. Both are on in `apps/web`. Checked on 
 - **`schemaBuilder`:** `/admin/schema-builder` renders (7 schema types, live JSON-LD preview, copy buttons, no page errors). `GET /schema-generator` returns JSON-LD for both pages, honours `type`, and answers 401 / 403 / 400 / 404 for anonymous callers, other collections, unknown types and missing docs.
   - **Fixed:** without a configured site URL, every `@id` / `url` was `http://localhost:3000/...` (the `/breadcrumb` bug again). The endpoint now falls back to the request origin and passes the plugin's `collectionRoutes`.
   - **Fixed in `buildJsonLd`:** the BreadcrumbList trail was built from the raw slug, so the home page got a second "Home" item at `/home`, and a routed collection lost its prefix (`/my-post` for `/posts/my-post`). It now follows the same public path as every other node. This also feeds the page `head()` JSON-LD in `apps/web` (unchanged for its pages).
-  - **Follow-ups:** auto-detection calls every page an `Article` (the home page included); `FAQPage` on a page without Q&A content returns an empty `mainEntity`, which Google rejects; headlines carry the meta title's suffix (same cause as item 19); the builder's example placeholders are French ("Ma Boulangerie") in the English admin.
+  - *(done, PRs #19 and #23)* Follow-ups: auto-detection called every page an `Article`, a forced `FAQPage` without Q&A had an empty `mainEntity`, headlines carried the meta-title suffix, and the builder's placeholders were French.
 - **`alerts`:** a digest seeded with a score drop (88 → 61), two 404 URLs and a ranking drop (#4 → #11) came back from `GET /alerts-digest` with 4 issues and shows in the `/admin/performance` panel. `POST /alerts-run` and the `seoAlertsDigest` job both delivered it to a throwaway webhook.site URL: the job ran on the second Cron tick after a temporary deploy that set `dailyCron` to every 5 minutes (96 ms CPU, 5.2 s wall). `SEO_ALERT_*` are now declared in `.env.schema` (the URL and recipients `@sensitive`).
   - **Fixed:** a webhook that answered 4xx/5xx counted as delivered. It's now `delivery_failed` with the status in the log (checked live: a 404 was reported, not swallowed), the request times out after 10 s, the panel shows the failure instead of "Nothing to send", and an `SEO_ALERT_EMAIL` without an email adapter is a failed delivery with a warning. Payload's `console` fallback adapter (installed when `config.email` is unset) only logs, so it counts as no adapter (found by the Pullfrog review).
   - **Fixed:** the webhook payload had no `siteUrl` without `SITE_URL`. `/alerts-run` now uses the request origin; the scheduled digest still needs `SITE_URL` (set it in production).
   - **Fixed:** with the feature on and no channel, the panel said to "enable features.alerts".
-  - **Open:** the payload is plain JSON (`{ type, siteUrl, digest }`), which Discord and Slack webhooks reject (they need `content` / `text`). Point it at a relay, or add a Discord/Slack format if that's where it should land.
+  - *(done, PR #22)* The payload was plain JSON, which Discord and Slack reject; there are `slack` and `discord` formats now.
+
+### Done on 2026-11-04 (loose ends and P3 cleanup)
+
+Six PRs, merged one by one after CI and a Pullfrog review each. Checked with unit, integration and e2e tests and in local workerd (`vite preview`); **none of it has run on a deployed Worker yet**.
+
+- **#19 schema and breadcrumbs** (`fix/seo-analyzer-schema-breadcrumbs`):
+  - `detectSchemaType` (first match wins): posts-like collection → `Article`; home → `WebPage`; FAQ block with a complete Q&A → `FAQPage`; `price`/`sku`/`products` → `Product`; business slug → `LocalBusiness`; publication date + author → `Article`; else `WebPage` (a new schema type).
+  - Detection and the Article builder share one author resolver (`populatedAuthors`, `authors`, `author`, skipping unpopulated ids) and one date (`publishedAt`, then `datePublished`).
+  - A forced `FAQPage` without Q&A falls back to the detected type; `buildJsonLd` and `/schema-generator` return `warnings`. The builder's FAQ tab warns too (it's a manual form that never calls the endpoint).
+  - Names come from the doc's `title`, else `meta.title` minus the site name (`helpers/docTitle.ts`): `/breadcrumb` and every JSON-LD name/headline. This closes P3 item 19.
+  - The analyzer expects `WebPage` on home/service/resource/generic pages (new `SCHEMA_REQUIREMENTS.WebPage`), so it no longer asks for an author and date there.
+  - `/schema-generator`'s pasteable `html` goes through `serializeJsonLd` (it could be closed by a `</script>` in a title).
+- **#20 stale audit** (`feat/seo-analyzer-stale-audit`), P3 item 21:
+  - `lookup(base, key, { allowStale: true })` returns the last finished entry with `stale: true` when a save moved the generation. Only `audit` opts in (`STALE_SERVABLE_BASES`); it's the same `entry/<key>` object, so no new R2 objects. On Node without `cacheStore`, a small last-good map (≤ 50 keys) plays that role.
+  - An audit past its 15-minute TTL with no save since is served as current and only rebuilt on request, so opening the dashboard doesn't spend a full audit when nothing changed.
+  - A build that a save landed on still writes its entry and is served stale; the next non-peek request starts the next build.
+  - `/audit` returns `builtAt`, `stale` and `refreshing` (+ `processed`). `?nocache=1` no longer drops the cached audit: it starts a rebuild and serves the current one marked `refreshing`. A `noBuild=1` peek still never starts a build; the dashboard follows a stale peek with a normal poll, which starts the rebuild.
+  - The dashboard shows "Showing results from <time>; refreshing…" over the old results and swaps in each finished audit.
+  - The other cached scans aren't covered: they compute inside the request, so they can't get stuck rebuilding.
+  - Known: on Node, peak memory during a rebuild is the old audit plus the build; two overlapping builds can, rarely, land out of order (the next build fixes it); paging can mix two audits if a build lands between page fetches.
+- **#21 external links** (`fix/seo-analyzer-external-links`):
+  - `stats` is `{ total, ok, broken, timeout, error, blocked, unverified }` and adds up to `total`. Classification is `helpers/linkStatus.ts`, applied when the response is built, so saved checks need no migration.
+  - 401, 403, 429, 451 and 999 are "couldn't verify" (login walls, bot walls, rate limits); 404, 410 and 5xx stay broken.
+  - The External tab shows the capped note (N of M), the partial note (X pending and why) and a manual **Continue scan** button (a plain resume). Filters: All / Broken / Couldn't verify (incl. blocked) / OK; a filter whose bucket empties falls back to All. The CSV lists every non-ok link with a `State` column.
+- **#22 alerts and 404 probes** (`feat/seo-analyzer-alerts-chat-404-probes`):
+  - Webhook formats `json` (default), `slack` (`{ text }`) and `discord` (`{ content, allowed_mentions: { parse: [] }, flags: 4 }`): `SEO_ALERT_WEBHOOK_FORMAT`, then the `alertWebhookFormat` option, then the URL host. Messages list up to 10 rows per section, within 3,500 (Slack) / 2,000 (Discord) characters; visitor-supplied paths are escaped. The dashboard link follows `config.routes.admin`.
+  - `notFoundProbeFilter` (default on, `PROBE_PATH_PATTERNS`) drops scanner paths (`*.php`, `/wp-*`, `/.env`, `/.git`, `/cgi-bin`, root backups…) in `recordSeoNotFound` and `POST /seo-logs`, by path only. `false` turns it off, `{ extra: [...] }` adds patterns.
+- **#23 English only** (`refactor/seo-analyzer-english-only`):
+  - Removed: the `fr` dictionaries, French rules and word lists, the French Flesch formula, French meta templates, French GSC CSV headers, the `locale` / `localeMapping` / `customTranslations` options, `resolveAnalysisLocale`, the analysis-locale plumbing, and upstream's French docs.
+  - Readability now uses the English thresholds everywhere (`/admin/seo-config` shows a Flesch default of 60, was 40), and the messages quote the thresholds that fired.
+  - `<news:language>` is Payload's default content locale, or `en`.
+- **#24 Modal and e2e** (`chore/seo-analyzer-modal-e2e`), P3 items 14 and 16:
+  - The bulk-preview dialog is on `DialogModal` / `useModal` (focus trap, Escape, focus back to the opener even when it was disabled while loading). `a11yContract.test.ts` has no exceptions left.
+  - Upstream's `e2e/` harness is deleted. New specs: `seo-sidebar.e2e.spec.ts` (score shows and follows edits) and `seo-redirects.e2e.spec.ts` (create in `/admin/redirects`, 301 with the query kept, delete, 404).
+
+### Next
+
+- **Deployed Worker check of #19–#24** (`pnpm web run deploy`): `/schema-generator` and page JSON-LD, the stale-audit flow on `/admin/seo` (save mid-build), the External tab against real sites, a 404 probe and a real 404, the readability messages, and the bulk-preview dialog.
+- **Real Slack / Discord delivery:** only a local mock receiver was used. Point `SEO_ALERT_WEBHOOK_URL` at a test channel and run "Send now".
+- **Production settings:** set `SITE_URL` (the scheduled alerts digest and rank snapshot have no request origin), and add a Payload email adapter if email alerts are wanted.
+- **Redirect cache:** frontend redirects are cached per isolate for 60 s with no invalidation on change. Invalidate from the redirect hooks if instant redirects matter.
+- **Small cleanups:** rename `hooks/useSeoLocale.ts` (it only holds `useSeoFeature` and `useDashboardT` now); drop the per-content-locale audit builds (the audit is identical for every locale key); decide whether `translations.ts` keeps Payload's other admin languages.
+- **Possible:** a page-picker mode for `/admin/schema-builder` that loads a doc and shows the endpoint's warnings. `apps/web`'s `head()` `WebPage.name` keeps the meta-title suffix on purpose (it matches `<title>`).
 
 ### Backlog
 
@@ -359,18 +414,18 @@ Branch `feat/seo-analyzer-schema-alerts`. Both are on in `apps/web`. Checked on 
 
 ### P3: quality and cleanup
 
-14. **Bulk-preview dialog** in `SeoView.tsx`: still a custom overlay without a focus trap or Escape to close. Move it to Payload `Modal` / `useModal`, then drop the last exception in `a11yContract.test.ts`.
+14. *(done, PR #24)* **Bulk-preview dialog** in `SeoView.tsx` is on Payload's `DialogModal` / `useModal`; `a11yContract.test.ts` has no exceptions left.
 15. **PDF export** (`SeoView.tsx`, `handleExportPdf`): builds a standalone HTML document with hard-coded print colours (the only hex left outside the third-party mock-ups). Fine to keep; move it to a template file if it grows.
-16. **E2E coverage. Mostly done (2026-11-04).** `apps/web/tests/e2e/seo.e2e.spec.ts` renders the five enabled SEO views (header, admin shell, no error boundary, no page error) and checks the root `sitemap.xml` / `robots.txt`; the base URL and port are configurable (`E2E_PORT`, `E2E_BASE_URL`); CI runs the suite on a D1 built from the migrations. Left: delete upstream's `e2e/` (the dead Next.js harness), and add specs as features get turned on (sidebar score on a page edit, a redirect round trip through the UI).
+16. **E2E coverage. Done (2026-11-04).** `apps/web/tests/e2e/seo.e2e.spec.ts` renders the five enabled SEO views (header, admin shell, no error boundary, no page error) and checks the root `sitemap.xml` / `robots.txt`; the base URL and port are configurable (`E2E_PORT`, `E2E_BASE_URL`); CI runs the suite on a D1 built from the migrations. PR #24 deleted upstream's `e2e/` and added the sidebar-score and redirect round-trip specs. Add specs as more features get turned on.
 17. **Docs. Done (2026-11-04).** `README.md` is rewritten for Payload 4 + Workers (setup, options, data store, jobs, env vars without `NEXT_*`, the Workers status of every flag); `docs/THREAT-MODEL.md` got the WebCrypto, resolver and rate-limit changes plus a Workers section (R2 cache contents, in-process 404 recording, data placement). `CHANGELOG.md` stays upstream's history; fork changes are tracked here and in git. Start a fork changelog only if the package is ever published.
 18. **Payload UI notes:**
     - `Button` has no `small` size.
     - `Tabs` has no `aria-label`; it's wrapped in `role="group"`.
     - Payload's `Chip` hard-codes its remove label; the settings view uses its own chip for that reason.
     - Revisit these when Payload 4 leaves beta.
-19. **Breadcrumb names** (`endpoints/breadcrumb.ts`): items prefer `meta.title` over `title`, so names carry the meta title's suffix ("Coffee brewing basics | Cargo Template"). Prefer `title`, or strip a configured site-name suffix.
+19. *(done, PR #19)* **Breadcrumb names** come from the doc's `title`, else `meta.title` minus the site name (`helpers/docTitle.ts`).
 20. **Upstream sync:** `git subtree pull --prefix=packages/payload-seo-analyzer https://github.com/pOwn3d/payload-seo-analyzer.git main`. Expect conflicts in `components/*` (rewritten), `views/*`, `plugin.ts`, `rateLimiter.ts` and the collections. The old fork `0xZ0uk/payload-seo-analyzer` is archived; don't push there.
-21. **Serve the stale audit while rebuilding.** A save bumps the audit's generation, so the dashboard shows "building" until a full rebuild finishes. A save during a multi-step build also makes that build's result stale on arrival. On a big site edited every few minutes, the audit can keep rebuilding without ever being served. Keep the last finished audit, serve it (marked stale) while the next build runs, and let a finished build count even if a save landed meanwhile.
+21. *(done, PR #20)* **Serve the stale audit while rebuilding**: see "Done on 2026-11-04 (loose ends and P3 cleanup)".
 
 ## Definition of done for "fully ported"
 
@@ -378,6 +433,6 @@ Branch `feat/seo-analyzer-schema-alerts`. Both are on in `apps/web`. Checked on 
 - No unpersisted background work and no module-level caches the UI depends on. *(Done for the enabled features.)*
 - No time-series data in the main D1. *(Done: `apps/web` uses `dataStore` with the production SEO_D1, verified on 2026-11-04.)*
 - No hard-coded `/api/seo-plugin` or `/admin` paths. *(Done.)*
-- No `NEXT_*` environment variables. *(Done in code and `README.md`; only upstream's dead `e2e/` harness still mentions them.)*
+- No `NEXT_*` environment variables. *(Done in code and `README.md`; upstream's `e2e/` harness, the last place that mentioned them, is deleted.)*
 - Redirects, `sitemap.xml` and `robots.txt` work on the live site. *(Done on the deployed Worker.)*
-- Unit tests, typecheck, lint and an e2e pass over the SEO views run in CI from the repo root. *(Done: `.github/workflows/ci.yml`, 2026-11-04.)*
+- Unit tests, typecheck, lint and an e2e pass over the SEO views run in CI from the repo root. *(Done: `.github/workflows/ci.yml`, 2026-11-04; the e2e covers the sidebar score and a redirect round trip since PR #24.)*
