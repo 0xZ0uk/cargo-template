@@ -12,10 +12,10 @@ A Payload 4 + TanStack Start template that runs as a single Cloudflare Worker, w
 The app lives in `apps/web` of the Cargo monorepo (see the [root README](../../README.md)).
 
 1. `echo "PAYLOAD_SECRET=$(openssl rand -hex 32)" > apps/web/.env.development.local`
-2. `pnpm install && pnpm dev` from the repo root
+2. `pnpm install && pnpm web migrate && pnpm dev` from the repo root
 3. Open `http://localhost:3000/admin` and create your first user.
 
-`pnpm dev` at the root builds the workspace plugins, keeps them rebuilding on change, and runs TanStack's Node dev server. Wrangler's `getPlatformProxy` provides a local D1 database (stored in `.wrangler/state`). Payload pushes schema changes to it automatically, so you don't need migrations while you develop. Media uploads go to the local `media/` directory.
+`pnpm dev` at the root builds the workspace plugins, keeps them rebuilding on change, and runs TanStack's Node dev server. Wrangler's `getPlatformProxy` provides a local D1 database (stored in `.wrangler/state`). It gets its schema from the committed migrations, like production: run `pnpm migrate` after pulling new migrations or creating one. Payload's dev schema push is off (`push: false`) because it rebuilds tables with `DROP TABLE`, which on D1 cascade-deletes their child rows. Media uploads go to the local `media/` directory.
 
 ### Environment variables
 
@@ -50,11 +50,14 @@ If you rename the Worker, database or bucket, update the names in `wrangler.json
 
 Wrangler stores the local D1 database under `.wrangler/state` by `database_id`, so changing the id gives `pnpm dev` a new, empty local database. To keep your local data, change the id before you start developing. Otherwise, copy the old `.sqlite` file in `.wrangler/state/v3/d1/miniflare-D1DatabaseObject/` to the new file name.
 
-Whenever the Payload schema changes, create a migration and commit it:
+Whenever the Payload schema changes, create a migration, apply it to your local database and commit it:
 
 ```bash
 pnpm migrate:create
+pnpm migrate
 ```
+
+Read the generated SQL before committing. When a change rebuilds a table (`CREATE TABLE __new_x … DROP TABLE x`), D1 ignores the `PRAGMA foreign_keys=OFF` around it, so dropping `x` deletes or nulls every row that references it. Copy those rows aside first and put them back afterwards; `20261105_163314_page_blocks.ts` shows how. Test the migration on a local database that has content, not an empty one.
 
 Then deploy:
 

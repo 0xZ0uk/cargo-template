@@ -92,6 +92,11 @@ export default buildConfig({
     binding: cloudflare.D1,
     blocksAsJSON: true,
     migrationDir: path.resolve(dirname, 'db/migrations'),
+    // No dev schema push: the local D1 is built from the committed migrations (`pnpm migrate`),
+    // like production. Drizzle's push rebuilds changed tables with DROP TABLE, and D1 ignores
+    // PRAGMA foreign_keys=OFF, so a push cascade-deletes child rows (locales, rels, versions'
+    // parents) and can leave the database half-migrated.
+    push: false,
   }),
   // Default is already true; kept explicit because finished jobs (and their logs) would
   // otherwise accumulate in D1.
