@@ -34,7 +34,7 @@ test.describe('SEO analyzer: page sidebar', () => {
   let writesInFlight = 0
 
   /**
-   * A draft page with a Content block, so the analyzer has something to read. Created and
+   * A draft page with a Rich text block, so the analyzer has something to read. Created and
    * deleted through the REST API as the logged-in admin: the dev server then does every page
    * write itself. Seeding with the Local API from this process instead races the server's
    * autosaves for the same SQLite file (`SQLITE_BUSY`).
@@ -44,19 +44,13 @@ test.describe('SEO analyzer: page sidebar', () => {
       data: {
         title: `E2E espresso guide ${Date.now()}`,
         _status: 'draft',
-        hero: { type: 'none' },
         layout: [
           {
-            blockType: 'content',
-            columns: [
-              {
-                size: 'full',
-                richText: lexicalParagraphs(
-                  'Espresso is brewed by forcing hot water through finely ground coffee.',
-                  'A good shot needs fresh beans, a steady grind and about thirty seconds.',
-                ),
-              },
-            ],
+            blockType: 'richText',
+            richText: lexicalParagraphs(
+              'Espresso is brewed by forcing hot water through finely ground coffee.',
+              'A good shot needs fresh beans, a steady grind and about thirty seconds.',
+            ),
           },
         ],
       },
@@ -147,7 +141,6 @@ test.describe('SEO analyzer: page sidebar', () => {
 
     await page.getByRole('tab', { name: 'Content' }).click()
     await page.getByRole('button', { name: 'Show All: Layout' }).click()
-    await page.getByRole('button', { name: 'Show All: Columns' }).click()
     const editor = page.getByRole('tabpanel', { name: 'Content' }).locator('[data-lexical-editor="true"]').first()
     await editor.click()
     await page.keyboard.press('Control+End')

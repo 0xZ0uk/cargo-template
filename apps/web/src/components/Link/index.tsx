@@ -26,7 +26,7 @@ type CMSLinkType = {
 export const CMSLink: React.FC<CMSLinkType> = (props) => {
   const {
     type,
-    appearance = 'inline',
+    appearance: appearanceProp = 'inline',
     children,
     className,
     label,
@@ -42,6 +42,8 @@ export const CMSLink: React.FC<CMSLinkType> = (props) => {
   if (!slug && !url) return null
 
   const newTabProps = newTab ? { rel: 'noopener noreferrer', target: '_blank' } : {}
+  // `null` is a button link whose appearance an editor cleared: show the default button.
+  const appearance = appearanceProp ?? 'default'
   // Button appearances style the anchor itself (shadcn's pattern for links), so it stays a
   // link to assistive tech. Inline links keep the rich text's own styles. A `link`
   // appearance gets no size, so it has no button height or padding.

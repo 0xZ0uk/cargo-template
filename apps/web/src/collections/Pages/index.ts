@@ -10,10 +10,7 @@ import {
 
 import { authenticated } from '@/access/authenticated'
 import { authenticatedOrPublished } from '@/access/authenticatedOrPublished'
-import { CallToAction } from '@/blocks/CallToAction/config'
-import { Content } from '@/blocks/Content/config'
-import { MediaBlock } from '@/blocks/MediaBlock/config'
-import { hero } from '@/heros/config'
+import { pageBlockSlugs } from '@/blocks'
 import { populatePublishedAt } from '@/hooks/populatePublishedAt'
 import { pagePath } from '@/utilities/pagePath'
 
@@ -53,15 +50,12 @@ export const Pages: CollectionConfig = {
       type: 'tabs',
       tabs: [
         {
-          fields: [hero],
-          label: 'Hero',
-        },
-        {
           fields: [
             {
               name: 'layout',
               type: 'blocks',
-              blocks: [CallToAction, Content, MediaBlock],
+              // Registered once in `payload.config.ts` (`blocks`), listed here by slug.
+              blocks: pageBlockSlugs,
               required: true,
               admin: {
                 initCollapsed: true,

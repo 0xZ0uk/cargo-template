@@ -1,65 +1,52 @@
-import { cn } from '@/utilities/ui'
 import React from 'react'
-import RichText from '@/components/RichText'
 
-import type { MediaBlock as MediaBlockProps } from '@/payload-types'
+import type { MediaSectionBlock } from '@/payload-types'
 
-import { Media } from '../../components/Media'
+import { Media } from '@/components/Media'
+import { BlockMedia } from '@/components/Media/BlockMedia'
+import { cn } from '@/utilities/ui'
 
-type Props = MediaBlockProps & {
-  breakout?: boolean
-  captionClassName?: string
-  className?: string
-  enableGutter?: boolean
-  imgClassName?: string
-  staticImage?: string
-  disableInnerContainer?: boolean
-}
+// Images keep their natural aspect ratio (the `<img>` carries width/height); videos fill the
+// width. Nothing is cropped, so no fixed aspect box.
+const naturalMedia = 'block h-auto w-full'
 
-export const MediaBlock: React.FC<Props> = (props) => {
-  const {
-    captionClassName,
-    className,
-    enableGutter = true,
-    imgClassName,
-    media,
-    staticImage,
-    disableInnerContainer,
-  } = props
+export const MediaBlock: React.FC<MediaSectionBlock> = ({ caption, media, variant }) => {
+  const hasMedia = Boolean(media && typeof media === 'object')
+  const isFull = variant === 'full'
+  const rounded = isFull ? undefined : 'overflow-hidden rounded-xl'
 
-  let caption
-  if (media && typeof media === 'object') caption = media.caption
+  const visual = hasMedia ? (
+    <Media
+      className={rounded}
+      imgClassName={naturalMedia}
+      resource={media}
+      videoClassName={naturalMedia}
+    />
+  ) : (
+    <BlockMedia className={cn('aspect-video w-full', rounded)} />
+  )
+
+  const figcaption = caption ? (
+    <figcaption className="text-muted-foreground mt-3 text-center text-sm text-pretty">
+      {caption}
+    </figcaption>
+  ) : null
+
+  if (isFull) {
+    return (
+      <figure>
+        {visual}
+        {figcaption ? <div className="container">{figcaption}</div> : null}
+      </figure>
+    )
+  }
 
   return (
-    <div
-      className={cn(
-        '',
-        {
-          container: enableGutter,
-        },
-        className,
-      )}
-    >
-      {(media || staticImage) && (
-        <Media
-          imgClassName={cn('border border-border rounded-[0.8rem]', imgClassName)}
-          resource={media}
-          src={staticImage}
-        />
-      )}
-      {caption && (
-        <div
-          className={cn(
-            'mt-6',
-            {
-              container: !disableInnerContainer,
-            },
-            captionClassName,
-          )}
-        >
-          <RichText data={caption} enableGutter={false} />
-        </div>
-      )}
+    <div className="container">
+      <figure className={cn(variant === 'narrow' && 'mx-auto max-w-3xl')}>
+        {visual}
+        {figcaption}
+      </figure>
     </div>
   )
 }

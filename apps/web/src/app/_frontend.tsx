@@ -1,9 +1,7 @@
 /// <reference types="vite/client" />
 
 import { OnPage } from '@cargo/onpage-tanstack-start'
-import { createFileRoute, Outlet, useMatches } from '@tanstack/react-router'
-
-import type { LoadPageResult } from './_frontend/pages.functions'
+import { createFileRoute, Outlet } from '@tanstack/react-router'
 
 import { NotFound } from '@/components/NotFound'
 import { Footer } from '@/Footer/Component'
@@ -28,19 +26,9 @@ export const Route = createFileRoute('/_frontend')({
 function FrontendLayout() {
   const { footer, header } = Route.useLoaderData()
 
-  // A high-impact hero's image sits behind the header, so the header switches to its dark
-  // (light-on-dark) theme. Reading it from the page's loader data renders it on the server too.
-  const hasHighImpactHero = useMatches({
-    select: (matches) =>
-      matches.some(
-        (match) =>
-          (match.loaderData as LoadPageResult | undefined)?.page?.hero?.type === 'highImpact',
-      ),
-  })
-
   return (
     <div className="flex min-h-screen flex-col">
-      <Header data={header} theme={hasHighImpactHero ? 'dark' : undefined} />
+      <Header data={header} />
       <Outlet />
       <Footer data={footer} />
       {/* The on-page editor, or the shared-preview bar. Renders nothing and sends no requests

@@ -17,6 +17,7 @@ import { Route as SitemapDotxmlRouteImport } from './app/sitemap[.]xml'
 import { Route as FrontendIndexRouteImport } from './app/_frontend/index'
 import { Route as FrontendSplatRouteImport } from './app/_frontend/$'
 import { Route as FrontendSlugRouteImport } from './app/_frontend/$slug'
+import { Route as FrontendDevBlocksRouteImport } from './app/_frontend/dev.blocks'
 import { Route as PayloadAdminIndexRouteImport } from './app/_payload/admin.index'
 import { Route as PayloadAdminSplatRouteImport } from './app/_payload/admin.$'
 import { Route as PayloadApiSplatRouteImport } from './app/_payload/api.$'
@@ -59,6 +60,11 @@ const FrontendSlugRoute = FrontendSlugRouteImport.update({
   path: '/$slug',
   getParentRoute: () => FrontendRoute,
 } as any)
+const FrontendDevBlocksRoute = FrontendDevBlocksRouteImport.update({
+  id: '/dev/blocks',
+  path: '/dev/blocks',
+  getParentRoute: () => FrontendRoute,
+} as any)
 const PayloadAdminIndexRoute = PayloadAdminIndexRouteImport.update({
   id: '/admin/',
   path: '/admin/',
@@ -82,6 +88,7 @@ export interface FileRoutesByFullPath {
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/$': typeof FrontendSplatRoute
   '/$slug': typeof FrontendSlugRoute
+  '/dev/blocks': typeof FrontendDevBlocksRoute
   '/admin/$': typeof PayloadAdminSplatRoute
   '/api/$': typeof PayloadApiSplatRoute
   '/admin/': typeof PayloadAdminIndexRoute
@@ -93,6 +100,7 @@ export interface FileRoutesByTo {
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/$': typeof FrontendSplatRoute
   '/$slug': typeof FrontendSlugRoute
+  '/dev/blocks': typeof FrontendDevBlocksRoute
   '/admin/$': typeof PayloadAdminSplatRoute
   '/api/$': typeof PayloadApiSplatRoute
   '/admin': typeof PayloadAdminIndexRoute
@@ -107,6 +115,7 @@ export interface FileRoutesById {
   '/_frontend/$': typeof FrontendSplatRoute
   '/_frontend/$slug': typeof FrontendSlugRoute
   '/_frontend/': typeof FrontendIndexRoute
+  '/_frontend/dev/blocks': typeof FrontendDevBlocksRoute
   '/_payload/admin/$': typeof PayloadAdminSplatRoute
   '/_payload/api/$': typeof PayloadApiSplatRoute
   '/_payload/admin/': typeof PayloadAdminIndexRoute
@@ -120,6 +129,7 @@ export interface FileRouteTypes {
     | '/sitemap.xml'
     | '/$'
     | '/$slug'
+    | '/dev/blocks'
     | '/admin/$'
     | '/api/$'
     | '/admin/'
@@ -131,6 +141,7 @@ export interface FileRouteTypes {
     | '/sitemap.xml'
     | '/$'
     | '/$slug'
+    | '/dev/blocks'
     | '/admin/$'
     | '/api/$'
     | '/admin'
@@ -144,6 +155,7 @@ export interface FileRouteTypes {
     | '/_frontend/$'
     | '/_frontend/$slug'
     | '/_frontend/'
+    | '/_frontend/dev/blocks'
     | '/_payload/admin/$'
     | '/_payload/api/$'
     | '/_payload/admin/'
@@ -215,6 +227,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FrontendSlugRouteImport
       parentRoute: typeof FrontendRoute
     }
+    '/_frontend/dev/blocks': {
+      id: '/_frontend/dev/blocks'
+      path: '/dev/blocks'
+      fullPath: '/dev/blocks'
+      preLoaderRoute: typeof FrontendDevBlocksRouteImport
+      parentRoute: typeof FrontendRoute
+    }
     '/_payload/admin/': {
       id: '/_payload/admin/'
       path: '/admin'
@@ -243,12 +262,14 @@ interface FrontendRouteChildren {
   FrontendSplatRoute: typeof FrontendSplatRoute
   FrontendSlugRoute: typeof FrontendSlugRoute
   FrontendIndexRoute: typeof FrontendIndexRoute
+  FrontendDevBlocksRoute: typeof FrontendDevBlocksRoute
 }
 
 const FrontendRouteChildren: FrontendRouteChildren = {
   FrontendSplatRoute: FrontendSplatRoute,
   FrontendSlugRoute: FrontendSlugRoute,
   FrontendIndexRoute: FrontendIndexRoute,
+  FrontendDevBlocksRoute: FrontendDevBlocksRoute,
 }
 
 const FrontendRouteWithChildren = FrontendRoute._addFileChildren(

@@ -17,6 +17,8 @@ import { Media } from './collections/Media'
 import { Folders } from './collections/Folders'
 import { Tags } from './collections/Tags'
 import { Pages } from './collections/Pages'
+import { Sections } from './collections/Sections'
+import { blocks } from './blocks'
 import { Footer } from './Footer/config'
 import { Header } from './Header/config'
 import { defaultLexical } from './fields/defaultLexical'
@@ -74,15 +76,21 @@ export default buildConfig({
       baseDir: path.resolve(dirname),
     },
   },
-  collections: [Pages, Users, Media, Folders, Tags],
+  // Page blocks (src/blocks), defined once and listed by slug in each blocks field.
+  blocks,
+  collections: [Pages, Sections, Users, Media, Folders, Tags],
   editor: defaultLexical,
   globals: [Header, Footer],
   secret,
   typescript: {
     outputFile: path.resolve(dirname, 'payload-types.ts'),
   },
+  // Blocks are stored as one JSON column per blocks field instead of a table per block and
+  // array (two with versions). A block library would otherwise add 100+ tables to D1, all
+  // read on every page load.
   db: sqliteD1Adapter({
     binding: cloudflare.D1,
+    blocksAsJSON: true,
     migrationDir: path.resolve(dirname, 'db/migrations'),
   }),
   // Default is already true; kept explicit because finished jobs (and their logs) would
@@ -117,7 +125,7 @@ export default buildConfig({
         },
         pages: {
           description:
-            'Website pages, served at /<slug> (the page with slug "home" is served at /). Built from a hero, layout blocks and SEO meta. Saved as drafts until published.',
+            'Website pages, served at /<slug> (the page with slug "home" is served at /). Built from layout blocks (sections) and SEO meta. Saved as drafts until published.',
         },
         media: {
           description:

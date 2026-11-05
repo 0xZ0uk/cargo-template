@@ -74,6 +74,30 @@ export type LexicalNodes_17BFECDB =
   | SerializedLinkNode<LexicalNodes_17BFECDB, LexicalLinkFields>;
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "LexicalNodes_6BBC15B4".
+ */
+export type LexicalNodes_6BBC15B4 =
+  | SerializedTextNode
+  | SerializedTabNode
+  | SerializedLineBreakNode
+  | SerializedParagraphNode<LexicalNodes_6BBC15B4>
+  | SerializedHeadingNode<LexicalNodes_6BBC15B4>
+  | SerializedAutoLinkNode<LexicalNodes_6BBC15B4, LexicalLinkFields>
+  | SerializedLinkNode<LexicalNodes_6BBC15B4, LexicalLinkFields>;
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "LexicalNodes_1F46C3CC".
+ */
+export type LexicalNodes_1F46C3CC =
+  | SerializedTextNode
+  | SerializedTabNode
+  | SerializedLineBreakNode
+  | SerializedParagraphNode<LexicalNodes_1F46C3CC>
+  | SerializedHeadingNode<LexicalNodes_1F46C3CC, 'h4'>
+  | SerializedAutoLinkNode<LexicalNodes_1F46C3CC, LexicalLinkFields>
+  | SerializedLinkNode<LexicalNodes_1F46C3CC, LexicalLinkFields>;
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "LexicalNodes_556A39AF".
  */
 export type LexicalNodes_556A39AF =
@@ -112,9 +136,29 @@ export interface Config {
   auth: {
     users: UserAuthOperations;
   };
-  blocks: {};
+  blocks: {
+    hero: HeroBlock;
+    pageHeader: PageHeaderBlock;
+    richText: RichTextBlock;
+    faq: FaqBlock;
+    features: FeaturesBlock;
+    featureRows: FeatureRowsBlock;
+    steps: StepsBlock;
+    testimonials: TestimonialsBlock;
+    reviews: ReviewsBlock;
+    logos: LogosBlock;
+    stats: StatsBlock;
+    cta: CtaBlock;
+    pricing: PricingBlock;
+    mediaBlock: MediaSectionBlock;
+    gallery: GalleryBlock;
+    embed: EmbedBlock;
+    columns: ColumnsBlock;
+    globalSection: GlobalSectionBlock;
+  };
   collections: {
     pages: Page;
+    sections: Section;
     users: User;
     media: Media;
     folders: Folder;
@@ -131,6 +175,7 @@ export interface Config {
   collectionsJoins: {};
   collectionsSelect: {
     pages: PagesSelect<false> | PagesSelect<true>;
+    sections: SectionsSelect<false> | SectionsSelect<true>;
     users: UsersSelect<false> | UsersSelect<true>;
     media: MediaSelect<false> | MediaSelect<true>;
     folders: FoldersSelect<false> | FoldersSelect<true>;
@@ -200,36 +245,78 @@ export interface UserAuthOperations {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "HeroBlock".
+ */
+export interface HeroBlock {
+  variant: 'centered' | 'split' | 'image';
+  /**
+   * Short label above the title.
+   */
+  eyebrow?: string | null;
+  title: string;
+  description?: string | null;
+  links?:
+    | {
+        link: {
+          type?: ('reference' | 'custom') | null;
+          newTab?: boolean | null;
+          reference?: {
+            relationTo: 'pages';
+            value: number | Page;
+          } | null;
+          url?: string | null;
+          label: string;
+          /**
+           * Choose how the link should be rendered.
+           */
+          appearance?: ('default' | 'outline') | null;
+        };
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * Shown below the text (Centered), beside it (Split) or behind it (Background image).
+   */
+  media?: (number | null) | Media;
+  section: {
+    background: 'default' | 'muted' | 'dark';
+    spacing: 'none' | 'sm' | 'md' | 'lg';
+    /**
+     * Lets links jump here with #anchor. Lowercase letters, digits, dashes.
+     */
+    anchor?: string | null;
+  };
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'hero';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "pages".
  */
 export interface Page {
   id: number;
   title: string;
-  hero: {
-    type: 'none' | 'highImpact' | 'mediumImpact' | 'lowImpact';
-    richText?: LexicalRichText<LexicalNodes_17BFECDB> | null;
-    links?:
-      | {
-          link: {
-            type?: ('reference' | 'custom') | null;
-            newTab?: boolean | null;
-            reference?: {
-              relationTo: 'pages';
-              value: number | Page;
-            } | null;
-            url?: string | null;
-            label: string;
-            /**
-             * Choose how the link should be rendered.
-             */
-            appearance?: ('default' | 'outline') | null;
-          };
-          id?: string | null;
-        }[]
-      | null;
-    media?: (number | null) | Media;
-  };
-  layout: (CallToActionBlock | ContentBlock | MediaBlock)[];
+  layout: (
+    | HeroBlock
+    | PageHeaderBlock
+    | RichTextBlock
+    | FaqBlock
+    | FeaturesBlock
+    | FeatureRowsBlock
+    | StepsBlock
+    | TestimonialsBlock
+    | ReviewsBlock
+    | LogosBlock
+    | StatsBlock
+    | CtaBlock
+    | PricingBlock
+    | MediaSectionBlock
+    | GalleryBlock
+    | EmbedBlock
+    | ColumnsBlock
+    | GlobalSectionBlock
+  )[];
   meta?: {
     title?: string | null;
     /**
@@ -268,6 +355,225 @@ export interface Page {
   updatedAt: string;
   createdAt: string;
   _status?: ('draft' | 'published') | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "PageHeaderBlock".
+ */
+export interface PageHeaderBlock {
+  variant: 'simple' | 'centered';
+  /**
+   * Short label above the title.
+   */
+  eyebrow?: string | null;
+  title: string;
+  description?: string | null;
+  /**
+   * Shows Home › this page above the title.
+   */
+  showBreadcrumbs?: boolean | null;
+  section: {
+    background: 'default' | 'muted' | 'dark';
+    spacing: 'none' | 'sm' | 'md' | 'lg';
+    /**
+     * Lets links jump here with #anchor. Lowercase letters, digits, dashes.
+     */
+    anchor?: string | null;
+  };
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'pageHeader';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "RichTextBlock".
+ */
+export interface RichTextBlock {
+  variant: 'narrow' | 'wide';
+  richText: LexicalRichText<LexicalNodes_17BFECDB>;
+  section: {
+    background: 'default' | 'muted' | 'dark';
+    spacing: 'none' | 'sm' | 'md' | 'lg';
+    /**
+     * Lets links jump here with #anchor. Lowercase letters, digits, dashes.
+     */
+    anchor?: string | null;
+  };
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'richText';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "FaqBlock".
+ */
+export interface FaqBlock {
+  variant: 'accordion' | 'split' | 'grid';
+  /**
+   * Short label above the title.
+   */
+  eyebrow?: string | null;
+  title?: string | null;
+  description?: string | null;
+  /**
+   * Questions and answers, in the order they appear.
+   */
+  items?:
+    | {
+        question: string;
+        answer: LexicalRichText<LexicalNodes_6BBC15B4>;
+        id?: string | null;
+      }[]
+    | null;
+  section: {
+    background: 'default' | 'muted' | 'dark';
+    spacing: 'none' | 'sm' | 'md' | 'lg';
+    /**
+     * Lets links jump here with #anchor. Lowercase letters, digits, dashes.
+     */
+    anchor?: string | null;
+  };
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'faq';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "FeaturesBlock".
+ */
+export interface FeaturesBlock {
+  variant: 'grid' | 'cards' | 'list';
+  /**
+   * Short label above the title.
+   */
+  eyebrow?: string | null;
+  title?: string | null;
+  description?: string | null;
+  items?:
+    | {
+        /**
+         * Shown next to the title.
+         */
+        icon?:
+          | (
+              | 'arrow-right'
+              | 'award'
+              | 'bar-chart'
+              | 'bell'
+              | 'book-open'
+              | 'briefcase'
+              | 'calendar'
+              | 'check'
+              | 'circle-check'
+              | 'clock'
+              | 'cloud'
+              | 'code'
+              | 'credit-card'
+              | 'gauge'
+              | 'gift'
+              | 'globe'
+              | 'heart'
+              | 'layers'
+              | 'layout'
+              | 'leaf'
+              | 'lightbulb'
+              | 'lock'
+              | 'mail'
+              | 'map-pin'
+              | 'message-circle'
+              | 'phone'
+              | 'puzzle'
+              | 'rocket'
+              | 'search'
+              | 'settings'
+              | 'shield-check'
+              | 'smile'
+              | 'sparkles'
+              | 'star'
+              | 'target'
+              | 'thumbs-up'
+              | 'trending-up'
+              | 'truck'
+              | 'users'
+              | 'wand'
+              | 'wrench'
+              | 'zap'
+            )
+          | null;
+        title: string;
+        description?: string | null;
+        id?: string | null;
+      }[]
+    | null;
+  section: {
+    background: 'default' | 'muted' | 'dark';
+    spacing: 'none' | 'sm' | 'md' | 'lg';
+    /**
+     * Lets links jump here with #anchor. Lowercase letters, digits, dashes.
+     */
+    anchor?: string | null;
+  };
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'features';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "FeatureRowsBlock".
+ */
+export interface FeatureRowsBlock {
+  variant: 'alternating' | 'imageLeft' | 'imageRight';
+  /**
+   * Short label above the title.
+   */
+  eyebrow?: string | null;
+  title?: string | null;
+  description?: string | null;
+  /**
+   * Each row pairs an image or video with text.
+   */
+  rows?:
+    | {
+        /**
+         * Short label above the title.
+         */
+        eyebrow?: string | null;
+        title: string;
+        richText?: LexicalRichText<LexicalNodes_1F46C3CC> | null;
+        links?:
+          | {
+              link: {
+                type?: ('reference' | 'custom') | null;
+                newTab?: boolean | null;
+                reference?: {
+                  relationTo: 'pages';
+                  value: number | Page;
+                } | null;
+                url?: string | null;
+                label: string;
+                /**
+                 * Choose how the link should be rendered.
+                 */
+                appearance?: ('default' | 'outline') | null;
+              };
+              id?: string | null;
+            }[]
+          | null;
+        media?: (number | null) | Media;
+        id?: string | null;
+      }[]
+    | null;
+  section: {
+    background: 'default' | 'muted' | 'dark';
+    spacing: 'none' | 'sm' | 'md' | 'lg';
+    /**
+     * Lets links jump here with #anchor. Lowercase letters, digits, dashes.
+     */
+    anchor?: string | null;
+  };
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'featureRows';
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -390,10 +696,523 @@ export interface Tag {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "CallToActionBlock".
+ * via the `definition` "StepsBlock".
  */
-export interface CallToActionBlock {
-  richText?: LexicalRichText<LexicalNodes_17BFECDB> | null;
+export interface StepsBlock {
+  variant: 'cards' | 'timeline' | 'horizontal';
+  /**
+   * Short label above the title.
+   */
+  eyebrow?: string | null;
+  title?: string | null;
+  description?: string | null;
+  /**
+   * The steps, in order. Numbers (01, 02…) are added automatically.
+   */
+  items?:
+    | {
+        title: string;
+        description?: string | null;
+        /**
+         * Optional. Shown next to the step number.
+         */
+        icon?:
+          | (
+              | 'arrow-right'
+              | 'award'
+              | 'bar-chart'
+              | 'bell'
+              | 'book-open'
+              | 'briefcase'
+              | 'calendar'
+              | 'check'
+              | 'circle-check'
+              | 'clock'
+              | 'cloud'
+              | 'code'
+              | 'credit-card'
+              | 'gauge'
+              | 'gift'
+              | 'globe'
+              | 'heart'
+              | 'layers'
+              | 'layout'
+              | 'leaf'
+              | 'lightbulb'
+              | 'lock'
+              | 'mail'
+              | 'map-pin'
+              | 'message-circle'
+              | 'phone'
+              | 'puzzle'
+              | 'rocket'
+              | 'search'
+              | 'settings'
+              | 'shield-check'
+              | 'smile'
+              | 'sparkles'
+              | 'star'
+              | 'target'
+              | 'thumbs-up'
+              | 'trending-up'
+              | 'truck'
+              | 'users'
+              | 'wand'
+              | 'wrench'
+              | 'zap'
+            )
+          | null;
+        id?: string | null;
+      }[]
+    | null;
+  section: {
+    background: 'default' | 'muted' | 'dark';
+    spacing: 'none' | 'sm' | 'md' | 'lg';
+    /**
+     * Lets links jump here with #anchor. Lowercase letters, digits, dashes.
+     */
+    anchor?: string | null;
+  };
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'steps';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TestimonialsBlock".
+ */
+export interface TestimonialsBlock {
+  variant: 'grid' | 'masonry' | 'spotlight';
+  /**
+   * Short label above the title.
+   */
+  eyebrow?: string | null;
+  title?: string | null;
+  description?: string | null;
+  /**
+   * Customer quotes. The Spotlight layout shows only the first one; the others are ignored.
+   */
+  items?:
+    | {
+        quote: string;
+        name: string;
+        /**
+         * Job title and company, e.g. "CTO, Acme".
+         */
+        role?: string | null;
+        /**
+         * Optional portrait. Initials are shown without one.
+         */
+        avatar?: (number | null) | Media;
+        id?: string | null;
+      }[]
+    | null;
+  section: {
+    background: 'default' | 'muted' | 'dark';
+    spacing: 'none' | 'sm' | 'md' | 'lg';
+    /**
+     * Lets links jump here with #anchor. Lowercase letters, digits, dashes.
+     */
+    anchor?: string | null;
+  };
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'testimonials';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ReviewsBlock".
+ */
+export interface ReviewsBlock {
+  variant: 'grid' | 'summary' | 'list';
+  /**
+   * Short label above the title.
+   */
+  eyebrow?: string | null;
+  title?: string | null;
+  description?: string | null;
+  /**
+   * Average rating out of 5, e.g. 4.8.
+   */
+  average?: number | null;
+  /**
+   * Number of reviews, e.g. 1,200.
+   */
+  count?: string | null;
+  /**
+   * Where the reviews come from, e.g. Google.
+   */
+  source?: string | null;
+  items?:
+    | {
+        rating: '1' | '2' | '3' | '4' | '5';
+        title?: string | null;
+        body: string;
+        author: string;
+        /**
+         * Free text, e.g. March 2026.
+         */
+        date?: string | null;
+        id?: string | null;
+      }[]
+    | null;
+  section: {
+    background: 'default' | 'muted' | 'dark';
+    spacing: 'none' | 'sm' | 'md' | 'lg';
+    /**
+     * Lets links jump here with #anchor. Lowercase letters, digits, dashes.
+     */
+    anchor?: string | null;
+  };
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'reviews';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "LogosBlock".
+ */
+export interface LogosBlock {
+  variant: 'row' | 'grid' | 'marquee';
+  /**
+   * Small label above the logos, e.g. "Trusted by teams at".
+   */
+  title?: string | null;
+  items?:
+    | {
+        /**
+         * Company name. Shown as text when there is no logo, and used as its alt text.
+         */
+        name: string;
+        /**
+         * A transparent PNG or SVG works best. Shown at a fixed height.
+         */
+        logo?: (number | null) | Media;
+        /**
+         * Optional. Makes the logo a link that opens in a new tab.
+         */
+        url?: string | null;
+        id?: string | null;
+      }[]
+    | null;
+  section: {
+    background: 'default' | 'muted' | 'dark';
+    spacing: 'none' | 'sm' | 'md' | 'lg';
+    /**
+     * Lets links jump here with #anchor. Lowercase letters, digits, dashes.
+     */
+    anchor?: string | null;
+  };
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'logos';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "StatsBlock".
+ */
+export interface StatsBlock {
+  variant: 'row' | 'cards' | 'split';
+  /**
+   * Short label above the title.
+   */
+  eyebrow?: string | null;
+  title?: string | null;
+  description?: string | null;
+  /**
+   * Up to 8 numbers. The Row variant shows up to 4 per line.
+   */
+  items?:
+    | {
+        /**
+         * The big number, as you want it shown: 98%, 2.5M, 24/7.
+         */
+        value: string;
+        label: string;
+        /**
+         * Optional detail. Shown in the Cards variant.
+         */
+        description?: string | null;
+        id?: string | null;
+      }[]
+    | null;
+  section: {
+    background: 'default' | 'muted' | 'dark';
+    spacing: 'none' | 'sm' | 'md' | 'lg';
+    /**
+     * Lets links jump here with #anchor. Lowercase letters, digits, dashes.
+     */
+    anchor?: string | null;
+  };
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'stats';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "CtaBlock".
+ */
+export interface CtaBlock {
+  variant: 'banner' | 'split' | 'centered';
+  /**
+   * Short label above the title.
+   */
+  eyebrow?: string | null;
+  title: string;
+  description?: string | null;
+  links?:
+    | {
+        link: {
+          type?: ('reference' | 'custom') | null;
+          newTab?: boolean | null;
+          reference?: {
+            relationTo: 'pages';
+            value: number | Page;
+          } | null;
+          url?: string | null;
+          label: string;
+          /**
+           * Choose how the link should be rendered.
+           */
+          appearance?: ('default' | 'outline') | null;
+        };
+        id?: string | null;
+      }[]
+    | null;
+  section: {
+    background: 'default' | 'muted' | 'dark';
+    spacing: 'none' | 'sm' | 'md' | 'lg';
+    /**
+     * Lets links jump here with #anchor. Lowercase letters, digits, dashes.
+     */
+    anchor?: string | null;
+  };
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'cta';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "PricingBlock".
+ */
+export interface PricingBlock {
+  variant: 'cards' | 'single';
+  /**
+   * Short label above the title.
+   */
+  eyebrow?: string | null;
+  title?: string | null;
+  description?: string | null;
+  /**
+   * Up to four plans. The "Cards" variant shows them side by side; "Single plan" shows only the first one.
+   */
+  plans?:
+    | {
+        name: string;
+        /**
+         * For example "$29", "Free" or "Custom".
+         */
+        price?: string | null;
+        /**
+         * Shown next to the price, for example "/month".
+         */
+        period?: string | null;
+        description?: string | null;
+        features?:
+          | {
+              feature: string;
+              id?: string | null;
+            }[]
+          | null;
+        /**
+         * Gives the plan a primary outline and a badge.
+         */
+        highlighted?: boolean | null;
+        /**
+         * For example "Most popular".
+         */
+        badge?: string | null;
+        link: {
+          type?: ('reference' | 'custom') | null;
+          newTab?: boolean | null;
+          reference?: {
+            relationTo: 'pages';
+            value: number | Page;
+          } | null;
+          url?: string | null;
+          label: string;
+        };
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * Small text under the plans, for example "Prices exclude VAT".
+   */
+  footnote?: string | null;
+  section: {
+    background: 'default' | 'muted' | 'dark';
+    spacing: 'none' | 'sm' | 'md' | 'lg';
+    /**
+     * Lets links jump here with #anchor. Lowercase letters, digits, dashes.
+     */
+    anchor?: string | null;
+  };
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'pricing';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "MediaSectionBlock".
+ */
+export interface MediaSectionBlock {
+  variant: 'contained' | 'narrow' | 'full';
+  /**
+   * An image or video. It keeps its own proportions, so nothing gets cropped.
+   */
+  media?: (number | null) | Media;
+  /**
+   * Optional line shown under the media.
+   */
+  caption?: string | null;
+  section: {
+    background: 'default' | 'muted' | 'dark';
+    spacing: 'none' | 'sm' | 'md' | 'lg';
+    /**
+     * Lets links jump here with #anchor. Lowercase letters, digits, dashes.
+     */
+    anchor?: string | null;
+  };
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'mediaBlock';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "GalleryBlock".
+ */
+export interface GalleryBlock {
+  variant: 'grid' | 'masonry' | 'carousel';
+  /**
+   * Short label above the title.
+   */
+  eyebrow?: string | null;
+  title?: string | null;
+  description?: string | null;
+  items?:
+    | {
+        media?: (number | null) | Media;
+        /**
+         * Shown under the image. Optional.
+         */
+        caption?: string | null;
+        id?: string | null;
+      }[]
+    | null;
+  section: {
+    background: 'default' | 'muted' | 'dark';
+    spacing: 'none' | 'sm' | 'md' | 'lg';
+    /**
+     * Lets links jump here with #anchor. Lowercase letters, digits, dashes.
+     */
+    anchor?: string | null;
+  };
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'gallery';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "EmbedBlock".
+ */
+export interface EmbedBlock {
+  variant: 'video' | 'square' | 'tall';
+  /**
+   * Link to the content. Supported: YouTube, Vimeo, Loom, Spotify (track, album, playlist, episode, show), Google Maps (the "Embed a map" link from Share) and Calendly. https only; other sites are not embedded.
+   */
+  url: string;
+  /**
+   * Describes the embed for screen readers (for example "Product walkthrough"). Not shown on the page.
+   */
+  title: string;
+  /**
+   * Optional line shown below the embed.
+   */
+  caption?: string | null;
+  section: {
+    background: 'default' | 'muted' | 'dark';
+    spacing: 'none' | 'sm' | 'md' | 'lg';
+    /**
+     * Lets links jump here with #anchor. Lowercase letters, digits, dashes.
+     */
+    anchor?: string | null;
+  };
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'embed';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ColumnsBlock".
+ */
+export interface ColumnsBlock {
+  variant: 'halves' | 'thirds' | 'quarters' | 'twoOne' | 'oneTwo';
+  /**
+   * Short label above the title.
+   */
+  eyebrow?: string | null;
+  title?: string | null;
+  description?: string | null;
+  /**
+   * The layout decides the widths. On phones every column stacks; extra columns wrap onto a new row.
+   */
+  columns?:
+    | {
+        content?: (ColumnTextElement | ColumnMediaElement | ColumnButtonsElement | ColumnCardElement)[] | null;
+        id?: string | null;
+      }[]
+    | null;
+  section: {
+    background: 'default' | 'muted' | 'dark';
+    spacing: 'none' | 'sm' | 'md' | 'lg';
+    /**
+     * Lets links jump here with #anchor. Lowercase letters, digits, dashes.
+     */
+    anchor?: string | null;
+  };
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'columns';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ColumnTextElement".
+ */
+export interface ColumnTextElement {
+  richText: LexicalRichText<LexicalNodes_556A39AF>;
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'columnText';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ColumnMediaElement".
+ */
+export interface ColumnMediaElement {
+  media?: (number | null) | Media;
+  /**
+   * Optional line shown under the media.
+   */
+  caption?: string | null;
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'columnMedia';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ColumnButtonsElement".
+ */
+export interface ColumnButtonsElement {
   links?:
     | {
         link: {
@@ -415,48 +1234,130 @@ export interface CallToActionBlock {
     | null;
   id?: string | null;
   blockName?: string | null;
-  blockType: 'cta';
+  blockType: 'columnButtons';
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "ContentBlock".
+ * via the `definition` "ColumnCardElement".
  */
-export interface ContentBlock {
-  columns?:
-    | {
-        size?: ('oneThird' | 'half' | 'twoThirds' | 'full') | null;
-        richText?: LexicalRichText<LexicalNodes_556A39AF> | null;
-        enableLink?: boolean | null;
-        link?: {
-          type?: ('reference' | 'custom') | null;
-          newTab?: boolean | null;
-          reference?: {
-            relationTo: 'pages';
-            value: number | Page;
-          } | null;
-          url?: string | null;
-          label: string;
-          /**
-           * Choose how the link should be rendered.
-           */
-          appearance?: ('default' | 'outline') | null;
-        };
-        id?: string | null;
-      }[]
+export interface ColumnCardElement {
+  icon?:
+    | (
+        | 'arrow-right'
+        | 'award'
+        | 'bar-chart'
+        | 'bell'
+        | 'book-open'
+        | 'briefcase'
+        | 'calendar'
+        | 'check'
+        | 'circle-check'
+        | 'clock'
+        | 'cloud'
+        | 'code'
+        | 'credit-card'
+        | 'gauge'
+        | 'gift'
+        | 'globe'
+        | 'heart'
+        | 'layers'
+        | 'layout'
+        | 'leaf'
+        | 'lightbulb'
+        | 'lock'
+        | 'mail'
+        | 'map-pin'
+        | 'message-circle'
+        | 'phone'
+        | 'puzzle'
+        | 'rocket'
+        | 'search'
+        | 'settings'
+        | 'shield-check'
+        | 'smile'
+        | 'sparkles'
+        | 'star'
+        | 'target'
+        | 'thumbs-up'
+        | 'trending-up'
+        | 'truck'
+        | 'users'
+        | 'wand'
+        | 'wrench'
+        | 'zap'
+      )
     | null;
+  title: string;
+  description?: string | null;
+  enableLink?: boolean | null;
+  link?: {
+    type?: ('reference' | 'custom') | null;
+    newTab?: boolean | null;
+    reference?: {
+      relationTo: 'pages';
+      value: number | Page;
+    } | null;
+    url?: string | null;
+    label: string;
+  };
   id?: string | null;
   blockName?: string | null;
-  blockType: 'content';
+  blockType: 'columnCard';
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "MediaBlock".
+ * via the `definition` "GlobalSectionBlock".
  */
-export interface MediaBlock {
-  media: number | Media;
+export interface GlobalSectionBlock {
+  /**
+   * Pick a section from Reusable sections. Edit it there once and every page that uses it updates.
+   */
+  reusableSection: number | Section;
   id?: string | null;
   blockName?: string | null;
-  blockType: 'mediaBlock';
+  blockType: 'globalSection';
+}
+/**
+ * Sections you edit once and reuse on many pages with the Global section block. Changes go live on every page that uses a section as soon as you save.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "sections".
+ */
+export interface Section {
+  id: number;
+  /**
+   * Only shown in the admin, to find the section later.
+   */
+  title: string;
+  layout: (
+    | HeroBlock
+    | PageHeaderBlock
+    | RichTextBlock
+    | FaqBlock
+    | FeaturesBlock
+    | FeatureRowsBlock
+    | StepsBlock
+    | TestimonialsBlock
+    | ReviewsBlock
+    | LogosBlock
+    | StatsBlock
+    | CtaBlock
+    | PricingBlock
+    | MediaSectionBlock
+    | GalleryBlock
+    | EmbedBlock
+    | ColumnsBlock
+  )[];
+  createdBy?: {
+    relationTo: 'users';
+    value: number | User;
+  } | null;
+  updatedBy?: {
+    relationTo: 'users';
+    value: number | User;
+  } | null;
+  updatedAt: string;
+  createdAt: string;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -756,6 +1657,10 @@ export interface PayloadLockedDocument {
         value: number | Page;
       } | null)
     | ({
+        relationTo: 'sections';
+        value: number | Section;
+      } | null)
+    | ({
         relationTo: 'users';
         value: number | User;
       } | null)
@@ -849,35 +1754,7 @@ export interface PayloadLlmInstruction {
  */
 export interface PagesSelect<T extends boolean = true> {
   title?: T;
-  hero?:
-    | T
-    | {
-        type?: T;
-        richText?: T;
-        links?:
-          | T
-          | {
-              link?:
-                | T
-                | {
-                    type?: T;
-                    newTab?: T;
-                    reference?: T;
-                    url?: T;
-                    label?: T;
-                    appearance?: T;
-                  };
-              id?: T;
-            };
-        media?: T;
-      };
-  layout?:
-    | T
-    | {
-        cta?: T | CallToActionBlockSelect<T>;
-        content?: T | ContentBlockSelect<T>;
-        mediaBlock?: T | MediaBlockSelect<T>;
-      };
+  layout?: T | {};
   meta?:
     | T
     | {
@@ -903,62 +1780,15 @@ export interface PagesSelect<T extends boolean = true> {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "CallToActionBlock_select".
+ * via the `definition` "sections_select".
  */
-export interface CallToActionBlockSelect<T extends boolean = true> {
-  richText?: T;
-  links?:
-    | T
-    | {
-        link?:
-          | T
-          | {
-              type?: T;
-              newTab?: T;
-              reference?: T;
-              url?: T;
-              label?: T;
-              appearance?: T;
-            };
-        id?: T;
-      };
-  id?: T;
-  blockName?: T;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "ContentBlock_select".
- */
-export interface ContentBlockSelect<T extends boolean = true> {
-  columns?:
-    | T
-    | {
-        size?: T;
-        richText?: T;
-        enableLink?: T;
-        link?:
-          | T
-          | {
-              type?: T;
-              newTab?: T;
-              reference?: T;
-              url?: T;
-              label?: T;
-              appearance?: T;
-            };
-        id?: T;
-      };
-  id?: T;
-  blockName?: T;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "MediaBlock_select".
- */
-export interface MediaBlockSelect<T extends boolean = true> {
-  media?: T;
-  id?: T;
-  blockName?: T;
+export interface SectionsSelect<T extends boolean = true> {
+  title?: T;
+  layout?: T | {};
+  createdBy?: T;
+  updatedBy?: T;
+  updatedAt?: T;
+  createdAt?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -1390,7 +2220,7 @@ export interface CollectionsWidget {
 export interface CollectionQueryWidget {
   data?: {
     title?: string | null;
-    relatedCollection: 'pages' | 'users' | 'media' | 'folders' | 'tags' | 'seo-settings' | 'seo-redirects';
+    relatedCollection: 'pages' | 'sections' | 'users' | 'media' | 'folders' | 'tags' | 'seo-settings' | 'seo-redirects';
     where?:
       | {
           [k: string]: unknown;
@@ -1413,7 +2243,7 @@ export interface CollectionQueryWidget {
 export interface ActivityWidget {
   data?: {
     excludedCollections?:
-      ('pages' | 'users' | 'media' | 'folders' | 'tags' | 'seo-settings' | 'seo-redirects')[] | null;
+      ('pages' | 'sections' | 'users' | 'media' | 'folders' | 'tags' | 'seo-settings' | 'seo-redirects')[] | null;
   };
   width: 'small' | 'medium' | 'large' | 'x-large' | 'full';
 }
