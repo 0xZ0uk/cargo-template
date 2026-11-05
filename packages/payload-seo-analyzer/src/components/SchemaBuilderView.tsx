@@ -4,6 +4,7 @@ import React, { useState, useCallback, useMemo, useId } from 'react'
 import { Banner, Button, PlusIcon, Tabs } from '@payloadcms/ui'
 import { useDashboardT } from '../hooks/useSeoLocale.js'
 import { Card, Field, TonePill, ViewBody, ViewHeader } from '../ui/index.js'
+import { SchemaFromPage, type SchemaPreviewProps } from './SchemaFromPage.js'
 import type { DashboardTranslations } from '../dashboard-i18n.js'
 import './SchemaBuilderView.css'
 
@@ -489,6 +490,45 @@ function Toast({ message, onClose }: { message: string; onClose: () => void }) {
 }
 
 // ---------------------------------------------------------------------------
+// Preview card (both modes)
+// ---------------------------------------------------------------------------
+
+function SchemaPreviewCard({
+  jsonString,
+  scriptTag,
+  badge,
+  onCopy,
+}: SchemaPreviewProps & { onCopy: (text: string, label: string) => void }) {
+  const t = useDashboardT()
+  const highlighted = useMemo(() => syntaxHighlight(jsonString), [jsonString])
+  return (
+    <Card
+      actions={badge}
+      footer={
+        <>
+          <Button buttonStyle="primary" onClick={() => onCopy(jsonString, 'JSON-LD')} type="button">
+            {t.schemaBuilder.copyJsonLd}
+          </Button>
+          <Button buttonStyle="secondary" onClick={() => onCopy(scriptTag, 'Script tag')} type="button">
+            {t.schemaBuilder.copyScriptTag}
+          </Button>
+        </>
+      }
+      title={t.schemaBuilder.jsonLdPreview}
+    >
+      <div
+        aria-label={t.schemaBuilder.jsonLdPreview}
+        className="seo-inset seo-mono seo-schema__code"
+        role="region"
+        tabIndex={0}
+      >
+        {highlighted}
+      </div>
+    </Card>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Main SchemaBuilderView component
 // ---------------------------------------------------------------------------
 
@@ -498,6 +538,7 @@ export function SchemaBuilderView() {
   // of this view never collide.
   const uid = useId()
 
+  const [mode, setMode] = useState<'manual' | 'page'>('manual')
   const [selectedType, setSelectedType] = useState<string>('LocalBusiness')
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [values, setValues] = useState<Record<string, any>>({})
@@ -565,8 +606,10 @@ export function SchemaBuilderView() {
     [t],
   )
 
-  // Highlighted preview
-  const highlighted = useMemo(() => syntaxHighlight(jsonString), [jsonString])
+  // The preview card, shared by both modes: highlighted JSON-LD plus the copy buttons.
+  const renderPreview = (props: SchemaPreviewProps) => (
+    <SchemaPreviewCard {...props} onCopy={copyToClipboard} />
+  )
 
   // Render a single field
   const renderField = (field: SchemaField, parentArray?: string, arrayIndex?: number) => {
@@ -651,8 +694,8 @@ export function SchemaBuilderView() {
         key={fieldKey}
         label={
           <>
-            {field.label}
-            {field.required && <span className="seo-text--danger"> *</span>}
+              {field.label}
+              {field.required && <span className="seo-text--danger"> *</span>}
           </>
         }
       >
@@ -706,59 +749,53 @@ export function SchemaBuilderView() {
     <>
       <ViewHeader description={t.schemaBuilder.visualGeneratorDesc} title="Schema.org Builder" />
       <ViewBody>
-        {/* Schema type selector */}
+        {/* Input mode: the manual builder (default) or the JSON-LD generated for a real page */}
         <Tabs
-          onChange={handleTypeChange}
-          tabs={Object.entries(schemaTypes).map(([key, typeDef]) => ({ label: typeDef.label, value: key }))}
-          value={selectedType}
+          onChange={(value: string) => setMode(value === 'page' ? 'page' : 'manual')}
+          tabs={[
+            { label: t.schemaBuilder.manualMode, value: 'manual' },
+            { label: t.schemaBuilder.pageMode, value: 'page' },
+          ]}
+          value={mode}
         />
 
-        {/* Main content: Form + Preview */}
-        <div className="seo-schema__layout">
-          {/* Left: Form */}
-          <Card actions={<TonePill tone="neutral">{def.jsonType}</TonePill>} title={def.label}>
-            {def.fields.map((field) => renderField(field))}
-          </Card>
+        {mode === 'page' ? (
+          <SchemaFromPage renderPreview={renderPreview} />
+        ) : (
+          <>
+          {/* Schema type selector */}
+          <Tabs
+            onChange={handleTypeChange}
+            tabs={Object.entries(schemaTypes).map(([key, typeDef]) => ({ label: typeDef.label, value: key }))}
+            value={selectedType}
+          />
 
-          {/* Right: Preview */}
-          <div className="seo-schema__preview">
-            <Card
-              actions={<TonePill tone="success">{t.schemaBuilder.liveUpdate}</TonePill>}
-              footer={
-                <>
-                  <Button buttonStyle="primary" onClick={() => copyToClipboard(jsonString, 'JSON-LD')} type="button">
-                    {t.schemaBuilder.copyJsonLd}
-                  </Button>
-                  <Button
-                    buttonStyle="secondary"
-                    onClick={() => copyToClipboard(scriptTag, 'Script tag')}
-                    type="button"
-                  >
-                    {t.schemaBuilder.copyScriptTag}
-                  </Button>
-                </>
-              }
-              title={t.schemaBuilder.jsonLdPreview}
-            >
-              <div
-                aria-label={t.schemaBuilder.jsonLdPreview}
-                className="seo-inset seo-mono seo-schema__code"
-                role="region"
-                tabIndex={0}
-              >
-                {highlighted}
-              </div>
+          {/* Main content: Form + Preview */}
+          <div className="seo-schema__layout">
+            {/* Left: Form */}
+            <Card actions={<TonePill tone="neutral">{def.jsonType}</TonePill>} title={def.label}>
+              {def.fields.map((field) => renderField(field))}
             </Card>
 
-            {faqEmpty && <Banner type="warning">{t.schemaBuilder.faqNeedsAnswer}</Banner>}
+            {/* Right: Preview */}
+            <div className="seo-schema__preview">
+              {renderPreview({
+                jsonString,
+                scriptTag,
+                badge: <TonePill tone="success">{t.schemaBuilder.liveUpdate}</TonePill>,
+              })}
 
-            {/* Validation hint */}
-            <Banner type="default">
-              <strong>{t.schemaBuilder.tip}</strong> {t.schemaBuilder.validateOnRichResults}{' '}
-              <strong>search.google.com/test/rich-results</strong> {t.schemaBuilder.beforeDeploying}
-            </Banner>
+              {faqEmpty && <Banner type="warning">{t.schemaBuilder.faqNeedsAnswer}</Banner>}
+
+              {/* Validation hint */}
+              <Banner type="default">
+                <strong>{t.schemaBuilder.tip}</strong> {t.schemaBuilder.validateOnRichResults}{' '}
+                <strong>search.google.com/test/rich-results</strong> {t.schemaBuilder.beforeDeploying}
+              </Banner>
+            </div>
           </div>
-        </div>
+          </>
+        )}
 
         {/* Toast notification */}
         {toast && <Toast message={toast} onClose={() => setToast(null)} />}
