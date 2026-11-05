@@ -4,7 +4,7 @@ import { injectAdminFields } from "./utils/injectAdminFields";
 import { buildParentAfterChangeHook } from "./hooks/buildParentAfterChangeHook";
 import { buildParentAfterDeleteHook } from "./hooks/buildParentAfterDeleteHook";
 import { buildParentBeforeChangeHook } from "./hooks/buildParentBeforeChangeHook";
-import { duplicateVariantHandler } from "./endpoints/duplicateVariant";
+import { buildDuplicateVariantHandler } from "./endpoints/duplicateVariant";
 import { buildExperimentsCollection } from "./collections/buildExperimentsCollection";
 import { AB_EXPERIMENTS_SLUG, PLUGIN_NAME } from "./constants";
 
@@ -19,7 +19,7 @@ export const abTestingPlugin =
 
     if ((storage as typeof storage | undefined) == null) {
       console.warn(
-        `${PREFIX} Disabled: required option "storage" is missing (provide a storage adapter, e.g. payloadGlobalAdapter() or vercelEdgeAdapter(...)). Plugin not registered.`
+        `${PREFIX} Disabled: required option "storage" is missing (provide a storage adapter, e.g. payloadGlobalAdapter()). Plugin not registered.`
       );
       return incomingConfig;
     }
@@ -75,7 +75,7 @@ export const abTestingPlugin =
         {
           path: "/_ab/duplicate",
           method: "post",
-          handler: duplicateVariantHandler,
+          handler: buildDuplicateVariantHandler(pluginConfig),
         },
       ],
     };

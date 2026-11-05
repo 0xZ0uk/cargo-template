@@ -1,4 +1,5 @@
-import type { CollectionSlug } from "payload";
+import type { CollectionSlug, Where } from "payload";
+import { hasDraftsEnabled } from "payload/shared";
 import type { AbTestingPluginConfig, CollectionABConfig } from "../types/config";
 import { AB_EXPERIMENTS_SLUG, AB_VARIANT_OF_FIELD } from "../constants";
 import { getLocales } from "../utils/getLocales";
@@ -16,6 +17,13 @@ export async function ensureExperimentRecords<TVariantData extends object>(
 
   const experimentsSlug = pluginConfig.experimentsCollectionSlug ?? AB_EXPERIMENTS_SLUG;
   const locales = getLocales(payload);
+  // A draft-only variant (never published) is a row with `_status: 'draft'`, which a
+  // `draft: false` find still returns. It takes no traffic, so it doesn't start the experiment.
+  const collectionConfig = payload.collections?.[parentCollectionSlug]?.config;
+  const variantWhere: Where =
+    collectionConfig && hasDraftsEnabled(collectionConfig)
+      ? { and: [{ [AB_VARIANT_OF_FIELD]: { equals: parentId } }, { _status: { equals: "published" } }] }
+      : { [AB_VARIANT_OF_FIELD]: { equals: parentId } };
 
   for (const locale of locales) {
     const parentDoc = await payload.findByID({
@@ -33,7 +41,7 @@ export async function ensureExperimentRecords<TVariantData extends object>(
 
     const { docs: variantDocs } = await payload.find({
       collection: parentCollectionSlug as CollectionSlug,
-      where: { [AB_VARIANT_OF_FIELD]: { equals: parentId } },
+      where: variantWhere,
       draft: false,
       locale,
       depth: 0,

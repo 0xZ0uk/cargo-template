@@ -1,7 +1,6 @@
 import type { Config } from "payload";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { abTestingPlugin } from "../src/plugin";
-import { vercelEdgeAdapter } from "../src/adapters/vercelEdge";
 
 const incoming = { collections: [] } as unknown as Config;
 
@@ -29,13 +28,5 @@ describe("abTestingPlugin config validation", () => {
     const result = abTestingPlugin({ enabled: false } as never)(incoming);
     expect(result).toBe(incoming);
     expect(warn).not.toHaveBeenCalled();
-  });
-});
-
-describe("vercelEdgeAdapter validation", () => {
-  it("warns when env-derived fields are empty", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    vercelEdgeAdapter({ configID: "", configURL: "", vercelRestAPIAccessToken: "" });
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining("vercelEdgeAdapter"));
   });
 });

@@ -53,12 +53,11 @@ describe("applyVariantPercentage", () => {
       req,
     });
     expect(payload.update.mock.calls[0][0]).toMatchObject({ draft: true });
-    expect(payload.db.findOne).toHaveBeenCalledTimes(1);
-    expect(payload.db.updateOne.mock.calls[0][0].data).toMatchObject({
-      id: "v1",
-      slug: "about--x",
-      _abPassPercentage: 30,
-    });
+    // Only the percentage is written to the published row: re-saving a whole raw row would
+    // rewrite localized fields in one locale.
+    expect(payload.db.findOne).not.toHaveBeenCalled();
+    expect(payload.db.updateOne.mock.calls[0][0]).toMatchObject({ collection: "pages", id: "v1" });
+    expect(payload.db.updateOne.mock.calls[0][0].data).toEqual({ _abPassPercentage: 30 });
   });
 
   it("never touches the published row of a variant that was never published", async () => {
@@ -95,16 +94,5 @@ describe("applyVariantPercentage", () => {
     });
     expect(payload.update).not.toHaveBeenCalled();
     expect(payload.db.updateOne).toHaveBeenCalledTimes(1);
-  });
-
-  it("does not write when the raw row disappeared", async () => {
-    const { req, payload } = makeReq(null);
-    await applyVariantPercentage({
-      collectionSlug: "pages",
-      entry: entry({ isDirty: true }),
-      isPublish: true,
-      req,
-    });
-    expect(payload.db.updateOne).not.toHaveBeenCalled();
   });
 });

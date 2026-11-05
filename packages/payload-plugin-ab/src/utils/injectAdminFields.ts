@@ -7,20 +7,25 @@ import {
   DEFAULT_SLUG_FIELD,
 } from "../constants";
 
-const VARIANTS_FIELD_PATH = "@focus-reactive/payload-plugin-ab/admin/VariantsField#VariantsField";
+const VARIANTS_FIELD_PATH = "@cargo/payload-plugin-ab/admin/VariantsField#VariantsField";
 
 function isVariant(data: Record<string, unknown>): boolean {
   return Boolean(data[AB_VARIANT_OF_FIELD]);
 }
 
-/** Patch a top-level field to be hidden on variant documents. */
+/** Patch a top-level field to be hidden on variant documents, keeping its own condition. */
 function hideOnVariant(field: Field): Field {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const admin = (field as any).admin as { condition?: (...args: any[]) => boolean } | undefined;
+  const ownCondition = admin?.condition;
+
   return {
     ...field,
     admin: {
+      ...admin,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ...(field as any).admin,
-      condition: (data: Record<string, unknown>) => !isVariant(data),
+      condition: (data: Record<string, unknown>, ...rest: any[]) =>
+        !isVariant(data) && (ownCondition ? ownCondition(data, ...rest) : true),
     },
   } as Field;
 }
@@ -74,7 +79,13 @@ export function injectAdminFields<TVariantData extends object>(
       position: "sidebar",
       condition: (data: Record<string, unknown>) => !isVariant(data),
       components: {
-        Field: VARIANTS_FIELD_PATH,
+        Field: {
+          path: VARIANTS_FIELD_PATH,
+          clientProps: {
+            slugField,
+            titleField: abConfig.nameField ?? collection.admin?.useAsTitle ?? "title",
+          },
+        },
       },
     },
   };
@@ -108,23 +119,25 @@ export function injectAdminFields<TVariantData extends object>(
     variantsUiField,
   ];
 
-  // 7. Patch admin.baseListFilter to exclude variant docs from the collection list view.
-  const existingBaseListFilter = collection.admin?.baseListFilter;
-  const newBaseListFilter = existingBaseListFilter
-    ? async (...args: Parameters<NonNullable<typeof existingBaseListFilter>>): Promise<Where> => {
-        const existing = await existingBaseListFilter(...args);
-        return {
-          and: [existing ?? {}, { [AB_VARIANT_OF_FIELD]: { exists: false } }],
-        };
+  // 7. Exclude variant docs from the list view and from Lexical's internal-link pickers.
+  //    Payload 4 renamed `baseListFilter` to `baseFilter` (the old name is a deprecated
+  //    alias; `baseFilter` wins when both are set), so wrap whichever the host defined.
+  const existingBaseFilter = collection.admin?.baseFilter ?? collection.admin?.baseListFilter;
+  const excludeVariants: Where = { [AB_VARIANT_OF_FIELD]: { exists: false } };
+  const newBaseFilter = existingBaseFilter
+    ? async (...args: Parameters<NonNullable<typeof existingBaseFilter>>): Promise<Where> => {
+        const existing = await existingBaseFilter(...args);
+        return existing ? { and: [existing, excludeVariants] } : excludeVariants;
       }
-    : (): Where => ({ [AB_VARIANT_OF_FIELD]: { exists: false } });
+    : (): Where => excludeVariants;
 
   return {
     ...collection,
     fields: newFields,
     admin: {
       ...collection.admin,
-      baseListFilter: newBaseListFilter,
+      baseFilter: newBaseFilter,
+      baseListFilter: undefined,
     },
   };
 }

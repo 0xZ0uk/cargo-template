@@ -1,3 +1,38 @@
+# Changelog
+
+## [Unreleased]
+
+## [3.0.0-beta.0] - 2026-11-05
+
+Cargo's fork (`@cargo/payload-plugin-ab`) of upstream 2.10.1 (`e40c7a0`), ported to Payload 4 and to hosts without Next.js (TanStack Start on Cloudflare Workers). See the README for the full list.
+
+### Changed
+
+- **Payload 4** (`>=4.0.0-beta.6 <5`) replaces Payload 3; `next` is no longer a peer.
+- **Breaking:** `createResolveAbRewrite` (`/middleware`) takes a Web `Request` or a `Cookie` header string and returns `{ bucket, pathname, variant, cookies, setCookieHeaders }` instead of a `NextResponse` rewrite. An optional fifth argument `{ payload }` is passed to `storage.read`.
+- `StorageAdapter.read(path, payload?)`: `payloadGlobalAdapter` reads through the Local API when it gets `payload`, instead of fetching its own REST API.
+- `_abManifest` and `ab-experiments` set `versions: false` (Payload 4 versions globals and collections by default).
+- Variants are hidden with `admin.baseFilter` (Payload 4's name for `baseListFilter`), combined with the host's own filter under either name.
+- `POST /api/_ab/duplicate` requires a signed-in user, accepts only configured collections, takes the slug field from the plugin config, and creates the variant with the user's access (it used `overrideAccess: true`). Variants of variants are refused. The 6-character suffix uses `crypto.getRandomValues`.
+- New variants are created as drafts when the collection has drafts, in every locale (`unpublishAllLocales`, since Payload 4 localizes `_status`), so they take no traffic until published. `ab-experiments` rows are only created for published variants.
+- Publishing a percentage writes only `_abPassPercentage` to the published row (`db.updateOne`), not the whole raw row.
+- Variants panel: Payload 4 components (`ConfirmationModal` for "Clear all", `Spinner`, `FieldLabel`) and tokens in `VariantsField.css`; API calls follow `routes.api`; "Clear all" deletes sequentially; the panel receives the collection's slug and title fields. `hideOnVariant` keeps a field's own `admin.condition`.
+- Package name `@cargo/payload-plugin-ab`; the admin import-map path is `@cargo/payload-plugin-ab/admin/VariantsField#VariantsField`. `/analytics` and `/analytics/client` are the same client bundle.
+
+### Added
+
+- `parseCookieHeader` and `serializeAbCookie` (`/middleware`).
+- Integration tests on real Payload 4 (in-memory SQLite, drafts, two locales) and a v3-token guard.
+
+### Removed
+
+- `vercelEdgeAdapter` (`/adapters/vercel-edge`) and the `@vercel/edge-config` optional dependency.
+- Upstream's release tooling, plans and bundled Claude skill.
+
+---
+
+Upstream history (`@focus-reactive/payload-plugin-ab`):
+
 ## @focus-reactive/payload-plugin-ab [2.10.1](https://github.com/focusreactive/payload-plugins/compare/@focus-reactive/payload-plugin-ab@2.10.0...@focus-reactive/payload-plugin-ab@2.10.1) (2026-10-06)
 
 

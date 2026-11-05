@@ -5,6 +5,8 @@ import { fetchManifest } from "./api/fetchManifest";
 import { readManifest } from "./api/readManifest";
 import { createGlobal } from "./utils/createGlobal";
 
+export type { PayloadGlobalAdapterConfig } from "./config";
+
 export function payloadGlobalAdapter<TVariantData extends object>(
   config?: PayloadGlobalAdapterConfig
 ): StorageAdapter<TVariantData> {
@@ -21,7 +23,15 @@ export function payloadGlobalAdapter<TVariantData extends object>(
       });
     },
 
-    async read(path) {
+    async read(path, payload) {
+      // Same process as Payload (e.g. a loader on the Worker): read through the Local API. A
+      // Worker fetching its own REST API is a needless subrequest, and a loop on some routes.
+      if (payload) {
+        const manifest = await readManifest(payload, slug);
+
+        return (manifest[path] as TVariantData[] | undefined) ?? null;
+      }
+
       const serverURL = config?.serverURL ?? "";
       const apiRoute = config?.apiRoute ?? "/api";
 
@@ -30,6 +40,8 @@ export function payloadGlobalAdapter<TVariantData extends object>(
 
     async clear(path, payload) {
       const currentManifest = await readManifest(payload, slug);
+
+      if (!(path in currentManifest)) return;
 
       delete currentManifest[path];
 

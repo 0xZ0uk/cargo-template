@@ -10,6 +10,9 @@ export function createGlobal(slug: string, debug: boolean): GlobalConfig {
       hidden: !debug,
       group: "System",
     },
+    // Payload 4 versions globals by default. The manifest is rewritten on every variant
+    // publish and derived from the variant documents, so its history is only D1 rows.
+    versions: false,
     fields: [
       {
         name: "manifest",

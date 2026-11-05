@@ -1,0 +1,162 @@
+/*
+ * Variants panel. Payload 4 tokens only (the v3 `--theme-elevation-*` tokens are gone and
+ * would leave dark mode broken). Unlayered, so these win over Payload's
+ * `@layer payload-default` rules on the plugin's own classes only.
+ */
+.ab-variants {
+  margin-bottom: var(--spacer-4);
+}
+
+.ab-variants__body--busy {
+  opacity: 0.5;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+
+.ab-variants__header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacer-2);
+  margin-bottom: var(--spacer-2);
+}
+
+.ab-variants__header .field-label {
+  padding-bottom: 0;
+}
+
+.ab-variants__original-share {
+  margin-left: auto;
+  font-size: var(--text-body-small-font-size);
+  color: var(--color-text-secondary);
+}
+
+.ab-variants__placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60px;
+  border: var(--stroke-width-small) solid var(--color-border);
+  border-radius: var(--radius-small);
+  background: var(--color-bg-secondary);
+}
+
+.ab-variants__actions {
+  display: flex;
+  gap: var(--spacer-2);
+  margin-top: var(--spacer-2);
+}
+
+.ab-variants__actions > * {
+  flex: 1;
+}
+
+.ab-variants__actions button {
+  width: 100%;
+}
+
+.ab-variant-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacer-2);
+  padding: var(--spacer-2) var(--spacer-3);
+  margin-bottom: var(--spacer-1-5);
+  border: var(--stroke-width-small) solid var(--color-border);
+  border-radius: var(--radius-small);
+  background: var(--color-bg-secondary);
+}
+
+.ab-variant-row__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-body-small-font-size);
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.ab-variant-row__percent {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.ab-variant-row__percent-input {
+  width: 64px;
+  height: 28px;
+  padding: 0 24px 0 var(--spacer-2);
+  font-size: var(--text-body-small-font-size);
+  color: var(--field-color-text);
+  background: var(--field-color-bg);
+  border: var(--stroke-width-small) solid var(--field-color-border);
+  border-radius: var(--radius-small);
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.ab-variant-row__percent-input:hover {
+  border-color: var(--field-color-border-hover);
+}
+
+.ab-variant-row__percent-input:focus {
+  outline: none;
+  border-color: var(--field-color-border-focus);
+}
+
+.ab-variant-row__percent-input::-webkit-outer-spin-button,
+.ab-variant-row__percent-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.ab-variant-row__percent-suffix {
+  position: absolute;
+  right: var(--spacer-2);
+  font-size: var(--text-body-small-font-size);
+  color: var(--color-text-tertiary);
+  pointer-events: none;
+}
+
+.ab-variant-row__icon-btn {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: var(--stroke-width-small) solid var(--color-border);
+  border-radius: var(--radius-small);
+  background: var(--color-bg);
+  color: var(--color-icon-secondary);
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+.ab-variant-row__icon-btn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-icon);
+}
+
+.ab-variant-row__icon-btn:focus-visible {
+  outline: var(--stroke-width-medium) solid var(--color-border-selected);
+  outline-offset: 1px;
+}
+
+.ab-variant-row__icon-btn--danger {
+  color: var(--color-icon-danger);
+}
+
+.ab-variant-row__icon-btn--danger:hover {
+  background: var(--color-bg-danger-tertiary-hover);
+  color: var(--color-icon-danger);
+}
+
+.ab-variant-row__icon-btn .icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+}

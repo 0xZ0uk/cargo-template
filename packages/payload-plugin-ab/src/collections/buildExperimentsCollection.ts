@@ -12,6 +12,8 @@ export function buildExperimentsCollection(debug: boolean, slug: string): Collec
     access: {
       read: () => true,
     },
+    // Payload 4 versions collections by default; these rows are written once per experiment.
+    versions: false,
     fields: [
       {
         name: "manifestKey",

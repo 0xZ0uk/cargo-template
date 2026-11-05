@@ -2,7 +2,13 @@ import type { GlobalConfig, Payload } from "payload";
 
 export interface StorageAdapter<TVariantData extends object = object> {
   write(path: string, variants: TVariantData[], payload: Payload): Promise<void>;
-  read(path: string): Promise<TVariantData[] | null>;
+  /**
+   * Reads the variants for one manifest key. Called on every routed request, so it must be
+   * cheap. `payload` is passed when the resolver runs in the same process as Payload (a
+   * TanStack Start loader or server function on the Worker); adapters should then read
+   * through it instead of over HTTP.
+   */
+  read(path: string, payload?: Payload): Promise<TVariantData[] | null>;
   clear(path: string, payload: Payload): Promise<void>;
   createGlobal?(debug: boolean): GlobalConfig;
 }

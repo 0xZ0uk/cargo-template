@@ -49,20 +49,14 @@ export async function applyVariantPercentage({
 
   if (!shouldPublish) return;
 
-  const raw = await payload.db.findOne({
-    collection: collectionSlug,
-    where: {
-      id: { equals: variantId },
-    },
-    req,
-  });
-  if (!raw) return;
-
+  // Publish only the percentage: write it straight to the published row, without a new
+  // version, so the variant's unpublished draft content stays unpublished. Only the field is
+  // sent — writing back a whole `db.findOne` row (as upstream did) re-saves every localized
+  // field in the request's locale and resets the others.
   await payload.db.updateOne({
     collection: collectionSlug,
     id: variantId,
     data: {
-      ...raw,
       [AB_PASS_PERCENTAGE_FIELD]: desired,
     },
     req,

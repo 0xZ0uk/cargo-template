@@ -1,8 +1,8 @@
+"use client";
+
 import type { VariantData } from "./VariantsField";
 
-import { useDocumentDrawer, EditIcon } from "@payloadcms/ui";
-import { TrashIcon } from "@payloadcms/ui/icons/Trash";
-import { AB_MAX_VARIANT_TOTAL } from "../../constants";
+import { EditIcon, TrashIcon, useDocumentDrawer } from "@payloadcms/ui";
 
 interface VariantRowProps {
   variant: VariantData;
@@ -33,24 +33,15 @@ export function VariantRow({
     onSaved();
   };
 
+  const title = variant.title ?? variant.slug ?? String(variant.id);
+
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
-        padding: "8px 12px",
-        border: "1px solid var(--theme-elevation-150)",
-        borderRadius: 4,
-        marginBottom: 6,
-        background: "var(--theme-elevation-50)",
-      }}
-    >
-      <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: "var(--theme-elevation-800)" }}>
-        {variant.title}
+    <div className="ab-variant-row">
+      <span className="ab-variant-row__title" title={title}>
+        {title}
       </span>
 
-      <div className="ab-percent-input-wrapper">
+      <div className="ab-variant-row__percent">
         <input
           type="number"
           min={1}
@@ -58,16 +49,20 @@ export function VariantRow({
           value={variant.passPercentage ?? ""}
           onChange={(e) => onPercentageChange(e.target.value)}
           onBlur={onPercentageBlur}
-          className="ab-percent-input"
-          title={`Traffic percentage (1–${AB_MAX_VARIANT_TOTAL})`}
+          className="ab-variant-row__percent-input"
+          aria-label={`Traffic for ${title} (1–${maxPercentage}%)`}
+          title={`Traffic percentage (1–${maxPercentage})`}
         />
-        <span className="ab-percent-suffix">%</span>
+        <span className="ab-variant-row__percent-suffix" aria-hidden="true">
+          %
+        </span>
       </div>
 
       <button
         type="button"
         onClick={openDrawer}
-        className="ab-variant-icon-btn"
+        className="ab-variant-row__icon-btn"
+        aria-label={`Edit ${title}`}
         title="Edit variant"
       >
         <EditIcon />
@@ -76,7 +71,8 @@ export function VariantRow({
       <button
         type="button"
         onClick={onDelete}
-        className="ab-variant-icon-btn ab-variant-icon-btn--danger"
+        className="ab-variant-row__icon-btn ab-variant-row__icon-btn--danger"
+        aria-label={`Remove ${title}`}
         title="Remove variant"
       >
         <TrashIcon />
