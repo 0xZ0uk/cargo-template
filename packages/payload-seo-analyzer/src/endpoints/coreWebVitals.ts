@@ -18,6 +18,7 @@ import type { PayloadHandler } from 'payload'
 import type { SeoConfig } from '../types.js'
 import { defaultSeoSharedCache, type SeoSharedCache } from '../cache.js'
 import { isSeoAdminRequest, isSeoPanelUser } from '../helpers/isAdmin.js'
+import { sha256Hex } from '../helpers/sha256.js'
 import { resolveSiteUrl as resolveSharedSiteUrl } from '../helpers/siteUrl.js'
 
 // Google's official Core Web Vitals thresholds (good / needs-improvement boundaries).
@@ -38,12 +39,6 @@ function rate(value: number | null, t: { good: number; poor: number }): Rating {
 
 function resolveSiteUrl(seoConfig?: SeoConfig): string | undefined {
   return resolveSharedSiteUrl(seoConfig?.siteUrl) || undefined
-}
-
-/** Lowercase hex SHA-256 of `text` (WebCrypto: Workers and Node). */
-async function sha256Hex(text: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
-  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
 export function createCoreWebVitalsHandler(

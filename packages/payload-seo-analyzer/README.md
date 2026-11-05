@@ -57,7 +57,7 @@ The Cargo app (`apps/web`) runs this plugin on a deployed Worker. Each feature i
 | `redirects` (+ the frontend 301/302) | on | **Verified** |
 | `sitemapAudit` | on | **Verified** |
 | `settings` | on | **Verified** |
-| `sitemap.xml`, `robots.txt`, `llms.txt` | on | **Verified**, served at the site root |
+| `sitemap.xml`, `robots.txt`, `llms.txt` | on | **Verified**, served at the site root. The sitemaps and `llms.txt` are built once and shared by every isolate through `cacheStore`; a publish invalidates them |
 | `performance` | on | **Verified.** Rows in `SEO_D1`. XLSX import needs `xlsx` mapped by the host |
 | `scoreHistory` | on | **Verified.** Rows in `SEO_D1` |
 | `seoLogs` (404 log) | on | **Verified.** Rows in `SEO_D1` |
@@ -144,7 +144,7 @@ seoAnalyzerPlugin({
 })
 ```
 
-- **`cacheStore`** persists the dashboard audit, the indexation audit, the sitemap audit, redirect chains, external-link scans and Core Web Vitals results (24 h, since each refresh is a PageSpeed Insights call). Invalidation is a generation token per cache that every isolate reads. `apps/web/src/plugins/seoCacheStore.ts` is a 20-line R2 implementation.
+- **`cacheStore`** persists the dashboard audit, the indexation audit, the sitemap audit, redirect chains, external-link scans, Core Web Vitals results (24 h, since each refresh is a PageSpeed Insights call) and the public documents `sitemap.xml`, `sitemap-news.xml`, `sitemap-images.xml`, `sitemap-video.xml` and `llms.txt`, so every isolate shares one build. A save invalidates those at once; the first request after it rebuilds the document (no stale-while-revalidate, so a few concurrent requests may each rebuild once). Invalidation is a generation token per cache that every isolate reads. `apps/web/src/plugins/seoCacheStore.ts` is a 20-line R2 implementation.
 - **`waitUntil`** builds the audit in the background, in steps that fit the CPU limit (`SEO_AUDIT_STEP_DOCS`, 800 by default). The dashboard's polls run the next step, and the `seoAuditContinue` job finishes builds nobody is watching.
 - **`dataStore`** keeps time-series rows out of the main D1. With it set, the four time-series collections aren't registered. The SQL store creates and migrates its own tables (`SEO_STORE_MIGRATIONS`, recorded in `seo_store_migrations`). It applies pending migrations on first use; `migrateSeoStore(db)` applies them ahead of time (`pnpm web seo-store:migrate[:remote]`).
 - **`rateLimit`** maps the plugin's buckets (`SEO_RATE_LIMITS`) to Workers Rate Limiting. Those counts are eventually consistent, so treat them as a brake, not a hard cap. The hard cap on AI spend is a credit limit on the OpenRouter key.
@@ -487,7 +487,7 @@ Measured on a deployed Worker with 1,500 pages (Workers Observability `cpuTimeMs
 |---|---|---|
 | Dashboard audit | ~10 ms per doc | Built in steps of 800 docs through `waitUntil`; the Cron Trigger finishes paused builds |
 | `/indexation-audit` | 12.7 s at 1,500 docs | One request, hence `SEO_INDEXATION_MAX_DOCS=1500` |
-| Uncached `sitemap-audit` / `sitemap.xml` | 1.2 s / 0.9 s | Cached afterwards (shared cache, invalidated on save) |
+| Uncached `sitemap-audit` / `sitemap.xml` | 1.2 s / 0.9 s | Cached afterwards (shared cache across isolates with `cacheStore`, invalidated on save) |
 | Cached reads, `/validate`, admin views | ≤ 0.2 s | |
 | External links scan | ≤ 65 ms per call | 5 links at a time, 5 s per request, resumes across calls. A step that ran into its 25 s deadline (slow hosts) still got through the edge (26 s wall) |
 | Cron tick (jobs) | 60–175 ms | Wall time is mostly Payload start-up |

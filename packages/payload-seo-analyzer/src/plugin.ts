@@ -949,28 +949,28 @@ export const seoAnalyzerPlugin =
       {
         path: `${basePath}/sitemap.xml`,
         method: 'get' as const,
-        handler: createSitemapHandler(targetCollections, seoConfig),
+        handler: createSitemapHandler(targetCollections, seoConfig, sharedCache),
       },
       {
         // AI discoverability (opt-in via SEO_LLMS_TXT=1; returns 404 when disabled). Not scored.
         path: `${basePath}/llms.txt`,
         method: 'get' as const,
-        handler: createLlmsTxtHandler(targetCollections, seoConfig),
+        handler: createLlmsTxtHandler(targetCollections, seoConfig, sharedCache),
       },
       {
         path: `${basePath}/sitemap-news.xml`,
         method: 'get' as const,
-        handler: createNewsSitemapHandler(targetCollections, seoConfig),
+        handler: createNewsSitemapHandler(targetCollections, seoConfig, sharedCache),
       },
       {
         path: `${basePath}/sitemap-images.xml`,
         method: 'get' as const,
-        handler: createImageSitemapHandler(targetCollections, seoConfig),
+        handler: createImageSitemapHandler(targetCollections, seoConfig, sharedCache),
       },
       {
         path: `${basePath}/sitemap-video.xml`,
         method: 'get' as const,
-        handler: createVideoSitemapHandler(targetCollections, seoConfig),
+        handler: createVideoSitemapHandler(targetCollections, seoConfig, sharedCache),
       },
     )
 

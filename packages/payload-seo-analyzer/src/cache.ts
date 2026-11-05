@@ -119,8 +119,10 @@ export type SeoWaitUntil = (promise: Promise<unknown>) => void
 /**
  * Cache bases persisted in the `cacheStore` when one is configured. These are the caches
  * the admin UI polls or re-reads across requests (dashboard audit, indexation audit,
- * sitemap audit, redirect chains, external links, Core Web Vitals), so a per-isolate copy would show stale or missing data. Every other
- * base stays in the per-isolate in-memory cache (bounded by its TTL).
+ * sitemap audit, redirect chains, external links, Core Web Vitals) plus the public, anonymous
+ * documents that are expensive to build (the four sitemaps and `llms.txt`), so a per-isolate
+ * copy would show stale or missing data, or rebuild the same document once per isolate.
+ * Every other base stays in the per-isolate in-memory cache (bounded by its TTL).
  */
 export const PERSISTENT_CACHE_BASES = [
   'audit',
@@ -136,6 +138,15 @@ export const PERSISTENT_CACHE_BASES = [
   // strict, so the result must outlive an isolate. Not in CONTENT_CACHE_BASES: saving a page
   // doesn't change what real users measured, so it is never invalidated, only expires.
   'core-web-vitals',
+  // The rendered public documents: sitemap.xml, the news/image/video sitemaps and llms.txt. All
+  // are in CONTENT_CACHE_BASES, so a save bumps their generation and every isolate rebuilds on
+  // its next request (a plain rebuild on miss, no stale-while-revalidate: a few concurrent
+  // requests right after a save may each rebuild once, which the `select` projections keep cheap).
+  'sitemap-xml',
+  'sitemap-news',
+  'sitemap-images',
+  'sitemap-video',
+  'llms-txt',
 ] as const
 
 /**
@@ -170,6 +181,8 @@ export const CONTENT_CACHE_BASES = [
   'sitemap-news',
   'sitemap-images',
   'sitemap-video',
+  // Rendered llms.txt — see endpoints/llmsTxt.ts. Public and anonymous like the sitemaps.
+  'llms-txt',
 ] as const
 
 /**

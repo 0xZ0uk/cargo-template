@@ -10,14 +10,16 @@ import { buildDocPath } from '../helpers/docUrl.js'
 import { requestOrigin, resolveSiteUrl } from '../helpers/siteUrl.js'
 import { buildSelect } from '../helpers/buildSelect.js'
 import { fetchAllDocs } from '../helpers/fetchAllDocs.js'
-import { seoCache } from '../cache.js'
+import { defaultSeoSharedCache, type SeoSharedCache } from '../cache.js'
+import { sha256Hex } from '../helpers/sha256.js'
 
 /**
  * Cache key base for the rendered XML. Scoped by the collections the handler was
  * built with (never by anything the caller sends): the document is identical for
  * every anonymous visitor, so a shared entry leaks nothing and is no oracle.
  * Cleared by the same afterChange invalidation as the other caches — see
- * CACHE_BASES in hooks/trackSeoScore.ts.
+ * CONTENT_CACHE_BASES in cache.ts. Persisted in the shared `cacheStore` when one is
+ * configured, so every isolate serves the same build and a save invalidates all of them.
  */
 export const SITEMAP_XML_CACHE_BASE = 'sitemap-xml'
 
@@ -73,9 +75,8 @@ interface SitemapUrl {
 export function createSitemapHandler(
   targetCollections: string[],
   seoConfig?: SeoConfig,
+  cache: SeoSharedCache = defaultSeoSharedCache,
 ): PayloadHandler {
-  const cacheKeyBase = `${SITEMAP_XML_CACHE_BASE}:${targetCollections.join(',')}`
-
   const xmlResponse = (xml: string) =>
     new Response(xml, {
       headers: {
@@ -91,13 +92,19 @@ export function createSitemapHandler(
       // on its only unauthenticated (and deliberately un-rate-limited) endpoint.
       // Staleness stays bounded by the cache TTL, which is well under the one-hour
       // Cache-Control this endpoint has always advertised.
+      // The entry lives in the shared cache (R2 with a `cacheStore`), so isolates share one
+      // build and a save invalidates it everywhere. A miss, e.g. right after a save, is a plain
+      // rebuild with no stale-while-revalidate: several concurrent requests may each rebuild
+      // once, which is acceptable now that the build only reads the fields it needs.
       // Without a configured site URL, fall back to the request's origin (sitemap
       // `<loc>` values must be absolute). The XML then depends on the host, so the
       // origin is part of the cache key.
       const serverUrl = resolveSiteUrl(seoConfig?.siteUrl, requestOrigin(req))
-      const cacheKey = `${cacheKeyBase}:${serverUrl}`
-      const cachedXml = seoCache.get<string>(cacheKey)
-      if (typeof cachedXml === 'string') return xmlResponse(cachedXml)
+      // The collections and the origin (request-derived: uppercase host, IPv6 literal, query
+      // string…) are hashed so the key stays within the store's `[a-z0-9:/._-]`.
+      const cacheKey = `${SITEMAP_XML_CACHE_BASE}:${await sha256Hex(JSON.stringify([targetCollections, serverUrl]))}`
+      const lookup = await cache.lookup<string>(SITEMAP_XML_CACHE_BASE, cacheKey)
+      if (typeof lookup.data === 'string') return xmlResponse(lookup.data)
 
       // Read sitemap config from seo-settings
       const settingsResult = await req.payload.find({
@@ -201,7 +208,9 @@ export function createSitemapHandler(
       }
       xml += '</urlset>'
 
-      seoCache.set(cacheKey, xml)
+      // Stamped with the generation read BEFORE the build: a save that lands meanwhile makes
+      // this entry stale instead of masking it.
+      await cache.set(SITEMAP_XML_CACHE_BASE, cacheKey, xml, lookup.gen)
       return xmlResponse(xml)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Internal server error'

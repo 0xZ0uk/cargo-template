@@ -14,9 +14,18 @@
 import type { PayloadHandler } from 'payload'
 import { buildDocPath } from '../helpers/docUrl.js'
 import type { SeoConfig } from '../types.js'
+import { defaultSeoSharedCache, type SeoSharedCache } from '../cache.js'
+import { sha256Hex } from '../helpers/sha256.js'
 import { buildSelect } from '../helpers/buildSelect.js'
 import { fetchAllDocs } from '../helpers/fetchAllDocs.js'
 import { requestOrigin, resolveSiteUrl } from '../helpers/siteUrl.js'
+
+/**
+ * Cache key base of the rendered file. Cleared by the same save invalidation as the sitemaps
+ * (CONTENT_CACHE_BASES in cache.ts) and persisted in the shared `cacheStore` when configured.
+ * A miss is a plain rebuild, no stale-while-revalidate.
+ */
+export const LLMS_TXT_CACHE_BASE = 'llms-txt'
 
 /** Recommended max size for llms.txt (~8 KB per llmstxt.org guidance). */
 const MAX_BYTES = 8 * 1024
@@ -105,7 +114,9 @@ function resolveSiteName(seoConfig?: SeoConfig, siteUrl?: string): string {
 export function createLlmsTxtHandler(
   targetCollections: string[],
   seoConfig?: SeoConfig,
+  cache: SeoSharedCache = defaultSeoSharedCache,
 ): PayloadHandler {
+  const textHeaders = { 'Content-Type': 'text/plain; charset=utf-8' }
   return async (req) => {
     // Opt-in only — disabled by default. Returns 404 so it's indistinguishable
     // from "feature not installed" when off.
@@ -115,6 +126,12 @@ export function createLlmsTxtHandler(
 
     try {
       const siteUrl = resolveSiteUrl(seoConfig?.siteUrl, requestOrigin(req))
+      // The origin is request-derived when no site URL is configured: hash it (and the
+      // collections) to keep the key within the store's `[a-z0-9:/._-]`.
+      const cacheKey = `${LLMS_TXT_CACHE_BASE}:${await sha256Hex(JSON.stringify([targetCollections, siteUrl]))}`
+      const lookup = await cache.lookup<string>(LLMS_TXT_CACHE_BASE, cacheKey)
+      if (typeof lookup.data === 'string') return new Response(lookup.data, { headers: textHeaders })
+
       const siteName = resolveSiteName(seoConfig, siteUrl)
       const siteDescription = (seoConfig as { siteDescription?: string } | undefined)?.siteDescription
 
@@ -151,9 +168,9 @@ export function createLlmsTxtHandler(
       }))
 
       const body = buildLlmsTxt({ siteName, siteDescription, sections })
-      return new Response(body, {
-        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-      })
+      // Stamped with the generation read before the build, so a save that lands meanwhile wins.
+      await cache.set(LLMS_TXT_CACHE_BASE, cacheKey, body, lookup.gen)
+      return new Response(body, { headers: textHeaders })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Internal server error'
       req.payload.logger.error(`[seo] llms.txt generation error: ${message}`)
