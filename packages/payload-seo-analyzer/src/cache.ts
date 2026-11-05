@@ -119,7 +119,7 @@ export type SeoWaitUntil = (promise: Promise<unknown>) => void
 /**
  * Cache bases persisted in the `cacheStore` when one is configured. These are the caches
  * the admin UI polls or re-reads across requests (dashboard audit, indexation audit,
- * sitemap audit, redirect chains, external links), so a per-isolate copy would show stale or missing data. Every other
+ * sitemap audit, redirect chains, external links, Core Web Vitals), so a per-isolate copy would show stale or missing data. Every other
  * base stays in the per-isolate in-memory cache (bounded by its TTL).
  */
 export const PERSISTENT_CACHE_BASES = [

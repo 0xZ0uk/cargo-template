@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState } from 'react'
-import { Banner, Button, Tabs } from '@payloadcms/ui'
+import { Banner, Button, RefreshIcon, Tabs } from '@payloadcms/ui'
 import { Card, Field, Grid, StatTile, type Tone } from '../ui/index.js'
 import { useSeoApi } from '../hooks/useSeoApi.js'
 import './CoreWebVitalsPanel.css'
@@ -13,6 +13,7 @@ const s = {
   urlLabel: 'URL to test',
   test: 'Test',
   testing: 'Analyzing…',
+  retest: 'Re-test',
   mobile: 'Mobile',
   desktop: 'Desktop',
   sourceField: 'Field data (real users, CrUX)',
@@ -79,14 +80,17 @@ export function CoreWebVitalsPanel() {
   const [error, setError] = useState<string | null>(null)
   const [data, setData] = useState<CwvResponse | null>(null)
 
-  const run = async () => {
+  // Results are cached for 24 h; Re-test asks for a fresh PSI run (honoured for SEO admins only).
+  const run = async (force = false) => {
     if (!url) return
     setLoading(true)
     setError(null)
     setData(null)
     try {
       const res = await fetch(
-        seoApi(`/core-web-vitals?url=${encodeURIComponent(url)}&strategy=${strategy}`),
+        seoApi(
+          `/core-web-vitals?url=${encodeURIComponent(url)}&strategy=${strategy}${force ? '&nocache=1' : ''}`,
+        ),
         { credentials: 'include' },
       )
       const json = await res.json()
@@ -140,7 +144,7 @@ export function CoreWebVitalsPanel() {
           ]}
           value={strategy}
         />
-        <Button buttonStyle="primary" disabled={loading || !url} margin={false} onClick={run} size="medium">
+        <Button buttonStyle="primary" disabled={loading || !url} margin={false} onClick={() => void run()} size="medium">
           {loading ? s.testing : s.test}
         </Button>
       </div>
@@ -163,6 +167,16 @@ export function CoreWebVitalsPanel() {
             {typeof data.builtAt === 'number' && ` · ${s.measured(formatMeasuredAgo(data.builtAt))}`}
             {!data.keyConfigured && ` · ${s.noKey}`}
           </p>
+          <Button
+            buttonStyle="secondary"
+            disabled={loading}
+            icon={<RefreshIcon />}
+            margin={false}
+            onClick={() => void run(true)}
+            size="medium"
+          >
+            {s.retest}
+          </Button>
         </>
       )}
     </Card>

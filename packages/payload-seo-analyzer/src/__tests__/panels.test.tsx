@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { render, screen, cleanup, fireEvent } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 
 // @payloadcms/ui imports CSS the jsdom loader cannot parse. The panels only read
 // the plugin's feature flags from the client config (`admin.custom`): left
@@ -133,6 +133,18 @@ describe('CoreWebVitalsPanel — when it was measured', () => {
     render(<CoreWebVitalsPanel />)
     fireEvent.click(screen.getByText('Test'))
     expect(await screen.findByText(/Field data \(real users, CrUX\) · Measured 3 hours ago/)).toBeTruthy()
+  })
+
+  it('Re-test asks the endpoint for a fresh run with nocache=1', async () => {
+    mockFetch(200, cwv({ builtAt: Date.now() - 3 * 3_600_000 }))
+    render(<CoreWebVitalsPanel />)
+    fireEvent.click(screen.getByText('Test'))
+    fireEvent.click(await screen.findByText('Re-test'))
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const fetchMock = (globalThis as any).fetch as ReturnType<typeof vi.fn>
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    expect(String(fetchMock.mock.calls[0][0])).not.toContain('nocache=1')
+    expect(String(fetchMock.mock.calls[1][0])).toContain('nocache=1')
   })
 
   it('omits it when the result has no builtAt (in-memory cache)', async () => {
