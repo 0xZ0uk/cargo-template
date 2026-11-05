@@ -1,0 +1,96 @@
+{
+  "name": "@cargo/payload-plugin-ab",
+  "version": "3.0.0-beta.0",
+  "private": true,
+  "description": "Payload CMS 4 A/B testing plugin for Cargo (fork of @focus-reactive/payload-plugin-ab): page variants in the admin, a variant manifest, and framework-agnostic request routing",
+  "license": "MIT",
+  "author": "FocusReactive <ship@focusreactive.com>",
+  "contributors": [
+    "FocusReactive (https://github.com/focusreactive/payload-plugins) — original author"
+  ],
+  "keywords": [
+    "payload-cms",
+    "payload-plugin",
+    "ab-testing",
+    "split-testing",
+    "page-variants",
+    "payload-4",
+    "cloudflare-workers",
+    "tanstack-start"
+  ],
+  "type": "module",
+  "sideEffects": [
+    "./dist/admin/VariantsField.js",
+    "*.css"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./adapters/payload-global": {
+      "types": "./dist/adapters/payloadGlobal/index.d.ts",
+      "default": "./dist/adapters/payloadGlobal/index.js"
+    },
+    "./middleware": {
+      "types": "./dist/middleware/index.d.ts",
+      "default": "./dist/middleware/index.js"
+    },
+    "./analytics": {
+      "types": "./dist/analytics/client.d.ts",
+      "default": "./dist/analytics/client.js"
+    },
+    "./analytics/client": {
+      "types": "./dist/analytics/client.d.ts",
+      "default": "./dist/analytics/client.js"
+    },
+    "./admin/VariantsField": {
+      "types": "./dist/admin/VariantsField.d.ts",
+      "default": "./dist/admin/VariantsField.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@payloadcms/ui": ">=4.0.0-beta.6 <5.0.0",
+    "payload": ">=4.0.0-beta.6 <5.0.0",
+    "react": "^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@payloadcms/ui": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@payloadcms/db-sqlite": "catalog:",
+    "@payloadcms/ui": "catalog:",
+    "@types/node": "24.12.3",
+    "@types/react": "catalog:",
+    "graphql": "^16.8.1",
+    "payload": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "tsup": "^8.5.1",
+    "typescript": "catalog:",
+    "vitest": "^4.1.11"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

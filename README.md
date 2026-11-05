@@ -7,6 +7,7 @@ A Payload 4 + TanStack Start template on Cloudflare Workers (D1 + R2), and the i
 | [`apps/web`](apps/web) | `@cargo/web` | The template app: Payload admin + TanStack Start frontend, deployed as one Worker. See its [README](apps/web/README.md). |
 | [`packages/payload-seo-analyzer`](packages/payload-seo-analyzer) | `@cargo/payload-seo-analyzer` | SEO analysis plugin (Payload 4 port of `@consilioweb/payload-seo-analyzer`). See its [README](packages/payload-seo-analyzer/README.md). |
 | [`packages/payload-plugin-socials`](packages/payload-plugin-socials) | `@cargo/payload-plugin-socials` | Social publishing to Pinterest, Instagram, Facebook Pages and Google Business Profile (Payload 4 port of `payload-plugin-socials`). Not registered in the app yet. See its [README](packages/payload-plugin-socials/README.md). |
+| [`packages/payload-plugin-ab`](packages/payload-plugin-ab) | `@cargo/payload-plugin-ab` | A/B testing: page variants with traffic shares in the admin, and a framework-agnostic request resolver (Payload 4 port of `@focus-reactive/payload-plugin-ab`). Not registered in the app yet. See its [README](packages/payload-plugin-ab/README.md). |
 
 ## Quick start
 
