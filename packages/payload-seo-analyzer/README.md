@@ -37,7 +37,7 @@ It lives in the Cargo monorepo (`packages/payload-seo-analyzer`). `apps/web` con
 
 ## Features
 
-- **Offline analysis:** 110 rule ids across 20 groups (title, meta description, URL, headings, content, images, linking, social, schema, readability, quality, secondary keywords, cornerstone, freshness, technical, accessibility, e-commerce, E-E-A-T, GEO, hreflang).
+- **Offline analysis:** 113 rule ids across 20 groups (title, meta description, URL, headings, content, images, linking, social, schema, readability, quality, secondary keywords, cornerstone, freshness, technical, accessibility, e-commerce, E-E-A-T, GEO, hreflang).
 - **Live editor score:** a sidebar field analyses the document, including Lexical rich text and layout blocks. It gives a 0–100 score plus an AI-readiness indicator built from the GEO, E-E-A-T and schema checks.
 - **Admin views:** site audit with CSV/PDF export and bulk actions, sitemap and link audit, settings, redirect manager, Search Console performance, cannibalization, keyword research, schema builder and link graph. Each one follows its feature flag.
 - **Generated output:**

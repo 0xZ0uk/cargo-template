@@ -8,6 +8,7 @@ import { checkHeadings } from '../rules/headings'
 import { checkContent } from '../rules/content'
 import { checkImages } from '../rules/images'
 import { checkLinking } from '../rules/linking'
+import { checkKeyphrase } from '../rules/keyphrase'
 import { checkSocial } from '../rules/social'
 import { checkSchema } from '../rules/schema'
 import { checkReadability } from '../rules/readability'
@@ -369,6 +370,127 @@ describe('checkLinking', () => {
     )
     const emptyCheck = checks.find((c) => c.id === 'linking-empty')
     expect(emptyCheck?.status).toBe('warning')
+  })
+})
+
+describe('checkLinking — competing anchors', () => {
+  const run = (links: Array<{ url: string; text: string }>, input: Partial<SeoInput> = {}, ctx: Partial<AnalysisContext> = {}) =>
+    checkLinking(makeInput(input), makeCtx({ allLinks: links, ...ctx })).find(
+      (c) => c.id === 'linking-competing-anchors',
+    )
+
+  it('fails when another page is linked with the keyphrase as anchor', () => {
+    const check = run([{ url: '/agency-services', text: 'Web agency Boston' }])
+    expect(check?.status).toBe('fail')
+    expect(check?.message).toContain('web agency boston')
+    expect(check?.message).toContain('/agency-services')
+    expect(check?.tip).toBeTruthy()
+    expect(check?.group).toBe('linking')
+    expect(check?.weight).toBe(2)
+  })
+
+  it('treats function words in the anchor as noise and ignores case and accents', () => {
+    expect(run([{ url: '/other', text: 'The Best WEB agency in Boston' }])?.status).toBe('fail')
+  })
+
+  it('passes when the keyphrase is only part of a longer anchor', () => {
+    const check = run([{ url: '/other', text: 'our web agency Boston case studies' }])
+    expect(check?.status).toBe('pass')
+  })
+
+  it('ignores a link to the page itself, with a fragment or a collection route', () => {
+    expect(run([{ url: '/web-agency-boston', text: 'web agency boston' }])?.status).toBe('pass')
+    expect(run([{ url: '/web-agency-boston/?utm=1#team', text: 'web agency boston' }])?.status).toBe('pass')
+    expect(run([{ url: '/posts/web-agency-boston', text: 'web agency boston' }])?.status).toBe('pass')
+    expect(
+      run([{ url: '/en/agency', text: 'web agency boston' }], { canonicalUrl: 'https://example.com/en/agency' })?.status,
+    ).toBe('pass')
+  })
+
+  it('ignores a relative #fragment link', () => {
+    expect(run([{ url: '#top', text: 'web agency boston' }])?.status).toBe('pass')
+  })
+
+  it('ignores external links', () => {
+    expect(run([{ url: 'https://example.com/boston', text: 'web agency boston' }])?.status).toBe('pass')
+  })
+
+  it('lists every competing URL once', () => {
+    const check = run([
+      { url: '/a', text: 'web agency boston' },
+      { url: '/a', text: 'Boston web agency' },
+      { url: '/b', text: 'web agency boston' },
+    ])
+    expect(check?.message).toContain('/a, /b')
+  })
+
+  it('does not run without a focus keyword, or for a keyphrase of function words only', () => {
+    const links = [{ url: '/other', text: 'web agency boston' }]
+    expect(run(links, { focusKeyword: '' }, { normalizedKeyword: '' })).toBeUndefined()
+    expect(run([{ url: '/other', text: 'how to' }], {}, { normalizedKeyword: 'how to' })).toBeUndefined()
+  })
+
+  it('does not emit a check when the page has no links', () => {
+    expect(run([])).toBeUndefined()
+  })
+})
+
+describe('checkKeyphrase', () => {
+  const run = (keyphrase: string) =>
+    checkKeyphrase(makeInput({ focusKeyword: keyphrase }), makeCtx({ normalizedKeyword: keyphrase.toLowerCase() }))
+  const length = (keyphrase: string) => run(keyphrase).find((c) => c.id === 'keyphrase-length')
+  const fnOnly = (keyphrase: string) => run(keyphrase).find((c) => c.id === 'keyphrase-function-words-only')
+
+  it('passes for 1 content word', () => {
+    expect(length('coffee')?.status).toBe('pass')
+    expect(fnOnly('coffee')?.status).toBe('pass')
+  })
+
+  it('does not count function words toward the length', () => {
+    expect(length('how to make the best coffee at home')?.status).toBe('pass')
+  })
+
+  it('warns for 5 content words', () => {
+    const check = length('organic fair trade coffee beans')
+    expect(check?.status).toBe('warning')
+    expect(check?.message).toContain('5')
+    expect(check?.tip).toBeTruthy()
+  })
+
+  it('fails for 9 content words', () => {
+    const check = length('organic fair trade single origin coffee beans roasted fresh')
+    expect(check?.status).toBe('fail')
+    expect(check?.message).toContain('9')
+  })
+
+  it('passes at 4 content words and warns up to 8', () => {
+    expect(length('alpha beta gamma delta')?.status).toBe('pass')
+    expect(length('alpha beta gamma delta epsilon zeta eta theta')?.status).toBe('warning')
+  })
+
+  it('counts every word of a quoted keyphrase', () => {
+    const check = length('"how to make the best coffee at home now"')
+    expect(check?.status).toBe('fail')
+    expect(check?.message).toContain('9')
+  })
+
+  it('fails when the keyphrase has only function words', () => {
+    const check = fnOnly('How to be the best')
+    expect(check?.status).toBe('fail')
+    expect(check?.tip).toBeTruthy()
+    expect(check?.group).toBe('content')
+    expect(length('How to be the best')).toBeUndefined()
+  })
+
+  it('runs only when a focus keyword is set', () => {
+    expect(checkKeyphrase(makeInput({ focusKeyword: '' }), makeCtx({ normalizedKeyword: '' }))).toEqual([])
+  })
+
+  it('is part of the analysis for the focus keyword only', () => {
+    const withKw = analyzeSeo(makeInput({ focusKeyword: 'coffee' }))
+    expect(withKw.checks.some((c) => c.id === 'keyphrase-length')).toBe(true)
+    const without = analyzeSeo(makeInput({ focusKeyword: undefined, focusKeywords: ['coffee'] }))
+    expect(without.checks.some((c) => c.id === 'keyphrase-length')).toBe(false)
   })
 })
 
