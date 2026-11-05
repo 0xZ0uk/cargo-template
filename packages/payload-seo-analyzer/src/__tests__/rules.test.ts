@@ -411,6 +411,11 @@ describe('checkLinking — competing anchors', () => {
     expect(run([{ url: '#top', text: 'web agency boston' }])?.status).toBe('pass')
   })
 
+  it('ignores an empty link (reported by linking-empty instead)', () => {
+    expect(run([{ url: '', text: 'web agency boston' }], { slug: '' })?.status).not.toBe('fail')
+    expect(run([{ url: '  ', text: 'web agency boston' }])?.status).not.toBe('fail')
+  })
+
   it('ignores external links', () => {
     expect(run([{ url: 'https://example.com/boston', text: 'web agency boston' }])?.status).toBe('pass')
   })

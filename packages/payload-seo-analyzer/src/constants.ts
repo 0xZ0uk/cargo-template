@@ -275,7 +275,6 @@ export const READABILITY_THRESHOLDS: { longSentenceWords: number; passiveMax: nu
 // ---------------------------------------------------------------------------
 
 export function getStopWords(): readonly string[] { return STOP_WORDS }
-export function getFunctionWords(): readonly string[] { return FUNCTION_WORDS }
 export function getActionVerbs(): readonly string[] { return ACTION_VERBS }
 export function getPowerWords(): readonly string[] { return POWER_WORDS }
 export function getGenericAnchors(): readonly string[] { return GENERIC_ANCHORS }

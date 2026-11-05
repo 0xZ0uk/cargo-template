@@ -183,7 +183,8 @@ export function checkLinking(input: SeoInput, ctx: AnalysisContext): SeoCheck[] 
       const self = selfPaths(input, ctx)
       const competing = internalLinks.filter((link) => {
         const url = link.url.trim()
-        if (url.startsWith('#') || self.has(linkPath(url))) return false
+        // Empty links are `linking-empty`'s job; `#fragment` and self links can't compete.
+        if (!url || url.startsWith('#') || self.has(linkPath(url))) return false
         const anchorWords = new Set(getContentWords(link.text))
         return (
           anchorWords.size === keyphraseWords.size &&
