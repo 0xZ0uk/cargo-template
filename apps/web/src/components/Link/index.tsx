@@ -48,11 +48,13 @@ export const CMSLink: React.FC<CMSLinkType> = (props) => {
   const linkClassName =
     appearance === 'inline'
       ? cn(className)
-      : buttonVariants({
+      : cn(
+          buttonVariants({
+            size: appearance === 'link' ? null : sizeFromProps,
+            variant: appearance,
+          }),
           className,
-          size: appearance === 'link' ? null : sizeFromProps,
-          variant: appearance,
-        })
+        )
   const content = (
     <>
       {label && label}
