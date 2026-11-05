@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 
 // @payloadcms/ui imports CSS the jsdom loader cannot parse. The panels only read
 // the plugin's feature flags from the client config (`admin.custom`): left
@@ -17,6 +17,7 @@ import { RankTrackingPanel } from '../components/RankTrackingPanel.js'
 import { CtrOpportunitiesPanel } from '../components/CtrOpportunitiesPanel.js'
 import { AlertsPanel } from '../components/AlertsPanel.js'
 import { HealthPanel } from '../components/HealthPanel.js'
+import { CoreWebVitalsPanel, formatMeasuredAgo } from '../components/CoreWebVitalsPanel.js'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mockFetch(status: number, body: any) {
@@ -112,5 +113,42 @@ describe('UI panels — render smoke (jsdom)', () => {
     render(<HealthPanel />)
     expect(await screen.findByText(/SEO module health/i)).toBeTruthy()
     expect(await screen.findByText(/No alert channel configured/i)).toBeTruthy()
+  })
+})
+
+describe('CoreWebVitalsPanel — when it was measured', () => {
+  const metric = (value: number, unit: string) => ({ value, unit, rating: 'good' })
+  const cwv = (extra: Record<string, unknown>) => ({
+    url: 'http://localhost/',
+    strategy: 'mobile',
+    source: 'field',
+    hasFieldData: true,
+    keyConfigured: true,
+    metrics: { lcp: metric(2000, 'ms'), inp: metric(100, 'ms'), cls: metric(0.05, 'score'), tbt: metric(50, 'ms') },
+    ...extra,
+  })
+
+  it('shows "Measured <relative time>" next to the data source', async () => {
+    mockFetch(200, cwv({ builtAt: Date.now() - 3 * 3_600_000 }))
+    render(<CoreWebVitalsPanel />)
+    fireEvent.click(screen.getByText('Test'))
+    expect(await screen.findByText(/Field data \(real users, CrUX\) · Measured 3 hours ago/)).toBeTruthy()
+  })
+
+  it('omits it when the result has no builtAt (in-memory cache)', async () => {
+    mockFetch(200, cwv({ cached: true }))
+    render(<CoreWebVitalsPanel />)
+    fireEvent.click(screen.getByText('Test'))
+    expect(await screen.findByText(/Field data \(real users, CrUX\)/)).toBeTruthy()
+    expect(screen.queryByText(/Measured/)).toBeNull()
+  })
+
+  it('formats the age in the largest whole unit', () => {
+    const now = 1_000_000_000_000
+    expect(formatMeasuredAgo(now - 5_000, now)).toBe('just now')
+    expect(formatMeasuredAgo(now - 5 * 60_000, now)).toBe('5 minutes ago')
+    expect(formatMeasuredAgo(now - 90 * 60_000, now)).toBe('1 hour ago')
+    expect(formatMeasuredAgo(now - 49 * 3_600_000, now)).toBe('2 days ago')
+    expect(formatMeasuredAgo(now + 5_000, now)).toBe('just now')
   })
 })

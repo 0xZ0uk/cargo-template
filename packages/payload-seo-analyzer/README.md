@@ -144,7 +144,7 @@ seoAnalyzerPlugin({
 })
 ```
 
-- **`cacheStore`** persists the dashboard audit, the indexation audit, the sitemap audit, redirect chains and external-link scans. Invalidation is a generation token per cache that every isolate reads. `apps/web/src/plugins/seoCacheStore.ts` is a 20-line R2 implementation.
+- **`cacheStore`** persists the dashboard audit, the indexation audit, the sitemap audit, redirect chains, external-link scans and Core Web Vitals results (24 h, since each refresh is a PageSpeed Insights call). Invalidation is a generation token per cache that every isolate reads. `apps/web/src/plugins/seoCacheStore.ts` is a 20-line R2 implementation.
 - **`waitUntil`** builds the audit in the background, in steps that fit the CPU limit (`SEO_AUDIT_STEP_DOCS`, 800 by default). The dashboard's polls run the next step, and the `seoAuditContinue` job finishes builds nobody is watching.
 - **`dataStore`** keeps time-series rows out of the main D1. With it set, the four time-series collections aren't registered. The SQL store creates and migrates its own tables (`SEO_STORE_MIGRATIONS`, recorded in `seo_store_migrations`). It applies pending migrations on first use; `migrateSeoStore(db)` applies them ahead of time (`pnpm web seo-store:migrate[:remote]`).
 - **`rateLimit`** maps the plugin's buckets (`SEO_RATE_LIMITS`) to Workers Rate Limiting. Those counts are eventually consistent, so treat them as a brake, not a hard cap. The hard cap on AI spend is a credit limit on the OpenRouter key.

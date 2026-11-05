@@ -17,6 +17,7 @@ const s = {
   desktop: 'Desktop',
   sourceField: 'Field data (real users, CrUX)',
   sourceLab: 'Lab data (Lighthouse)',
+  measured: (when: string) => `Measured ${when}`,
   noInp: 'INP needs real-user field data (not available in lab).',
   inpHint: 'INP is the most commonly failed Core Web Vital in 2026 — prioritize it.',
   noKey: 'Tip: set PAGESPEED_API_KEY on the server to raise the quota.',
@@ -40,6 +41,8 @@ interface CwvResponse {
   strategy: string
   source: 'field' | 'lab'
   hasFieldData: boolean
+  /** Epoch ms of the PSI run. Absent for a result cached in memory (no `cacheStore`). */
+  builtAt?: number
   keyConfigured: boolean
   metrics: { lcp: Metric; inp: Metric; cls: Metric; tbt: Metric }
 }
@@ -49,6 +52,16 @@ function ratingTone(r?: Rating): Tone {
   if (r === 'needs-improvement') return 'warning'
   if (r === 'poor') return 'danger'
   return 'neutral'
+}
+
+/** "just now", "5 minutes ago", "3 hours ago", "2 days ago". */
+export function formatMeasuredAgo(builtAt: number, now = Date.now()): string {
+  const seconds = Math.max(0, Math.round((now - builtAt) / 1000))
+  const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' })
+  if (seconds < 60) return 'just now'
+  if (seconds < 3600) return rtf.format(-Math.floor(seconds / 60), 'minute')
+  if (seconds < 86_400) return rtf.format(-Math.floor(seconds / 3600), 'hour')
+  return rtf.format(-Math.floor(seconds / 86_400), 'day')
 }
 
 function formatValue(m: Metric, key: string): string {
@@ -147,6 +160,7 @@ export function CoreWebVitalsPanel() {
           </Grid>
           <p className="seo-text seo-text--small seo-text--secondary">
             {data.source === 'field' ? s.sourceField : s.sourceLab}
+            {typeof data.builtAt === 'number' && ` · ${s.measured(formatMeasuredAgo(data.builtAt))}`}
             {!data.keyConfigured && ` · ${s.noKey}`}
           </p>
         </>

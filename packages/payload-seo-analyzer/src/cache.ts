@@ -132,7 +132,20 @@ export const PERSISTENT_CACHE_BASES = [
   // scan on Workers takes several requests when links are slow, so the checks must outlive an isolate.
   'external-links',
   'external-link-checks',
+  // Core Web Vitals per URL + strategy. A PageSpeed Insights run takes 10-30 s and the quota is
+  // strict, so the result must outlive an isolate. Not in CONTENT_CACHE_BASES: saving a page
+  // doesn't change what real users measured, so it is never invalidated, only expires.
+  'core-web-vitals',
 ] as const
+
+/**
+ * TTL of persisted entries per base, for the bases that shouldn't use the default (15 min).
+ * Core Web Vitals come from CrUX, a rolling 28-day window that moves slowly, and each refresh
+ * costs a PSI call, so a day is plenty.
+ */
+const BASE_TTL_MS: Readonly<Record<string, number>> = {
+  'core-web-vitals': 24 * 60 * 60 * 1000,
+}
 
 /**
  * Caches derived from document content. Invalidated on every save/delete of a target
@@ -227,6 +240,8 @@ export interface SeoSharedCacheOptions {
   waitUntil?: SeoWaitUntil
   /** TTL of persisted entries (default 15 min, same as the in-memory cache). */
   ttlMs?: number
+  /** TTL per base, overriding `ttlMs` for that base (Core Web Vitals default to 24 h). */
+  ttlMsByBase?: Readonly<Record<string, number>>
   /**
    * A persisted "building" marker older than this is considered dead (its isolate was
    * evicted or its `waitUntil` budget ran out) and another build may start. Default:
@@ -304,6 +319,7 @@ export class SeoSharedCache {
   private readonly waitUntilFn?: SeoWaitUntil
   private readonly memory: SeoCache
   private readonly ttlMs: number
+  private readonly ttlMsByBase: Readonly<Record<string, number>>
   private readonly buildStaleMs: number
   private readonly pendingStaleMs: number
   /** Builds started by THIS isolate/process (cheap first-line single-flight). */
@@ -325,6 +341,7 @@ export class SeoSharedCache {
     this.hasWaitUntil = !!opts.waitUntil
     this.memory = opts.memory ?? seoCache
     this.ttlMs = opts.ttlMs ?? DEFAULT_TTL
+    this.ttlMsByBase = { ...BASE_TTL_MS, ...opts.ttlMsByBase }
     const envStale = Number(process.env.SEO_AUDIT_BUILD_STALE_MS)
     this.buildStaleMs =
       opts.buildStaleMs ??
@@ -340,6 +357,11 @@ export class SeoSharedCache {
 
   private storeFor(base: string): SeoCacheStore | undefined {
     return this.store && (PERSISTENT_CACHE_BASES as readonly string[]).includes(base) ? this.store : undefined
+  }
+
+  /** TTL of a persisted base: its own entry in `ttlMsByBase`, else `ttlMs`. */
+  private ttlFor(base: string): number {
+    return this.ttlMsByBase[base] ?? this.ttlMs
   }
 
   private isStaleServable(base: string): boolean {
@@ -378,7 +400,7 @@ export class SeoSharedCache {
     const entry = parseJson<StoredEntry<T>>(entryRaw)
     if (!entry || entry.v !== STORE_FORMAT || typeof entry.builtAt !== 'number') return { data: null, gen }
     const stale = entry.gen !== gen
-    if (!allowStale && (stale || Date.now() - entry.builtAt > this.ttlMs)) return { data: null, gen }
+    if (!allowStale && (stale || Date.now() - entry.builtAt > this.ttlFor(base))) return { data: null, gen }
     return { data: entry.data, gen, builtAt: entry.builtAt, ...(stale ? { stale: true } : {}) }
   }
 
