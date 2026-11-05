@@ -3,7 +3,7 @@
  * Reused by audit, cannibalization, linkGraph, keywordResearch, etc.
  */
 
-import type { Payload } from 'payload'
+import type { Payload, SelectType } from 'payload'
 
 export type DocSourceType = 'collection' | 'global'
 
@@ -28,12 +28,13 @@ export interface FetchAllDocsOptions {
   /** Depth for population (default: 1) */
   depth?: number
   /**
-   * Restrict the fields read from the database, e.g. `{ title: true, slug: true }`.
+   * Restrict the fields read from the database, e.g. `{ title: true, meta: { description: true } }`
+   * (see `buildSelect` for a projection limited to fields the collections have).
    * Callers that only need a few scalar fields should pass this: without it every
    * document is loaded whole, Lexical trees included.
    * Applied best-effort — see the select-less retry below.
    */
-  select?: Record<string, true>
+  select?: SelectType
 }
 
 /** Page size for the internal paginated reads. */

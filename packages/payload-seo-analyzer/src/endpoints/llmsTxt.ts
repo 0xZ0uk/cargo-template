@@ -14,11 +14,23 @@
 import type { PayloadHandler } from 'payload'
 import { buildDocPath } from '../helpers/docUrl.js'
 import type { SeoConfig } from '../types.js'
+import { buildSelect } from '../helpers/buildSelect.js'
 import { fetchAllDocs } from '../helpers/fetchAllDocs.js'
 import { requestOrigin, resolveSiteUrl } from '../helpers/siteUrl.js'
 
 /** Recommended max size for llms.txt (~8 KB per llmstxt.org guidance). */
 const MAX_BYTES = 8 * 1024
+
+/** Document fields the llms.txt entries read (see the loop in the handler). */
+export const LLMS_TXT_SELECT_PATHS = [
+  'slug',
+  '_status',
+  'noindex',
+  'title',
+  'meta.title',
+  'meta.description',
+  'meta.noindex',
+]
 
 export interface LlmsTxtPage {
   title: string
@@ -110,6 +122,8 @@ export function createLlmsTxtHandler(
         collections: targetCollections,
         depth: 0,
         maxDocs: 1000,
+        // Only what the entries below read — never the layout blocks / Lexical trees.
+        select: buildSelect(req.payload, targetCollections, LLMS_TXT_SELECT_PATHS),
       })
 
       // Group indexable docs by collection → one section per collection.
