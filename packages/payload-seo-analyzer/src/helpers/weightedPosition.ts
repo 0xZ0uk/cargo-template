@@ -3,8 +3,12 @@
  *
  *   Σ(position × impressions) / Σ(impressions)   over rows with position > 0
  *
- * In SQL: `SUM(position * impressions) / NULLIF(SUM(impressions), 0)` with `WHERE position > 0`
- * (a `SUM` happily adds zeros, so the `position > 0` filter must be explicit).
+ * In SQL, fallback included (see below), with `WHERE position > 0`:
+ *
+ *   COALESCE(SUM(position * impressions) / NULLIF(SUM(impressions), 0), AVG(position), 0)
+ *
+ * (a `SUM` happily adds zeros, so the `position > 0` filter must be explicit; `AVG` is the
+ * plain-average fallback, and the final `0` covers a group with no positive position).
  *
  * Rows with a position but no impressions are ignored. If NO row in a group has impressions
  * (e.g. JSON/CSV imports without an impressions column), it falls back to the plain average of the
