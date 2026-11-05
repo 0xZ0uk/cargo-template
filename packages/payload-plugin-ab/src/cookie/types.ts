@@ -12,7 +12,7 @@ export interface AbCookieConfig {
   /**
    * Derive the experiment tracking cookie name from the experiment/manifest key.
    * This cookie is written by middleware and read by analytics utilities.
-   * Default: `exp_${encodeURIComponent(key)}`.
+   * Default: `exp_${encodeURIComponent(key)}`, with `(` and `)` also escaped.
    */
   getExpCookieName?: (key: string) => string;
 }

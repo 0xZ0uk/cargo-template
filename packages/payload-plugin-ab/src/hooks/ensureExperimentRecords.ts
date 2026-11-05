@@ -53,7 +53,12 @@ export async function ensureExperimentRecords<TVariantData extends object>(
 
     const { docs: existing } = await payload.find({
       collection: experimentsSlug as CollectionSlug,
-      where: { manifestKey: { equals: manifestKey } },
+      where: {
+        and: [
+          { manifestKey: { equals: manifestKey } },
+          { parentCollection: { equals: parentCollectionSlug } },
+        ],
+      },
       depth: 0,
       limit: 1,
       overrideAccess: true,

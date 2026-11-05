@@ -122,6 +122,33 @@ describe("resolveAbRewrite", () => {
     expect(res?.bucket).toBe("every-view--b");
   });
 
+  it("builds valid cookie names from a non-ASCII key, and reads them back", async () => {
+    const key = "/fr/à-propos(1)";
+    const resolveAbRewrite = createResolveAbRewrite<Variant>({
+      getBucket: (v) => v.bucket,
+      getPassPercentage: (v) => v.passPercentage,
+      getRewritePath: (v) => v.rewritePath,
+      storage: { clear: async () => {}, read: async () => [variantB], write: async () => {} },
+    });
+    const bucketName = "payload_ab_bucket_fr_%C3%A0-propos%281%29";
+    const expName = "exp_%2Ffr%2F%C3%A0-propos%281%29";
+
+    const first = await resolveAbRewrite(null, key, key, key);
+    const names = first?.cookies.map((c) => c.name) ?? [];
+    expect(names).toEqual(expect.arrayContaining([bucketName, expName]));
+    // RFC 6265 token: visible ASCII, no separators.
+    for (const name of names) expect(name).toMatch(/^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/u);
+
+    const back = await resolveAbRewrite(
+      first!.setCookieHeaders.map((h) => h.split(";")[0]).join("; "),
+      key,
+      key,
+      key
+    );
+    expect(back?.bucket).toBe("every-view--b");
+    expect(back?.cookies).toEqual([]);
+  });
+
   it("returns null when the storage read throws", async () => {
     const resolveAbRewrite = createResolveAbRewrite<Variant>({
       getBucket: (v) => v.bucket,

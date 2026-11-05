@@ -16,6 +16,7 @@ export async function recomputeManifestForParent<TVariantData extends object>(
   const { payload } = req;
   const locales = getLocales(payload);
   const slugField = abConfig.slugField ?? DEFAULT_SLUG_FIELD;
+  const drafts = hasDraftsEnabled(payload.collections?.[parentCollectionSlug]?.config);
 
   for (const locale of locales) {
     const parentDoc = await payload.findByID({
@@ -31,13 +32,19 @@ export async function recomputeManifestForParent<TVariantData extends object>(
     const manifestKey = abConfig.generatePath({ doc: parentDoc, locale });
     if (!manifestKey) continue;
 
+    // An unpublished original serves nothing in this locale, so neither do its variants.
+    if (drafts && parentDoc._status !== "published") {
+      await pluginConfig.storage.clear(manifestKey, payload);
+      continue;
+    }
+
     const conditions: Where[] = [{ [AB_VARIANT_OF_FIELD]: { equals: parentId } }];
 
     if (options?.excludeId !== undefined) {
       conditions.push({ id: { not_equals: options.excludeId } });
     }
 
-    if (hasDraftsEnabled(payload.collections?.[parentCollectionSlug]?.config)) {
+    if (drafts) {
       conditions.push({ _status: { equals: "published" } });
     }
 
@@ -71,6 +78,10 @@ export async function recomputeManifestForParent<TVariantData extends object>(
         passPercentage: (variantDoc[AB_PASS_PERCENTAGE_FIELD] as number) ?? 0,
       } as unknown as TVariantData;
     });
+
+    // Unpublished drafts can recompute on every autosave; don't rewrite an unchanged entry.
+    const current = await pluginConfig.storage.read(manifestKey, payload).catch(() => null);
+    if (current && JSON.stringify(current) === JSON.stringify(variantData)) continue;
 
     await pluginConfig.storage.write(manifestKey, variantData, payload);
   }

@@ -69,7 +69,13 @@ export function buildParentAfterDeleteHook<TVariantData extends object>(
     await payload
       .delete({
         collection: experimentsSlug as CollectionSlug,
-        where: { parentDocId: { equals: String(id) } },
+        // Ids are per collection: two A/B collections can each have a document 5.
+        where: {
+          and: [
+            { parentDocId: { equals: String(id) } },
+            { parentCollection: { equals: parentCollectionSlug } },
+          ],
+        },
         overrideAccess: true,
         req,
       })

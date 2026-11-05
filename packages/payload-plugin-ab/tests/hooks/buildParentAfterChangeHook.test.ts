@@ -31,8 +31,10 @@ const entries = [
   { variantId: "v1", desired: 30, draftPercentage: 10, publishedPercentage: 10, isDirty: false },
 ];
 
-function makeReq(context: Record<string, unknown> = {}) {
-  return { payload: {}, context } as never;
+/** `rowStatus` is the main row's `_status`, which a draft save leaves alone and an unpublish changes. */
+function makeReq(context: Record<string, unknown> = {}, rowStatus: unknown = "published") {
+  const findOne = vi.fn().mockResolvedValue({ _status: rowStatus });
+  return { payload: { db: { findOne } }, context } as never;
 }
 
 describe("buildParentAfterChangeHook", () => {
@@ -49,7 +51,7 @@ describe("buildParentAfterChangeHook", () => {
     expect(recomputeManifestForParent).not.toHaveBeenCalled();
   });
 
-  it("applies the plan as drafts and skips the manifest when the original is saved as a draft", async () => {
+  it("applies the plan as drafts and skips the manifest on a draft save of the published original", async () => {
     const req = makeReq({ [AB_PENDING_CONTEXT_KEY]: entries });
     await run({ doc: { id: "p1", _status: "draft" }, req });
     expect(applyVariantPercentage).toHaveBeenCalledTimes(1);
@@ -87,8 +89,35 @@ describe("buildParentAfterChangeHook", () => {
     expect(recomputeManifestForParent.mock.calls[0][0]).toBe("p1");
   });
 
-  it("ignores a variant saved as a draft", async () => {
+  it("ignores a draft save of a published variant", async () => {
     await run({ doc: { id: "v1", _status: "draft", _abVariantOf: "p1" }, req: makeReq() });
     expect(recomputeManifestForParent).not.toHaveBeenCalled();
+  });
+
+  it("recomputes the parent manifest, without recording an experiment, when a variant is unpublished", async () => {
+    await run({
+      doc: { id: "v1", _status: "draft", _abVariantOf: "p1" },
+      req: makeReq({}, "draft"),
+    });
+    expect(recomputeManifestForParent).toHaveBeenCalledTimes(1);
+    expect(recomputeManifestForParent.mock.calls[0][0]).toBe("p1");
+    expect(ensureExperimentRecords).not.toHaveBeenCalled();
+  });
+
+  it("recomputes when the original is unpublished in one locale only", async () => {
+    await run({
+      doc: { id: "p1", _status: "draft" },
+      req: makeReq({}, { en: "published", pt: "draft" }),
+    });
+    expect(recomputeManifestForParent).toHaveBeenCalledTimes(1);
+    expect(recomputeManifestForParent.mock.calls[0][0]).toBe("p1");
+    expect(ensureExperimentRecords).not.toHaveBeenCalled();
+  });
+
+  it("doesn't read the row for a collection without drafts", async () => {
+    const req = makeReq() as unknown as { payload: { db: { findOne: ReturnType<typeof vi.fn> } } };
+    await run({ doc: { id: "p1" }, req });
+    expect(req.payload.db.findOne).not.toHaveBeenCalled();
+    expect(recomputeManifestForParent).toHaveBeenCalledTimes(1);
   });
 });

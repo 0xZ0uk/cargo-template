@@ -10,6 +10,7 @@ Cargo's fork of [`@focus-reactive/payload-plugin-ab`](https://github.com/focusre
 - **Hides variants with `admin.baseFilter`**, Payload 4's name for `baseListFilter` (a host's own filter, under either name, is kept and combined). It also keeps variants out of Lexical's internal-link pickers.
 - **Locks down `POST /api/_ab/duplicate`.** Upstream created the variant with `overrideAccess: true` after checking only *read* access, so any visitor could clone a published page. It now requires a signed-in user, only accepts collections the plugin is configured on, takes the slug field from the plugin config (not the request body), and creates the clone with the user's own access. It also refuses to make a variant of a variant.
 - **Creates variants as drafts** (when the collection has drafts), in every locale. Upstream duplicated a published original into an already-published variant, which took traffic and started the experiment the moment you clicked "Add variant". Payload 4 keeps `_status` per locale on localized collections, and a draft duplicate only drafts the request's locale, so the endpoint follows it with `unpublishAllLocales`. Experiment start dates likewise only count published variants.
+- **Drops unpublished pages from the manifest.** Upstream recomputed only on publish, so unpublishing a variant left it taking traffic to a page that no longer served, and unpublishing the original left its variants running. Unpublishing either, in one locale or all, now updates those locales' entries.
 - **Publishes only the percentage** with a partial `db.updateOne`. Upstream wrote back the whole raw row from `db.findOne`, which re-saves localized fields in one locale.
 - **Admin panel on Payload 4 components and tokens**: `Button` / `Spinner` / `FieldLabel` / `ConfirmationModal` (instead of `window.confirm`) from `@payloadcms/ui`, styles in `VariantsField.css` on `--color-*` / `--field-color-*` / `--spacer-*` / `--radius-*` tokens (Payload 4 removed the v3 `--theme-elevation-*` tokens, which broke dark mode). API calls follow `routes.api`. "Clear all" deletes one variant at a time (parallel deletes raced on the manifest). The panel now receives the collection's slug and title fields (upstream never passed them).
 - Drops the **Vercel Edge Config adapter** (no Vercel on Workers) and upstream's release tooling. Named `@cargo/payload-plugin-ab`, built with tsup, private to the workspace.
@@ -25,7 +26,7 @@ pages collection
 └── variant B  slug: "about--x2k1zz" _abVariantOf: <original id>
 ```
 
-On every publish or delete, hooks recompute the **variant manifest**, a JSON object keyed by URL path, and write it to the storage adapter. The request resolver reads the entry for the requested path, assigns the visitor a bucket (sticky, by cookie), and tells the host which page to render.
+On every publish, unpublish or delete, hooks recompute the **variant manifest**, a JSON object keyed by URL path, and write it to the storage adapter. The request resolver reads the entry for the requested path, assigns the visitor a bucket (sticky, by cookie), and tells the host which page to render.
 
 ```
 Payload admin → afterChange / afterDelete hooks → storage adapter
@@ -104,6 +105,7 @@ Editing percentages in the panel stages them in `_abPendingPercentages`, sent wi
 - **Publish** on the original publishes them to the variants. Only the percentage is published: a variant's unpublished content stays unpublished until that variant is published.
 - A variant that has never been published takes no traffic, whatever its percentage says. New variants start as drafts.
 - With localization, Payload 4 keeps publication status per locale: a variant takes traffic in the locales it's published in (Payload's "publish in all locales" covers all of them), each locale with its own manifest entry.
+- Unpublishing a variant removes it from the split in those locales; unpublishing the original stops the experiment there until it's published again.
 
 Variants together take at most 99%, leaving the original at least 1%. A save that breaks this fails with a validation error.
 
@@ -167,11 +169,11 @@ Things the host decides:
 
 | Cookie | Default name | Lifetime | Purpose |
 | --- | --- | --- | --- |
-| Bucket | `payload_ab_bucket_{key}` (`/` → `_`) | 90 days | The visitor's bucket for this page |
+| Bucket | `payload_ab_bucket_{key}` (`/` → `_`, then URI-encoded) | 90 days | The visitor's bucket for this page |
 | Visitor ID | `ab_visitor_id` | 365 days | Stable visitor id for analytics |
 | Experiment | `exp_{encodeURIComponent(key)}` | 90 days | The bucket, readable by `ExperimentTracker` |
 
-If the bucket cookie is gone, the assignment is restored from the experiment cookie; a bucket whose variant no longer exists is drawn again. Override names and lifetimes with `cookies` (`bucketCookiePrefix`, `visitorIdCookieName`, `getExpCookieName`, `visitorIdMaxAge`, `expCookieMaxAge`, `bucketCookieMaxAge`, in seconds), and use `resolveAbCookieNames(config, key)` to hand the same names to `ExperimentTracker`.
+Keys are URI-encoded in cookie names (with `(` and `)` escaped too), since a name must be plain ASCII without separators: `/fr/à-propos` becomes `payload_ab_bucket_fr_%C3%A0-propos`. If the bucket cookie is gone, the assignment is restored from the experiment cookie; a bucket whose variant no longer exists is drawn again. Override names and lifetimes with `cookies` (`bucketCookiePrefix`, `visitorIdCookieName`, `getExpCookieName`, `visitorIdMaxAge`, `expCookieMaxAge`, `bucketCookieMaxAge`, in seconds), and use `resolveAbCookieNames(config, key)` to hand the same names to `ExperimentTracker`.
 
 ## Analytics
 
@@ -231,7 +233,7 @@ pnpm --filter @cargo/payload-plugin-ab typecheck
 pnpm --filter @cargo/payload-plugin-ab build
 ```
 
-`tests/integration/boot.test.ts` boots Payload 4 with drafts and two locales and drives the endpoint and REST calls through Payload's own handler: duplicate auth, variant drafts, per-locale manifest entries, staged and published percentages (with an unpublished variant edit that must stay unpublished), deletes. `tests/payload4Tokens.test.ts` keeps v3 admin tokens out of the styles.
+`tests/integration/boot.test.ts` boots Payload 4 with drafts and two locales and drives the endpoint and REST calls through Payload's own handler: duplicate auth, variant drafts, per-locale manifest entries, staged and published percentages (with an unpublished variant edit that must stay unpublished), unpublishing a variant or the original, deletes. `tests/payload4Tokens.test.ts` keeps v3 admin tokens out of the styles.
 
 ## License
 

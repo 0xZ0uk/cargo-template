@@ -19,7 +19,7 @@ export interface ExperimentTrackerProps {
   /**
    * Name of the cookie that holds the assigned variant bucket.
    * Use `resolveAbCookieNames(abCookies, experimentId).variantCookieName` to derive
-   * this from a shared `AbCookieConfig`. Default: `exp_${experimentId}`.
+   * this from a shared `AbCookieConfig`. Default: `exp_${encodeURIComponent(experimentId)}`, with `(` and `)` also escaped.
    */
   variantCookieName?: string;
   /**

@@ -367,6 +367,124 @@ describe("a draft-only variant", () => {
   });
 });
 
+describe("unpublishing", () => {
+  let page: Doc;
+  let variant: Doc;
+
+  const publish = (id: Doc["id"]) =>
+    payload.update({
+      collection: PAGES,
+      id,
+      data: { _status: "published" } as never,
+      publishAllLocales: true,
+      overrideAccess: true,
+    });
+  const unpublish = (id: Doc["id"], locale?: string) =>
+    payload.update({
+      collection: PAGES,
+      id,
+      data: { _status: "draft" } as never,
+      ...(locale ? { locale: locale as never } : { unpublishAllLocales: true }),
+      overrideAccess: true,
+    });
+
+  beforeAll(async () => {
+    page = await createPublishedPage("pricing", "Pricing");
+    variant = await addVariant(page);
+    await publish(variant.id);
+    expect(Object.keys(await manifest())).toEqual(expect.arrayContaining(["/en/pricing", "/pt/pricing"]));
+  });
+
+  it("a draft save of the published variant keeps it in the manifest", async () => {
+    await payload.update({
+      collection: PAGES,
+      id: variant.id,
+      data: { title: "Pricing B, in progress" } as never,
+      draft: true,
+      overrideAccess: true,
+    });
+    const m = await manifest();
+    expect(m["/en/pricing"]).toHaveLength(1);
+    expect(m["/pt/pricing"]).toHaveLength(1);
+  });
+
+  it("unpublishing the variant in one locale drops it from that locale only", async () => {
+    // Republish first: unpublishing pt while an en draft is pending copies that draft into
+    // the main row, which Payload 4 then serves as unpublished in en too.
+    await publish(variant.id);
+    await unpublish(variant.id, "pt");
+    const m = await manifest();
+    expect(m["/en/pricing"]).toHaveLength(1);
+    expect(m).not.toHaveProperty("/pt/pricing");
+  });
+
+  it("unpublishing the variant everywhere, after a draft edit, drops it from the manifest", async () => {
+    await publish(variant.id);
+    await payload.update({
+      collection: PAGES,
+      id: variant.id,
+      data: { title: "Pricing B, edited again" } as never,
+      draft: true,
+      overrideAccess: true,
+    });
+    await unpublish(variant.id);
+    const m = await manifest();
+    expect(m).not.toHaveProperty("/en/pricing");
+    expect(m).not.toHaveProperty("/pt/pricing");
+  });
+
+  it("unpublishing the original stops its experiment until it's published again", async () => {
+    await publish(variant.id);
+    expect(await manifest()).toHaveProperty("/en/pricing");
+
+    await unpublish(page.id);
+    expect(await manifest()).not.toHaveProperty("/en/pricing");
+    expect(await manifest()).not.toHaveProperty("/pt/pricing");
+
+    await publish(page.id);
+    const m = await manifest();
+    expect(m["/en/pricing"]).toHaveLength(1);
+    expect(m["/pt/pricing"]).toHaveLength(1);
+  });
+});
+
+describe("experiment rows of another collection", () => {
+  // Ids are per collection, and two A/B collections can generate the same path.
+  const otherRow = (data: Record<string, unknown>) =>
+    payload.create({
+      collection: "ab-experiments" as CollectionSlug,
+      data: { parentCollection: "landings", locale: "en", startedAt: new Date().toISOString(), ...data } as never,
+      overrideAccess: true,
+    });
+  const rowsOf = async (collection: string, where: Record<string, unknown>) =>
+    (
+      await payload.find({
+        collection: "ab-experiments" as CollectionSlug,
+        where: { and: [{ parentCollection: { equals: collection } }, where] } as never,
+        overrideAccess: true,
+      })
+    ).docs;
+
+  it("don't stop this collection's experiment from being recorded, and survive its delete", async () => {
+    const page = await createPublishedPage("shared", "Shared");
+    await otherRow({ manifestKey: "/en/shared", parentDocId: "999" });
+    await otherRow({ manifestKey: "/en/elsewhere", parentDocId: String(page.id) });
+
+    const variant = await addVariant(page);
+    await payload.update({
+      collection: PAGES,
+      id: variant.id,
+      data: { _status: "published" } as never,
+      overrideAccess: true,
+    });
+    expect(await rowsOf("pages", { manifestKey: { equals: "/en/shared" } })).toHaveLength(1);
+
+    await payload.delete({ collection: PAGES, id: page.id, overrideAccess: true });
+    expect(await rowsOf("pages", { parentDocId: { equals: String(page.id) } })).toHaveLength(0);
+    expect(await rowsOf("landings", { parentDocId: { equals: String(page.id) } })).toHaveLength(1);
+  });
+});
+
 describe("deleting an original", () => {
   it("detaches its variants, clears the manifest and the experiment rows", async () => {
     const page = await createPublishedPage("gone", "Gone");

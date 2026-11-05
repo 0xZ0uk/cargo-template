@@ -15,6 +15,9 @@ Cargo's fork (`@cargo/payload-plugin-ab`) of upstream 2.10.1 (`e40c7a0`), ported
 - Variants are hidden with `admin.baseFilter` (Payload 4's name for `baseListFilter`), combined with the host's own filter under either name.
 - `POST /api/_ab/duplicate` requires a signed-in user, accepts only configured collections, takes the slug field from the plugin config, and creates the variant with the user's access (it used `overrideAccess: true`). Variants of variants are refused. The 6-character suffix uses `crypto.getRandomValues`.
 - New variants are created as drafts when the collection has drafts, in every locale (`unpublishAllLocales`, since Payload 4 localizes `_status`), so they take no traffic until published. `ab-experiments` rows are only created for published variants.
+- Unpublishing a variant or the original, in one locale or all, updates the manifest: the variant's entries, or the original's whole entry, are dropped for the locales no longer published. Upstream only recomputed on publish, so an unpublished variant kept its traffic. A draft save of a published document still leaves the manifest alone, and unchanged entries aren't rewritten.
+- `ab-experiments` rows are matched by `parentCollection` as well as `parentDocId`/`manifestKey`, so deleting a document no longer deletes the experiments of a same-id document in another A/B collection.
+- Manifest keys are URI-encoded in the default bucket and experiment cookie names (`(` and `)` too), so a non-ASCII slug yields a valid cookie name instead of a `Set-Cookie` browsers drop.
 - Publishing a percentage writes only `_abPassPercentage` to the published row (`db.updateOne`), not the whole raw row.
 - Variants panel: Payload 4 components (`ConfirmationModal` for "Clear all", `Spinner`, `FieldLabel`) and tokens in `VariantsField.css`; API calls follow `routes.api`; "Clear all" deletes sequentially; the panel receives the collection's slug and title fields. `hideOnVariant` keeps a field's own `admin.condition`.
 - Package name `@cargo/payload-plugin-ab`; the admin import-map path is `@cargo/payload-plugin-ab/admin/VariantsField#VariantsField`. `/analytics` and `/analytics/client` are the same client bundle.
@@ -28,6 +31,7 @@ Cargo's fork (`@cargo/payload-plugin-ab`) of upstream 2.10.1 (`e40c7a0`), ported
 
 - `vercelEdgeAdapter` (`/adapters/vercel-edge`) and the `@vercel/edge-config` optional dependency.
 - Upstream's release tooling, plans and bundled Claude skill.
+- The unused internal `isFieldPathExists` utility.
 
 ---
 

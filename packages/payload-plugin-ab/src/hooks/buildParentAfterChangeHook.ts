@@ -4,6 +4,7 @@ import { AB_CASCADE_CONTEXT_KEY, AB_PENDING_CONTEXT_KEY, AB_VARIANT_OF_FIELD } f
 import { applyVariantPercentage } from "../utils/applyVariantPercentage";
 import type { VariantPercentageEntry } from "../utils/buildPercentagePlan";
 import { recomputeManifestForParent } from "../utils/recomputeManifest";
+import { isFullyPublished } from "../utils/isFullyPublished";
 import { resolveId } from "../utils/resolveId";
 import { ensureExperimentRecords } from "./ensureExperimentRecords";
 
@@ -20,10 +21,20 @@ export function buildParentAfterChangeHook<TVariantData extends object>(
     const isDraft = doc._status === "draft";
     const variantOfValue = doc[AB_VARIANT_OF_FIELD];
 
+    // A draft save leaves the published row, and so the manifest, as they were. An unpublish
+    // also arrives as a draft save, so check the row: when a locale is no longer published,
+    // the manifest must drop what it routed there. Both look the same from `previousDoc`.
+    const unpublished = isDraft && !(await isFullyPublished(payload, parentCollectionSlug, doc.id, req));
+
     if (variantOfValue) {
-      if (isDraft) return;
       const parentId = resolveId(variantOfValue);
       if (!parentId) return;
+      if (isDraft) {
+        if (unpublished) {
+          await recomputeManifestForParent(parentId, parentCollectionSlug, abConfig, pluginConfig, req);
+        }
+        return;
+      }
       await recomputeManifestForParent(parentId, parentCollectionSlug, abConfig, pluginConfig, req);
       await ensureExperimentRecords(parentId, parentCollectionSlug, abConfig, pluginConfig, req);
       return;
@@ -49,7 +60,12 @@ export function buildParentAfterChangeHook<TVariantData extends object>(
       }
     }
 
-    if (isDraft) return;
+    if (isDraft) {
+      if (unpublished) {
+        await recomputeManifestForParent(doc.id, parentCollectionSlug, abConfig, pluginConfig, req);
+      }
+      return;
+    }
 
     await recomputeManifestForParent(doc.id, parentCollectionSlug, abConfig, pluginConfig, req);
     await ensureExperimentRecords(doc.id, parentCollectionSlug, abConfig, pluginConfig, req);

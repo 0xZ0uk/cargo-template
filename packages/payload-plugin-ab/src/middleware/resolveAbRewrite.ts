@@ -9,6 +9,7 @@ import { pickUniformBucket } from "./utils/pickUniformBucket";
 import { parseCookieHeader, serializeAbCookie } from "./utils/cookies";
 import { DEFAULT_VISITOR_ID_COOKIE_NAME } from "../cookie/constants";
 import { defaultGetExpCookieName } from "../cookie/utils/defaultGetExpCookieName";
+import { encodeCookieNamePart } from "../cookie/utils/encodeCookieNamePart";
 
 const DEFAULT_BUCKET_COOKIE_PREFIX = "payload_ab_bucket";
 const DEFAULT_VISITOR_MAX_AGE = 60 * 60 * 24 * 365;
@@ -71,7 +72,9 @@ export function createResolveAbRewrite<TVariantData extends object>(
       typeof request === "string" ? request : (request?.headers.get("cookie") ?? null)
     );
 
-    const bucketCookieName = `${bucketCookiePrefix}_${manifestKey.replace(/^\//, "").replace(/\//g, "_")}`;
+    const bucketCookieName = `${bucketCookiePrefix}_${encodeCookieNamePart(
+      manifestKey.replace(/^\//, "").replace(/\//g, "_")
+    )}`;
     const existingBucket = requestCookies.get(bucketCookieName);
 
     const existingVisitorId = requestCookies.get(visitorIdCookieName);
