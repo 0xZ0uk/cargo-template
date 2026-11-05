@@ -10,6 +10,12 @@
 
 import type { PayloadHandler } from 'payload'
 import { parseJsonBody } from '../helpers/parseBody.js'
+import {
+  addPosition,
+  createPositionAccumulator,
+  resolvePosition,
+  type PositionAccumulator,
+} from '../helpers/weightedPosition.js'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -30,8 +36,7 @@ interface AggregatedRow {
   clicks: number
   impressions: number
   ctr: number
-  position: number
-  count: number
+  positions: PositionAccumulator
 }
 
 // ---------------------------------------------------------------------------
@@ -145,39 +150,30 @@ export function createPerformanceHandler(resolveStore: SeoDataStoreResolver = pa
         // Summary
         let totalClicks = 0
         let totalImpressions = 0
-        let positionSum = 0
-        let positionCount = 0
+        const summaryPositions = createPositionAccumulator()
 
         for (const doc of docs) {
           totalClicks += doc.clicks || 0
           totalImpressions += doc.impressions || 0
-          if (doc.position > 0) {
-            positionSum += doc.position
-            positionCount++
-          }
+          addPosition(summaryPositions, doc.position, doc.impressions || 0)
         }
 
         const avgCtr = totalImpressions > 0
           ? Math.round((totalClicks / totalImpressions) * 10000) / 100
           : 0
-        const avgPosition = positionCount > 0
-          ? Math.round((positionSum / positionCount) * 10) / 10
-          : 0
+        const avgPosition = resolvePosition(summaryPositions)
 
         // Aggregate by URL (top pages)
         const pageMap = new Map<string, AggregatedRow>()
         for (const doc of docs) {
           const key = doc.url || ''
           if (!pageMap.has(key)) {
-            pageMap.set(key, { key, clicks: 0, impressions: 0, ctr: 0, position: 0, count: 0 })
+            pageMap.set(key, { key, clicks: 0, impressions: 0, ctr: 0, positions: createPositionAccumulator() })
           }
           const entry = pageMap.get(key)!
           entry.clicks += doc.clicks || 0
           entry.impressions += doc.impressions || 0
-          if (doc.position > 0) {
-            entry.position += doc.position
-            entry.count++
-          }
+          addPosition(entry.positions, doc.position, doc.impressions || 0)
         }
 
         const topPages = Array.from(pageMap.values())
@@ -188,9 +184,7 @@ export function createPerformanceHandler(resolveStore: SeoDataStoreResolver = pa
             ctr: e.impressions > 0
               ? Math.round((e.clicks / e.impressions) * 10000) / 100
               : 0,
-            position: e.count > 0
-              ? Math.round((e.position / e.count) * 10) / 10
-              : 0,
+            position: resolvePosition(e.positions),
           }))
           .sort((a, b) => b.clicks - a.clicks)
           .slice(0, 20)
@@ -200,15 +194,12 @@ export function createPerformanceHandler(resolveStore: SeoDataStoreResolver = pa
         for (const doc of docs) {
           const key = doc.query || '(no query)'
           if (!queryMap.has(key)) {
-            queryMap.set(key, { key, clicks: 0, impressions: 0, ctr: 0, position: 0, count: 0 })
+            queryMap.set(key, { key, clicks: 0, impressions: 0, ctr: 0, positions: createPositionAccumulator() })
           }
           const entry = queryMap.get(key)!
           entry.clicks += doc.clicks || 0
           entry.impressions += doc.impressions || 0
-          if (doc.position > 0) {
-            entry.position += doc.position
-            entry.count++
-          }
+          addPosition(entry.positions, doc.position, doc.impressions || 0)
         }
 
         const topQueries = Array.from(queryMap.values())
@@ -219,9 +210,7 @@ export function createPerformanceHandler(resolveStore: SeoDataStoreResolver = pa
             ctr: e.impressions > 0
               ? Math.round((e.clicks / e.impressions) * 10000) / 100
               : 0,
-            position: e.count > 0
-              ? Math.round((e.position / e.count) * 10) / 10
-              : 0,
+            position: resolvePosition(e.positions),
           }))
           .sort((a, b) => b.clicks - a.clicks)
           .slice(0, 20)

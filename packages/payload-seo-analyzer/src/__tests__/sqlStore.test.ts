@@ -156,6 +156,74 @@ describe('SQL store — performance', () => {
   })
 })
 
+describe('SQL store — performance, weighted average position', () => {
+  const day = new Date().toISOString().split('T')[0] + 'T00:00:00.000Z'
+  const mk = (url: string, query: string, position: number, impressions: number) => ({
+    url,
+    query,
+    clicks: 0,
+    impressions,
+    ctr: 0,
+    position,
+    date: day,
+  })
+
+  async function get(rows: ReturnType<typeof mk>[]) {
+    const { store } = setup()
+    await store.performance.upsert(rows)
+    const handler = createPerformanceHandler(() => store)
+    const res = await handler(req(store, { method: 'GET', url: '/performance?period=7d' }))
+    return res.json()
+  }
+
+  it('weights by impressions (position 2 with 80 impressions → 2.0)', async () => {
+    const body = await get([mk('/a', 'x', 2, 80), mk('/a', 'y', 40, 1)])
+    // (2*80 + 40*1) / 81 = 2.469… → 2.5; the issue's 2 / 80 pair alone gives exactly 2.
+    expect(body.summary.avgPosition).toBe(2.5)
+    const only = await get([mk('/a', 'x', 2, 80)])
+    expect(only.summary.avgPosition).toBe(2)
+  })
+
+  it('uses the weighted value for top pages and top queries', async () => {
+    const body = await get([
+      mk('/a', 'q1', 1, 90),
+      mk('/a', 'q2', 11, 10),
+      mk('/b', 'q1', 5, 10),
+    ])
+    const page = (u: string) => body.topPages.find((p: { url: string }) => p.url === u)
+    const query = (q: string) => body.topQueries.find((r: { query: string }) => r.query === q)
+    expect(page('/a').position).toBe(2) // (1*90 + 11*10) / 100, plain average would be 6
+    expect(page('/b').position).toBe(5)
+    expect(query('q1').position).toBe(1.4) // (1*90 + 5*10) / 100
+    expect(query('q2').position).toBe(11)
+    expect(body.summary.avgPosition).toBe(2.3) // (90 + 110 + 50) / 110 = 2.27
+  })
+
+  it('falls back to the plain average when no row has impressions', async () => {
+    const body = await get([mk('/a', 'x', 2, 0), mk('/a', 'y', 5, 0)])
+    expect(body.summary.avgPosition).toBe(3.5)
+    expect(body.topPages[0].position).toBe(3.5)
+    expect(body.topQueries.map((q: { position: number }) => q.position).sort()).toEqual([2, 5])
+  })
+
+  it('ignores zero-impression rows when others have impressions, and position 0 rows', async () => {
+    const body = await get([mk('/a', 'x', 4, 10), mk('/a', 'y', 50, 0), mk('/a', 'z', 0, 1000)])
+    expect(body.summary.avgPosition).toBe(4)
+    expect(body.topPages[0].position).toBe(4)
+  })
+
+  it('returns 0 when there is no positive position', async () => {
+    const body = await get([mk('/a', 'x', 0, 10)])
+    expect(body.summary.avgPosition).toBe(0)
+  })
+
+  it('rounds to one decimal', async () => {
+    // (1*1 + 2*2) / 3 = 1.666… → 1.7
+    const body = await get([mk('/a', 'x', 1, 1), mk('/a', 'y', 2, 2)])
+    expect(body.summary.avgPosition).toBe(1.7)
+  })
+})
+
 describe('SQL store — rank history', () => {
   it('stores one snapshot per query per day', async () => {
     const { store } = setup()
