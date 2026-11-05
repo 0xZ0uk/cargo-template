@@ -292,6 +292,13 @@ The time-series datasets are append-only: score history (a snapshot per document
 - **`createSqlSeoDataStore(db)`** takes a D1 binding, or anything with D1's `prepare`/`bind`/`all`/`run`/`batch`. It owns its tables and migrations, batches bulk writes under D1's 100-parameter limit, and registers no Payload collections.
 - **Omitted:** the upstream collections (`seo-score-history`, `seo-performance`, `seo-rank-history`, `seo-logs`) in the main database (`createPayloadSeoDataStore`).
 
+**`GET /performance`** answers from the whole period, aggregated by the store (`PerformanceStore.aggregate`), not from a capped list of rows:
+
+- `summary` (`totalClicks`, `totalImpressions`, `avgCtr`, impression-weighted `avgPosition`), `topPages` and `topQueries` (20 each, most clicks first) cover every matching row. The SQL store computes them with `SUM` / `GROUP BY` in the database, so `truncated` is always `false`.
+- The Payload-collections store has no `GROUP BY`: it reads up to 10,000 rows (newest first), sums them in JS and sets `truncated: true` when the period has more. The admin view then shows a notice. Use `createSqlSeoDataStore` for exact totals on a busy site.
+- `data` is **not** the period: it is the newest 200 raw rows (url, query, clicks, impressions, ctr, position, date), for API users who want to chart them. Don't sum it.
+- `?period=7d|30d|90d`, `?url=` and `?query=` (substring filters) apply to all of it.
+
 **Retention is mandatory** for every enabled dataset. Windows default to `RETENTION_DEFAULTS`; `retentionDays` and `retentionMaxRows` override them.
 
 | Dataset | Days | Max rows | Pruned on |

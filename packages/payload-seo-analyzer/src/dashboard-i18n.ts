@@ -342,6 +342,7 @@ export interface DashboardTranslations {
     updatedCount: string
     noData: string
     noDataDesc: string
+    truncatedNotice: string
     importData: string
     totalClicks: string
     totalImpressions: string
@@ -978,6 +979,8 @@ const en: DashboardTranslations = {
     updatedCount: 'updated',
     noData: 'No performance data',
     noDataDesc: 'Import your data from Google Search Console to view your clicks, impressions, CTR and positions.',
+    truncatedNotice:
+      'There is too much data to total here: the figures below cover only the newest rows of the period. Configure the SQL data store (the dataStore option) for exact totals.',
     importData: 'Import data',
     totalClicks: 'Total clicks',
     totalImpressions: 'Total impressions',
