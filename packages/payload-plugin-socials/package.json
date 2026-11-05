@@ -1,0 +1,90 @@
+{
+  "name": "@cargo/payload-plugin-socials",
+  "version": "0.12.0-beta.0",
+  "private": true,
+  "description": "Payload CMS 4 social publishing plugin for Cargo (fork of payload-plugin-socials): Pinterest, Instagram Business, Facebook Pages, Google Business Profile",
+  "license": "MIT",
+  "author": "Conti Digital",
+  "contributors": [
+    "Conti Digital (https://github.com/ContiDigital) — original author"
+  ],
+  "type": "module",
+  "sideEffects": [
+    "./dist/client.js",
+    "./dist/client.css",
+    "*.css"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "default": "./dist/client.js"
+    },
+    "./client.css": "./dist/client.css",
+    "./rsc": {
+      "types": "./dist/rsc.d.ts",
+      "default": "./dist/rsc.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "docs",
+    "LICENSE",
+    "README.md",
+    "CHANGELOG.md",
+    "SECURITY.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@payloadcms/ui": ">=4.0.0-beta.6 <5.0.0",
+    "payload": ">=4.0.0-beta.6 <5.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "sharp": "^0.35.0"
+  },
+  "peerDependenciesMeta": {
+    "@payloadcms/ui": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    },
+    "sharp": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@payloadcms/db-sqlite": "catalog:",
+    "@payloadcms/richtext-lexical": "catalog:",
+    "@payloadcms/ui": "catalog:",
+    "@types/node": "24.12.3",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "graphql": "^16.8.1",
+    "payload": "catalog:",
+    "pino": "10.3.1",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "sharp": "0.35.3",
+    "tsup": "^8.5.1",
+    "typescript": "catalog:",
+    "vitest": "^4.1.11"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

@@ -55,6 +55,10 @@ jobs:
       - name: Plugin unit tests
         run: pnpm --filter @cargo/payload-seo-analyzer test
 
+      # Unit tests plus a Payload boot on in-memory SQLite, against source.
+      - name: Socials plugin tests
+        run: pnpm --filter @cargo/payload-plugin-socials test
+
       # Unit, component and Payload integration tests (in-memory SQLite), against source.
       - name: On-page editor tests
         run: pnpm --filter @cargo/onpage test
