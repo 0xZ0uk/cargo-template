@@ -67,9 +67,12 @@ jobs:
       - name: On-page editor tests
         run: pnpm --filter @cargo/onpage test
 
-      # Runs against a fresh local D1 (wrangler's platform proxy), schema pushed by Payload.
+      # Runs against a fresh local D1 (wrangler's platform proxy), built from the committed
+      # migrations: Payload doesn't push the schema (`push: false`).
       - name: App integration tests
-        run: pnpm web test:int
+        run: |
+          pnpm web migrate
+          pnpm web test:int
 
       - name: Production build (plugin + Worker)
         run: pnpm build
@@ -135,8 +138,8 @@ jobs:
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: pnpm --filter @cargo/web exec playwright install-deps chromium
 
-      # Build the local D1s from the committed migrations, as a deploy would, instead of
-      # letting the dev server push the schema. A migration that doesn't apply fails here.
+      # Build the local D1s from the committed migrations, as a deploy would (the dev server
+      # doesn't push the schema). A migration that doesn't apply fails here.
       - name: Migrate the local D1 databases
         run: |
           pnpm web migrate

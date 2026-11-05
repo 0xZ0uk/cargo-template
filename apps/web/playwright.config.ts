@@ -48,7 +48,8 @@ export default defineConfig({
         command: `pnpm dev --port ${port} --strictPort`,
         // Locally, reuse a dev server you already started on that port. CI always starts its own.
         reuseExistingServer: !process.env.CI,
-        // The first dev request compiles the admin and pushes the schema to a fresh local D1.
+        // The first dev request compiles the admin. The local D1 must be migrated first
+        // (`pnpm web migrate`): Payload doesn't push the schema.
         timeout: 180_000,
         url: baseURL,
       },

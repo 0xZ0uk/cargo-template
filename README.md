@@ -14,10 +14,11 @@ A Payload 4 + TanStack Start template on Cloudflare Workers (D1 + R2), and the i
 ```sh
 echo "PAYLOAD_SECRET=$(openssl rand -hex 32)" > apps/web/.env.development.local
 pnpm install
+pnpm web migrate
 pnpm dev
 ```
 
-`pnpm dev` builds the plugins once, keeps them rebuilding on change (`tsup --watch`), and starts the app at `http://localhost:3000`.
+`pnpm web migrate` builds the local D1 database from the committed migrations; run it again after pulling new ones. `pnpm dev` builds the plugins once, keeps them rebuilding on change (`tsup --watch`), and starts the app at `http://localhost:3000`.
 
 ## Commands
 
