@@ -106,6 +106,9 @@ export const SOCIAL_PUBLISH_POLL_MIN_SECONDS = 1
 export const SOCIAL_PUBLISH_POLL_MAX_SECONDS = 5
 export const SOCIAL_PUBLISH_POLL_DEFAULT_SECONDS = 2
 export const MAX_REMOTE_ASSET_REDIRECTS = 3
+/** Sent as `User-Agent` on every remote media fetch so hosts can identify the plugin's fetches. */
+export const REMOTE_FETCH_USER_AGENT =
+  'cargo-payload-plugin-socials (+https://github.com/0xZ0uk/cargo-template)'
 export const DEFAULT_MAX_REQUESTS_PER_MINUTE = 60
 export const MAX_WEBHOOK_BODY_BYTES = 1024 * 1024
 
