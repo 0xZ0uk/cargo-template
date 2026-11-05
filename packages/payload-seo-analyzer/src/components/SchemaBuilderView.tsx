@@ -749,15 +749,18 @@ export function SchemaBuilderView() {
     <>
       <ViewHeader description={t.schemaBuilder.visualGeneratorDesc} title="Schema.org Builder" />
       <ViewBody>
-        {/* Input mode: the manual builder (default) or the JSON-LD generated for a real page */}
-        <Tabs
-          onChange={(value: string) => setMode(value === 'page' ? 'page' : 'manual')}
-          tabs={[
-            { label: t.schemaBuilder.manualMode, value: 'manual' },
-            { label: t.schemaBuilder.pageMode, value: 'page' },
-          ]}
-          value={mode}
-        />
+        {/* Input mode: the manual builder (default) or the JSON-LD generated for a real page.
+            Payload's Tabs takes no aria-label, so the group carries it (see #34). */}
+        <div aria-label={t.schemaBuilder.modeLabel} role="group">
+          <Tabs
+            onChange={(value: string) => setMode(value === 'page' ? 'page' : 'manual')}
+            tabs={[
+              { label: t.schemaBuilder.manualMode, value: 'manual' },
+              { label: t.schemaBuilder.pageMode, value: 'page' },
+            ]}
+            value={mode}
+          />
+        </div>
 
         {mode === 'page' ? (
           <SchemaFromPage renderPreview={renderPreview} />

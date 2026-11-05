@@ -111,6 +111,7 @@ export function SchemaFromPage({ renderPreview }: { renderPreview: (props: Schem
     if (!selectedId || !activeCollection) {
       setGenerated(null)
       setError(null)
+      setGenerating(false)
       return
     }
     const controller = new AbortController()
@@ -156,6 +157,8 @@ export function SchemaFromPage({ renderPreview }: { renderPreview: (props: Schem
             onChange={(e) => {
               setCollection(e.target.value)
               setSelected(null)
+              // Drop the previous collection's results so none can be picked against the new one.
+              setDocs([])
               setSearch('')
               setQuery('')
             }}
