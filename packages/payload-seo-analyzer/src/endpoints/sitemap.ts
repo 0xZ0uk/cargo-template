@@ -8,6 +8,7 @@ import type { PayloadHandler } from 'payload'
 import type { SeoConfig } from '../types.js'
 import { buildDocPath } from '../helpers/docUrl.js'
 import { requestOrigin, resolveSiteUrl } from '../helpers/siteUrl.js'
+import { buildSelect } from '../helpers/buildSelect.js'
 import { fetchAllDocs } from '../helpers/fetchAllDocs.js'
 import { seoCache } from '../cache.js'
 
@@ -35,6 +36,9 @@ function sitemapMaxDocs(): number {
   const parsed = raw != null ? parseInt(raw, 10) : NaN
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 5000
 }
+
+/** Document fields the sitemap reads (see the loop in the handler). */
+export const SITEMAP_SELECT_PATHS = ['slug', 'updatedAt', '_status', 'noindex', 'meta.noindex']
 
 /** Escape special XML characters */
 function escapeXml(str: string): string {
@@ -121,6 +125,8 @@ export function createSitemapHandler(
         collections: targetCollections,
         depth: 0,
         maxDocs: sitemapMaxDocs(),
+        // Only what the loop below reads — never the layout blocks / Lexical trees.
+        select: buildSelect(req.payload, targetCollections, SITEMAP_SELECT_PATHS),
       })
 
       const urls: SitemapUrl[] = []
