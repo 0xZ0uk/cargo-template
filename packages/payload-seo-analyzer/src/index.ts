@@ -212,7 +212,6 @@ import {
   extractLinksFromLexical,
   extractImagesFromLexical,
   extractListsFromLexical,
-  checkImagesInBlocks,
   countWords,
   countSentences,
   normalizeForComparison,
@@ -254,6 +253,7 @@ import { checkHreflang } from './rules/hreflang'
 // ---------------------------------------------------------------------------
 
 import { extractPayloadLink } from './helpers/linkExtractor.js'
+import { extractBlocksContent } from './helpers/blockContent.js'
 
 // ---------------------------------------------------------------------------
 // Context builder — pre-computes data shared across rule modules
@@ -297,114 +297,15 @@ function buildContext(data: SeoInput, config: SeoConfig): AnalysisContext {
     }
   }
 
-  // Extract from blocks (Pages)
-  if (blocks && Array.isArray(blocks)) {
-    for (const block of blocks) {
-      if (!block || typeof block !== 'object') continue
-      const b = block as Record<string, unknown>
-
-      // Content blocks with columns
-      if (b.columns && Array.isArray(b.columns)) {
-        for (const col of b.columns) {
-          if (col && typeof col === 'object') {
-            const colObj = col as Record<string, unknown>
-            if (colObj.richText) {
-              fullText += extractTextFromLexical(colObj.richText, maxDepth) + ' '
-              readabilityText += extractTextFromLexical(colObj.richText, maxDepth, true) + ' '
-              allLinks.push(...extractLinksFromLexical(colObj.richText, maxDepth))
-              allHeadings.push(...extractHeadingsFromLexical(colObj.richText, maxDepth))
-            }
-          }
-        }
-      }
-
-      // Blocks with direct richText
-      if (b.richText) {
-        fullText += extractTextFromLexical(b.richText, maxDepth) + ' '
-        readabilityText += extractTextFromLexical(b.richText, maxDepth, true) + ' '
-        allLinks.push(...extractLinksFromLexical(b.richText, maxDepth))
-        allHeadings.push(...extractHeadingsFromLexical(b.richText, maxDepth))
-      }
-
-      // Services block text + links
-      if (b.blockType === 'services' && Array.isArray(b.services)) {
-        for (const svc of b.services) {
-          if (svc && typeof svc === 'object') {
-            const s = svc as Record<string, unknown>
-            if (typeof s.title === 'string') {
-              fullText += s.title + ' '
-              readabilityText += s.title + '. '
-            }
-            if (typeof s.description === 'string') {
-              fullText += s.description + ' '
-              readabilityText += s.description + '. '
-            }
-            // Service link (plain text URL)
-            if (typeof s.link === 'string' && s.link) {
-              allLinks.push({ url: s.link, text: (s.title as string) || '' })
-            }
-          }
-        }
-      }
-
-      // CTA block links (linkGroup: links[].link)
-      if (
-        (b.blockType === 'cta' || b.blockType === 'callToAction') &&
-        Array.isArray(b.links)
-      ) {
-        for (const item of b.links) {
-          if (item && typeof item === 'object') {
-            const linkItem = item as Record<string, unknown>
-            const linkData = extractPayloadLink(linkItem.link)
-            if (linkData) allLinks.push(linkData)
-          }
-        }
-      }
-
-      // Content column links (enableLink + link field)
-      if (b.columns && Array.isArray(b.columns)) {
-        for (const col of b.columns) {
-          if (col && typeof col === 'object') {
-            const colObj = col as Record<string, unknown>
-            if (colObj.enableLink && colObj.link) {
-              const linkData = extractPayloadLink(colObj.link)
-              if (linkData) allLinks.push(linkData)
-            }
-          }
-        }
-      }
-
-      // LatestPosts block CTA link (plain text URL)
-      if (b.blockType === 'latestPosts' && typeof b.ctaLink === 'string' && b.ctaLink) {
-        allLinks.push({ url: b.ctaLink, text: (b.ctaLabel as string) || '' })
-      }
-
-      // Portfolio block project links (plain text URL)
-      if (b.blockType === 'portfolio' && Array.isArray(b.projects)) {
-        for (const proj of b.projects) {
-          if (proj && typeof proj === 'object') {
-            const p = proj as Record<string, unknown>
-            if (typeof p.link === 'string' && p.link) {
-              allLinks.push({ url: p.link, text: (p.title as string) || '' })
-            }
-          }
-        }
-      }
-
-      // Testimonials text
-      if (b.blockType === 'testimonials' && Array.isArray(b.testimonials)) {
-        for (const t of b.testimonials) {
-          if (t && typeof t === 'object') {
-            const testimonial = t as Record<string, unknown>
-            if (typeof testimonial.quote === 'string') {
-              fullText += testimonial.quote + ' '
-              readabilityText += testimonial.quote + '. '
-            }
-          }
-        }
-      }
-    }
+  // Extract from layout blocks (Pages): one shared walker, also used by the sidebar,
+  // the rules that look at blocks and extractDocContent.
+  const blockContent = extractBlocksContent(blocks, maxDepth)
+  if (blockContent.text.length > 0) {
+    fullText += blockContent.text.join(' ') + ' '
+    readabilityText += blockContent.readability.join(' ') + ' '
   }
+  allLinks.push(...blockContent.links)
+  allHeadings.push(...blockContent.headings)
 
   // Extract from content (Posts — Lexical richText)
   if (content) {
@@ -431,12 +332,9 @@ function buildContext(data: SeoInput, config: SeoConfig): AnalysisContext {
     altTexts: [],
   }
 
-  if (blocks && Array.isArray(blocks)) {
-    const blockImgs = checkImagesInBlocks(blocks)
-    imageStats.total += blockImgs.total
-    imageStats.withAlt += blockImgs.withAlt
-    imageStats.altTexts.push(...blockImgs.altTexts)
-  }
+  imageStats.total += blockContent.images.total
+  imageStats.withAlt += blockContent.images.withAlt
+  imageStats.altTexts.push(...blockContent.images.altTexts)
 
   if (content) {
     const contentImgs = extractImagesFromLexical(content, maxDepth)

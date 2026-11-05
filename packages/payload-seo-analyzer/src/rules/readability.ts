@@ -20,6 +20,7 @@ import {
   LONG_SECTION_THRESHOLD,
 } from '../constants.js'
 import { getTranslations } from '../i18n.js'
+import { extractBlocksContent } from '../helpers/blockContent.js'
 
 export function checkReadability(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
   const checks: SeoCheck[] = []
@@ -103,22 +104,11 @@ export function checkReadability(input: SeoInput, ctx: AnalysisContext): SeoChec
   }
 
   // 40. Long paragraphs (>150 words) — check in Lexical content
-  const sources = [input.heroRichText, input.content].filter(Boolean)
-  if (input.blocks && Array.isArray(input.blocks)) {
-    for (const block of input.blocks) {
-      if (!block || typeof block !== 'object') continue
-      const b = block as Record<string, unknown>
-      if (b.columns && Array.isArray(b.columns)) {
-        for (const col of b.columns) {
-          if (col && typeof col === 'object') {
-            const colObj = col as Record<string, unknown>
-            if (colObj.richText) sources.push(colObj.richText)
-          }
-        }
-      }
-      if (b.richText) sources.push(b.richText)
-    }
-  }
+  const sources = [
+    input.heroRichText,
+    input.content,
+    ...extractBlocksContent(input.blocks).lexicalRoots,
+  ].filter(Boolean)
 
   // Check for paragraphs > 150 words
   let hasLongParagraph = false

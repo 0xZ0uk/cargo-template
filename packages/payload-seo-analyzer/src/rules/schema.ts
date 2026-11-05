@@ -19,8 +19,8 @@ import {
   evaluateRequiredProperties,
   type SchemaTypeKey,
 } from './schema-requirements.js'
+import { extractBlocksContent } from '../helpers/blockContent.js'
 
-const FAQ_BLOCK_TYPES = new Set(['faq', 'FAQ', 'faqBlock', 'faqs'])
 
 /**
  * Local strings for the additive `schema-required-fields` completeness check.
@@ -38,14 +38,12 @@ const SCHEMA_REQUIRED_STRINGS = {
   tip: 'Fill the required properties (e.g. author, datePublished, image) — they gate rich-result eligibility and strongly help AI answer engines.',
 } as const
 
-/** Detect whether the page carries an FAQ block (FAQPage markup is generatable). */
+/**
+ * Detect whether the page carries an FAQ (FAQPage markup is generatable): an FAQ block type,
+ * or question/answer items in any block.
+ */
 function hasFaqBlock(blocks: unknown): boolean {
-  if (!Array.isArray(blocks)) return false
-  return blocks.some((block) => {
-    if (!block || typeof block !== 'object') return false
-    const t = (block as Record<string, unknown>).blockType
-    return typeof t === 'string' && FAQ_BLOCK_TYPES.has(t)
-  })
+  return extractBlocksContent(blocks).hasFaq
 }
 
 /**

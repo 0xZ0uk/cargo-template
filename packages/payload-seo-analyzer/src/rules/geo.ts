@@ -13,6 +13,7 @@
  */
 import type { SeoCheck, SeoInput, AnalysisContext } from '../types.js'
 import { extractListsFromLexical, countLongSections } from '../helpers.js'
+import { extractBlocksContent } from '../helpers/blockContent.js'
 
 const QUESTION_WORDS: readonly string[] = ['how', 'why', 'when', 'what', 'which', 'where', 'who', 'can', 'do', 'does', 'is', 'are', 'should']
 
@@ -71,20 +72,7 @@ function collectLexicalSources(input: SeoInput): unknown[] {
   const sources: unknown[] = []
   if (input.heroRichText) sources.push(input.heroRichText)
   if (input.content) sources.push(input.content)
-  if (Array.isArray(input.blocks)) {
-    for (const b of input.blocks) {
-      if (!b || typeof b !== 'object') continue
-      const blk = b as Record<string, unknown>
-      if (blk.richText) sources.push(blk.richText)
-      if (Array.isArray(blk.columns)) {
-        for (const c of blk.columns) {
-          if (c && typeof c === 'object' && (c as Record<string, unknown>).richText) {
-            sources.push((c as Record<string, unknown>).richText)
-          }
-        }
-      }
-    }
-  }
+  sources.push(...extractBlocksContent(input.blocks).lexicalRoots)
   return sources
 }
 
