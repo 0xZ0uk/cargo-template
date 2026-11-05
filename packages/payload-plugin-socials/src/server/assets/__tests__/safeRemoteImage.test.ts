@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { PinnedHttpsRequest } from '../safeRemoteImage.js'
 
+import { REMOTE_FETCH_USER_AGENT } from '../../../constants.js'
+
 import {
   createWorkersLookupHostname,
   fetchPinnedRemoteResponse,
@@ -205,6 +207,41 @@ describe('fetchRemoteImageBytes', () => {
     ).rejects.toThrow('processing limit')
   })
 
+  it('sends the plugin User-Agent and preserves Range on the Node request', async () => {
+    const requestImpl = vi
+      .fn<PinnedHttpsRequest>()
+      .mockResolvedValue(new Response(new Uint8Array([1])))
+    await fetchRemoteImageBytes({
+      lookupHostname: publicLookup,
+      maxBytes: 1,
+      policy,
+      range: { start: 0, end: 0 },
+      requestImpl,
+      url: 'https://cdn.example/image.jpg',
+    })
+    expect(requestImpl).toHaveBeenCalledWith(
+      expect.objectContaining({
+        headers: { Range: 'bytes=0-0', 'User-Agent': REMOTE_FETCH_USER_AGENT },
+      }),
+    )
+  })
+
+  it('sends the plugin User-Agent even without a Range', async () => {
+    const requestImpl = vi
+      .fn<PinnedHttpsRequest>()
+      .mockResolvedValue(new Response(new Uint8Array([1])))
+    await fetchRemoteImageBytes({
+      lookupHostname: publicLookup,
+      maxBytes: 1,
+      policy,
+      requestImpl,
+      url: 'https://cdn.example/image.jpg',
+    })
+    expect(requestImpl).toHaveBeenCalledWith(
+      expect.objectContaining({ headers: { 'User-Agent': REMOTE_FETCH_USER_AGENT } }),
+    )
+  })
+
   it('allows an explicitly trusted host while retaining HTTPS validation', async () => {
     const requestImpl = vi
       .fn<PinnedHttpsRequest>()
@@ -301,6 +338,26 @@ describe('on Cloudflare Workers', () => {
         url: new URL('https://slow.example/a.jpg'),
       }),
     ).rejects.toThrow('Request timed out')
+  })
+
+  it('sends the plugin User-Agent on the Workers fetch path', async () => {
+    vi.stubGlobal('navigator', { userAgent: 'Cloudflare-Workers' })
+    const fetchMock = vi.fn().mockResolvedValue(new Response(new Uint8Array([1])))
+    vi.stubGlobal('fetch', fetchMock)
+    await fetchPinnedRemoteResponse({
+      label: 'Remote image',
+      lookupHostname: publicLookup,
+      policy,
+      url: 'https://cdn.example/a.jpg',
+    })
+    expect(fetchMock).toHaveBeenCalledWith(
+      new URL('https://cdn.example/a.jpg'),
+      expect.objectContaining({
+        headers: { 'User-Agent': REMOTE_FETCH_USER_AGENT },
+        method: 'GET',
+        redirect: 'manual',
+      }),
+    )
   })
 
   it('uses the fetch transport by default and revalidates redirect targets', async () => {
