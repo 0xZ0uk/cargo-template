@@ -1,12 +1,15 @@
-import { Button, type ButtonProps } from '@/components/ui/button'
+import { buttonVariants } from '@/components/ui/button'
 import { cn } from '@/utilities/ui'
 import { Link } from '@tanstack/react-router'
+import type { VariantProps } from 'class-variance-authority'
 import React from 'react'
 
 import type { Page } from '@/payload-types'
 
+type ButtonVariants = VariantProps<typeof buttonVariants>
+
 type CMSLinkType = {
-  appearance?: 'inline' | ButtonProps['variant']
+  appearance?: 'inline' | ButtonVariants['variant']
   children?: React.ReactNode
   className?: string
   label?: string | null
@@ -15,7 +18,7 @@ type CMSLinkType = {
     relationTo: 'pages'
     value: Page | string | number
   } | null
-  size?: ButtonProps['size'] | null
+  size?: ButtonVariants['size']
   type?: 'custom' | 'reference' | null
   url?: string | null
 }
@@ -38,8 +41,20 @@ export const CMSLink: React.FC<CMSLinkType> = (props) => {
 
   if (!slug && !url) return null
 
-  const size = appearance === 'link' ? 'clear' : sizeFromProps
   const newTabProps = newTab ? { rel: 'noopener noreferrer', target: '_blank' } : {}
+  // Button appearances style the anchor itself (shadcn's pattern for links), so it stays a
+  // link to assistive tech. Inline links keep the rich text's own styles. A `link`
+  // appearance gets no size, so it has no button height or padding.
+  const linkClassName =
+    appearance === 'inline'
+      ? cn(className)
+      : cn(
+          buttonVariants({
+            size: appearance === 'link' ? null : sizeFromProps,
+            variant: appearance,
+          }),
+          className,
+        )
   const content = (
     <>
       {label && label}
@@ -49,30 +64,21 @@ export const CMSLink: React.FC<CMSLinkType> = (props) => {
 
   // Internal pages navigate client-side; custom URLs can point anywhere, so they stay plain
   // anchors.
-  const anchor = slug ? (
-    slug === 'home' ? (
-      <Link className={cn(className)} to="/" {...newTabProps}>
+  if (slug) {
+    return slug === 'home' ? (
+      <Link className={linkClassName} to="/" {...newTabProps}>
         {content}
       </Link>
     ) : (
-      <Link className={cn(className)} params={{ slug }} to="/$slug" {...newTabProps}>
+      <Link className={linkClassName} params={{ slug }} to="/$slug" {...newTabProps}>
         {content}
       </Link>
     )
-  ) : (
-    <a className={cn(className)} href={url!} {...newTabProps}>
-      {content}
-    </a>
-  )
-
-  /* Ensure we don't break any styles set by richText */
-  if (appearance === 'inline') {
-    return anchor
   }
 
   return (
-    <Button asChild className={className} size={size} variant={appearance}>
-      {anchor}
-    </Button>
+    <a className={linkClassName} href={url!} {...newTabProps}>
+      {content}
+    </a>
   )
 }

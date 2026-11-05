@@ -1,12 +1,5 @@
 /**
- * Utility functions for UI components automatically added by ShadCN and used in a few of our frontend components and blocks.
- *
- * Other functions may be exported from here in the future or by installing other shadcn components.
+ * `cn` joins class names (like clsx) and resolves Tailwind conflicts (like tailwind-merge).
+ * shadcn/ui components import it from `cn` directly; app code can use either path.
  */
-
-import { type ClassValue, clsx } from 'clsx'
-import { twMerge } from 'tailwind-merge'
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
-}
+export { cn } from 'cn'
