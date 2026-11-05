@@ -8,13 +8,11 @@ import { HeaderNav } from './Nav'
 
 interface HeaderProps {
   data: HeaderType
-  /** `dark` while the page's hero image sits behind the header. */
-  theme?: 'dark'
 }
 
-export const Header: React.FC<HeaderProps> = ({ data, theme }) => {
+export const Header: React.FC<HeaderProps> = ({ data }) => {
   return (
-    <header className="container relative z-20" {...(theme ? { 'data-theme': theme } : {})}>
+    <header className="container relative z-20">
       <div className="py-8 flex justify-between">
         <Link to="/">
           <Logo loading="eager" priority="high" className="invert dark:invert-0" />

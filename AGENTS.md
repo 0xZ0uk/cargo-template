@@ -13,6 +13,24 @@ pnpm + Turborepo workspace. Run commands from the repo root.
 - `payload`, `@payloadcms/*`, React and TypeScript versions come from the catalog in `pnpm-workspace.yaml` (`"catalog:"`). Change them there, never per package: two copies of `payload` / `@payloadcms/ui` break the admin. Lexical and TanStack Router/Start are in the catalog for the same reason (onpage shares them with the app); bump Lexical to whatever `@payloadcms/richtext-lexical` depends on.
 - `payload` is patched (`patches/`, `patchedDependencies` in `pnpm-workspace.yaml`) so password hashes use at most 100,000 PBKDF2 iterations, the Workers limit; upstream uses 600,000 and admin login fails on a deployed Worker. When bumping `payload`, port the patch to the new version (`pnpm patch payload@<version>`) unless upstream has fixed it.
 
+## Page blocks
+
+Pages are built from section blocks in `apps/web/src/blocks/` (Hero, Pricing, FAQ…). Editors pick a block, choose a variant and fill in content, in the admin or with the on-page editor; nobody writes CSS. `RichText/` is the reference block: copy its shape.
+
+- **One folder per block**, `src/blocks/<Name>/`:
+  - `meta.ts`: slug, labels, picker group, `variants` and an `example`, via `defineBlockMeta<XBlock>()`. Client-safe: no Payload or Lexical runtime imports (type imports are fine), because the gallery imports it. Build rich text in examples with `../shared/lexical`. Leave uploads and relationships out of examples.
+  - `thumbnail.ts`: a 480×320 SVG wireframe string for the block pickers (neutral greys, no text).
+  - `config.ts`: `export const <Name>Config = defineBlock({ meta, interfaceName: '<Name>Block', thumbnail, fields })`. `defineBlock` adds the `variant` radio, the section settings, the picker group and thumbnail, the on-page example, and a row label on every array (the row's `title`, `name`, `question`… instead of "Item 01"; name your fields that way).
+  - `Component.tsx`: `export const <Name>Block: React.FC<<Name>Block>` from `@/payload-types`. Render inside a `container` (or full-bleed when the variant calls for it). `RenderBlocks` wraps it in `<Section>`, which owns background, vertical spacing and the anchor id, so blocks never set their own outer padding or background.
+- **Register** a new block in `src/blocks/index.ts` (configs), `components.ts` (components) and `gallery.ts` (metas). `components.ts` and `gallery.ts` are typed against the generated `Page` type, so a missing entry fails typecheck after `pnpm web generate:types`.
+- **Shared fields** (`src/blocks/shared/fields.ts`): `headingFields()` (eyebrow, title, description; render with `@/components/SectionHeading`, `as="h1"` only in heroes), `mediaField()` (render with `@/components/Media/BlockMedia`, which shows a placeholder when empty), `iconField()` (render with `@/components/Icon`), `blockRichText()`, plus `link()` / `linkGroup()` from `src/fields` (render with `CMSLink`). Never make media required.
+- **Variants, not knobs.** Each variant is a designed layout. No free colours, font sizes, spacing or class names in fields: colours come from the shadcn tokens, so blocks work in the `dark` section background without per-block dark styles.
+- **Robust to empty data.** The admin's block drawer creates blocks with defaults only; every optional field, array and upload may be missing. Render what's there; skip what isn't.
+- **On-page editing** maps strings to fields with invisible markers (`packages/onpage/docs/concepts/auto-mapping.md`). Render CMS strings as they are, each in its own element; use CSS for case and truncation; pass strings that go into attributes (`title`, `aria-label`, `alt`) or comparisons through `stegaClean` from `@cargo/onpage-core`.
+- **shadcn components** come from the CLI (see above). Use them for buttons, cards, accordions and so on rather than hand-rolled markup.
+- **Storage**: blocks are stored as JSON (`blocksAsJSON` in `payload.config.ts`), so new blocks and nested arrays add no D1 tables. A new block still changes the schema snapshot: run `pnpm web migrate:create`.
+- **Check your work**: `pnpm web generate:types`, `pnpm web typecheck`, `pnpm web lint`, `pnpm web test:int` (`tests/int/blocks.int.spec.tsx` renders every block's example in every variant, and with empty data). With `pnpm web dev`, `/dev/blocks` shows every block (`?block=<slug>`, `?background=dark`).
+
 ## Cloudflare D1 / R2
 
 The app runs on Cloudflare Workers with D1 (10 GB max per database) and R2. Keep D1 small:

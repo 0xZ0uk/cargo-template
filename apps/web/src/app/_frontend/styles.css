@@ -39,6 +39,15 @@
 @source inline("bg-warning/30");
 
 @theme {
+  /* A track holding its content twice, shifted by half its width: a seamless loop (Logos). */
+  --animate-marquee: marquee 40s linear infinite;
+
+  @keyframes marquee {
+    to {
+      transform: translateX(-50%);
+    }
+  }
+
   --breakpoint-sm: 40rem;
   --breakpoint-md: 48rem;
   --breakpoint-lg: 64rem;

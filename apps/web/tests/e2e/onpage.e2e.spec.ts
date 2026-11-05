@@ -29,30 +29,24 @@ const paragraph = (text: string) => ({
   children: [{ type: 'text', detail: 0, format: 0, mode: 'normal', style: '', text, version: 1 }],
 })
 
-/** A published page with one Content block holding `text`. */
+/** A published page with one Rich text block holding `text`. */
 const pageData = (title: string, slug: string, text: string) => ({
   title,
   slug,
   _status: 'published',
-  hero: { type: 'none' },
   layout: [
     {
-      blockType: 'content',
-      columns: [
-        {
-          size: 'full',
-          richText: {
-            root: {
-              type: 'root',
-              direction: 'ltr',
-              format: '',
-              indent: 0,
-              version: 1,
-              children: [paragraph(text)],
-            },
-          },
+      blockType: 'richText',
+      richText: {
+        root: {
+          type: 'root',
+          direction: 'ltr',
+          format: '',
+          indent: 0,
+          version: 1,
+          children: [paragraph(text)],
         },
-      ],
+      },
     },
   ],
 })

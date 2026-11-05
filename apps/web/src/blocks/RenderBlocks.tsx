@@ -1,47 +1,33 @@
 import React, { Fragment } from 'react'
 
-import type { Page } from '@/payload-types'
+import { Section } from '@/components/Section'
 
-import { CallToActionBlock } from '@/blocks/CallToAction/Component'
-import { ContentBlock } from '@/blocks/Content/Component'
-import { MediaBlock } from '@/blocks/MediaBlock/Component'
+import { blockComponents, type LayoutBlock } from './components'
 
-const blockComponents = {
-  content: ContentBlock,
-  cta: CallToActionBlock,
-  mediaBlock: MediaBlock,
-}
+/** Renders a layout: each block inside its `Section` (background, spacing, anchor). */
+export const RenderBlocks: React.FC<{ blocks?: LayoutBlock[] | null }> = ({ blocks }) => {
+  if (!blocks?.length) return null
 
-export const RenderBlocks: React.FC<{
-  blocks: Page['layout'][0][]
-}> = (props) => {
-  const { blocks } = props
+  return (
+    <Fragment>
+      {blocks.map((block, index) => {
+        const Block = blockComponents[block.blockType] as
+          | React.ComponentType<LayoutBlock>
+          | undefined
+        if (!Block) return null
 
-  const hasBlocks = blocks && Array.isArray(blocks) && blocks.length > 0
+        const key = block.id ?? index
+        const content = <Block {...block} />
 
-  if (hasBlocks) {
-    return (
-      <Fragment>
-        {blocks.map((block, index) => {
-          const { blockType } = block
-
-          if (blockType && blockType in blockComponents) {
-            const Block = blockComponents[blockType]
-
-            if (Block) {
-              return (
-                <div className="my-16" key={index}>
-                  {/* @ts-expect-error there may be some mismatch between the expected types here */}
-                  <Block {...block} disableInnerContainer />
-                </div>
-              )
-            }
-          }
-          return null
-        })}
-      </Fragment>
-    )
-  }
-
-  return null
+        // Blocks without section settings (a reusable section's wrapper) render their own.
+        return 'section' in block ? (
+          <Section blockType={block.blockType} key={key} settings={block.section}>
+            {content}
+          </Section>
+        ) : (
+          <Fragment key={key}>{content}</Fragment>
+        )
+      })}
+    </Fragment>
+  )
 }

@@ -92,7 +92,7 @@ describe('pageHead', () => {
       livePreview: false,
       jsonLd: ['{"a":1}', '{"b":2}'],
       origin: 'https://example.com',
-      page: { layout: [], slug: 'about', title: 'About', hero: { type: 'none' } } as never,
+      page: { layout: [], slug: 'about', title: 'About' } as never,
     })
 
     expect(head).toHaveProperty('scripts', [
