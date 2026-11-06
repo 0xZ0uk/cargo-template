@@ -390,4 +390,20 @@ describe('page-builder blocks: link graph, external links, FAQPage, GEO', () => 
     analyzeSeo(buildSeoInputFromDoc({ ...blockPage, slug: 'planning-software' }, 'pages'))
     expect(extractBlocksContent).toHaveBeenCalledTimes(1)
   })
+
+  it('carries robotsMeta from the noindex checkbox, so robots-noindex shows live', () => {
+    const ticked = buildSidebarContentInput(toFormState({ ...blockPage, noindex: true }))
+    expect(ticked.robotsMeta).toBe('noindex')
+    const check = analyzeSeo({ metaTitle: blockPage.meta.title, slug: blockPage.slug, ...ticked }).checks.find(
+      (c) => c.id === 'robots-noindex',
+    )
+    expect(check?.status).toBe('fail')
+
+    expect(buildSidebarContentInput(toFormState({ ...blockPage, noindex: false })).robotsMeta).toBeUndefined()
+    // Same precedence as /validate: a raw robots string wins over the checkbox.
+    expect(
+      buildSidebarContentInput(toFormState({ ...blockPage, noindex: true, meta: { ...blockPage.meta, robots: 'nofollow' } }))
+        .robotsMeta,
+    ).toBe('nofollow')
+  })
 })

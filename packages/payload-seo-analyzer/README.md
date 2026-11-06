@@ -457,7 +457,7 @@ Registered only when their feature is on.
 | `seo-gsc-auth` | Encrypted OAuth tokens, never readable through the API | Authenticated | SEO admin | `gscApi` |
 | `seo-score-history`, `seo-performance`, `seo-logs`, `seo-rank-history` | Time-series data | Authenticated | SEO admin | **only without `dataStore`** |
 
-Every plugin collection sets `versions: false` (Payload 4 versions collections by default) and stays out of the sidebar (`admin.group: false`). The plugin also adds `isCornerstone`, `focusKeyword` and the `focusKeywords` array to each collection in `collections`, plus the `meta` group unless one exists.
+Every plugin collection sets `versions: false` (Payload 4 versions collections by default) and stays out of the sidebar (`admin.group: false`). The plugin also adds `isCornerstone`, `noindex`, `focusKeyword` and the `focusKeywords` array to each collection in `collections`, plus the `meta` group unless one exists. `noindex` ("Hide from search engines") leaves the document out of the sitemaps and `llms.txt`, out of the internal-link suggestions and orphan counts, and turns on the `robots-noindex` check in the sidebar. The plugin doesn't render your `<head>`: emit `<meta name="robots" content="noindex">` from it in your frontend (or use `buildMetadata`, which folds it into `robots.index`). Adding it to existing collections is a new column: create a migration.
 
 ## Package exports
 
@@ -475,7 +475,7 @@ ESM and CJS builds ship with type declarations. `xlsx` (Search Console XLSX impo
 
 - **Payload migrations belong to the host.** Payload reads one migrations directory, in the app, never in a dependency. After adding a slug to `collections`, or turning on `settings`, `redirects`, `gscApi`, `jobs` or (without `dataStore`) a time-series feature, run `payload migrate:create` and commit the migration. In `apps/web`: `pnpm web migrate:create <name>`. CI fails when the schema and migrations disagree.
 - **The SQL data store migrates itself.** `SEO_STORE_MIGRATIONS` is append-only and every statement is safe to run twice. Run `migrateSeoStore(db)` at deploy time (`pnpm web seo-store:migrate:remote`, part of `pnpm web run deploy`) so the first request doesn't pay for it.
-- **Fields the plugin adds to your tables** (`isCornerstone`, `focusKeyword`, `focusKeywords`, `meta`) are editorial content. Don't drop them blindly; the `meta` group may belong to `@payloadcms/plugin-seo`.
+- **Fields the plugin adds to your tables** (`isCornerstone`, `noindex`, `focusKeyword`, `focusKeywords`, `meta`) are editorial content. Don't drop them blindly; the `meta` group may belong to `@payloadcms/plugin-seo`.
 
 Upgrade notes for upstream releases up to 4.2.2 (Payload 3) are in [`CHANGELOG.md`](CHANGELOG.md). Fork changes are in `git log -- packages/payload-seo-analyzer` (the port's plan and verification notes are in the deleted `PLAN.md`, last at commit `265a4bf`).
 

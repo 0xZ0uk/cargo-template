@@ -52,6 +52,8 @@ describe('seoAnalyzerPlugin — integration (config transform)', () => {
     // SEO fields were injected (focusKeyword is part of seoFields) — wrapping in a tabs field
     // is an implementation detail that depends on the collection's existing fields.
     expect(JSON.stringify(pages.fields)).toContain('focusKeyword')
+    // The "Hide from search engines" checkbox, read as `doc.noindex` by every consumer.
+    expect(JSON.stringify(pages.fields)).toMatch(/"name":"noindex","type":"checkbox","defaultValue":false/)
     // Non-target collection untouched
     expect(users.fields.length).toBe(0)
   })
