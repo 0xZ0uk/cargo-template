@@ -15,6 +15,8 @@ import {
   normalizeBlocksContent,
   type SeoContentExtractors,
 } from '../helpers/contentExtractor'
+import { hashConfig } from '../cache'
+import { buildSeoConfig } from '../plugin'
 import { contentInputFromDoc } from '../helpers/docContentInput'
 import { extractDocContent } from '../helpers/extractDocContent'
 import { extractAllInternalLinks } from '../helpers/linkExtractor'
@@ -141,5 +143,32 @@ describe('extractContent: every consumer', () => {
       },
     ])
     expect(buildJsonLd(doc, { collection: 'docs', siteUrl: 'https://example.com' }).type).not.toBe('FAQPage')
+  })
+})
+
+describe('extractContent: persisted cache keys', () => {
+  // The audit, indexation audit and sitemap audit hash `{ collections, globals, seoConfig }`.
+  const keyFor = (extractContent?: SeoContentExtractors) =>
+    hashConfig({ v: 2, collections: ['pages', 'docs'], globals: [], seoConfig: buildSeoConfig({ extractContent }) })
+
+  const docs: SeoContentExtractors = { docs: ({ doc: d }) => ({ text: [String(d.body)] }) }
+
+  it('changes when an extractor is added, changed or removed', () => {
+    const none = keyFor()
+    expect(keyFor(docs)).not.toBe(none)
+    expect(keyFor({ docs: ({ doc: d }) => ({ text: [String(d.summary)] }) })).not.toBe(keyFor(docs))
+    expect(keyFor({ ...docs, pages: () => ({}) })).not.toBe(keyFor(docs))
+    expect(keyFor({})).toBe(none)
+  })
+
+  it('is stable for the same extractors, whatever order the map is written in', () => {
+    const a = { docs: ({ doc: d }) => ({ text: [String(d.body)] }), pages: () => ({}) } satisfies SeoContentExtractors
+    const b = { pages: () => ({}), docs: ({ doc: d }) => ({ text: [String(d.body)] }) } satisfies SeoContentExtractors
+    expect(keyFor(a)).toBe(keyFor(b))
+    expect(keyFor(docs)).toBe(keyFor({ docs: ({ doc: d }) => ({ text: [String(d.body)] }) }))
+  })
+
+  it('leaves the keys of an app without extractors as they were', () => {
+    expect(buildSeoConfig({ siteUrl: 'https://example.com' })).toEqual({ siteUrl: 'https://example.com' })
   })
 })

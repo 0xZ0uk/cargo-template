@@ -26,6 +26,20 @@ No schema change: nothing to migrate.
   reusable section text, and the meta image. The sidebar now reads its content through
   `/sidebar-content` (debounced, cached per form session) and maps it with the same function as
   `buildSeoInputFromDoc`, so posts and pages also agree on `isPost`, the h1 and robots directives.
+- **The sidebar no longer keeps an older answer after a failed request.** Once one
+  `/sidebar-content` request had succeeded, a later failure (offline, or a 500 on half-edited data)
+  left the score on that older answer for the rest of the session. A failed request now drops it
+  and the score reads the form as it is, as documented; while a request is still in flight the last
+  answer stays, so the score doesn't flicker.
+- **The sidebar's answers are keyed by locale.** The server populates relations per `?locale=`
+  (localized alt texts, linked slugs), so switching the admin locale on a page with the same values
+  in both reused the other locale's answer. The locale is part of the cache key now, and the last
+  answer is not shown across a locale switch.
+- **`extractContent` reaches the persisted cache keys.** The audit, indexation audit and sitemap
+  audit hash the plugin's config, which left the extractors out: adding or changing one kept
+  serving results built without it until the cache expired. A fingerprint of each extractor's
+  source (per collection, in a stable order) is part of the hashed config now. Apps without
+  `extractContent` keep their keys.
 - **The audit's `SEO_AUDIT_DEPTH` comment** said depth 0 gave parity with the sidebar. It sees
   less: uploads, reference links and reusable sections stay IDs.
 

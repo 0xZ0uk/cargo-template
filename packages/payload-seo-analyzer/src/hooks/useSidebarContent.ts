@@ -24,10 +24,12 @@ export interface SidebarContentState {
  * links and reusable sections (IDs in form state) with the user's access and runs the
  * collection's `extractContent`. Until the first answer, and if the request fails, the
  * score reads the form as it is (IDs count as nothing). While a newer answer is on its
- * way, the last one stays, so the score doesn't flicker between the two readings.
+ * way, the last one of the same locale stays, so the score doesn't flicker between the two
+ * readings; if that request fails, the older answer is dropped and the score reads the form as it is.
  *
- * Answers are cached per form session (this component's lifetime) by the posted values,
- * so returning to an earlier state costs no request. Nothing is cached across sessions.
+ * Answers are cached per form session (this component's lifetime) by the locale and the
+ * posted values, so returning to an earlier state costs no request. Nothing is cached
+ * across sessions.
  */
 export function useSidebarContent(
   formFields: unknown,
@@ -37,16 +39,18 @@ export function useSidebarContent(
 ): SidebarContentState {
   const doc = useMemo(() => formStateToDoc(formFields), [formFields])
   const local = useMemo(() => contentInputFromDoc(doc, collection ?? ''), [doc, collection])
-  const key = useMemo(() => (collection ? JSON.stringify(doc) : ''), [doc, collection])
+  // The server populates relations per `?locale=` (localized alt texts, slugs), so the same
+  // values read in another locale are another answer.
+  const key = useMemo(() => (collection ? JSON.stringify([locale ?? '', doc]) : ''), [doc, collection, locale])
 
   const cache = useRef(new Map<string, SidebarContentInput>())
-  const [server, setServer] = useState<{ key: string; content: SidebarContentInput } | null>(null)
+  const [server, setServer] = useState<{ key: string; locale: string; content: SidebarContentInput } | null>(null)
 
   useEffect(() => {
     if (!collection || !key) return
     const cached = cache.current.get(key)
     if (cached) {
-      setServer({ key, content: cached })
+      setServer({ key, locale: locale ?? '', content: cached })
       return
     }
     const controller = new AbortController()
@@ -60,17 +64,25 @@ export function useSidebarContent(
           body: JSON.stringify({ collection, data: doc }),
           signal: controller.signal,
         })
-        if (!res.ok) return
-        const content = pickDocContentInput(await res.json())
-        if (!content || controller.signal.aborted) return
+        if (controller.signal.aborted) return
+        const content = res.ok ? pickDocContentInput(await res.json()) : null
+        if (controller.signal.aborted) return
+        if (!content) {
+          // The request for the current form failed: drop the older answer, so the score
+          // reads the form as it is rather than a state the editor has since left.
+          setServer(null)
+          return
+        }
         cache.current.set(key, content)
         if (cache.current.size > CACHE_SIZE) {
           const oldest = cache.current.keys().next().value
           if (oldest !== undefined) cache.current.delete(oldest)
         }
-        setServer({ key, content })
+        setServer({ key, locale: locale ?? '', content })
       } catch {
-        // Offline, aborted or refused: the local reading stays.
+        // Aborted: a newer request replaces this one. Offline or a throw: the older answer
+        // is for an older form, so the local reading takes over.
+        if (!controller.signal.aborted) setServer(null)
       }
     }, SIDEBAR_CONTENT_DEBOUNCE_MS)
     return () => {
@@ -79,11 +91,14 @@ export function useSidebarContent(
     }
   }, [collection, doc, endpoint, key, locale])
 
+  // The last answer stays while a newer one is on its way, but not across a locale switch:
+  // the other locale's answer is a different reading, not an older one.
+  const usable = server && server.locale === (locale ?? '') ? server : null
   return useMemo(
     () => ({
-      content: server ? server.content : local,
-      resolved: !!server && server.key === key,
+      content: usable ? usable.content : local,
+      resolved: !!usable && usable.key === key,
     }),
-    [server, local, key],
+    [usable, local, key],
   )
 }

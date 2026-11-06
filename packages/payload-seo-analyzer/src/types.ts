@@ -190,6 +190,12 @@ export interface SeoConfig {
   excludeDocs?: SeoExcludeDocs
   /** Dotted field paths `excludeDocs` reads (e.g. `['_abVariantOf']`). */
   excludeDocsFields?: string[]
+  /**
+   * @internal The source of the plugin's `extractContent` extractors, set by the plugin so
+   * the persisted cache keys (which hash this config) change with them. Not read by the
+   * analyzer; the extractors themselves live in the server-only `config.custom`.
+   */
+  extractContentFingerprint?: string
 }
 
 /** See `SeoConfig.excludeDocs`. */

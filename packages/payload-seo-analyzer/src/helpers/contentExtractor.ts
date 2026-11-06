@@ -55,6 +55,21 @@ export function contentExtractorsOf(source: ContentExtractorSource): SeoContentE
   return source as SeoContentExtractors
 }
 
+/**
+ * A stable fingerprint of the extractors, for the persisted cache keys: the audit,
+ * indexation and sitemap-audit results depend on the function, so adding, removing or
+ * changing one (its source) must not reuse an entry built without it. Sorted by collection,
+ * so the order the map is written in doesn't matter. `undefined` without extractors, which
+ * leaves the keys of apps that don't use the option as they were.
+ */
+export function fingerprintContentExtractors(extractors: SeoContentExtractors | undefined): string | undefined {
+  const entries = Object.entries(extractors ?? {})
+    .filter((entry): entry is [string, SeoContentExtractor] => typeof entry[1] === 'function')
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+  if (entries.length === 0) return undefined
+  return entries.map(([collection, fn]) => `${collection}=${String(fn)}`).join('\n')
+}
+
 /** Fills the fields a custom extractor left out, so callers can rely on the full shape. */
 export function normalizeBlocksContent(partial: Partial<BlocksContent> | null | undefined): BlocksContent {
   const base = emptyBlocksContent()
