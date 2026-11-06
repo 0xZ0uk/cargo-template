@@ -543,12 +543,23 @@ E2E_PORT=3021 pnpm web test:e2e                         # Playwright, SEO views 
 
 ## Uninstall
 
-The `seo-analyzer-uninstall` script (`scripts/uninstall.mjs`) is upstream's. It removes the plugin from your source files and package manager, then regenerates the import map, but it hasn't been checked against Payload 4 or D1. By hand:
+There is no uninstall script; remove the plugin by hand. The steps below are for Payload 4 on Cloudflare D1 (the `apps/web` setup).
 
-1. Remove `seoAnalyzerPlugin(...)` and the app glue (`servePluginFile`, the redirect and 404 hooks, the `scheduled` jobs call).
-2. Run `generate:importmap` and `migrate:create`.
-3. Drop `seo-gsc-auth` first if it exists: it holds an encrypted Google refresh token. Revoke the grant at [myaccount.google.com/permissions](https://myaccount.google.com/permissions) too.
-4. Delete the `SEO_D1` database and the R2 prefix `seo-analyzer/cache/`.
+1. **Revoke Google access first, if `gscApi` was ever on.** The `seo-gsc-auth` collection holds an encrypted Google refresh token, and removing the package does not revoke it. Revoke the grant at [myaccount.google.com/permissions](https://myaccount.google.com/permissions) before its table is dropped.
+2. **Remove the code.**
+   - `seoAnalyzerPlugin(...)` from `payload.config.ts`, and the `createSqlSeoDataStore`, `r2SeoCacheStore` and `workersSeoRateLimit` wiring that only it used.
+   - The app glue: `servePluginFile` and the `llms.txt`, `sitemap.xml` and `robots.txt` routes, the redirect lookup and 404 recording, the `scheduled` handler that runs the plugin's jobs, and the `seo-store:migrate` scripts — and drop `pnpm run seo-store:migrate:remote` from `deploy:database` in `apps/web/package.json`, which runs it on every deploy.
+   - The package itself (`pnpm web remove @cargo/payload-seo-analyzer`).
+3. **Regenerate the import map**: `pnpm web generate:importmap`. It drops the plugin's admin views and fields.
+4. **Drop the plugin's collections from the main D1** with `pnpm web migrate:create`, review the generated SQL and apply it with `pnpm web migrate`. Only the collections you enabled exist: `seo-settings` (`settings`), `seo-redirects` (`redirects`; your 301/302 rules stop being served once it is gone) and `seo-gsc-auth` (`gscApi`). The four time-series collections (`seo-score-history`, `seo-performance`, `seo-logs`, `seo-rank-history`) are in the main D1 only when you ran without `dataStore`.
+5. **Decide about the fields it added to your collections** (`isCornerstone`, `focusKeyword`, `focusKeywords`, and the `meta` group when the plugin created it). Dropping them is a schema change on tables that hold your content. `meta.title`, `meta.description` and `meta.image` are editorial content your editors wrote, and they belong to `@payloadcms/plugin-seo` when it is installed; keep the group unless you are sure. Leaving the columns in place is harmless.
+6. **Read the generated migration before applying it.** D1 ignores `PRAGMA foreign_keys=OFF`, so a migration that rebuilds a content table (`CREATE TABLE __new_pages`, `DROP TABLE pages`) runs the `ON DELETE` actions of every table that references it: the locale, relationship and version rows are cascade-deleted. If you see one, copy the child rows aside and restore them in the migration (`apps/web/src/db/migrations/20261105_163314_page_blocks.ts` is an example), and try it on a local D1 with content first.
+7. **Clean up Cloudflare.**
+   - Delete the `SEO_D1` database and its binding, and the `ratelimits` bindings.
+   - Delete the R2 prefix `seo-analyzer/cache/` and its lifecycle rule (`pnpm web r2:lifecycle` added it).
+   - Remove `triggers.crons` from `wrangler.jsonc` if the plugin's jobs were the only thing it ran, then `pnpm web cf-typegen`.
+   - Optional: delete the `seoAuditContinue`, `seoRankSnapshot`, `seoAlertsDigest` and `seoRetentionPurge` rows from `payload-jobs`. Finished rows are harmless.
+   - Remove the plugin's variables from `.env.schema` and their secrets from Cloudflare: every `SEO_*` variable (`SEO_AI_*`, `SEO_ALERT_*`, `SEO_AUDIT_*`, `SEO_EXTERNAL_LINKS_*`, `SEO_FETCH_MAX_DOCS`, `SEO_LLMS_TXT`, `SEO_GSC_ENCRYPTION_KEY`), `GSC_OAUTH_*` and `PAGESPEED_API_KEY`, plus `OPENROUTER_API_KEY` unless something else in the app uses it. Then run `pnpm web cf-typegen`.
 
 ## License
 

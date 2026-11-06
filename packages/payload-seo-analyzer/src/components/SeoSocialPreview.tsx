@@ -2,7 +2,7 @@
 
 import React, { useState, useId } from 'react'
 import { Collapsible } from '@payloadcms/ui'
-import { useDashboardT } from '../hooks/useSeoLocale.js'
+import { useDashboardT } from '../hooks/useSeoAdmin.js'
 import { cx, rangeTone, TonePill } from '../ui/index.js'
 import { useResolvedThresholds } from '../hooks/useSeoThresholds.js'
 import type { ResolvedThresholds } from '../helpers/thresholds.js'

@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState, useId } from 'react'
 import { Banner, Button, RefreshIcon, SortDownIcon, SortUpIcon, Tabs } from '@payloadcms/ui'
-import { useDashboardT } from '../hooks/useSeoLocale.js'
+import { useDashboardT } from '../hooks/useSeoAdmin.js'
 import { Card, DataTable, EmptyState, Field, Grid, LoadingState, StatTile, ViewBody, ViewHeader, scoreTone, type Tone } from '../ui/index.js'
 import { CoreWebVitalsPanel } from './CoreWebVitalsPanel.js'
 import { HealthPanel } from './HealthPanel.js'

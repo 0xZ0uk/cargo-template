@@ -1109,7 +1109,7 @@ export const seoAnalyzerPlugin =
     // The admin components run in the browser with their own module copies, so
     // what they need from this config travels in `admin.custom`, which is part of
     // the client config: the feature flags (a panel then never calls an endpoint
-    // that was not registered). Read by hooks/useSeoLocale.ts.
+    // that was not registered). Read by hooks/useSeoAdmin.ts.
     if (!config.admin) config.admin = {}
     const adminCustom = (config.admin.custom ?? {}) as Record<string, unknown>
     config.admin.custom = {

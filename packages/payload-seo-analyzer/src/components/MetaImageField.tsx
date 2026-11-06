@@ -15,7 +15,7 @@
 import React, { useCallback, useState } from 'react'
 import { Banner, Button, CheckIcon, WarningIcon, useField, useDocumentInfo } from '@payloadcms/ui'
 import { cx } from '../ui/index.js'
-import { useDashboardT } from '../hooks/useSeoLocale.js'
+import { useDashboardT } from '../hooks/useSeoAdmin.js'
 import { withSeoErrorBoundary } from './withSeoErrorBoundary.js'
 import { resolveMetaFieldOptions, type MetaFieldOptionProps } from './metaFieldOptions.js'
 import { useSeoApi } from '../hooks/useSeoApi.js'

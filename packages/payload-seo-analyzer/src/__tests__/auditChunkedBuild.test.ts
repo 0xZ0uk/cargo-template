@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SeoCache, SeoSharedCache, type SeoCacheStore } from '../cache.js'
-import { continuePausedAuditBuilds, createAuditHandler } from '../endpoints/audit.js'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { buildAuditToFile, continuePausedAuditBuilds, createAuditHandler } from '../endpoints/audit.js'
 
 const DOCS = Array.from({ length: 130 }, (_, i) => ({
   id: i + 1,
@@ -256,5 +259,90 @@ describe('chunked audit build', () => {
     await s.flush()
     const first = s.payload.find.mock.calls.find(([a]) => a.collection === 'pages')
     expect(first?.[0]).toMatchObject({ page: 1 })
+  })
+  describe('on a multi-locale site', () => {
+    const localized = () => {
+      const s = setup({ chunked: true })
+      Object.assign(s.payload.config, { localization: { localeCodes: ['en', 'fr'], defaultLocale: 'en' } })
+      const callLocale = async (locale: string) => {
+        const res = await createAuditHandler(['pages'], {}, [], undefined, s.cache)({
+          user: { id: 1, collection: 'users' },
+          locale,
+          url: `http://localhost/api/seo-plugin/audit?limit=500&locale=${locale}`,
+          payload: s.payload,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any)
+        return { status: res.status, body: (await res.json()) as AuditBody }
+      }
+      return { ...s, callLocale }
+    }
+
+    it('builds and stores the audit once, whatever the locale asked for', async () => {
+      const s = localized()
+      let res = await s.callLocale('fr')
+      for (let i = 0; i < 10 && res.status === 202; i++) {
+        await s.flush()
+        res = await s.callLocale('fr')
+      }
+      expect(res.status).toBe(200)
+      expect(res.body.pagination?.totalDocs).toBe(130)
+      const builds = s.payload.find.mock.calls.length
+
+      // Another locale (and the cross-locale mode) is served from the same entry: no new build.
+      for (const locale of ['en', 'all']) {
+        const other = await s.callLocale(locale)
+        expect(other.status).toBe(200)
+        expect(other.body.pagination?.totalDocs).toBe(130)
+      }
+      expect(s.payload.find.mock.calls.length).toBe(builds)
+      expect(s.store.keys().filter((k) => k.startsWith('entry/'))).toHaveLength(1)
+      expect(s.store.keys().some((k) => /^entry\/audit:(en|fr|all):/.test(k))).toBe(false)
+    })
+
+    it('a save invalidates the one audit for every locale', async () => {
+      const s = localized()
+      let res = await s.callLocale('en')
+      for (let i = 0; i < 10 && res.status === 202; i++) {
+        await s.flush()
+        res = await s.callLocale('en')
+      }
+      expect(res.status).toBe(200)
+      await s.cache.invalidate(['audit'])
+      for (const locale of ['en', 'fr']) {
+        expect((await s.callLocale(locale)).body).toMatchObject({ stale: true })
+      }
+    })
+
+    it('lets a scheduled job finish the single paused build', async () => {
+      const s = localized()
+      expect((await s.callLocale('fr')).status).toBe(202)
+      await s.flush()
+      const args = {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        payload: s.payload as any,
+        collections: ['pages'],
+        globals: [],
+        seoConfig: {},
+        cache: s.cache,
+      }
+      expect((await continuePausedAuditBuilds(args)).map((o) => o.outcome)).toEqual(['paused'])
+      expect((await continuePausedAuditBuilds(args)).map((o) => o.outcome)).toEqual(['done'])
+      expect(await continuePausedAuditBuilds(args)).toEqual([])
+    })
+  })
+
+  it('buildAuditToFile writes a single entry', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'seo-audit-'))
+    try {
+      const outFile = join(dir, 'audit.json')
+      const payload = fakePayload()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const res = await buildAuditToFile(payload as any, { collections: ['pages'], outFile })
+      expect(res.entries).toBe(1)
+      expect(res.docs).toBe(130)
+      expect(Object.keys(JSON.parse(await readFile(outFile, 'utf8')).byKey)).toEqual(['audit'])
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
   })
 })

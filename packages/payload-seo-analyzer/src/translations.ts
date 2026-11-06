@@ -1,4 +1,4 @@
-// Auto-extracted from @payloadcms/plugin-seo translation files
+// Auto-extracted from @payloadcms/plugin-seo translation files. Kept on purpose: the admin UI here is English-only, but these are the labels for Payload's other admin languages and they cost nothing.
 
 export const seoTranslations: Record<string, { 'plugin-seo': Record<string, string> }> = {
   ar: {

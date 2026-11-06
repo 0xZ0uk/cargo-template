@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Banner, Button, RefreshIcon } from '@payloadcms/ui'
-import { useDashboardT } from '../hooks/useSeoLocale.js'
+import { useDashboardT } from '../hooks/useSeoAdmin.js'
 import { ContentBriefPanel } from './ContentBriefPanel.js'
 import { toCsv } from '../helpers/csv.js'
 import {

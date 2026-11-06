@@ -7,7 +7,7 @@ import React from 'react'
 import { Link, NavGroup, useConfig, usePathname } from '@payloadcms/ui'
 import { formatAdminURL } from 'payload/shared'
 import type { SeoFeatures } from '../types.js'
-import { useDashboardT, useSeoFeature } from '../hooks/useSeoLocale.js'
+import { useDashboardT, useSeoFeature } from '../hooks/useSeoAdmin.js'
 import { withSeoErrorBoundary } from './withSeoErrorBoundary.js'
 
 interface NavItem {

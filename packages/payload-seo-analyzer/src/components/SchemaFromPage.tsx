@@ -2,7 +2,7 @@
 
 import React, { useEffect, useId, useState } from 'react'
 import { Banner } from '@payloadcms/ui'
-import { useDashboardT } from '../hooks/useSeoLocale.js'
+import { useDashboardT } from '../hooks/useSeoAdmin.js'
 import { usePayloadApi, useSeoApi, useSeoCollections } from '../hooks/useSeoApi.js'
 import { SCHEMA_TYPES } from '../helpers/buildSchema.js'
 import { Card, EmptyState, Field, LoadingState, TonePill } from '../ui/index.js'

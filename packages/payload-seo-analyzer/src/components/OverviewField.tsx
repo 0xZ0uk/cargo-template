@@ -14,7 +14,7 @@
 import React, { useMemo } from 'react'
 import { CheckIcon, XIcon, useFormFields } from '@payloadcms/ui'
 import { Card, Meter, TonePill, type Tone } from '../ui/index.js'
-import { useDashboardT } from '../hooks/useSeoLocale.js'
+import { useDashboardT } from '../hooks/useSeoAdmin.js'
 import { withSeoErrorBoundary } from './withSeoErrorBoundary.js'
 import './MetaField.css'
 

@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback, useMemo, useId } from 'react'
 import { Banner, Button, PlusIcon, Tabs } from '@payloadcms/ui'
-import { useDashboardT } from '../hooks/useSeoLocale.js'
+import { useDashboardT } from '../hooks/useSeoAdmin.js'
 import { Card, Field, TonePill, ViewBody, ViewHeader } from '../ui/index.js'
 import { SchemaFromPage, type SchemaPreviewProps } from './SchemaFromPage.js'
 import type { DashboardTranslations } from '../dashboard-i18n.js'

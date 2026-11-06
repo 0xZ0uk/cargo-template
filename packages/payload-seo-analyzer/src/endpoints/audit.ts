@@ -22,7 +22,6 @@ import { auditMaxDocs } from '../helpers/auditLimits.js'
 import { loadMergedConfig } from '../helpers/loadMergedConfig.js'
 import { extractDocContent } from '../helpers/extractDocContent.js'
 import { isSeoAdminRequest, isSeoPanelUser } from '../helpers/isAdmin.js'
-import { safeCacheLocale } from '../helpers/safeCacheLocale.js'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function analyzeDoc(doc: any, collection: string, seoConfig?: SeoConfig) {
@@ -130,10 +129,11 @@ type CachedAudit = { enrichedResults: EnrichedResult[]; stats: AuditStats; cappe
  *
  * Both live in the cache layer (`SeoSharedCache.tryStartBuild/buildStatus`): in-memory per
  * process without a `cacheStore`, persisted (`build/<key>` marker with a staleness timeout,
- * best-effort across isolates) with one. Keyed by locale (+ config hash when persisted).
+ * best-effort across isolates) with one. One key for the whole site (+ config hash when
+ * persisted): the audit does not depend on the content locale.
  */
 
-/** Minimum delay between two manual (nocache=1) full rebuilds, per locale key. */
+/** Minimum delay between two manual (nocache=1) full rebuilds, per build key. */
 function minRefreshIntervalMs(): number {
   const raw = process.env.SEO_AUDIT_MIN_REFRESH_MS
   const parsed = raw != null ? Number(raw) : NaN
@@ -517,13 +517,17 @@ function auditConfigHash(collections: string[], globals: string[], seoConfig: Se
   return hashConfig({ v: 2, collections, globals, seoConfig: seoConfig ?? null })
 }
 
-function auditCacheKey(cache: SeoSharedCache, configHash: string, reqLocale: string | undefined): string {
-  const localeKey = reqLocale ? `${CACHE_KEY}:${reqLocale}` : CACHE_KEY
-  return cache.persistent ? `${localeKey}:${configHash}` : localeKey
+/**
+ * The audit never passes a locale to `payload.find` (it scores the default-locale
+ * content of every doc), so every locale would build and store the same result:
+ * the key is the same for all of them.
+ */
+function auditCacheKey(cache: SeoSharedCache, configHash: string): string {
+  return cache.persistent ? `${CACHE_KEY}:${configHash}` : CACHE_KEY
 }
 
 /**
- * Run the next step of every paused audit build (one per locale), awaited. Used by the
+ * Run the next step of the paused audit build, if there is one, awaited. Used by the
  * `seoAuditContinue` job, so a chunked build finishes even when nobody keeps the
  * dashboard open. Builds that aren't paused are left alone (no prewarming).
  */
@@ -536,26 +540,20 @@ export async function continuePausedAuditBuilds(args: {
 }): Promise<{ key: string; outcome: 'done' | 'paused' | 'failed' }[]> {
   const { payload, collections, globals, seoConfig, cache } = args
   const configHash = auditConfigHash(collections, globals, seoConfig)
-  const localization = payload.config.localization
-  const locales: (string | undefined)[] = localization
-    ? [...((localization as { localeCodes?: string[] }).localeCodes ?? []), 'all']
-    : [undefined]
-  const outcomes: { key: string; outcome: 'done' | 'paused' | 'failed' }[] = []
-  for (const locale of locales) {
-    const key = auditCacheKey(cache, configHash, locale)
-    const status = await cache.buildStatus(key)
-    if (!status.paused) continue
-    const claim = await cache.tryStartBuildStep(key)
-    if (!claim.claimed) continue
-    outcomes.push({
+  const key = auditCacheKey(cache, configHash)
+  const status = await cache.buildStatus(key)
+  if (!status.paused) return []
+  const claim = await cache.tryStartBuildStep(key)
+  if (!claim.claimed) return []
+  return [
+    {
       key,
       outcome: await runClaimedAuditStep(cache, payload, collections, globals, seoConfig, key, claim.resumed),
-    })
-  }
-  return outcomes
+    },
+  ]
 }
 
-/** Shape of the build-time audit cache file (one CachedAudit per locale-scoped key). */
+/** Shape of the build-time audit cache file (one CachedAudit per key). */
 interface AuditCacheFile {
   version: number
   generatedAt: number
@@ -563,13 +561,12 @@ interface AuditCacheFile {
 }
 
 /**
- * Build the site-wide audit for each locale and write it to a JSON file. Meant to run at
+ * Build the site-wide audit and write it to a JSON file. Meant to run at
  * BUILD/CI time (where memory is plentiful) so a memory-constrained production host can
  * hydrate the cache from the file instead of recomputing the heavy audit. Uses the exact
  * same engine as the live dashboard build → identical scores.
  *
- * Pass `locales: [undefined]` (default) for a single-locale site, or the list of locale
- * codes to pre-build one audit per locale.
+ * The audit is the same for every content locale, so it is built once.
  *
  * Node-only (writes the filesystem). The resulting file is read through the plugin's
  * `auditCacheFile` option, which is ignored when a `cacheStore` is configured (the store
@@ -581,19 +578,12 @@ export async function buildAuditToFile(
     collections: string[]
     globals?: string[]
     seoConfig?: SeoConfig
-    locales?: (string | undefined)[]
     outFile: string
   },
 ): Promise<{ file: string; entries: number; docs: number }> {
-  const locales = opts.locales && opts.locales.length ? opts.locales : [undefined]
-  const byKey: Record<string, CachedAudit> = {}
-  let docs = 0
-  for (const loc of locales) {
-    const key = loc ? `${CACHE_KEY}:${loc}` : CACHE_KEY
-    const built = await buildAuditCache(payload, opts.collections, opts.globals ?? [], opts.seoConfig)
-    byKey[key] = built
-    docs += built.enrichedResults.length
-  }
+  const built = await buildAuditCache(payload, opts.collections, opts.globals ?? [], opts.seoConfig)
+  const byKey: Record<string, CachedAudit> = { [CACHE_KEY]: built }
+  const docs = built.enrichedResults.length
   const fileData: AuditCacheFile = { version: 1, generatedAt: Date.now(), byKey }
   // Dynamic import keeps node:fs out of the (tree-shaken) client bundle — this function is
   // server/CLI-only, so the import never reaches the admin UI.
@@ -670,13 +660,10 @@ export function createAuditHandler(
       const limit = Math.min(500, Math.max(1, parseInt(url.searchParams.get('limit') || '300', 10)))
       const noCache = url.searchParams.get('nocache') === '1'
 
-      // Scope the cache + single-flight by locale (multi-locale sites get one audit per locale).
-      // The locale MUST come from safeCacheLocale(): `req.locale` is the raw `?locale=`
-      // query string on a site without a `localization` block, so keying on it directly
-      // gave the caller an unbounded key space — every value a guaranteed cache miss,
-      // hence a fresh site-wide build past both the admin gate and the refresh throttle.
-      const reqLocale = safeCacheLocale(req)
-      const cacheKey = auditCacheKey(cache, configHash, reqLocale)
+      // One cache entry + single-flight for the whole site: the audit is the same for every
+      // content locale, and keying on the request's `?locale=` would let a caller mint
+      // unlimited keys (each a guaranteed miss, hence a fresh site-wide build).
+      const cacheKey = auditCacheKey(cache, configHash)
 
       // Manual refresh: start a rebuild now. The current audit keeps being served (marked
       // `refreshing`) until the new one replaces it.
@@ -685,7 +672,7 @@ export function createAuditHandler(
       // caller can ask of this plugin:
       //  - only an SEO admin may trigger it (the legitimate caller is the dashboard's
       //    "refresh" button), not merely an authenticated panel user;
-      //  - and never more than once per `minRefreshIntervalMs()` per locale, so a loop of
+      //  - and never more than once per `minRefreshIntervalMs()`, so a loop of
       //    `?nocache=1` cannot keep the rebuild running back-to-back.
       // A refused refresh is NOT an error: the caller gets the cached audit with
       // `refreshThrottled: true` so the UI can say "showing cached results".

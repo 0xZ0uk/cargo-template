@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Banner, Button, Collapsible, EditIcon, RefreshIcon, useConfig } from '@payloadcms/ui'
 import { formatAdminURL } from 'payload/shared'
-import { useDashboardT } from '../hooks/useSeoLocale.js'
+import { useDashboardT } from '../hooks/useSeoAdmin.js'
 import type { DashboardTranslations } from '../dashboard-i18n.js'
 import { toCsv } from '../helpers/csv.js'
 import { DataTable, EmptyState, Grid, LoadingState, ScorePill, StatTile, TonePill, ViewBody, ViewHeader } from '../ui/index.js'
