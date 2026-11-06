@@ -1,9 +1,10 @@
 import { createMcpHandler, McpServer } from "@modelcontextprotocol/server";
 import type { StreamChunk } from "@tanstack/ai";
 import { memoryPersistence } from "@tanstack/ai-persistence";
+import { fakeText, type FakeResponseStep, type FakeTextOptions } from "@tanstack/ai/testing";
 import { describe, expect, it } from "vitest";
 import type { ChatTurnBody, TurnSettings } from "../src/conversations/types";
-import { classifyRunError } from "../src/server/errors";
+import { classifyRunError, withAssistantErrors } from "../src/server/errors";
 import { createOpenRouterAdapter, createTurnRunner } from "../src/server/turn";
 
 /**
@@ -168,5 +169,157 @@ describe("error mapping", () => {
     expect(classifyRunError({ type: "RUN_ERROR", code: "context_overflow" }, false)).toBe("context_overflow");
     expect(classifyRunError({ type: "RUN_ERROR", code: "aborted" }, false)).toBe("stopped");
     expect(classifyRunError({ type: "RUN_ERROR", message: "anything" }, true)).toBe("stopped");
+  });
+});
+
+/**
+ * `chat()` sends a `RUN_FINISHED` after every model call (`finishReason: "tool_calls"` while the run
+ * goes on) and returns silently when the caller aborts: a stop or a failure after the first step
+ * must still end the stream with exactly one `RUN_ERROR`.
+ */
+describe("a run that stops or fails after its first step", () => {
+  const toolThenText = (text: string): FakeResponseStep[] => [{ toolCalls: [{ name: "findDocuments", input: {} }] }, { text }];
+
+  async function runScripted(
+    script: FakeResponseStep[],
+    options: { fake?: FakeTextOptions<string>; abortWhen?: (chunk: Record<string, any>) => boolean; abortOnToolCall?: boolean } = {}
+  ) {
+    const controller = new AbortController();
+    const fake = fakeText(options.fake ?? {});
+    fake.setResponses(script);
+    const runner = createTurnRunner({ createAdapter: () => fake });
+    const body: ChatTurnBody = { messages: [{ role: "user", content: "Which pages are there?", id: "m1" } as never], settings: settings() };
+    const mcpFetch = (async (request: Request) => {
+      // Stop while the tool runs: the intermediate RUN_FINISHED is out, the result is not.
+      if (options.abortOnToolCall && (await request.clone().text()).includes('"tools/call"')) controller.abort();
+      return mcp.fetch(request);
+    }) as typeof fetch;
+    const chunks: Array<Record<string, any>> = [];
+    for await (const chunk of runner({
+      input: { threadId: "thread-1", runId: "run-1", userKey: "users:1", body: body as never, auth: { cookie: COOKIE, origin: ORIGIN } },
+      persistence: memoryPersistence() as never,
+      mcpFetch,
+      signal: controller.signal,
+    })) {
+      chunks.push(chunk as unknown as Record<string, any>);
+      if (options.abortWhen?.(chunk as unknown as Record<string, any>)) controller.abort();
+    }
+    return chunks;
+  }
+
+  const runErrors = (chunks: Array<Record<string, any>>) => chunks.filter((chunk) => chunk.type === "RUN_ERROR");
+
+  it("a normal multi-step run ends with RUN_FINISHED and no RUN_ERROR", async () => {
+    const chunks = await runScripted(toolThenText("One page: Home."));
+    expect(chunks.filter((chunk) => chunk.type === "RUN_FINISHED")).toHaveLength(2);
+    expect(chunks.at(-1)?.type).toBe("RUN_FINISHED");
+    expect(runErrors(chunks)).toHaveLength(0);
+  });
+
+  it("an approval pause ends with the interrupt RUN_FINISHED and no RUN_ERROR", async () => {
+    const chunks = await runScripted([{ toolCalls: [{ name: "updateDocument", input: { id: "1", title: "New" } }] }, { text: "never" }]);
+    expect(chunks.at(-1)).toMatchObject({ type: "RUN_FINISHED", outcome: { type: "interrupt" } });
+    expect(runErrors(chunks)).toHaveLength(0);
+  });
+
+  it("stop during the text of step 2 → one stopped RUN_ERROR, last", async () => {
+    const chunks = await runScripted(toolThenText("word ".repeat(100)), {
+      fake: { tokensPerSecond: 200 },
+      abortWhen: (chunk) => chunk.type === "TEXT_MESSAGE_CONTENT",
+    });
+    expect(chunks.some((chunk) => chunk.type === "TEXT_MESSAGE_CONTENT")).toBe(true);
+    expect(runErrors(chunks)).toHaveLength(1);
+    expect(chunks.at(-1)).toMatchObject({ type: "RUN_ERROR", code: "stopped", message: "Stopped." });
+  });
+
+  it("stop during tool execution, right after the intermediate RUN_FINISHED → one stopped RUN_ERROR", async () => {
+    const chunks = await runScripted(toolThenText("Never said."), { abortOnToolCall: true });
+    expect(runErrors(chunks)).toHaveLength(1);
+    expect(chunks.at(-1)).toMatchObject({ type: "RUN_ERROR", code: "stopped" });
+  });
+
+  it("stop on the intermediate RUN_FINISHED itself → one stopped RUN_ERROR, nothing after it", async () => {
+    const chunks = await runScripted(toolThenText("Never said."), { abortWhen: (chunk) => chunk.type === "TOOL_CALL_END" });
+    expect(runErrors(chunks)).toHaveLength(1);
+    expect(chunks.at(-1)).toMatchObject({ type: "RUN_ERROR", code: "stopped" });
+  });
+
+  it("a failure in step 2 → one mapped RUN_ERROR, last", async () => {
+    const chunks = await runScripted([
+      { toolCalls: [{ name: "findDocuments", input: {} }] },
+      () => {
+        throw new Error("Rate limit exceeded");
+      },
+    ]);
+    expect(runErrors(chunks)).toHaveLength(1);
+    expect(chunks.at(-1)).toMatchObject({ type: "RUN_ERROR", code: "run_failed", message: expect.stringMatching(/failed/) });
+  });
+
+  it("a provider error in step 2 → one mapped RUN_ERROR, last", async () => {
+    const chunks = await runScripted([{ toolCalls: [{ name: "findDocuments", input: {} }] }, { error: "boom" }]);
+    expect(runErrors(chunks)).toHaveLength(1);
+    expect(chunks.at(-1)).toMatchObject({ type: "RUN_ERROR", code: "run_failed" });
+  });
+});
+
+describe("withAssistantErrors", () => {
+  const ids = { threadId: "t", runId: "r" };
+  const finished = (finishReason: string, extra: Record<string, unknown> = {}) =>
+    ({ type: "RUN_FINISHED", ...ids, metadata: { tanstack: { finishReason } }, ...extra }) as unknown as StreamChunk;
+  async function collect(stream: AsyncIterable<StreamChunk>, signal = new AbortController().signal) {
+    const out: Array<Record<string, any>> = [];
+    for await (const chunk of withAssistantErrors(stream, ids, signal)) out.push(chunk as unknown as Record<string, any>);
+    return out;
+  }
+
+  it("a throw after an intermediate RUN_FINISHED → one mapped RUN_ERROR", async () => {
+    const chunks = await collect(
+      (async function* () {
+        yield finished("tool_calls");
+        throw new Error("No endpoints found that support tool use");
+      })()
+    );
+    expect(chunks.map((chunk) => chunk.type)).toEqual(["RUN_FINISHED", "RUN_ERROR"]);
+    expect(chunks.at(-1)).toMatchObject({ code: "model_unavailable" });
+  });
+
+  it("a throw after the final RUN_FINISHED adds nothing", async () => {
+    const chunks = await collect(
+      (async function* () {
+        yield finished("stop");
+        throw new Error("late");
+      })()
+    );
+    expect(chunks.map((chunk) => chunk.type)).toEqual(["RUN_FINISHED"]);
+  });
+
+  it("reads the finish reason at the top level too", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const chunks = await collect(
+      (async function* () {
+        yield { type: "RUN_FINISHED", ...ids, finishReason: "tool_calls" } as unknown as StreamChunk;
+        yield { type: "RUN_FINISHED", ...ids, finishReason: "stop" } as unknown as StreamChunk;
+      })(),
+      controller.signal
+    );
+    expect(chunks.map((chunk) => chunk.type)).toEqual(["RUN_ERROR"]);
+    expect(chunks[0]).toMatchObject({ code: "stopped" });
+  });
+
+  it("a stopped run that already finished for good gets no RUN_ERROR", async () => {
+    const controller = new AbortController();
+    const chunks: Array<Record<string, any>> = [];
+    for await (const chunk of withAssistantErrors(
+      (async function* () {
+        yield finished("stop");
+      })(),
+      ids,
+      controller.signal
+    )) {
+      chunks.push(chunk as unknown as Record<string, any>);
+      controller.abort(); // a stop that arrives after the final event went out
+    }
+    expect(chunks.map((chunk) => chunk.type)).toEqual(["RUN_FINISHED"]);
   });
 });

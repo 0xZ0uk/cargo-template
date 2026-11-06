@@ -126,4 +126,28 @@ describe("the chat turn in the Durable Object", () => {
     expect(hydrated.runs).toEqual([expect.objectContaining({ runId: start.runId, status: "aborted" })]);
     expect(await conversations.stop(user, threadId, start.runId)).toBe(false);
   });
+
+  it("stop during the second model call: one stopped RUN_ERROR, in the log too", async () => {
+    const conversations = backend();
+    const [user, threadId] = [newId("users"), newId("thread")];
+    const start = turn(
+      user,
+      threadId,
+      chatBody([{ toolCalls: [{ name: "findDocuments", input: {} }] }, { text: "word ".repeat(400) }], { tokensPerSecond: 100 })
+    );
+    const reading = readEvents(await conversations.startTurn(start));
+    // Wait until the text of step 2 is streaming (after the tool result), then stop.
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(await conversations.stop(user, threadId, start.runId)).toBe(true);
+    const events = await reading;
+    expect(ofType(events, "TOOL_CALL_RESULT")).toHaveLength(1);
+    expect(textOf(events).length).toBeGreaterThan(0);
+    expect(ofType(events, "RUN_ERROR")).toHaveLength(1);
+    expect(events.at(-1)!.data).toMatchObject({ type: "RUN_ERROR", code: "stopped" });
+    // A rejoin replays the same ending.
+    const replay = await readEvents(await conversations.join(user, threadId, joinRequest(start.runId, "-1")));
+    expect(ofType(replay, "RUN_ERROR")).toHaveLength(1);
+    expect(replay.at(-1)!.data).toMatchObject({ type: "RUN_ERROR", code: "stopped" });
+    expect((await hydrate(conversations, user, threadId)).activeRun).toBeNull();
+  });
 });

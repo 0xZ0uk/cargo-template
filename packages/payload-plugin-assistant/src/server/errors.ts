@@ -113,42 +113,58 @@ export function runErrorFromThrown(error: unknown, ids: { threadId: string; runI
   } as unknown as StreamChunk;
 }
 
-const TERMINAL = new Set(["RUN_FINISHED", "RUN_ERROR"]);
+/**
+ * Whether a `RUN_FINISHED` closes the run. `chat()` sends one after **every model call**: with
+ * `finishReason: "tool_calls"` (top level, or `metadata.tanstack.finishReason`) the run goes on (tools
+ * run, the model is called again). A pause for approval (`outcome.type === "interrupt"`) is final.
+ */
+function isFinalRunFinished(chunk: StreamChunk): boolean {
+  const event = chunk as { outcome?: { type?: unknown }; finishReason?: unknown; metadata?: { tanstack?: { finishReason?: unknown } } };
+  if (event.outcome?.type === "interrupt") return true;
+  return (event.finishReason ?? event.metadata?.tanstack?.finishReason) !== "tool_calls";
+}
 
 /**
  * Pass a turn's stream through, rewriting every `RUN_ERROR` with {@link mapRunError} and turning
- * a thrown error into one. A run the user stopped always ends with a `RUN_ERROR` whose code is
- * `stopped`, whatever `chat()` emitted for the abort (or nothing).
+ * a thrown error into one. A run ends with exactly one of: its final `RUN_FINISHED`, or one `RUN_ERROR`.
+ * A run the user stopped, at any step, always ends with a `RUN_ERROR` whose code is `stopped`,
+ * whatever `chat()` emitted for the abort (it returns silently), and anything after it is dropped.
  */
 export async function* withAssistantErrors(
   stream: AsyncIterable<StreamChunk>,
   ids: { threadId: string; runId: string },
   signal: AbortSignal
 ): AsyncIterable<StreamChunk> {
-  let ended = false;
+  let errored = false; // a RUN_ERROR went out
+  let finished = false; // the final RUN_FINISHED went out
   try {
     for await (const chunk of stream) {
+      if (errored) continue; // keep draining (middleware cleanup), but the run has ended
       const type = (chunk as { type: string }).type;
       if (type === "RUN_ERROR") {
-        ended = true;
+        errored = true;
         yield mapRunError(chunk as unknown as RunErrorLike, signal.aborted);
         continue;
       }
-      if (signal.aborted && TERMINAL.has(type)) {
-        // A stop that landed as the run finished: report the stop, not a normal finish.
-        ended = true;
-        yield runErrorFromThrown(undefined, ids, true);
-        continue;
+      if (type === "RUN_FINISHED") {
+        const final = isFinalRunFinished(chunk);
+        if (signal.aborted && !finished) {
+          // A stop that landed as the run (or one of its model calls) finished: report the stop.
+          errored = true;
+          yield runErrorFromThrown(undefined, ids, true);
+          continue;
+        }
+        if (final) finished = true;
       }
-      if (TERMINAL.has(type)) ended = true;
       yield chunk;
     }
   } catch (error) {
-    if (!ended) {
-      ended = true;
+    if (!errored && !finished) {
+      errored = true;
       yield runErrorFromThrown(error, ids, signal.aborted);
     }
     return;
   }
-  if (!ended && signal.aborted) yield runErrorFromThrown(undefined, ids, true);
+  // chat() returns silently on abort, at any step: close the run with the stop.
+  if (!errored && !finished && signal.aborted) yield runErrorFromThrown(undefined, ids, true);
 }
