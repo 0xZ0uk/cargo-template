@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { seoCache } from '../cache.js'
 import { buildSelect } from '../helpers/buildSelect.js'
 import { fetchAllDocs } from '../helpers/fetchAllDocs.js'
-import { createLlmsTxtHandler } from '../endpoints/llmsTxt.js'
+import { createLlmsTxtHandler, LLMS_TXT_CACHE_BASE } from '../endpoints/llmsTxt.js'
 import { createSitemapHandler, SITEMAP_XML_CACHE_BASE } from '../endpoints/sitemap.js'
 
 type Doc = Record<string, unknown>
@@ -230,6 +230,8 @@ describe('sitemap.xml projection', () => {
 describe('llms.txt projection', () => {
   const prev = process.env.SEO_LLMS_TXT
   afterEach(() => {
+    // llms.txt is cached now: start every case cold so each one really builds.
+    seoCache.invalidateByPrefix(LLMS_TXT_CACHE_BASE)
     if (prev === undefined) delete process.env.SEO_LLMS_TXT
     else process.env.SEO_LLMS_TXT = prev
   })

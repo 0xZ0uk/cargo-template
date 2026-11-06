@@ -366,7 +366,10 @@ export async function safeSet<T>(
  *   both, so there's nothing extra to store or expire. In-memory mode mirrors this with a
  *   local generation counter and a last-good map.
  * - There is deliberately no in-memory L1 for these bases: one parallel pair of store
- *   reads per request keeps every isolate consistent, and these are admin-only endpoints.
+ *   reads per request keeps every isolate consistent. That includes the public sitemaps and
+ *   `llms.txt`, which crawlers hit anonymously: two small R2 reads per request is the price of
+ *   a publish showing up in every isolate at once, and it is far cheaper than the whole-site
+ *   query each isolate used to run on a miss.
  * - Build coordination (audit): `build/<key>` holds `{ buildingSince, lastBuildAt, pausedAt }`.
  *   It is a best-effort cross-isolate single-flight (two isolates can race between the
  *   read and the write and both build — harmless, just duplicate work), with a staleness

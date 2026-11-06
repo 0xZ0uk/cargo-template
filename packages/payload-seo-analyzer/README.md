@@ -249,7 +249,7 @@ Every field of `SeoPluginConfig`. All are optional.
 | `seoLogsSecret` | `string` | — | Shared secret for `POST /seo-logs` (`X-SEO-Secret`). Without it that route needs an SEO admin; in-process recording uses `recordSeoNotFound` instead. |
 | `notFoundProbeFilter` | `boolean \| { extra?: (string \| RegExp)[] }` | `true` | Drops vulnerability-scanner probes (`*.php`, `/wp-login`, `/.env`, `/.git`, …) before they reach the 404 log. `false` logs everything; `{ extra }` adds patterns to the built-in list. See [Root files, redirects and 404s](#4-root-files-redirects-and-404s). |
 | `alertWebhookFormat` | `'json' \| 'slack' \| 'discord'` | by URL host | Body of the alerts webhook. `SEO_ALERT_WEBHOOK_FORMAT` overrides it. See [Alerts webhook formats](#alerts-webhook-formats). |
-| `cacheStore` | `SeoCacheStore` | in memory | Persistent store for the caches the admin polls. **Required on Workers.** |
+| `cacheStore` | `SeoCacheStore` | in memory | Persistent store for the caches the admin polls and the public sitemaps / `llms.txt` (each request costs two small store reads, so every isolate serves the same build). **Required on Workers.** |
 | `waitUntil` | `(promise) => void` | — | Keeps background work alive after the response and enables step builds. **Required on Workers.** |
 | `dataStore` | `SeoDataStore` | Payload collections | Where time-series rows live. `createSqlSeoDataStore(d1)` on Workers. See [Data store and retention](#data-store-and-retention). |
 | `rateLimit` | `SeoRateLimit` | in memory | `({ bucket, key }) => boolean \| undefined`. `undefined`, or a throw, falls back to the in-memory limiter. |
