@@ -4,6 +4,10 @@
 
 ### Changed
 
+- A run ends instead of being deleted: when a key's manifest entry is cleared, its open `ab-experiments` row gets the new `endedAt` field and stays (the next published variant starts a new row). Only open rows (`endedAt` empty) count as the current run, in the recompute, the conversion endpoint and the results endpoint. Deleting the original still deletes all its rows. Hosts need a migration adding the `ended_at` column.
+- `GET /api/_ab/results` also returns `pastRuns`: runs on the document and locale that ended in the last 90 days, each with its results from `startedAt` to `endedAt`. `measurement.getResults` receives `endedAt` for those (undefined for the current run). The Variants panel lists them in a collapsed "Past experiments" section, also when no variant is left.
+- `POST /api/_ab/duplicate` skips the manifest recompute for a draft copy (`AB_SKIP_RECOMPUTE_CONTEXT_KEY`), which, under per-locale `_status`, briefly routed the other locales to the copy and started a run.
+
 - **Breaking:** `payloadGlobalAdapter` (`/adapters/payload-global`) is replaced by `payloadCollectionAdapter` (`/adapters/payload-collection`). The manifest moves from the `_abManifest` global to the hidden `ab-manifest` collection, one row per key (`key` unique and indexed, `variants` JSON). A write updates or creates only its key's row and a clear deletes it, so concurrent publishes of different pages no longer drop each other's entries. A create race on a new key re-finds the row and updates it. No data migration: the plugin wasn't registered in an app yet.
 - **Breaking:** the manifest and `ab-experiments` are no longer publicly readable: REST reads need a signed-in user, and nobody writes the manifest over the API. The adapter's REST fallback sends the new `authorization` option and returns `null` without it.
 - `StorageAdapter.createCollection?(debug)` lets an adapter add a collection, like `createGlobal`.
@@ -12,6 +16,8 @@
 - **Breaking:** the resolver returns `null` only when the page runs no experiment (or the manifest can't be read). A returning visitor already in the original bucket now gets `{ bucket: 'original', variant: null, cookies: [] }` instead of `null`, so hosts can count that view; before, the original bucket was under-counted. The result also carries `visitorId`.
 
 ### Added
+
+- `pruneEndedExperimentRuns(payload, options?)` deletes the rows of runs that ended more than `AB_RUN_RETENTION_DAYS` (90) days ago, for the host's scheduler.
 
 - Measurement (`measurement` option): `POST /api/_ab/convert` records a conversion for the requesting visitor, with the bucket and visitor id read from their cookies and checked against the live manifest, once per visitor, experiment and bucket (HttpOnly marker cookie); `GET /api/_ab/results` returns counts per bucket since the experiment started, for admin-panel users only; the Variants panel shows them (impressions, conversions, rate, deleted variants) through the new `resultsPath` client prop. The host supplies `recordConversion` and `getResults`, so the store is its choice. Without the option none of this exists.
 - `bucketCookieName` (`/middleware`) and an `httpOnly` cookie option for `serializeAbCookie`.

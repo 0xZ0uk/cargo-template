@@ -9,7 +9,8 @@ import { endExperimentRun, startExperimentRun } from "./experimentRuns";
  * Rewrites the manifest entries of one original document (one per locale) from its published
  * variants, and keeps the experiment's run in step: a key that gets published variants starts
  * a run (an `ab-experiments` row with `startedAt`), and a key that loses them (its last
- * variant unpublished or deleted, or the original unpublished) ends it. The default variant
+ * variant unpublished or deleted, or the original unpublished) ends it (sets `endedAt`; the
+ * row stays for its results until it's pruned). The default variant
  * data carries the run's `startedAt`, so a resolver knows the run from the manifest alone.
  */
 export async function recomputeManifestForParent<TVariantData extends object>(

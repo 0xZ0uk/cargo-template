@@ -289,16 +289,17 @@ export function VariantsField({
                 </Button>
               </div>
             </div>
-
-            {resultsPath && (
-              <VariantResults
-                url={`${apiURL}${resultsPath}`}
-                collectionSlug={slug!}
-                docId={id}
-                variants={variants}
-              />
-            )}
           </>
+        )}
+
+        {/* With no variants left it still lists past experiments (and hides itself without). */}
+        {resultsPath && !loading && slug && id && (
+          <VariantResults
+            url={`${apiURL}${resultsPath}`}
+            collectionSlug={slug}
+            docId={id}
+            variants={variants}
+          />
         )}
       </div>
 

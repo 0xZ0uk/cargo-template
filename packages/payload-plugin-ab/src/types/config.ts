@@ -79,7 +79,7 @@ export interface AbConversionEvent {
   visitorId: string;
 }
 
-/** Counts for one bucket since the experiment started. */
+/** Counts for one bucket over one run of the experiment. */
 export interface AbBucketResult {
   bucket: string;
   impressions: number;
@@ -133,12 +133,16 @@ export interface AbMeasurementConfig<TVariantData extends object = object> {
    */
   rateLimit?: (req: PayloadRequest) => boolean | Promise<boolean>;
   /**
-   * Reads the counts for one experiment since `startedAt`, for the Variants panel. Runs on
-   * the server only: credentials it uses never reach the browser.
+   * Reads the counts for one run of an experiment, for the Variants panel: from `startedAt`
+   * up to `endedAt` for a run that ended, or up to now for the current run (`endedAt`
+   * undefined). Called once for the current run and once per past run. Runs on the server
+   * only: credentials it uses never reach the browser.
    */
   getResults: (args: {
     experiment: string;
     startedAt: string;
+    /** When the run ended (ISO); undefined for the current run. */
+    endedAt?: string;
     req: PayloadRequest;
   }) => Promise<AbResults>;
   cookies?: AbMeasurementCookieConfig;
@@ -155,7 +159,7 @@ export interface AbTestingPluginConfig<TVariantData extends object = object> {
   storage: StorageAdapter<TVariantData>;
   /**
    * Slug for the auto-injected lifecycle collection that records each
-   * experiment's `startedAt`. Default: 'ab-experiments'. Must match the
+   * experiment run's `startedAt` and `endedAt`. Default: 'ab-experiments'. Must match the
    * analytics plugin's `ab.experimentsCollectionSlug` if overridden.
    */
   experimentsCollectionSlug?: string;

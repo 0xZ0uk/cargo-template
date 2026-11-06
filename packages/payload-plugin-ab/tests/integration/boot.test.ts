@@ -4,7 +4,7 @@ import { sqliteAdapter } from "@payloadcms/db-sqlite";
 import { buildConfig, getPayload, handleEndpoints } from "payload";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { abTestingPlugin, type AbResults } from "../../src";
+import { abTestingPlugin, pruneEndedExperimentRuns, type AbResults } from "../../src";
 import { payloadCollectionAdapter } from "../../src/adapters/payloadCollection";
 import { abRunMarker, createResolveAbRewrite } from "../../src/middleware";
 
@@ -605,16 +605,27 @@ describe("experiment rows of another collection", () => {
 });
 
 describe("deleting an original", () => {
-  it("detaches its variants, clears the manifest and the experiment rows", async () => {
+  it("detaches its variants, clears the manifest and the experiment rows, ended runs too", async () => {
     const page = await createPublishedPage("gone", "Gone");
     const variant = await addVariant(page);
-    await payload.update({
-      collection: PAGES,
-      id: variant.id,
-      data: { _status: "published" } as never,
+    const setStatus = (status: "published" | "draft") =>
+      payload.update({
+        collection: PAGES,
+        id: variant.id,
+        data: { _status: status } as never,
+        overrideAccess: true,
+      });
+    // A run that ended, then a current one.
+    await setStatus("published");
+    await setStatus("draft");
+    await setStatus("published");
+    expect(await manifest()).toHaveProperty("/en/gone");
+    const before = await payload.find({
+      collection: "ab-experiments" as CollectionSlug,
+      where: { parentDocId: { equals: String(page.id) } },
       overrideAccess: true,
     });
-    expect(await manifest()).toHaveProperty("/en/gone");
+    expect(before.docs.map((d: any) => Boolean(d.endedAt)).sort()).toEqual([false, true]);
 
     await payload.delete({ collection: PAGES, id: page.id, overrideAccess: true });
 
@@ -626,6 +637,40 @@ describe("deleting an original", () => {
       overrideAccess: true,
     });
     expect(experiments.docs).toHaveLength(0);
+  });
+});
+
+describe("pruneEndedExperimentRuns", () => {
+  it("deletes only runs that ended more than 90 days ago", async () => {
+    const day = 24 * 60 * 60 * 1000;
+    // Runs other tests ended just now aren't due.
+    const now = new Date();
+    const row = (label: string, startedDaysAgo: number, endedDaysAgo: number | null) =>
+      payload.create({
+        collection: "ab-experiments" as CollectionSlug,
+        data: {
+          manifestKey: `/en/prune-${label}`,
+          parentDocId: "prune",
+          parentCollection: "pages",
+          locale: "en",
+          startedAt: new Date(now.getTime() - startedDaysAgo * day).toISOString(),
+          endedAt: endedDaysAgo === null ? null : new Date(now.getTime() - endedDaysAgo * day).toISOString(),
+        } as never,
+        overrideAccess: true,
+      });
+    await row("expired", 120, 91);
+    await row("recent", 120, 89);
+    // Open for months: still running, never pruned.
+    await row("open", 400, null);
+
+    expect(await pruneEndedExperimentRuns(payload, { now })).toBe(1);
+    const left = await payload.find({
+      collection: "ab-experiments" as CollectionSlug,
+      where: { parentDocId: { equals: "prune" } },
+      overrideAccess: true,
+    });
+    expect(left.docs.map((d: any) => d.manifestKey).sort()).toEqual(["/en/prune-open", "/en/prune-recent"]);
+    expect(await pruneEndedExperimentRuns(payload, { now })).toBe(0);
   });
 });
 
@@ -783,6 +828,17 @@ describe("measurement", () => {
     rateLimit.mockClear();
   });
 
+  /** The `ab-experiments` rows of one key, oldest first. */
+  const runRows = async (key: string) =>
+    (
+      await payload.find({
+        collection: "ab-experiments" as CollectionSlug,
+        where: { manifestKey: { equals: key } },
+        sort: "startedAt",
+        overrideAccess: true,
+      })
+    ).docs as unknown as { startedAt: string; endedAt?: string | null }[];
+
   /** The marker value for this run: `<bucket>:<run>`. */
   const runMarker = async (bucket: string) => {
     const { docs } = await payload.find({
@@ -920,7 +976,7 @@ describe("measurement", () => {
       const draftOnly = await createPublishedPage("not-started", "Not started");
       await addVariant(draftOnly);
       const res = await results(`collection=pages&id=${draftOnly.id}`);
-      expect(res.body).toEqual({ experiment: null, results: null });
+      expect(res.body).toEqual({ experiment: null, results: null, pastRuns: [] });
       expect(getResults).not.toHaveBeenCalled();
     });
 
@@ -946,12 +1002,34 @@ describe("measurement", () => {
       const before = await results(`collection=pages&id=${restarted.id}`);
       expect(before.body.experiment?.startedAt).toEqual(expect.any(String));
 
-      // Ending it: the last variant goes, and so does the run.
+      // Ending it: the last variant goes, and the run ends but stays, with its own results.
       expect((await api(`/pages/${first.id}`, { method: "DELETE" })).status).toBe(200);
-      expect((await results(`collection=pages&id=${restarted.id}`)).body).toEqual({
+      getResults.mockClear();
+      const ended = await results(`collection=pages&id=${restarted.id}`);
+      expect(ended.body).toEqual({
         experiment: null,
         results: null,
+        pastRuns: [
+          {
+            key: "/en/restarted",
+            startedAt: before.body.experiment.startedAt,
+            endedAt: expect.any(String),
+            results: { configured: false, reason: "No credentials." },
+          },
+        ],
       });
+      const endedAt = ended.body.pastRuns[0].endedAt;
+      expect(Date.parse(endedAt)).toBeGreaterThanOrEqual(Date.parse(before.body.experiment.startedAt));
+      expect(getResults).toHaveBeenCalledWith(
+        expect.objectContaining({
+          experiment: "/en/restarted",
+          startedAt: before.body.experiment.startedAt,
+          endedAt,
+        })
+      );
+      const rows = await runRows("/en/restarted");
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.endedAt).toBe(endedAt);
 
       await new Promise((resolve) => setTimeout(resolve, 5));
       const second = await addVariant(restarted);
@@ -960,8 +1038,75 @@ describe("measurement", () => {
       expect(Date.parse(after.body.experiment.startedAt)).toBeGreaterThan(
         Date.parse(before.body.experiment.startedAt)
       );
+      // A new row for the new run; the ended one is listed as past.
+      expect(await runRows("/en/restarted")).toHaveLength(2);
+      expect(after.body.pastRuns).toEqual([expect.objectContaining({ startedAt: before.body.experiment.startedAt, endedAt })]);
       // The manifest entry carries the new run.
       expect((await manifest())["/en/restarted"][0].startedAt).toBe(after.body.experiment.startedAt);
+      // The current run is read without an end.
+      const current = getResults.mock.calls.find(
+        ([args]: any[]) => args.startedAt === after.body.experiment.startedAt
+      ) as any[] | undefined;
+      expect(current?.[0].endedAt).toBeUndefined();
+    });
+
+    it("reads each past run's results on its own, and one failing doesn't hide the rest", async () => {
+      const multi = await createPublishedPage("multi", "Multi");
+      for (let i = 0; i < 2; i++) {
+        const v = await addVariant(multi);
+        await payload.update({
+          collection: PAGES,
+          id: v.id,
+          data: { _status: "published" } as never,
+          locale: "en" as never,
+          overrideAccess: true,
+        });
+        await payload.delete({ collection: PAGES, id: v.id, overrideAccess: true });
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+      const [older, newer] = await runRows("/en/multi");
+      getResults.mockImplementation(async (args: any) => {
+        if (args.startedAt === older!.startedAt) throw new Error("SQL API down");
+        return { configured: true, buckets: [{ bucket: "original", impressions: 3, conversions: 1 }] };
+      });
+      try {
+        const res = await results(`collection=pages&id=${multi.id}`);
+        expect(res.status).toBe(200);
+        // Most recent first; only this locale's runs.
+        expect(res.body.pastRuns).toEqual([
+          expect.objectContaining({
+            startedAt: newer!.startedAt,
+            results: { configured: true, buckets: [{ bucket: "original", impressions: 3, conversions: 1 }] },
+          }),
+          expect.objectContaining({ startedAt: older!.startedAt, results: null, error: "SQL API down" }),
+        ]);
+      } finally {
+        getResults.mockImplementation(async () => ({ configured: false, reason: "No credentials." }));
+      }
+    });
+
+    it("doesn't list runs that ended more than 90 days ago, even before they're pruned", async () => {
+      const old = await createPublishedPage("long-ago", "Long ago");
+      const day = 24 * 60 * 60 * 1000;
+      for (const daysAgo of [91, 30]) {
+        await payload.create({
+          collection: "ab-experiments" as CollectionSlug,
+          data: {
+            manifestKey: "/en/long-ago",
+            parentDocId: String(old.id),
+            parentCollection: "pages",
+            locale: "en",
+            startedAt: new Date(Date.now() - (daysAgo + 7) * day).toISOString(),
+            endedAt: new Date(Date.now() - daysAgo * day).toISOString(),
+          } as never,
+          overrideAccess: true,
+        });
+      }
+      const res = await results(`collection=pages&id=${old.id}`);
+      expect(res.body.pastRuns).toHaveLength(1);
+      expect(Date.parse(res.body.pastRuns[0].endedAt)).toBeGreaterThan(Date.now() - 31 * day);
+      // Another locale's runs aren't this one's.
+      expect((await results(`collection=pages&id=${old.id}&locale=pt`)).body.pastRuns).toEqual([]);
     });
 
     it("ends the run when the variant is unpublished, too", async () => {
@@ -978,7 +1123,9 @@ describe("measurement", () => {
       await setStatus("published");
       expect((await results(`collection=pages&id=${paused.id}`)).body.experiment).not.toBeNull();
       await setStatus("draft");
-      expect((await results(`collection=pages&id=${paused.id}`)).body.experiment).toBeNull();
+      const res = await results(`collection=pages&id=${paused.id}`);
+      expect(res.body.experiment).toBeNull();
+      expect(res.body.pastRuns).toHaveLength(1);
     });
 
     it("answers 502 when the host's getResults fails", async () => {

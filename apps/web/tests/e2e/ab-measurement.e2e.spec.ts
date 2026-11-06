@@ -11,7 +11,8 @@ import { cleanupTestUser, seedTestUser, testUser } from '../helpers/seedUser'
 // A/B measurement (src/plugins/abMeasurement.ts): a routed page view counts an impression once
 // (marker cookie), a click on a call-to-action link posts a conversion to /api/_ab/convert,
 // and the Variants panel shows results, or says measurement isn't configured without the
-// Analytics Engine credentials (as in local dev and CI).
+// Analytics Engine credentials (as in local dev and CI). Once the variant is removed, the
+// ended run stays listed under "Past experiments".
 
 const cta = (label: string) => ({
   blockType: 'cta',
@@ -108,5 +109,37 @@ test.describe('A/B measurement', () => {
     await expect(admin.getByTestId('ab-results-not-configured')).toContainText(
       'AB_ANALYTICS_ACCOUNT_ID',
     )
+  })
+
+  test('after the variant is removed, the panel lists the ended experiment', async () => {
+    const removed = await api.delete(`/api/pages/${variantId}`)
+    expect(removed.ok(), await removed.text()).toBe(true)
+
+    // The run ended but its row stays: the results endpoint lists it as a past run.
+    const res = await api.get(`/api/_ab/results?collection=pages&id=${originalId}`)
+    expect(res.ok(), await res.text()).toBe(true)
+    const body = await res.json()
+    expect(body.experiment).toBeNull()
+    expect(body.pastRuns).toEqual([
+      expect.objectContaining({
+        key: `/${slug}`,
+        startedAt: expect.any(String),
+        endedAt: expect.any(String),
+        results: expect.objectContaining({ configured: false }),
+      }),
+    ])
+
+    await admin.goto(`/admin/collections/pages/${originalId}`)
+    const past = admin.getByTestId('ab-past-runs')
+    await expect(past).toBeVisible()
+    await expect(past.locator('summary')).toHaveText('Past experiments (1)')
+    await past.locator('summary').click()
+    const run = past.getByTestId('ab-past-run')
+    await expect(run).toHaveCount(1)
+    // Without credentials the run still lists, with its dates and the not-configured message.
+    await expect(run.getByTestId('ab-results-not-configured')).toContainText(
+      'AB_ANALYTICS_ACCOUNT_ID',
+    )
+    await expect(run.locator('.ab-results__run-dates')).toContainText('–')
   })
 })

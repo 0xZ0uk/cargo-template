@@ -1607,6 +1607,10 @@ export interface AbExperiment {
    * Set to now() when the first variant for this parent+locale is published.
    */
   startedAt: string;
+  /**
+   * Set to now() when the run ends (no published variant left, or the original unpublished). Empty while it runs; the row is deleted 90 days after.
+   */
+  endedAt?: string | null;
   createdBy?: {
     relationTo: 'users';
     value: number | User;
@@ -2308,6 +2312,7 @@ export interface AbExperimentsSelect<T extends boolean = true> {
   parentCollection?: T;
   locale?: T;
   startedAt?: T;
+  endedAt?: T;
   createdBy?: T;
   updatedBy?: T;
   updatedAt?: T;

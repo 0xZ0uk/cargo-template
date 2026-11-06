@@ -21,7 +21,7 @@ function makeReq(
     collection === "ab-experiments" ? { docs: run ? [run] : [] } : { docs: variants }
   );
   const create = vi.fn().mockImplementation(async ({ data }: { data: unknown }) => data);
-  const del = vi.fn().mockResolvedValue({ docs: [], errors: [] });
+  const update = vi.fn().mockResolvedValue({ docs: [], errors: [] });
   const payload = {
     config: { localization: false },
     collections: {
@@ -30,9 +30,9 @@ function makeReq(
     findByID: vi.fn().mockResolvedValue({ id: "p1", slug: "about", _status: parentStatus }),
     find,
     create,
-    delete: del,
+    update,
   };
-  return { req: { payload } as never, find, create, del };
+  return { req: { payload } as never, find, create, update };
 }
 
 const storage = {
@@ -109,25 +109,39 @@ describe("recomputeManifestForParent", () => {
     expect(generateVariantData.mock.calls[0][0].startedAt).toBe(STARTED_AT);
   });
 
-  it("ends the run when the last published variant is gone", async () => {
-    const { req, del, create } = makeReq(true, "published", { variants: [] });
+  it("ends the open run (sets endedAt, keeps the row) when the last published variant is gone", async () => {
+    const { req, update, create } = makeReq(true, "published", { variants: [] });
     await recomputeManifestForParent("p1", "pages", abConfig, pluginConfig, req);
     expect(storage.clear).toHaveBeenCalledWith("/about", req.payload);
-    expect(del).toHaveBeenCalledTimes(1);
-    expect(del.mock.calls[0][0]).toMatchObject({
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update.mock.calls[0][0]).toMatchObject({
       collection: "ab-experiments",
-      where: { and: [{ manifestKey: { equals: "/about" } }, { parentCollection: { equals: "pages" } }] },
+      where: {
+        and: [
+          { manifestKey: { equals: "/about" } },
+          { parentCollection: { equals: "pages" } },
+          { endedAt: { exists: false } },
+        ],
+      },
+      data: { endedAt: expect.any(String) },
     });
     expect(create).not.toHaveBeenCalled();
   });
 
+  it("looks up only the open run, so an ended one doesn't continue", async () => {
+    const { req, find } = makeReq(true);
+    await recomputeManifestForParent("p1", "pages", abConfig, pluginConfig, req);
+    const lookup = find.mock.calls.find(([args]) => args.collection === "ab-experiments")![0];
+    expect(lookup.where.and).toContainEqual({ endedAt: { exists: false } });
+  });
+
   it("clears the key, ends the run and reads no variants, when the original is unpublished", async () => {
-    const { req, find, del } = makeReq(true, "draft");
+    const { req, find, update } = makeReq(true, "draft");
     await recomputeManifestForParent("p1", "pages", abConfig, pluginConfig, req);
     expect(storage.clear).toHaveBeenCalledWith("/about", req.payload);
     expect(storage.write).not.toHaveBeenCalled();
     expect(find).not.toHaveBeenCalled();
-    expect(del).toHaveBeenCalledTimes(1);
+    expect(update).toHaveBeenCalledTimes(1);
   });
 
   it("leaves the unchanged-entry check to the adapter, never a possibly cached read", async () => {

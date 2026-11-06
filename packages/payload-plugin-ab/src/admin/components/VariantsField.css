@@ -230,3 +230,29 @@
   color: var(--color-text-tertiary);
   font-style: italic;
 }
+
+.ab-results__past {
+  margin-top: var(--spacer-3);
+  padding-top: var(--spacer-2);
+  border-top: var(--stroke-width-small) solid var(--color-border);
+}
+
+.ab-results__past > summary {
+  cursor: pointer;
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.ab-results__past > summary:focus-visible {
+  outline: var(--stroke-width-medium) solid var(--color-border-selected);
+  outline-offset: 1px;
+}
+
+.ab-results__run {
+  margin-top: var(--spacer-3);
+}
+
+.ab-results__run-dates {
+  margin: 0 0 var(--spacer-1);
+  color: var(--color-text-secondary);
+}

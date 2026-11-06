@@ -1,10 +1,16 @@
 import type { CollectionSlug, PayloadHandler, PayloadRequest } from "payload";
 import type { AbMeasurementConfig, AbResults, AbTestingPluginConfig } from "../types/config";
-import { AB_EXPERIMENTS_SLUG, AB_VARIANT_OF_FIELD } from "../constants";
+import { AB_MAX_PAST_RUNS, AB_VARIANT_OF_FIELD } from "../constants";
 import { DEFAULT_VISITOR_ID_COOKIE_NAME } from "../cookie/constants";
 import { bucketCookieName } from "../cookie/utils/bucketCookieName";
 import { parseCookieHeader, serializeAbCookie } from "../middleware/utils/cookies";
 import { abRunMarker } from "../middleware/utils/runMarker";
+import {
+  type ExperimentRunRow,
+  experimentsSlugOf,
+  retentionCutoff,
+  whereOpenRun,
+} from "../utils/experimentRuns";
 
 export const DEFAULT_GOALS = ["cta"];
 export const DEFAULT_CONVERSION_COOKIE_PREFIX = "payload_ab_cv";
@@ -44,8 +50,7 @@ export function buildConvertHandler<TVariantData extends object>(
     conversionCookieMaxAge = DEFAULT_CONVERSION_MAX_AGE,
   } = measurement.cookies ?? {};
 
-  const experimentsSlug = (pluginConfig.experimentsCollectionSlug ??
-    AB_EXPERIMENTS_SLUG) as CollectionSlug;
+  const experimentsSlug = experimentsSlugOf(pluginConfig);
 
   /** The run's start: from the manifest (the default variant data carries it), else its row. */
   const runStartedAt = async (
@@ -59,7 +64,8 @@ export function buildConvertHandler<TVariantData extends object>(
     }
     const { docs } = await req.payload.find({
       collection: experimentsSlug,
-      where: { manifestKey: { equals: experiment } },
+      where: whereOpenRun(experiment),
+      sort: "-startedAt",
       depth: 0,
       limit: 1,
       pagination: false,
@@ -152,24 +158,41 @@ export function isAdminPanelUser(req: PayloadRequest): boolean {
   return !adminCollection || user.collection === adminCollection;
 }
 
+/** A run of the experiment that ended, as `GET /api/_ab/results` lists it. */
+export interface AbPastRun {
+  /** The manifest key the run was on (the page's path then). */
+  key: string;
+  startedAt: string;
+  endedAt: string;
+  /** Its counts from `startedAt` to `endedAt`, or null when reading them failed (`error`). */
+  results: AbResults | null;
+  error?: string;
+}
+
 export interface AbResultsResponse {
-  /** The experiment on this page and locale, or null before a variant has been published. */
+  /** The current run on this page and locale, or null while no variant is published. */
   experiment: { key: string; startedAt: string } | null;
   results: AbResults | null;
+  /**
+   * Runs on this page and locale that ended in the last 90 days, most recent first (at most
+   * 10), each with its own results.
+   */
+  pastRuns: AbPastRun[];
 }
 
 /**
  * `GET /api/_ab/results?collection=<slug>&id=<id>[&locale=<code>]` — counts per bucket for
- * the experiment on one original document, since the experiment started. Admin-panel users
- * only, who must also be able to read the document. The manifest key is computed here with
- * the collection's `generatePath`, so the client never names an arbitrary key.
+ * the experiment on one original document: its current run (since it started) and the runs
+ * that ended in the last 90 days (each from its start to its end). Admin-panel users only,
+ * who must also be able to read the document. The current run's manifest key is computed here
+ * with the collection's `generatePath`, and past runs are found by the document's id, so the
+ * client never names an arbitrary key.
  */
 export function buildResultsHandler<TVariantData extends object>(
   pluginConfig: AbTestingPluginConfig<TVariantData>,
   measurement: AbMeasurementConfig<TVariantData>
 ): PayloadHandler {
-  const experimentsSlug = (pluginConfig.experimentsCollectionSlug ??
-    AB_EXPERIMENTS_SLUG) as CollectionSlug;
+  const experimentsSlug = experimentsSlugOf(pluginConfig);
 
   return async (req) => {
     if (!req.user) return json({ error: "Unauthorized" }, 401);
@@ -210,32 +233,76 @@ export function buildResultsHandler<TVariantData extends object>(
     if (!doc) return json({ error: "Document not found" }, 404);
     if (doc[AB_VARIANT_OF_FIELD]) return json({ error: "Results belong to the original" }, 400);
 
-    const key = abConfig.generatePath({ doc, locale });
-    const empty: AbResultsResponse = { experiment: null, results: null };
-    if (!key) return json(empty);
+    const readResults = (args: { experiment: string; startedAt: string; endedAt?: string }) =>
+      measurement.getResults({ ...args, req });
 
-    const { docs } = await req.payload.find({
+    // Past runs: by the document (its path may have changed since), in this locale, ended
+    // within the retention window (older rows may not be pruned yet).
+    const { docs: pastRows } = await req.payload.find({
       collection: experimentsSlug,
       where: {
-        and: [{ manifestKey: { equals: key } }, { parentCollection: { equals: collection } }],
+        and: [
+          { parentDocId: { equals: String(doc.id ?? id) } },
+          { parentCollection: { equals: collection } },
+          locale ? { locale: { equals: locale } } : { locale: { exists: false } },
+          { endedAt: { greater_than_equal: retentionCutoff(new Date()) } },
+        ],
       },
+      sort: "-endedAt",
       depth: 0,
-      limit: 1,
+      limit: AB_MAX_PAST_RUNS,
       pagination: false,
       overrideAccess: true,
       req,
     });
-    const row = docs[0] as { startedAt?: string } | undefined;
-    if (!row?.startedAt) return json(empty);
+    const pastRuns: Promise<AbPastRun[]> = Promise.all(
+      (pastRows as unknown as ExperimentRunRow[]).map(async (row): Promise<AbPastRun> => {
+        const run = { key: row.manifestKey, startedAt: row.startedAt, endedAt: row.endedAt! };
+        try {
+          const results = await readResults({
+            experiment: run.key,
+            startedAt: run.startedAt,
+            endedAt: run.endedAt,
+          });
+          return { ...run, results };
+        } catch (err) {
+          req.payload.logger.error({ err, msg: "[payload-plugin-ab] getResults failed" });
+          const error = err instanceof Error ? err.message : "Failed to read results";
+          return { ...run, results: null, error };
+        }
+      })
+    );
+
+    const key = abConfig.generatePath({ doc, locale });
+    const row = key
+      ? ((
+          await req.payload.find({
+            collection: experimentsSlug,
+            where: whereOpenRun(key, collection),
+            sort: "-startedAt",
+            depth: 0,
+            limit: 1,
+            pagination: false,
+            overrideAccess: true,
+            req,
+          })
+        ).docs[0] as { startedAt?: string } | undefined)
+      : undefined;
+    if (!key || !row?.startedAt) {
+      return json({
+        experiment: null,
+        results: null,
+        pastRuns: await pastRuns,
+      } satisfies AbResultsResponse);
+    }
 
     const experiment = { key, startedAt: row.startedAt };
     try {
-      const results = await measurement.getResults({
-        experiment: key,
-        startedAt: row.startedAt,
-        req,
-      });
-      return json({ experiment, results } satisfies AbResultsResponse);
+      const [results, past] = await Promise.all([
+        readResults({ experiment: key, startedAt: row.startedAt }),
+        pastRuns,
+      ]);
+      return json({ experiment, results, pastRuns: past } satisfies AbResultsResponse);
     } catch (err) {
       req.payload.logger.error({ err, msg: "[payload-plugin-ab] getResults failed" });
       const message = err instanceof Error ? err.message : "Failed to read results";

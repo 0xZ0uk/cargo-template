@@ -13,7 +13,8 @@ const entry = createServerEntry({ fetch: createStartHandler(defaultStreamHandler
 /**
  * Cron Trigger: queues the due scheduled Payload jobs and runs them. Today that's the SEO
  * analyzer's queue (continuing a dashboard audit that paused between steps) and the Socials
- * plugin's (scheduled posts), plus the purge of old finished social posts. Each run gets its
+ * plugin's (scheduled posts), plus the purge of old finished social posts and of A/B runs
+ * that ended more than 90 days ago. Each run gets its
  * own CPU budget, and each step its own try/catch so one failing doesn't hide the other.
  */
 async function runScheduledJobs(cron: string): Promise<void> {
@@ -24,6 +25,15 @@ async function runScheduledJobs(cron: string): Promise<void> {
     if (queued || ran) payload.logger.info(`[cron ${cron}] seo jobs: queued ${queued}, ran ${ran}`)
   } catch (error) {
     payload.logger.error({ err: error, msg: `[cron ${cron}] seo jobs failed` })
+  }
+
+  try {
+    // Ended A/B runs whose events Analytics Engine no longer keeps (90 days).
+    const { pruneEndedExperimentRuns } = await import('@cargo/payload-plugin-ab')
+    const pruned = await pruneEndedExperimentRuns(payload)
+    if (pruned) payload.logger.info(`[cron ${cron}] ab: pruned ${pruned} ended runs`)
+  } catch (error) {
+    payload.logger.error({ err: error, msg: `[cron ${cron}] ab prune failed` })
   }
 
   try {

@@ -193,7 +193,8 @@ abTestingPlugin({
     // Optional: runs first on every conversion request; false answers 429 and records nothing.
     rateLimit: async (req) => (await env.MY_LIMITER.limit({ key: clientIp(req) })).success,
     // Server only: credentials stay here.
-    getResults: async ({ experiment, startedAt, req }) =>
+    // `endedAt` is set for a run that ended (count up to it), undefined for the current run.
+    getResults: async ({ experiment, startedAt, endedAt, req }) =>
       ({ configured: true, buckets: [{ bucket: 'original', impressions: 120, conversions: 6 }] }),
       // or { configured: false, reason: 'Set … to see results.' }
   },
@@ -201,14 +202,18 @@ abTestingPlugin({
 ```
 
 - **`POST /api/_ab/convert`**, body `{ experiment, goal }` (JSON; `navigator.sendBeacon`'s `text/plain` works too). The bucket and visitor id come from the request's own cookies, never from the body; the bucket must be live in the manifest (`409` otherwise, `404` without an experiment, `400` for a bad body or unknown goal). The first conversion sets an HttpOnly marker cookie (`payload_ab_cv_{key}`, value `<bucket>:<run>`, 90 days) and later ones in the same run answer `{ recorded: false, reason: 'duplicate' }`. The cookies are `SameSite=Lax`, so a cross-site form post carries none and can't convert for a visitor. The endpoint is unauthenticated and the marker is the client's own cookie, so pass `rateLimit` (e.g. per IP) to bound what a script that drops it can add; when it resolves `false` the endpoint answers `429` and records nothing (if it throws, the request goes through and the error is logged).
-- **`GET /api/_ab/results?collection=&id=&locale=`**: for users of the admin panel's auth collection only (`req.user.collection === config.admin.user`), who must also be able to read the document. The manifest key comes from `generatePath` on that document, and `startedAt` from `ab-experiments`. Answers `{ experiment: null, results: null }` before a variant is published.
-- **The panel** shows a results table under the variants (original, current variants, then "Deleted variant (bucket)" rows for data whose variant is gone), with totals, or the host's `reason` when `configured` is false. A bucket is matched to a variant by slug, as in the default variant data.
+- **`GET /api/_ab/results?collection=&id=&locale=`**: for users of the admin panel's auth collection only (`req.user.collection === config.admin.user`), who must also be able to read the document. The manifest key comes from `generatePath` on that document, and `startedAt` from its open `ab-experiments` row. `experiment` and `results` are null while no variant is published. `pastRuns` lists the runs on that document and locale that ended in the last 90 days, most recent first (at most 10): `{ key, startedAt, endedAt, results }`, each with its own `getResults` call bounded by `endedAt` (a failing one gets `results: null` and `error`, without hiding the others).
+- **The panel** shows a results table under the variants (original, current variants, then "Deleted variant (bucket)" rows for data whose variant is gone), with totals, or the host's `reason` when `configured` is false. A bucket is matched to a variant by slug, as in the default variant data. Past runs sit in a collapsed "Past experiments" section, each with its dates and its own table (the original, the variants with data, deleted ones labelled), or the `reason` when `configured` is false. With no variants left the panel shows only that section, and nothing without past runs.
 
 Impressions are the host's to count (the plugin doesn't see page views): `apps/web` counts one per visitor, run and bucket in its page loader.
 
 ### Runs
 
-An experiment runs on a manifest key from its first published variant until it has none left. The recompute that writes the manifest keeps its `ab-experiments` row in step: the first published variant creates the row (`startedAt` = now), and when the key's entry is cleared (the last variant unpublished or deleted, or the original unpublished or deleted) the row is deleted. Publishing a variant again later starts a new run with a new `startedAt`, so results count from then, not from the first experiment ever run on the page.
+An experiment runs on a manifest key from its first published variant until it has none left. The recompute that writes the manifest keeps its `ab-experiments` row in step: the first published variant creates the row (`startedAt` = now), and when the key's entry is cleared (the last variant unpublished or deleted, or the original unpublished) the run ends: the row gets `endedAt` = now and stays, so its results (`startedAt` → `endedAt`) remain in the panel. Publishing a variant again later starts a new run (a new row with a new `startedAt`), so results count from then, not from the first experiment ever run on the page. Deleting the original deletes all its rows, ended or not.
+
+Ended rows are kept for `AB_RUN_RETENTION_DAYS` (90, Analytics Engine's retention: after that the events behind the results are gone). The plugin doesn't schedule anything: call `pruneEndedExperimentRuns(payload, { experimentsCollectionSlug?, retentionDays?, limit? })` from the host's scheduler. It deletes up to `limit` (100) rows of runs that ended more than `retentionDays` ago, never an open run, and returns how many it deleted. `apps/web` calls it from its Cron Trigger (`src/server.ts`). The panel only lists runs that ended within the window, so a late prune shows nothing stale.
+
+A variant created by `POST /api/_ab/duplicate` on a collection with drafts skips the manifest recompute (the `AB_SKIP_RECOMPUTE_CONTEXT_KEY` `req.context` marker): it takes no traffic, and the moment between the copy (still published in the other locales under Payload 4's per-locale `_status`) and its unpublish would otherwise start and end a run.
 
 The default variant data carries the run's `startedAt` on every entry (a custom `generateVariantData` receives it as `startedAt`), so a resolver knows the run from the manifest read it already makes. The dedupe markers hold `abRunMarker(bucket, startedAt)` (`/middleware`): `<bucket>:<startedAt in base-36 ms>`. A visitor returning in a new run on the same page doesn't match their old marker and is counted again.
 
@@ -226,7 +231,7 @@ Mount `<ExperimentTracker experimentId={manifestKey} />` (from `@cargo/payload-p
 
 **Consent is up to each site.** The plugin doesn't ask for consent and doesn't gate GA4 on it. With GA4 loaded, the tracker sends the experiment key, the visitor's bucket and an anonymous visitor id (`ab_visitor_id`) to Google. Load gtag, and mount `ExperimentTracker`, only once your consent flow allows it (or use Google Consent Mode), and list these parameters in your privacy policy. Analytics Engine measurement (see [Measurement](#measurement)) is first-party and stores no visitor id, IP or user agent, but it still sets cookies, so check it against your own consent rules too.
 
-The `ab-experiments` collection records the `startedAt` of each experiment's current run (see [Runs](#runs)).
+The `ab-experiments` collection records the `startedAt` of each experiment run, and the `endedAt` of runs that ended (see [Runs](#runs)).
 
 ## Configuration
 
@@ -304,7 +309,7 @@ Reads are cache-first, and a key with no experiment is cached as `null`, so page
 
 | Import path | Exports |
 | --- | --- |
-| `@cargo/payload-plugin-ab` | `abTestingPlugin`, `resolveAbCookieNames`, `AB_EXPERIMENTS_SLUG`, `AB_DIMENSION_PARAMS`, `DEFAULT_CONVERSION_COOKIE_PREFIX`, types (including `ManifestCache`, `AbMeasurementConfig`, `AbResults`) |
+| `@cargo/payload-plugin-ab` | `abTestingPlugin`, `resolveAbCookieNames`, `pruneEndedExperimentRuns`, `AB_EXPERIMENTS_SLUG`, `AB_DIMENSION_PARAMS`, `AB_RUN_RETENTION_DAYS`, `DEFAULT_CONVERSION_COOKIE_PREFIX`, types (including `ManifestCache`, `AbMeasurementConfig`, `AbResults`, `AbResultsResponse`, `AbPastRun`) |
 | `@cargo/payload-plugin-ab/adapters/payload-collection` | `payloadCollectionAdapter`, `withManifestCache`, `createMemoryManifestCache`, types |
 | `@cargo/payload-plugin-ab/middleware` | `createResolveAbRewrite`, `parseCookieHeader`, `serializeAbCookie`, `bucketCookieName`, `resolveAbCookieNames`, types |
 | `@cargo/payload-plugin-ab/analytics` (also `/analytics/client`) | `ExperimentTracker`, `resolveAbCookieNames`, types |

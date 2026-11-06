@@ -114,6 +114,18 @@ describe('abResultsQuery', () => {
     expect(sql).toContain(`timestamp >= toDateTime('2026-11-01 10:20:30')`)
     expect(sql).toContain('SUM(_sample_interval) AS count')
     expect(sql).toContain('FROM cargo_ab')
+    // The current run: up to now.
+    expect(sql).not.toContain('timestamp <')
+  })
+
+  it('bounds an ended run by its end, exclusive, in UTC', () => {
+    const sql = abResultsQuery('/pricing', '2026-11-01T10:20:30.000Z', '2026-11-03T08:00:00.000+02:00')
+    expect(sql).toContain(
+      `timestamp >= toDateTime('2026-11-01 10:20:30') AND timestamp < toDateTime('2026-11-03 06:00:00')`,
+    )
+    expect(() => abResultsQuery('/pricing', '2026-11-01T10:20:30.000Z', 'soon')).toThrow(
+      'Invalid endedAt',
+    )
   })
 })
 
@@ -170,6 +182,24 @@ describe('getAbResults', () => {
       configured: true,
       buckets: [{ bucket: 'original', impressions: 10, conversions: 1 }],
       retentionDays: 90,
+    })
+  })
+
+  it("reads an ended run's window, from its start to its end", async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json({ data: [{ bucket: 'pricing--gone', event: 'impression', count: 4 }] }),
+    )
+    const ended = { ...args, endedAt: '2026-11-04T12:00:00.000Z' }
+    const results = await getAbResults(ended, { accountId: 'acc', apiToken: 'tok' }, fetchMock)
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(init.body).toBe(abResultsQuery(KEY, args.startedAt, ended.endedAt))
+    expect(init.body).toContain(
+      `timestamp >= toDateTime('2026-11-01 00:00:00') AND timestamp < toDateTime('2026-11-04 12:00:00')`,
+    )
+    expect(results).toMatchObject({
+      configured: true,
+      buckets: [{ bucket: 'pricing--gone', impressions: 4, conversions: 0 }],
     })
   })
 

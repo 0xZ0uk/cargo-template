@@ -13,8 +13,21 @@ export const AB_CASCADE_CONTEXT_KEY = "abCascade";
  * and MCP writes run without it and can't set either field.
  */
 export const AB_WRITE_CONTEXT_KEY = "abPluginWrite";
+/**
+ * `req.context` marker set while the duplicate endpoint creates a draft variant: the copy
+ * takes no traffic, so the manifest needs no recompute. Without it, the moment between the
+ * copy (still published in the other locales) and its unpublish would start and end a run.
+ */
+export const AB_SKIP_RECOMPUTE_CONTEXT_KEY = "abSkipRecompute";
 
 export const AB_EXPERIMENTS_SLUG = "ab-experiments";
+/**
+ * Days an ended run's `ab-experiments` row is kept (and listed in the Variants panel): the
+ * Analytics Engine retention, after which its events, and so its results, are gone.
+ */
+export const AB_RUN_RETENTION_DAYS = 90;
+/** Past runs listed per page and locale in the Variants panel, most recent first. */
+export const AB_MAX_PAST_RUNS = 10;
 
 export const PLUGIN_NAME = "payload-plugin-ab";
 
