@@ -15,7 +15,10 @@ describe('assistantTestModel', () => {
     expect(assistantTestModel({ ASSISTANT_TEST_MODEL: '0', APP_ENV: 'development' })).toBe(false)
   })
 
-  it.each(['production', 'staging'])('is off on a deployed Worker (APP_ENV=%s)', (APP_ENV) => {
-    expect(assistantTestModel({ ASSISTANT_TEST_MODEL: '1', APP_ENV })).toBe(false)
-  })
+  it.each(['production', 'staging', 'preview'])(
+    'is off for any env but development (APP_ENV=%s)',
+    (APP_ENV) => {
+      expect(assistantTestModel({ ASSISTANT_TEST_MODEL: '1', APP_ENV })).toBe(false)
+    },
+  )
 })
