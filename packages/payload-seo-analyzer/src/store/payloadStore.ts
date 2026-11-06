@@ -6,8 +6,17 @@
  * Writes are sequential: SQLite allows one writer, and parallel writes raise SQLITE_BUSY.
  */
 import type { Payload, Where } from 'payload'
+import {
+  addPosition,
+  createPositionAccumulator,
+  resolvePosition,
+  type PositionAccumulator,
+} from '../helpers/weightedPosition.js'
 import type {
   NotFoundEntry,
+  PerformanceAggregate,
+  PerformanceFilter,
+  PerformanceGroup,
   PerformanceRow,
   RankSnapshot,
   ScoreSnapshot,
@@ -24,10 +33,69 @@ export const PAYLOAD_DATE_FIELDS: Record<SeoDataset, string> = {
   'seo-logs': 'lastSeen',
 }
 
+/**
+ * Rows `performance.aggregate` reads before it gives up (newest first). The Local API has no
+ * GROUP BY, so the totals are summed in JS; past this the result is flagged `truncated`.
+ * 90 days of Search Console data is roughly 90,000 rows on a busy site: use the SQL store
+ * (`dataStore`) there.
+ */
+export const PAYLOAD_AGGREGATE_MAX_ROWS = 10_000
+/** Rows per `find` while paging for `aggregate` (a divisor of the cap, so the last page is full). */
+const AGGREGATE_PAGE_SIZE = 1_000
+
 type Doc = Record<string, unknown>
 
 const str = (v: unknown): string => (typeof v === 'string' ? v : v == null ? '' : String(v))
 const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : Number(v) || 0)
+
+interface Totals {
+  clicks: number
+  impressions: number
+  positions: PositionAccumulator
+}
+
+const newTotals = (): Totals => ({ clicks: 0, impressions: 0, positions: createPositionAccumulator() })
+
+function addRow(t: Totals, row: PerformanceRow): void {
+  t.clicks += row.clicks
+  t.impressions += row.impressions
+  addPosition(t.positions, row.position, row.impressions)
+}
+
+const finish = (t: Totals) => ({
+  clicks: t.clicks,
+  impressions: t.impressions,
+  position: resolvePosition(t.positions),
+})
+
+/** Most clicks first; ties by key, like the SQL store's `ORDER BY clicks DESC, key ASC`. */
+function topGroups(groups: Map<string, Totals>, limit: number): PerformanceGroup[] {
+  return [...groups]
+    .map(([key, t]): PerformanceGroup => ({ key, ...finish(t) }))
+    .sort((a, b) => b.clicks - a.clicks || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+    .slice(0, limit)
+}
+
+function performanceWhere({ since, urlContains, queryContains }: PerformanceFilter): Where {
+  return {
+    date: { greater_than_equal: since },
+    ...(urlContains ? { url: { contains: urlContains } } : {}),
+    ...(queryContains ? { query: { contains: queryContains } } : {}),
+  }
+}
+
+function toPerformance(d: Doc): PerformanceRow {
+  return {
+    url: str(d.url),
+    query: str(d.query),
+    clicks: num(d.clicks),
+    impressions: num(d.impressions),
+    ctr: num(d.ctr),
+    position: num(d.position),
+    date: str(d.date),
+    source: (d.source as PerformanceRow['source']) || undefined,
+  }
+}
 
 function toScore(d: Doc): ScoreSnapshot {
   return {
@@ -72,13 +140,16 @@ function toNotFound(d: Doc): NotFoundEntry {
 }
 
 export function createPayloadSeoDataStore(payload: Payload): SeoDataStore {
-  const find = (collection: SeoDataset, args: { where?: Where; sort?: string; limit: number }) =>
+  const find = (
+    collection: SeoDataset,
+    args: { where?: Where; sort?: string | string[]; limit: number; page?: number },
+  ) =>
     payload.find({
       collection: collection as never,
       depth: 0,
       overrideAccess: true,
       ...args,
-    }) as Promise<{ docs: Doc[] }>
+    }) as Promise<{ docs: Doc[]; hasNextPage?: boolean }>
 
   return {
     kind: 'payload',
@@ -117,26 +188,52 @@ export function createPayloadSeoDataStore(payload: Payload): SeoDataStore {
     performance: {
       async list({ since, urlContains, queryContains, limit }) {
         const { docs } = await find('seo-performance', {
-          where: {
-            date: { greater_than_equal: since },
-            ...(urlContains ? { url: { contains: urlContains } } : {}),
-            ...(queryContains ? { query: { contains: queryContains } } : {}),
-          },
+          where: performanceWhere({ since, urlContains, queryContains }),
           sort: '-date',
           limit,
         })
-        return docs.map(
-          (d): PerformanceRow => ({
-            url: str(d.url),
-            query: str(d.query),
-            clicks: num(d.clicks),
-            impressions: num(d.impressions),
-            ctr: num(d.ctr),
-            position: num(d.position),
-            date: str(d.date),
-            source: (d.source as PerformanceRow['source']) || undefined,
-          }),
-        )
+        return docs.map(toPerformance)
+      },
+      async aggregate({ since, urlContains, queryContains, topLimit }) {
+        const summary = newTotals()
+        const pages = new Map<string, Totals>()
+        const queries = new Map<string, Totals>()
+        const into = (map: Map<string, Totals>, key: string) => {
+          let t = map.get(key)
+          if (!t) map.set(key, (t = newTotals()))
+          return t
+        }
+
+        let read = 0
+        let truncated = false
+        for (let page = 1; ; page++) {
+          const { docs, hasNextPage } = await find('seo-performance', {
+            where: performanceWhere({ since, urlContains, queryContains }),
+            // `id` breaks ties so pages don't overlap or skip rows within a day.
+            sort: ['-date', '-id'],
+            limit: AGGREGATE_PAGE_SIZE,
+            page,
+          })
+          for (const doc of docs) {
+            const row = toPerformance(doc)
+            addRow(summary, row)
+            addRow(into(pages, row.url), row)
+            addRow(into(queries, row.query), row)
+          }
+          read += docs.length
+          if (!hasNextPage || docs.length === 0) break
+          if (read >= PAYLOAD_AGGREGATE_MAX_ROWS) {
+            truncated = true
+            break
+          }
+        }
+
+        return {
+          summary: finish(summary),
+          topPages: topGroups(pages, topLimit),
+          topQueries: topGroups(queries, topLimit),
+          truncated,
+        } satisfies PerformanceAggregate
       },
       async upsert(rows) {
         let imported = 0

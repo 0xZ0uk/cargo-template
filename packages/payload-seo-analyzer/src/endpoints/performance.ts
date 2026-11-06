@@ -25,14 +25,10 @@ interface PerformanceEntry {
   date: string
 }
 
-interface AggregatedRow {
-  key: string
-  clicks: number
-  impressions: number
-  ctr: number
-  position: number
-  count: number
-}
+/** Rows in each top list. */
+const TOP_LIMIT = 20
+/** Newest rows returned as `data`. */
+const RAW_DATA_LIMIT = 200
 
 // ---------------------------------------------------------------------------
 // CSV parser (simple, handles quoted fields)
@@ -134,100 +130,41 @@ export function createPerformanceHandler(resolveStore: SeoDataStoreResolver = pa
         const filterQuery = url.searchParams.get('query') || ''
         const threshold = getDateThreshold(period)
 
-        // Fetch all performance entries within the period
-        const docs = await resolveStore(req.payload).performance.list({
+        const store = resolveStore(req.payload).performance
+        const filter = {
           since: threshold.toISOString(),
           urlContains: filterUrl || undefined,
           queryContains: filterQuery || undefined,
-          limit: 10000,
-        })
-
-        // Summary
-        let totalClicks = 0
-        let totalImpressions = 0
-        let positionSum = 0
-        let positionCount = 0
-
-        for (const doc of docs) {
-          totalClicks += doc.clicks || 0
-          totalImpressions += doc.impressions || 0
-          if (doc.position > 0) {
-            positionSum += doc.position
-            positionCount++
-          }
         }
 
-        const avgCtr = totalImpressions > 0
-          ? Math.round((totalClicks / totalImpressions) * 10000) / 100
-          : 0
-        const avgPosition = positionCount > 0
-          ? Math.round((positionSum / positionCount) * 10) / 10
-          : 0
+        // Totals and top lists come from the store's aggregate: the whole period, not the
+        // newest N rows. `data` is only the newest rows, for API users.
+        const [aggregate, docs] = await Promise.all([
+          store.aggregate({ ...filter, topLimit: TOP_LIMIT }),
+          store.list({ ...filter, limit: RAW_DATA_LIMIT }),
+        ])
 
-        // Aggregate by URL (top pages)
-        const pageMap = new Map<string, AggregatedRow>()
-        for (const doc of docs) {
-          const key = doc.url || ''
-          if (!pageMap.has(key)) {
-            pageMap.set(key, { key, clicks: 0, impressions: 0, ctr: 0, position: 0, count: 0 })
-          }
-          const entry = pageMap.get(key)!
-          entry.clicks += doc.clicks || 0
-          entry.impressions += doc.impressions || 0
-          if (doc.position > 0) {
-            entry.position += doc.position
-            entry.count++
-          }
-        }
+        const ctr = (clicks: number, impressions: number) =>
+          impressions > 0 ? Math.round((clicks / impressions) * 10000) / 100 : 0
 
-        const topPages = Array.from(pageMap.values())
-          .map((e) => ({
-            url: e.key,
-            clicks: e.clicks,
-            impressions: e.impressions,
-            ctr: e.impressions > 0
-              ? Math.round((e.clicks / e.impressions) * 10000) / 100
-              : 0,
-            position: e.count > 0
-              ? Math.round((e.position / e.count) * 10) / 10
-              : 0,
-          }))
-          .sort((a, b) => b.clicks - a.clicks)
-          .slice(0, 20)
+        const { summary } = aggregate
+        const topPages = aggregate.topPages.map((g) => ({
+          url: g.key,
+          clicks: g.clicks,
+          impressions: g.impressions,
+          ctr: ctr(g.clicks, g.impressions),
+          position: g.position,
+        }))
+        const topQueries = aggregate.topQueries.map((g) => ({
+          query: g.key || '(no query)',
+          clicks: g.clicks,
+          impressions: g.impressions,
+          ctr: ctr(g.clicks, g.impressions),
+          position: g.position,
+        }))
 
-        // Aggregate by query (top queries)
-        const queryMap = new Map<string, AggregatedRow>()
-        for (const doc of docs) {
-          const key = doc.query || '(no query)'
-          if (!queryMap.has(key)) {
-            queryMap.set(key, { key, clicks: 0, impressions: 0, ctr: 0, position: 0, count: 0 })
-          }
-          const entry = queryMap.get(key)!
-          entry.clicks += doc.clicks || 0
-          entry.impressions += doc.impressions || 0
-          if (doc.position > 0) {
-            entry.position += doc.position
-            entry.count++
-          }
-        }
-
-        const topQueries = Array.from(queryMap.values())
-          .map((e) => ({
-            query: e.key,
-            clicks: e.clicks,
-            impressions: e.impressions,
-            ctr: e.impressions > 0
-              ? Math.round((e.clicks / e.impressions) * 10000) / 100
-              : 0,
-            position: e.count > 0
-              ? Math.round((e.position / e.count) * 10) / 10
-              : 0,
-          }))
-          .sort((a, b) => b.clicks - a.clicks)
-          .slice(0, 20)
-
-        // Raw data for charts (limit 200)
-        const data = docs.slice(0, 200).map((doc) => ({
+        // Raw rows for charts and API users: the newest RAW_DATA_LIMIT
+        const data = docs.map((doc) => ({
           url: doc.url || '',
           query: doc.query || '',
           clicks: doc.clicks || 0,
@@ -239,9 +176,15 @@ export function createPerformanceHandler(resolveStore: SeoDataStoreResolver = pa
 
         return Response.json({
           data,
-          summary: { totalClicks, totalImpressions, avgCtr, avgPosition },
+          summary: {
+            totalClicks: summary.clicks,
+            totalImpressions: summary.impressions,
+            avgCtr: ctr(summary.clicks, summary.impressions),
+            avgPosition: summary.position,
+          },
           topPages,
           topQueries,
+          truncated: aggregate.truncated,
         })
       }
 

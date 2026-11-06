@@ -9,9 +9,13 @@
  * D1 limits shape the queries: at most 100 bound parameters per statement and 1,000
  * queries per Worker invocation, so bulk writes are multi-row statements sent in batches.
  */
+import { resolvePosition } from '../helpers/weightedPosition.js'
 import { SEO_STORE_MIGRATIONS } from './sqlSchema.js'
 import type {
   NotFoundEntry,
+  PerformanceFilter,
+  PerformanceGroup,
+  PerformanceTotals,
   PerformanceRow,
   RankSnapshot,
   ScoreSnapshot,
@@ -85,6 +89,44 @@ const TABLES: Record<SeoDataset, { table: string; dateColumn: string }> = {
   'seo-score-history': { table: 'seo_score_history', dateColumn: 'snapshot_date' },
   'seo-performance': { table: 'seo_performance', dateColumn: 'date' },
   'seo-logs': { table: 'seo_logs', dateColumn: 'last_seen' },
+}
+
+/** `WHERE` for the performance table; every value is bound. */
+function performanceWhere({ since, urlContains, queryContains }: PerformanceFilter) {
+  const where = ['date >= ?']
+  const params: unknown[] = [since]
+  if (urlContains) (where.push(`url LIKE ? ESCAPE '\\'`), params.push(likeContains(urlContains)))
+  if (queryContains) (where.push(`query LIKE ? ESCAPE '\\'`), params.push(likeContains(queryContains)))
+  return { where, params }
+}
+
+/**
+ * Per-group sums. Clicks and impressions cover every row. The position terms are the
+ * accumulator of `helpers/weightedPosition.ts` (conditional aggregation, so rows with no
+ * position still count in the totals): Σ position × impressions over rows with a position and
+ * impressions, their Σ impressions, and Σ / count of position over rows with a position (the
+ * plain-average fallback). `toTotals` resolves them with the same function the Payload store
+ * uses, so both stores round the same way.
+ */
+const PERFORMANCE_SUMS = `
+  COALESCE(SUM(clicks), 0) AS clicks,
+  COALESCE(SUM(impressions), 0) AS impressions,
+  SUM(CASE WHEN position > 0 AND impressions > 0 THEN position * impressions END) AS position_weighted,
+  SUM(CASE WHEN position > 0 AND impressions > 0 THEN impressions END) AS position_impressions,
+  SUM(CASE WHEN position > 0 THEN position END) AS position_sum,
+  COUNT(CASE WHEN position > 0 THEN 1 END) AS position_count`
+
+function toTotals(r: Row): PerformanceTotals {
+  return {
+    clicks: num(r.clicks),
+    impressions: num(r.impressions),
+    position: resolvePosition({
+      weighted: num(r.position_weighted),
+      impressions: num(r.position_impressions),
+      plainSum: num(r.position_sum),
+      plainCount: num(r.position_count),
+    }),
+  }
 }
 
 function parseChecks(raw: unknown): ScoreSnapshot['checksSummary'] {
@@ -191,10 +233,7 @@ export function createSqlSeoDataStore(db: SeoSqlDatabase): SeoDataStore {
 
     performance: {
       async list({ since, urlContains, queryContains, limit }) {
-        const where = ['date >= ?']
-        const params: unknown[] = [since]
-        if (urlContains) (where.push(`url LIKE ? ESCAPE '\\'`), params.push(likeContains(urlContains)))
-        if (queryContains) (where.push(`query LIKE ? ESCAPE '\\'`), params.push(likeContains(queryContains)))
+        const { where, params } = performanceWhere({ since, urlContains, queryContains })
         const rows = await all(
           `SELECT * FROM seo_performance WHERE ${where.join(' AND ')} ORDER BY date DESC, id DESC LIMIT ?`,
           [...params, limit],
@@ -211,6 +250,27 @@ export function createSqlSeoDataStore(db: SeoSqlDatabase): SeoDataStore {
             source: str(r.source) as PerformanceRow['source'],
           }),
         )
+      },
+      async aggregate({ topLimit, ...filter }) {
+        const { where, params } = performanceWhere(filter)
+        const top = (column: 'url' | 'query') =>
+          all(
+            `SELECT ${column} AS key, ${PERFORMANCE_SUMS} FROM seo_performance WHERE ${where.join(' AND ')}
+             GROUP BY ${column} ORDER BY clicks DESC, key ASC LIMIT ?`,
+            [...params, topLimit],
+          )
+        const [summary, pages, queries] = await Promise.all([
+          all(`SELECT ${PERFORMANCE_SUMS} FROM seo_performance WHERE ${where.join(' AND ')}`, params),
+          top('url'),
+          top('query'),
+        ])
+        const group = (r: Row): PerformanceGroup => ({ key: str(r.key), ...toTotals(r) })
+        return {
+          summary: toTotals(summary[0] ?? {}),
+          topPages: pages.map(group),
+          topQueries: queries.map(group),
+          truncated: false,
+        }
       },
       async upsert(rows) {
         if (rows.length === 0) return { imported: 0, updated: 0, errors: 0 }

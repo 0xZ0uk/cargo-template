@@ -232,6 +232,7 @@ import { checkMetaDescription } from './rules/meta-description'
 import { checkUrl } from './rules/url'
 import { checkHeadings } from './rules/headings'
 import { checkContent } from './rules/content'
+import { checkKeyphrase } from './rules/keyphrase'
 import { checkImages } from './rules/images'
 import { checkLinking } from './rules/linking'
 import { checkSocial } from './rules/social'
@@ -435,6 +436,7 @@ export function analyzeSeo(data: SeoInput, config?: SeoConfig): SeoAnalysis {
     { group: 'url', fn: checkUrl },
     { group: 'headings', fn: checkHeadings },
     { group: 'content', fn: checkContent },
+    { group: 'content', fn: checkKeyphrase },
     { group: 'images', fn: checkImages },
     { group: 'linking', fn: checkLinking },
     { group: 'social', fn: checkSocial },

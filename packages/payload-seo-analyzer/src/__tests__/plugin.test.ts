@@ -117,6 +117,11 @@ describe('seoAnalyzerPlugin — integration (config transform)', () => {
     expect(p).toContain('/seo/health')
   })
 
+  it('forwards the analyzed collections that exist to admin.custom (schema builder picker)', () => {
+    const out = run({ collections: ['pages', 'posts', 'missing'] })
+    expect(out.admin.custom.seoAnalyzer.collections).toEqual(['pages', 'posts'])
+  })
+
   it('sets an onInit function (composes with existing)', () => {
     const out = run({ collections: ['pages', 'posts'] })
     expect(typeof out.onInit).toBe('function')

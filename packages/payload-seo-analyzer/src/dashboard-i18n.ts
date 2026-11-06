@@ -342,6 +342,7 @@ export interface DashboardTranslations {
     updatedCount: string
     noData: string
     noDataDesc: string
+    truncatedNotice: string
     importData: string
     totalClicks: string
     totalImpressions: string
@@ -431,6 +432,23 @@ export interface DashboardTranslations {
     imageLabel: string
     urlLabel: string
     validateOnRichResults: string
+    modeLabel: string
+    manualMode: string
+    pageMode: string
+    selectCollection: string
+    searchDocuments: string
+    selectDocument: string
+    loadingDocuments: string
+    noDocuments: string
+    chooseDocument: string
+    schemaTypeOverride: string
+    autoDetect: string
+    generating: string
+    effectiveType: string
+    generatedFromPage: string
+    pickDocumentHint: string
+    documentsError: string
+    generateError: string
   }
   keywordResearch: {
     loading: string
@@ -978,6 +996,8 @@ const en: DashboardTranslations = {
     updatedCount: 'updated',
     noData: 'No performance data',
     noDataDesc: 'Import your data from Google Search Console to view your clicks, impressions, CTR and positions.',
+    truncatedNotice:
+      'There is too much data to total here: the figures below cover only the newest rows of the period. Configure the SQL data store (the dataStore option) for exact totals.',
     importData: 'Import data',
     totalClicks: 'Total clicks',
     totalImpressions: 'Total impressions',
@@ -1067,6 +1087,23 @@ const en: DashboardTranslations = {
     imageLabel: 'Image (URL)',
     urlLabel: 'URL',
     validateOnRichResults: 'Validate your JSON-LD on',
+    modeLabel: 'Input mode',
+    manualMode: 'Build by hand',
+    pageMode: 'Generate from page',
+    selectCollection: 'Collection',
+    searchDocuments: 'Search by title or slug',
+    selectDocument: 'Document',
+    loadingDocuments: 'Loading documents...',
+    noDocuments: 'No documents found',
+    chooseDocument: '-- Choose a document --',
+    schemaTypeOverride: 'Schema type',
+    autoDetect: 'Auto-detect',
+    generating: 'Generating...',
+    effectiveType: 'Generated type',
+    generatedFromPage: 'Generated from page',
+    pickDocumentHint: 'Pick a document to see the JSON-LD the analyzer generates for it.',
+    documentsError: 'Could not load documents',
+    generateError: 'Could not generate the schema',
   },
   keywordResearch: {
     loading: 'Keyword analysis in progress...',

@@ -828,7 +828,7 @@ export const seoAnalyzerPlugin =
         { path: `${basePath}/performance`, method: 'get', handler: withRateLimit(createPerformanceHandler(resolveStore)) },
         { path: `${basePath}/performance`, method: 'post', handler: withRateLimit(createPerformanceHandler(resolveStore)) },
         // Core Web Vitals via PageSpeed Insights — informational, on-demand, SSRF-safe
-        { path: `${basePath}/core-web-vitals`, method: 'get', handler: withRateLimit(createCoreWebVitalsHandler(seoConfig)) },
+        { path: `${basePath}/core-web-vitals`, method: 'get', handler: withRateLimit(createCoreWebVitalsHandler(seoConfig, sharedCache)) },
         // Indexation hygiene (cross-page noindex / canonical problems). A whole-site scan, so
         // it lives with the only view that calls it (the Performance view's hygiene panel)
         // and is cached + capped like the dashboard audit.
@@ -1090,6 +1090,8 @@ export const seoAnalyzerPlugin =
         // Where the endpoints are mounted, so the UI builds URLs from the real
         // `routes.api` + this path (hooks/useSeoApi.ts) instead of '/api/seo-plugin'.
         endpointBasePath: basePath,
+        // The analyzed collections that exist in this config (the schema builder's page picker).
+        collections: targetCollections.filter((slug) => config.collections?.some((c) => c.slug === slug)),
       },
     }
 

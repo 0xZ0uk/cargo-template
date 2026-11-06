@@ -83,6 +83,15 @@ export const CONSECUTIVE_SAME_START_MAX = 3
 export const SLUG_MAX_LENGTH = 75
 
 // ---------------------------------------------------------------------------
+// Focus keyphrase quality (content words, i.e. excluding function words)
+// ---------------------------------------------------------------------------
+
+/** Up to this many content words a keyphrase is considered focused */
+export const KEYPHRASE_CONTENT_WORDS_GOOD_MAX = 4
+/** Up to this many content words a keyphrase is long but acceptable (warning); above it fails */
+export const KEYPHRASE_CONTENT_WORDS_WARN_MAX = 8
+
+// ---------------------------------------------------------------------------
 // Social
 // ---------------------------------------------------------------------------
 
@@ -158,6 +167,55 @@ export const STOP_WORDS: readonly string[] = [
   'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to',
   'for', 'of', 'with', 'by', 'from', 'is', 'are', 'was', 'were',
   'it', 'this', 'that', 'your', 'my', 'his', 'her',
+]
+
+/**
+ * English function words: words that carry little topical meaning on their own
+ * (determiners, pronouns, prepositions, conjunctions, auxiliaries, question
+ * words) plus common filler ("best", "top", "how"). Lowercase, accent-free and
+ * apostrophe-free, to match `normalizeForComparison()` output with apostrophes
+ * removed. Used by the focus-keyphrase quality and competing-anchor rules.
+ * Deliberately separate from `STOP_WORDS`, which drives the slug rule.
+ */
+export const FUNCTION_WORDS: readonly string[] = [
+  // Articles and determiners
+  'a', 'an', 'the', 'this', 'that', 'these', 'those', 'some', 'any', 'each',
+  'every', 'either', 'neither', 'no', 'all', 'both', 'few', 'many', 'much',
+  'more', 'most', 'less', 'least', 'several', 'other', 'another', 'such',
+  'own', 'same',
+  // Pronouns
+  'i', 'me', 'my', 'mine', 'myself', 'you', 'your', 'yours', 'yourself',
+  'he', 'him', 'his', 'himself', 'she', 'her', 'hers', 'herself', 'it', 'its',
+  'itself', 'we', 'us', 'our', 'ours', 'ourselves', 'they', 'them', 'their',
+  'theirs', 'themselves', 'one', 'ones', 'someone', 'anyone', 'everyone',
+  'something', 'anything', 'everything', 'nothing', 'who', 'whom', 'whose',
+  // Prepositions
+  'about', 'above', 'across', 'after', 'against', 'along', 'among', 'around',
+  'as', 'at', 'before', 'behind', 'below', 'beneath', 'beside', 'between',
+  'beyond', 'by', 'despite', 'down', 'during', 'except', 'for', 'from', 'in',
+  'inside', 'into', 'like', 'near', 'of', 'off', 'on', 'onto', 'out',
+  'outside', 'over', 'past', 'per', 'since', 'through', 'throughout', 'till',
+  'to', 'toward', 'towards', 'under', 'underneath', 'until', 'up', 'upon',
+  'via', 'with', 'within', 'without',
+  // Conjunctions and adverbs of linking
+  'and', 'or', 'but', 'nor', 'so', 'yet', 'because', 'although',
+  'though', 'while', 'whereas', 'if', 'unless', 'than', 'then', 'whether',
+  'also', 'too', 'very', 'just', 'only', 'even', 'still', 'not', 'ever',
+  'again', 'here', 'there', 'now', 'once',
+  // Auxiliaries and common light verbs
+  'am', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has',
+  'had', 'having', 'do', 'does', 'did', 'doing', 'done', 'will', 'would',
+  'shall', 'should', 'can', 'could', 'may', 'might', 'must', 'ought', 'get',
+  'gets', 'got', 'let',
+  // Contractions (apostrophes removed)
+  'dont', 'doesnt', 'didnt', 'isnt', 'arent', 'wasnt', 'werent', 'havent',
+  'hasnt', 'hadnt', 'wont', 'wouldnt', 'shouldnt', 'cant', 'cannot',
+  'couldnt', 'im', 'ive', 'youre', 'youve', 'hes', 'shes',
+  'theyre', 'theyve', 'thats', 'whats', 'heres', 'theres', 'lets',
+  // Question words
+  'what', 'when', 'where', 'which', 'why', 'how',
+  // Common filler in keyphrases
+  'best', 'top', 'vs', 'versus', 'etc',
 ]
 
 /** Action verbs commonly used in CTAs */

@@ -43,3 +43,41 @@ export function useAdminRoute(): string {
   const adminRoute = (useConfig()?.config as { routes?: { admin?: string } } | undefined)?.routes?.admin
   return adminRoute ?? DEFAULT_ADMIN_ROUTE
 }
+
+export interface SeoCollectionOption {
+  slug: string
+  /** Plural label when the client config carries a plain string, else the slug. */
+  label: string
+  /** Names of the title/slug fields the collection really has, for the document search. */
+  searchFields: string[]
+}
+
+type ClientCollection = {
+  slug: string
+  labels?: { plural?: unknown }
+  fields?: Array<{ name?: string }>
+}
+
+/**
+ * The collections the plugin analyzes, for pickers. They come from
+ * `admin.custom.seoAnalyzer.collections` (what the endpoints accept); without it the
+ * admin's own collection list is offered and an endpoint refusal is shown as an error.
+ */
+export function useSeoCollections(): SeoCollectionOption[] {
+  const config = useConfig()?.config as
+    | { collections?: ClientCollection[]; admin?: { custom?: { seoAnalyzer?: { collections?: string[] } } } }
+    | undefined
+  const analyzed = config?.admin?.custom?.seoAnalyzer?.collections
+  const all = config?.collections
+  return useMemo(() => {
+    const bySlug = new Map((all ?? []).map((c) => [c.slug, c]))
+    const slugs = analyzed ?? (all ?? []).map((c) => c.slug)
+    return slugs.map((slug) => {
+      const def = bySlug.get(slug)
+      const names = def?.fields?.map((f) => f.name)
+      const searchFields = names ? ['title', 'slug'].filter((n) => names.includes(n)) : ['title', 'slug']
+      const plural = def?.labels?.plural
+      return { slug, label: typeof plural === 'string' ? plural : slug, searchFields }
+    })
+  }, [analyzed, all])
+}

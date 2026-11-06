@@ -76,11 +76,7 @@ export interface PerformanceRow {
   source?: 'csv' | 'api' | 'manual'
 }
 
-export interface PerformanceQuery {
-  /** On or after this date. */
-  since: string
-  urlContains?: string
-  queryContains?: string
+export interface PerformanceQuery extends PerformanceFilter {
   limit: number
 }
 
@@ -90,9 +86,50 @@ export interface PerformanceUpsertResult {
   errors: number
 }
 
+/** Filters shared by `list` and `aggregate`. */
+export interface PerformanceFilter {
+  /** On or after this date. */
+  since: string
+  urlContains?: string
+  queryContains?: string
+}
+
+export interface PerformanceTotals {
+  clicks: number
+  impressions: number
+  /** Impression-weighted position (`helpers/weightedPosition.ts`), one decimal, `0` when unknown. */
+  position: number
+}
+
+/** One group of `aggregate`'s top lists. `key` is the URL, or the query (`''` when the import had none). */
+export interface PerformanceGroup extends PerformanceTotals {
+  key: string
+}
+
+export interface PerformanceAggregateQuery extends PerformanceFilter {
+  /** Rows per top list. */
+  topLimit: number
+}
+
+export interface PerformanceAggregate {
+  summary: PerformanceTotals
+  /** By URL, most clicks first (ties: key ascending). */
+  topPages: PerformanceGroup[]
+  /** By query, most clicks first (ties: key ascending). */
+  topQueries: PerformanceGroup[]
+  /**
+   * The answer covers only part of the period: the Payload-collections store reads at most
+   * `PAYLOAD_AGGREGATE_MAX_ROWS` rows (newest first) because the Local API has no GROUP BY.
+   * Always `false` for the SQL store, which aggregates in the database.
+   */
+  truncated: boolean
+}
+
 export interface PerformanceStore {
-  /** Newest first. */
+  /** Raw rows, newest first. */
   list(query: PerformanceQuery): Promise<PerformanceRow[]>
+  /** Totals and top lists over every row of the period (not just the newest page of rows). */
+  aggregate(query: PerformanceAggregateQuery): Promise<PerformanceAggregate>
   /** Insert, or overwrite the metrics of the row with the same url + query + date. */
   upsert(rows: PerformanceRow[]): Promise<PerformanceUpsertResult>
 }

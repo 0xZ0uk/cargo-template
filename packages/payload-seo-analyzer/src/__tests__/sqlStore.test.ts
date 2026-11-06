@@ -3,7 +3,15 @@ import { createSeoLogsHandler, recordSeoNotFound } from '../endpoints/seoLogs.js
 import { createPerformanceHandler } from '../endpoints/performance.js'
 import { createHistoryHandler } from '../endpoints/history.js'
 import { purgeRetention } from '../retention.js'
-import { createSqlSeoDataStore, migrateSeoStore, SEO_STORE_MIGRATIONS, type SeoDataStore } from '../store/index.js'
+import {
+  createPayloadSeoDataStore,
+  createSqlSeoDataStore,
+  migrateSeoStore,
+  SEO_STORE_MIGRATIONS,
+  type PerformanceRow,
+  type SeoDataStore,
+} from '../store/index.js'
+import { PAYLOAD_AGGREGATE_MAX_ROWS } from '../store/payloadStore.js'
 import { nodeSqliteD1 } from './helpers/nodeSqliteD1.js'
 
 function setup() {
@@ -153,6 +161,239 @@ describe('SQL store — performance', () => {
     expect(await post.json()).toEqual({ imported: 2, updated: 0, errors: 0 })
     const again = await handler(req(store, { method: 'POST', url: '/performance', body: { csv } }))
     expect(await again.json()).toEqual({ imported: 0, updated: 2, errors: 0 })
+  })
+})
+
+describe('SQL store — performance, weighted average position', () => {
+  const day = new Date().toISOString().split('T')[0] + 'T00:00:00.000Z'
+  const mk = (url: string, query: string, position: number, impressions: number) => ({
+    url,
+    query,
+    clicks: 0,
+    impressions,
+    ctr: 0,
+    position,
+    date: day,
+  })
+
+  async function get(rows: ReturnType<typeof mk>[]) {
+    const { store } = setup()
+    await store.performance.upsert(rows)
+    const handler = createPerformanceHandler(() => store)
+    const res = await handler(req(store, { method: 'GET', url: '/performance?period=7d' }))
+    return res.json()
+  }
+
+  it('weights by impressions (position 2 with 80 impressions → 2.0)', async () => {
+    const body = await get([mk('/a', 'x', 2, 80), mk('/a', 'y', 40, 1)])
+    // (2*80 + 40*1) / 81 = 2.469… → 2.5; the issue's 2 / 80 pair alone gives exactly 2.
+    expect(body.summary.avgPosition).toBe(2.5)
+    const only = await get([mk('/a', 'x', 2, 80)])
+    expect(only.summary.avgPosition).toBe(2)
+  })
+
+  it('uses the weighted value for top pages and top queries', async () => {
+    const body = await get([
+      mk('/a', 'q1', 1, 90),
+      mk('/a', 'q2', 11, 10),
+      mk('/b', 'q1', 5, 10),
+    ])
+    const page = (u: string) => body.topPages.find((p: { url: string }) => p.url === u)
+    const query = (q: string) => body.topQueries.find((r: { query: string }) => r.query === q)
+    expect(page('/a').position).toBe(2) // (1*90 + 11*10) / 100, plain average would be 6
+    expect(page('/b').position).toBe(5)
+    expect(query('q1').position).toBe(1.4) // (1*90 + 5*10) / 100
+    expect(query('q2').position).toBe(11)
+    expect(body.summary.avgPosition).toBe(2.3) // (90 + 110 + 50) / 110 = 2.27
+  })
+
+  it('falls back to the plain average when no row has impressions', async () => {
+    const body = await get([mk('/a', 'x', 2, 0), mk('/a', 'y', 5, 0)])
+    expect(body.summary.avgPosition).toBe(3.5)
+    expect(body.topPages[0].position).toBe(3.5)
+    expect(body.topQueries.map((q: { position: number }) => q.position).sort()).toEqual([2, 5])
+  })
+
+  it('ignores zero-impression rows when others have impressions, and position 0 rows', async () => {
+    const body = await get([mk('/a', 'x', 4, 10), mk('/a', 'y', 50, 0), mk('/a', 'z', 0, 1000)])
+    expect(body.summary.avgPosition).toBe(4)
+    expect(body.topPages[0].position).toBe(4)
+  })
+
+  it('returns 0 when there is no positive position', async () => {
+    const body = await get([mk('/a', 'x', 0, 10)])
+    expect(body.summary.avgPosition).toBe(0)
+  })
+
+  it('rounds to one decimal', async () => {
+    // (1*1 + 2*2) / 3 = 1.666… → 1.7
+    const body = await get([mk('/a', 'x', 1, 1), mk('/a', 'y', 2, 2)])
+    expect(body.summary.avgPosition).toBe(1.7)
+  })
+})
+
+describe('performance aggregates (SQL store and Payload store)', () => {
+  const SINCE = '2026-01-01T00:00:00.000Z'
+  const filter = { since: SINCE, topLimit: 20 }
+  const mk = (url: string, query: string, clicks: number, impressions: number, position: number, day = 1): PerformanceRow => ({
+    url,
+    query,
+    clicks,
+    impressions,
+    ctr: 0,
+    position,
+    date: `2026-10-${String(day).padStart(2, '0')}T00:00:00.000Z`,
+  })
+
+  /** Just enough of `payload.find` over an in-memory collection: where, sort, limit, page. */
+  function fakePayload(rows: PerformanceRow[]) {
+    const find = vi.fn(async (args: { where: Record<string, Record<string, string>>; sort: string[]; limit: number; page?: number }) => {
+      const w = args.where
+      const docs = rows
+        .map((r, i) => ({ ...r, id: i + 1 }))
+        .filter(
+          (r) =>
+            r.date >= w.date!.greater_than_equal! &&
+            (!w.url || r.url.includes(w.url.contains!)) &&
+            (!w.query || r.query.includes(w.query.contains!)),
+        )
+        .sort((a, b) => (a.date === b.date ? b.id - a.id : a.date < b.date ? 1 : -1))
+      const page = args.page ?? 1
+      const slice = args.limit === 0 ? docs : docs.slice((page - 1) * args.limit, page * args.limit)
+      return { docs: slice, hasNextPage: args.limit !== 0 && page * args.limit < docs.length }
+    })
+    return { find } as never as Parameters<typeof createPayloadSeoDataStore>[0] & { find: typeof find }
+  }
+
+  async function both(rows: PerformanceRow[]) {
+    const { store: sql } = setup()
+    await sql.performance.upsert(rows)
+    const payload = fakePayload(rows)
+    return { sql, payload: createPayloadSeoDataStore(payload), find: payload.find }
+  }
+
+  it('totals cover every row, not the newest 10,000', async () => {
+    // 12,000 rows over 3 URLs, more than the 10,000 the endpoint used to read.
+    const rows: PerformanceRow[] = []
+    for (let i = 0; i < 12_000; i++) {
+      rows.push(mk(`/page-${i % 3}`, `q${i}`, 1, 10, 4, 1 + (i % 28)))
+    }
+    const { store } = setup()
+    await store.performance.upsert(rows)
+    const agg = await store.performance.aggregate(filter)
+    expect(agg.summary).toEqual({ clicks: 12_000, impressions: 120_000, position: 4 })
+    expect(agg.truncated).toBe(false)
+    expect(agg.topPages.map((p) => [p.key, p.clicks])).toEqual([
+      ['/page-0', 4000],
+      ['/page-1', 4000],
+      ['/page-2', 4000],
+    ])
+    expect(agg.topQueries).toHaveLength(20)
+  })
+
+  it('SQL and Payload stores agree: weighted position, no-impression fallback, totals', async () => {
+    const rows = [
+      // /a: weighted (1*90 + 11*10) / 100 = 2; position 0 and zero-impression rows are not weighted
+      mk('/a', 'q1', 5, 90, 1),
+      mk('/a', 'q2', 1, 10, 11),
+      mk('/a', 'q3', 2, 1000, 0),
+      mk('/a', 'q4', 0, 0, 50),
+      // /b: no impressions at all → plain average of 2 and 5 = 3.5
+      mk('/b', 'x', 3, 0, 2),
+      mk('/b', 'y', 1, 0, 5),
+      // /c: no positive position → 0
+      mk('/c', '', 9, 10, 0),
+      mk('/c', 'q1', 9, 10, 0, 2),
+    ]
+    const { sql, payload } = await both(rows)
+    const a = await sql.performance.aggregate(filter)
+    const b = await payload.performance.aggregate(filter)
+    expect(b).toEqual(a)
+    expect(a.truncated).toBe(false)
+    const page = (k: string) => a.topPages.find((p) => p.key === k)!
+    expect(page('/a')).toMatchObject({ clicks: 8, impressions: 1100, position: 2 })
+    expect(page('/b')).toMatchObject({ clicks: 4, impressions: 0, position: 3.5 })
+    expect(page('/c')).toMatchObject({ clicks: 18, impressions: 20, position: 0 })
+    expect(a.topQueries.find((q) => q.key === '')).toMatchObject({ clicks: 9 })
+    // Summary: weighted over /a's two rows only, since /b has no impressions.
+    expect(a.summary).toEqual({ clicks: 30, impressions: 1120, position: 2 })
+  })
+
+  it('both stores honour the url and query filters and the date bound', async () => {
+    const rows = [
+      mk('/blog/a', 'coffee', 1, 10, 2),
+      mk('/blog/b', 'tea', 2, 10, 4),
+      mk('/shop', 'coffee', 4, 10, 6),
+      { ...mk('/blog/a', 'old', 100, 10, 1), date: '2025-01-01T00:00:00.000Z' },
+    ]
+    const { sql, payload } = await both(rows)
+    for (const extra of [{}, { urlContains: '/blog' }, { queryContains: 'coffee' }, { urlContains: '/blog', queryContains: 'coffee' }]) {
+      const q = { ...filter, ...extra }
+      expect(await payload.performance.aggregate(q)).toEqual(await sql.performance.aggregate(q))
+    }
+    expect((await sql.performance.aggregate({ ...filter, urlContains: '/blog' })).summary.clicks).toBe(3)
+  })
+
+  it('orders top lists by clicks (ties by key) and caps them', async () => {
+    const rows: PerformanceRow[] = []
+    for (let i = 0; i < 30; i++) rows.push(mk(`/p${String(i).padStart(2, '0')}`, `q${i}`, i < 5 ? 100 : 100 - i, 10, 3))
+    const { sql, payload } = await both(rows)
+    for (const store of [sql, payload]) {
+      const agg = await store.performance.aggregate({ ...filter, topLimit: 8 })
+      expect(agg.topPages).toHaveLength(8)
+      // Five-way tie on 100 clicks comes out in key order, then 95 (p05) … 
+      expect(agg.topPages.map((p) => p.key)).toEqual(['/p00', '/p01', '/p02', '/p03', '/p04', '/p05', '/p06', '/p07'])
+      expect(agg.topQueries.map((p) => p.key).slice(0, 6)).toEqual(['q0', 'q1', 'q2', 'q3', 'q4', 'q5'])
+      expect((await store.performance.aggregate(filter)).topPages).toHaveLength(20)
+    }
+  })
+
+  it('returns zeros for an empty period', async () => {
+    const { sql, payload } = await both([])
+    const empty = { summary: { clicks: 0, impressions: 0, position: 0 }, topPages: [], topQueries: [], truncated: false }
+    expect(await sql.performance.aggregate(filter)).toEqual(empty)
+    expect(await payload.performance.aggregate(filter)).toEqual(empty)
+  })
+
+  it('the Payload store flags truncated when it hits its row cap, and pages through the rest', async () => {
+    const day = (i: number) => 1 + (i % 28)
+    const rows = Array.from({ length: PAYLOAD_AGGREGATE_MAX_ROWS + 500 }, (_, i) => mk(`/p${i % 4}`, `q${i}`, 1, 1, 1, day(i)))
+    const payload = fakePayload(rows)
+    const agg = await createPayloadSeoDataStore(payload).performance.aggregate(filter)
+    expect(agg.truncated).toBe(true)
+    expect(agg.summary.clicks).toBe(PAYLOAD_AGGREGATE_MAX_ROWS)
+    expect(payload.find.mock.calls.length).toBe(PAYLOAD_AGGREGATE_MAX_ROWS / 1000)
+
+    // Exactly at the cap is complete, not truncated.
+    const exact = fakePayload(rows.slice(0, PAYLOAD_AGGREGATE_MAX_ROWS))
+    const full = await createPayloadSeoDataStore(exact).performance.aggregate(filter)
+    expect(full.truncated).toBe(false)
+    expect(full.summary.clicks).toBe(PAYLOAD_AGGREGATE_MAX_ROWS)
+  })
+
+  it('the endpoint reports truncated and keeps the raw data array at 200 rows', async () => {
+    const { store: sql } = setup()
+    const today = new Date().toISOString().split('T')[0] + 'T00:00:00.000Z'
+    await sql.performance.upsert(Array.from({ length: 250 }, (_, i) => ({ ...mk('/a', `q${i}`, 1, 5, 2), date: today })))
+    const body = await (await createPerformanceHandler(() => sql)(req(sql, { method: 'GET', url: '/performance?period=7d' }))).json()
+    expect(body.truncated).toBe(false)
+    expect(body.data).toHaveLength(200)
+    expect(body.summary).toMatchObject({ totalClicks: 250, totalImpressions: 1250, avgCtr: 20, avgPosition: 2 })
+
+    const capped = {
+      ...sql,
+      performance: { ...sql.performance, aggregate: async () => ({ ...(await sql.performance.aggregate(filter)), truncated: true }) },
+    }
+    const res = await createPerformanceHandler(() => capped)(req(capped, { method: 'GET', url: '/performance?period=7d' }))
+    expect((await res.json()).truncated).toBe(true)
+  })
+
+  it('shows a query-less import as (no query) in top queries', async () => {
+    const { store } = setup()
+    const today = new Date().toISOString().split('T')[0] + 'T00:00:00.000Z'
+    await store.performance.upsert([{ ...mk('/a', '', 3, 5, 2), date: today }])
+    const body = await (await createPerformanceHandler(() => store)(req(store, { method: 'GET', url: '/performance?period=7d' }))).json()
+    expect(body.topQueries[0].query).toBe('(no query)')
   })
 })
 

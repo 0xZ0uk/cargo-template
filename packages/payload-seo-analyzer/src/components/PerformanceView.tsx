@@ -140,6 +140,7 @@ export function PerformanceView() {
   const [summary, setSummary] = useState<Summary | null>(null)
   const [topPages, setTopPages] = useState<TopPage[]>([])
   const [topQueries, setTopQueries] = useState<TopQuery[]>([])
+  const [truncated, setTruncated] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -171,6 +172,7 @@ export function PerformanceView() {
       setSummary(data.summary || null)
       setTopPages(data.topPages || [])
       setTopQueries(data.topQueries || [])
+      setTruncated(data.truncated === true)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : t.common.loadingError)
     }
@@ -458,6 +460,12 @@ export function PerformanceView() {
       )}
 
       <ViewBody>
+        {truncated && (
+          <div role="status">
+            <Banner type="warning">{t.performance.truncatedNotice}</Banner>
+          </div>
+        )}
+
         {/* Period selector */}
         <Tabs<Period>
           onChange={setPeriod}

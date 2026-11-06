@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
+import { REMOTE_FETCH_USER_AGENT } from '../../../constants.js'
+
 import type { PinnedHttpsRequest } from '../safeRemoteImage.js'
 
 import { detectImageFormat, identifyFormat } from '../detectImageFormat.js'
@@ -94,7 +96,7 @@ describe('detectImageFormat', () => {
     expect(result).toBe('jpeg')
     expect(requestImpl).toHaveBeenCalledWith({
       address: { address: '93.184.216.34', family: 4 },
-      headers: { Range: 'bytes=0-31' },
+      headers: { Range: 'bytes=0-31', 'User-Agent': REMOTE_FETCH_USER_AGENT },
       signal: expect.any(AbortSignal),
       timeoutMs: 1_000,
       url: new URL('https://cdn.example.com/assets/42'),

@@ -5,7 +5,7 @@ import { request as httpsRequest } from 'node:https'
 import { BlockList, isIP } from 'node:net'
 import { Readable } from 'node:stream'
 
-import { MAX_REMOTE_ASSET_REDIRECTS } from '../../constants.js'
+import { MAX_REMOTE_ASSET_REDIRECTS, REMOTE_FETCH_USER_AGENT } from '../../constants.js'
 import { ValidationError } from '../utilities/errors.js'
 
 type LookupHostname = (hostname: string) => Promise<readonly string[]>
@@ -303,6 +303,21 @@ const resolvePinnedAddress = async (
 const isRedirect = (status: number): boolean =>
   status === 301 || status === 302 || status === 303 || status === 307 || status === 308
 
+/**
+ * Merges the plugin's `User-Agent` into the caller's headers for every remote media
+ * fetch (image preflight, format detection, range reads, and the Pinterest video
+ * download), on both transports. Existing headers are preserved; a caller-supplied
+ * `User-Agent` wins, matched case-insensitively.
+ */
+const remoteFetchHeaders = (headers?: Readonly<Record<string, string>>): Record<string, string> => {
+  const merged: Record<string, string> = {}
+  for (const [name, value] of Object.entries(headers ?? {})) {
+    merged[name.toLowerCase() === 'user-agent' ? 'User-Agent' : name] = value
+  }
+  merged['User-Agent'] ??= REMOTE_FETCH_USER_AGENT
+  return merged
+}
+
 export type FetchPinnedRemoteResponseArgs = {
   allowedHosts?: readonly string[]
   headers?: Readonly<Record<string, string>>
@@ -338,7 +353,7 @@ export const fetchPinnedRemoteResponse = async (
     const address = await resolvePinnedAddress(currentUrl, args.policy, lookupHostname, args.label)
     const response = await requestImpl({
       address,
-      headers: args.headers,
+      headers: remoteFetchHeaders(args.headers),
       signal: args.signal,
       timeoutMs: args.policy.timeoutMs,
       url: currentUrl,

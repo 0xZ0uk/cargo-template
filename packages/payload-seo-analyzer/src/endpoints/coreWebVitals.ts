@@ -16,7 +16,7 @@
  */
 import type { PayloadHandler } from 'payload'
 import type { SeoConfig } from '../types.js'
-import { seoCache } from '../cache.js'
+import { defaultSeoSharedCache, type SeoSharedCache } from '../cache.js'
 import { isSeoAdminRequest, isSeoPanelUser } from '../helpers/isAdmin.js'
 import { resolveSiteUrl as resolveSharedSiteUrl } from '../helpers/siteUrl.js'
 
@@ -40,7 +40,16 @@ function resolveSiteUrl(seoConfig?: SeoConfig): string | undefined {
   return resolveSharedSiteUrl(seoConfig?.siteUrl) || undefined
 }
 
-export function createCoreWebVitalsHandler(seoConfig?: SeoConfig): PayloadHandler {
+/** Lowercase hex SHA-256 of `text` (WebCrypto: Workers and Node). */
+async function sha256Hex(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+export function createCoreWebVitalsHandler(
+  seoConfig?: SeoConfig,
+  cache: SeoSharedCache = defaultSeoSharedCache,
+): PayloadHandler {
   return async (req) => {
     try {
       if (!isSeoPanelUser(req)) {
@@ -78,16 +87,23 @@ export function createCoreWebVitalsHandler(seoConfig?: SeoConfig): PayloadHandle
         )
       }
 
-      // Cache by url+strategy — CrUX field data changes slowly and the PSI quota is
-      // strict (repeated panel opens would otherwise hammer the API → 429).
-      // Cache-busting forces the full site-wide recomputation this endpoint caches,
-      // so it is reserved to SEO admins — the same gate as /audit?nocache=1. A panel
-      // user without the role silently gets the cached result instead of a 403.
+      // Cache by url+strategy in the shared cache (24 h, survives isolates) — CrUX field data
+      // changes slowly and the PSI quota is strict (repeated panel opens would otherwise
+      // hammer the API → 429). The URL is hashed so the key stays within the store's
+      // `[a-z0-9:/._-]` alphabet whatever the query string holds. Two isolates that miss on
+      // the same cold key still both call PSI; this shrinks that, it doesn't remove it.
+      // Cache-busting forces a fresh PSI call (one slice of the quota), so it is reserved
+      // to SEO admins — the same gate as /audit?nocache=1. A panel user without the role
+      // silently gets the cached result instead of a 403.
       const noCache = reqUrl.searchParams.get('nocache') === '1' && isSeoAdminRequest(req)
-      const CACHE_KEY = `cwv:${strategy}:${target}`
-      const cachedCwv = noCache ? null : seoCache.get<Record<string, unknown>>(CACHE_KEY)
+      const CACHE_KEY = `core-web-vitals:${strategy}:${await sha256Hex(target)}`
+      const lookup = await cache.lookup<Record<string, unknown>>('core-web-vitals', CACHE_KEY)
+      const cachedCwv = noCache ? null : lookup.data
       if (cachedCwv) {
-        return Response.json({ ...cachedCwv, cached: true }, { headers: { 'Cache-Control': 'no-store' } })
+        return Response.json(
+          { ...cachedCwv, cached: true, ...(lookup.builtAt !== undefined ? { builtAt: lookup.builtAt } : {}) },
+          { headers: { 'Cache-Control': 'no-store' } },
+        )
       }
 
       const apiKey = process.env.PAGESPEED_API_KEY || process.env.GOOGLE_PAGESPEED_API_KEY || ''
@@ -166,8 +182,9 @@ export function createCoreWebVitalsHandler(seoConfig?: SeoConfig): PayloadHandle
         note: 'Informational only — Core Web Vitals are a ranking tie-breaker, not part of the on-page SEO score.',
       }
 
-      seoCache.set(CACHE_KEY, responseData)
-      return Response.json(responseData, { headers: { 'Cache-Control': 'no-store' } })
+      const builtAt = Date.now()
+      await cache.set('core-web-vitals', CACHE_KEY, responseData, lookup.gen)
+      return Response.json({ ...responseData, builtAt }, { headers: { 'Cache-Control': 'no-store' } })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Internal server error'
       req.payload.logger.error(`[seo] core-web-vitals error: ${message}`)

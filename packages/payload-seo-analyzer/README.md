@@ -37,7 +37,7 @@ It lives in the Cargo monorepo (`packages/payload-seo-analyzer`). `apps/web` con
 
 ## Features
 
-- **Offline analysis:** 110 rule ids across 20 groups (title, meta description, URL, headings, content, images, linking, social, schema, readability, quality, secondary keywords, cornerstone, freshness, technical, accessibility, e-commerce, E-E-A-T, GEO, hreflang).
+- **Offline analysis:** 113 rule ids across 20 groups (title, meta description, URL, headings, content, images, linking, social, schema, readability, quality, secondary keywords, cornerstone, freshness, technical, accessibility, e-commerce, E-E-A-T, GEO, hreflang).
 - **Live editor score:** a sidebar field analyses the document as you type: the post `content`, and every block in `layout`, read by shape rather than block type, so new blocks count without changes. A block's `title` is a heading (`h1` in a `hero` or `pageHeader` block, `h2` otherwise), copy fields such as `eyebrow`, `description`, `question` or `quote` count as text, every Lexical field counts as rich text, and `link` / `links` fields as links. The sidebar and `/validate` use the same extractor; image checks in the sidebar only see uploads once they are populated, since the form holds their IDs. It gives a 0–100 score plus an AI-readiness indicator built from the GEO, E-E-A-T and schema checks.
 - **Admin views:** site audit with CSV/PDF export and bulk actions, sitemap and link audit, settings, redirect manager, Search Console performance, cannibalization, keyword research, schema builder and link graph. Each one follows its feature flag.
 - **Generated output:**
@@ -144,7 +144,7 @@ seoAnalyzerPlugin({
 })
 ```
 
-- **`cacheStore`** persists the dashboard audit, the indexation audit, the sitemap audit, redirect chains and external-link scans. Invalidation is a generation token per cache that every isolate reads. `apps/web/src/plugins/seoCacheStore.ts` is a 20-line R2 implementation.
+- **`cacheStore`** persists the dashboard audit, the indexation audit, the sitemap audit, redirect chains, external-link scans and Core Web Vitals results (24 h, since each refresh is a PageSpeed Insights call). Invalidation is a generation token per cache that every isolate reads. `apps/web/src/plugins/seoCacheStore.ts` is a 20-line R2 implementation.
 - **`waitUntil`** builds the audit in the background, in steps that fit the CPU limit (`SEO_AUDIT_STEP_DOCS`, 800 by default). The dashboard's polls run the next step, and the `seoAuditContinue` job finishes builds nobody is watching.
 - **`dataStore`** keeps time-series rows out of the main D1. With it set, the four time-series collections aren't registered. The SQL store creates and migrates its own tables (`SEO_STORE_MIGRATIONS`, recorded in `seo_store_migrations`). It applies pending migrations on first use; `migrateSeoStore(db)` applies them ahead of time (`pnpm web seo-store:migrate[:remote]`).
 - **`rateLimit`** maps the plugin's buckets (`SEO_RATE_LIMITS`) to Workers Rate Limiting. Those counts are eventually consistent, so treat them as a brake, not a hard cap. The hard cap on AI spend is a credit limit on the OpenRouter key.
@@ -291,6 +291,13 @@ The time-series datasets are append-only: score history (a snapshot per document
 
 - **`createSqlSeoDataStore(db)`** takes a D1 binding, or anything with D1's `prepare`/`bind`/`all`/`run`/`batch`. It owns its tables and migrations, batches bulk writes under D1's 100-parameter limit, and registers no Payload collections.
 - **Omitted:** the upstream collections (`seo-score-history`, `seo-performance`, `seo-rank-history`, `seo-logs`) in the main database (`createPayloadSeoDataStore`).
+
+**`GET /performance`** answers from the whole period, aggregated by the store (`PerformanceStore.aggregate`), not from a capped list of rows:
+
+- `summary` (`totalClicks`, `totalImpressions`, `avgCtr`, impression-weighted `avgPosition`), `topPages` and `topQueries` (20 each, most clicks first) cover every matching row. The SQL store computes them with `SUM` / `GROUP BY` in the database, so `truncated` is always `false`.
+- The Payload-collections store has no `GROUP BY`: it reads up to 10,000 rows (newest first), sums them in JS and sets `truncated: true` when the period has more. The admin view then shows a notice. Use `createSqlSeoDataStore` for exact totals on a busy site.
+- `data` is **not** the period: it is the newest 200 raw rows (url, query, clicks, impressions, ctr, position, date), for API users who want to chart them. Don't sum it.
+- `?period=7d|30d|90d`, `?url=` and `?query=` (substring filters) apply to all of it.
 
 **Retention is mandatory** for every enabled dataset. Windows default to `RETENTION_DEFAULTS`; `retentionDays` and `retentionMaxRows` override them.
 
