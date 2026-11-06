@@ -1,0 +1,10 @@
+{
+  // The Durable Object entry (./do) and the workerd tests: Workers types instead of DOM + Node.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2023"],
+    "types": ["@cloudflare/workers-types", "@cloudflare/vitest-plugin/types"]
+  },
+  "include": ["src/do/**/*.ts", "src/conversations/**/*.ts", "tests/workerd/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

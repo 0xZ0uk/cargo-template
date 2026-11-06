@@ -14,3 +14,6 @@ export const VIEW_PATH = "/assistant";
 export const VIEW_COMPONENT_PATH = `${PACKAGE_NAME}/admin/AssistantView#AssistantView`;
 
 export const DEFAULT_MAX_STEPS = 10;
+
+/** Conversations idle this long are deleted (Durable Object alarm). */
+export const DEFAULT_RETENTION_DAYS = 30;
