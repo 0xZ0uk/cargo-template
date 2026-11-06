@@ -28,7 +28,7 @@ export function createSeoHealthHandler(basePath: string, seoConfig?: SeoConfig):
       const config = {
         aiKey: !!aiApiKey(),
         aiModel: aiModel(),
-        pageSpeedKey: !!(process.env.PAGESPEED_API_KEY || process.env.GOOGLE_PAGESPEED_API_KEY),
+        pageSpeedKey: !!process.env.PAGESPEED_API_KEY,
         gscConfigured: !!getGscOAuthConfig(basePath, seoConfig, payloadApiRoute(req.payload), req),
         gscEncryptionKey: !!process.env.SEO_GSC_ENCRYPTION_KEY,
         alertWebhook: !!process.env.SEO_ALERT_WEBHOOK_URL,

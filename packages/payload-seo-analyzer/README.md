@@ -58,7 +58,7 @@ The Cargo app (`apps/web`) runs this plugin on a deployed Worker. Each feature i
 | `sitemapAudit` | on | **Verified** |
 | `settings` | on | **Verified** |
 | `sitemap.xml`, `robots.txt`, `llms.txt` | on | **Verified**, served at the site root |
-| `performance` | on | **Verified.** Rows in `SEO_D1`. XLSX import needs `xlsx` mapped by the host |
+| `performance` | on | **Verified** for the rows in `SEO_D1` (XLSX import needs `xlsx` mapped by the host). **Core Web Vitals is not verified on a deployed Worker** and needs `PAGESPEED_API_KEY`: without it PageSpeed Insights usually answers 429 |
 | `scoreHistory` | on | **Verified.** Rows in `SEO_D1` |
 | `seoLogs` (404 log) | on | **Verified.** Rows in `SEO_D1` |
 | `externalLinks` | on | **Verified.** Budgeted scans (100 links, 1,000 subrequests per call) that resume across calls. Each link is `ok`, `broken`, `timeout`, `error` (DNS, TLS, connection, redirect loop), `blocked` (SSRF guard) or `unverified` (401, 403, 429, 451 and 999: login walls, bot protection and rate limits, not broken links); `stats` add up to `total`. The External tab shows capped and partial scans and continues them |
@@ -363,7 +363,7 @@ The plugin reads no `NEXT_*` or `PAYLOAD_PUBLIC_*` variables. On Workers, declar
 | `SEO_MEDIA_ORIGIN` | — | Extra origin alt text may fetch from when Payload's file route has no file |
 | `GSC_OAUTH_CLIENT_ID`, `GSC_OAUTH_CLIENT_SECRET` | — | Google OAuth client for `gscApi`. Redirect URI: `<siteUrl>/api/seo-plugin/gsc/callback` |
 | `SEO_GSC_ENCRYPTION_KEY` | derived from `PAYLOAD_SECRET` | 32-byte key (hex or base64) for the stored GSC token. Changing it, or the secret it derives from, forces a reconnect |
-| `GOOGLE_PAGESPEED_API_KEY` / `PAGESPEED_API_KEY` | — | PageSpeed Insights key for Core Web Vitals |
+| `PAGESPEED_API_KEY` | — | PageSpeed Insights key for Core Web Vitals. Effectively required: without it PSI's shared keyless quota usually answers 429. Google Cloud → enable "PageSpeed Insights API" → create an API key restricted to that API |
 | `SEO_INDEXNOW_KEY` | — | IndexNow key, required by `indexNow` |
 | `SEO_ALERT_WEBHOOK_URL`, `SEO_ALERT_EMAIL` | — | Digest delivery for `alerts`. The webhook gets a POST in the format below, and a non-2xx answer or no answer within 10 s counts as failed. The scheduled digest only knows `siteUrl` from the option or `SITE_URL` |
 | `SEO_ALERT_WEBHOOK_FORMAT` | by URL host | `json`, `slack` or `discord`; overrides the `alertWebhookFormat` option. Unset: `hooks.slack.com` → `slack`, `discord.com` / `discordapp.com` with `/api/webhooks/` → `discord`, anything else → `json`. A value that isn't one of the three is ignored with a warning |

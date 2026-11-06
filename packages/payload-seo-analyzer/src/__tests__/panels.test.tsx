@@ -135,6 +135,33 @@ describe('CoreWebVitalsPanel — when it was measured', () => {
     expect(await screen.findByText(/Field data \(real users, CrUX\) · Measured 3 hours ago/)).toBeTruthy()
   })
 
+  it('labels field data that fell back to the whole origin', async () => {
+    mockFetch(200, cwv({ originFallback: true, builtAt: Date.now() - 3 * 3_600_000 }))
+    render(<CoreWebVitalsPanel />)
+    fireEvent.click(screen.getByText('Test'))
+    expect(await screen.findByText(/Field data \(whole site, CrUX\) · Measured 3 hours ago/)).toBeTruthy()
+    expect(screen.queryByText(/real users/)).toBeNull()
+  })
+
+  it('keeps the page label for the page\'s own field data, and lab data stays lab', async () => {
+    mockFetch(200, cwv({ originFallback: false }))
+    const { unmount } = render(<CoreWebVitalsPanel />)
+    fireEvent.click(screen.getByText('Test'))
+    expect(await screen.findByText(/Field data \(real users, CrUX\)/)).toBeTruthy()
+    unmount()
+    mockFetch(200, cwv({ source: 'lab', hasFieldData: false, originFallback: true }))
+    render(<CoreWebVitalsPanel />)
+    fireEvent.click(screen.getByText('Test'))
+    expect(await screen.findByText(/Lab data \(Lighthouse\)/)).toBeTruthy()
+  })
+
+  it('says the key is needed when none is configured', async () => {
+    mockFetch(200, cwv({ keyConfigured: false }))
+    render(<CoreWebVitalsPanel />)
+    fireEvent.click(screen.getByText('Test'))
+    expect(await screen.findByText(/PAGESPEED_API_KEY.*429/)).toBeTruthy()
+  })
+
   it('Re-test asks the endpoint for a fresh run with nocache=1', async () => {
     mockFetch(200, cwv({ builtAt: Date.now() - 3 * 3_600_000 }))
     render(<CoreWebVitalsPanel />)

@@ -17,11 +17,12 @@ const s = {
   mobile: 'Mobile',
   desktop: 'Desktop',
   sourceField: 'Field data (real users, CrUX)',
+  sourceOrigin: 'Field data (whole site, CrUX)',
   sourceLab: 'Lab data (Lighthouse)',
   measured: (when: string) => `Measured ${when}`,
   noInp: 'INP needs real-user field data (not available in lab).',
   inpHint: 'INP is the most commonly failed Core Web Vital in 2026 — prioritize it.',
-  noKey: 'Tip: set PAGESPEED_API_KEY on the server to raise the quota.',
+  noKey: 'Set PAGESPEED_API_KEY on the server: without a key PageSpeed Insights usually answers 429.',
   good: 'Good',
   ni: 'Needs improvement',
   poor: 'Poor',
@@ -42,6 +43,8 @@ interface CwvResponse {
   strategy: string
   source: 'field' | 'lab'
   hasFieldData: boolean
+  /** The field data is the whole site's (PSI `origin_fallback`), not this page's. */
+  originFallback?: boolean
   /** Epoch ms of the PSI run. Absent for a result cached in memory (no `cacheStore`). */
   builtAt?: number
   keyConfigured: boolean
@@ -163,7 +166,7 @@ export function CoreWebVitalsPanel() {
             {metricCard('cls', data.metrics.cls)}
           </Grid>
           <p className="seo-text seo-text--small seo-text--secondary">
-            {data.source === 'field' ? s.sourceField : s.sourceLab}
+            {data.source === 'field' ? (data.originFallback ? s.sourceOrigin : s.sourceField) : s.sourceLab}
             {typeof data.builtAt === 'number' && ` · ${s.measured(formatMeasuredAgo(data.builtAt))}`}
             {!data.keyConfigured && ` · ${s.noKey}`}
           </p>
