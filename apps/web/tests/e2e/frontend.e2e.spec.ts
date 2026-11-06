@@ -12,6 +12,24 @@ test.describe('Frontend', () => {
     await expect(heading).toHaveText('Cargo Template')
   })
 
+  test('loads no Google Analytics without GA_MEASUREMENT_ID', async ({ page }) => {
+    test.skip(Boolean(process.env.GA_MEASUREMENT_ID), 'GA4 is enabled in this environment')
+
+    const googleRequests: string[] = []
+    page.on('request', (request) => {
+      if (/googletagmanager\.com|google-analytics\.com/.test(request.url())) {
+        googleRequests.push(request.url())
+      }
+    })
+
+    await page.goto('/')
+    await page.waitForLoadState('networkidle')
+
+    expect(googleRequests).toEqual([])
+    await expect(page.locator('script[src*="googletagmanager"]')).toHaveCount(0)
+    expect(await page.evaluate(() => 'gtag' in window)).toBe(false)
+  })
+
   test('renders the header and footer', async ({ page }) => {
     await page.goto('/')
 

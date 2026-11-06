@@ -1,5 +1,6 @@
 import type { LoadPageResult } from '@/app/_frontend/pages.functions'
 
+import { gtagScripts } from './googleAnalytics'
 import { pagePath } from './pagePath'
 import { siteName } from './siteName'
 
@@ -39,6 +40,9 @@ export const pageHead = (data?: LoadPageResult) => {
       ...(page.noindex ? [{ name: 'robots', content: 'noindex' }] : []),
     ],
     links: [{ rel: 'canonical', href: url }],
-    scripts: data.jsonLd.map((children) => ({ children, type: 'application/ld+json' })),
+    scripts: [
+      ...data.jsonLd.map((children) => ({ children, type: 'application/ld+json' })),
+      ...gtagScripts(data.gaMeasurementId),
+    ],
   }
 }
