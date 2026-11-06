@@ -27,7 +27,7 @@ import { defaultLexical } from './fields/defaultLexical'
 import type { Page } from './payload-types'
 import { abMeasurementConfig } from './plugins/abMeasurement'
 import { abStorage } from './plugins/abTesting'
-import { assistantConversations, assistantTestModel } from './plugins/assistant'
+import { assistantAuditSink, assistantConversations, assistantTestModel } from './plugins/assistant'
 import { workersAssistantRateLimit } from './plugins/assistantRateLimit'
 import { limitVersions } from './plugins/limitVersions'
 import { r2SeoCacheStore } from './plugins/seoCacheStore'
@@ -152,8 +152,15 @@ export default buildConfig({
       models: [{ id: 'deepseek/deepseek-v4.1-flash', label: 'DeepSeek V4.1 Flash' }],
       apiKey: process.env.OPENROUTER_API_KEY || cloudflare.OPENROUTER_API_KEY || undefined,
       conversations: assistantConversations(cloudflare),
-      // Per admin user, shared across isolates. The credit limit on the key is the spend cap.
+      // Per admin user, shared across isolates. The credit limit on the key is the account-wide cap.
       rateLimit: workersAssistantRateLimit(cloudflare),
+      // $5 of OpenRouter cost per admin user per UTC day (counted in the user's index Durable
+      // Object); past it, turns get 402 `budget_exceeded` until midnight UTC.
+      budget: { dailyCostUsd: 5 },
+      // Users' email, API key, sessions and auth state are hidden from the model by default (every
+      // auth collection); add other fields here as `{ slug: ['field', 'group.field'] }`.
+      // Applied writes go to Analytics Engine (ASSISTANT_AUDIT); see src/plugins/assistant.ts.
+      audit: assistantAuditSink(cloudflare),
       // Tests only (Playwright): a scripted model on localhost, never on a deployed Worker.
       testModel: assistantTestModel({
         ASSISTANT_TEST_MODEL: process.env.ASSISTANT_TEST_MODEL || cloudflare.ASSISTANT_TEST_MODEL,

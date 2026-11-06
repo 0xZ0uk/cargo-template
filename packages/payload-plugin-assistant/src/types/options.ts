@@ -1,5 +1,8 @@
 import type { PayloadRequest } from "payload";
+import type { AssistantAuditSink } from "../audit";
 import type { ConversationCaps } from "../conversations/caps";
+import type { RedactionMap } from "../redaction";
+import type { AssistantBudget } from "../usage";
 
 /** A model the assistant may use. The list is an allowlist: requests naming another id are refused. */
 export interface AssistantModel {
@@ -44,6 +47,7 @@ export interface ConversationNamespace {
 /** A per-user index Durable Object stub, structurally (`AssistantConversationIndex`). */
 export interface ConversationIndexStub {
   call(method: any, args: unknown[]): Promise<any>;
+  usage(tenantId: string, day: string, threadId?: string): Promise<any>;
 }
 
 /** The index Durable Object namespace, structurally (`env.ASSISTANT_INDEX`). */
@@ -128,4 +132,28 @@ export interface AssistantPluginOptions {
    * still needs `apiKey`, so a deployed Worker can't be switched to it. Default `false`.
    */
   testModel?: boolean;
+  /**
+   * Daily allowance per user (#68), counted from the cost OpenRouter reports for each model call
+   * and reset at midnight UTC. A turn (send or approval) is refused with 402 `budget_exceeded`
+   * before the model is called once a cap is reached; a run already going may overshoot it.
+   * Default `{ dailyCostUsd: 5 }`; `false` turns budgets off.
+   */
+  budget?: AssistantBudget | false;
+  /**
+   * Fields the model never sees (#68): collection or global slug → dotted paths
+   * (`{ customers: ['phone', 'address.street'] }`). Arrays and blocks rows are walked. Added to the
+   * defaults: every auth collection hides `DEFAULT_AUTH_REDACTIONS` (email, API key, sessions,
+   * hash, salt, reset and verification tokens, lockout state). Applied to tool results before the
+   * model sees them (populated relations with their own collection's paths), to the stored
+   * transcript and to the approval cards' current values; a `where`, `sort`, `select` or
+   * `findDistinct` field naming one is refused.
+   */
+  redact?: RedactionMap;
+  /**
+   * Where applied writes are reported (#68), one event per changed document, no content. Used where the turn
+   * runs in this process (the in-memory backend); the conversation Durable Object takes its sink
+   * from `auditSink()`, which the app overrides (see the README, "Audit log"). Typically
+   * `analyticsEngineAuditSink(env.ASSISTANT_AUDIT)` in both places.
+   */
+  audit?: AssistantAuditSink;
 }

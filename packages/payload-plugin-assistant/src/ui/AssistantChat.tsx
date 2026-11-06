@@ -5,10 +5,11 @@ import { formatAdminURL } from "payload/shared";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import type { ApprovalRenderer } from "./ApprovalControl";
 import { ApprovalCard } from "./approvals/ApprovalCard";
-import type { AssistantClientConfig, ConversationSummary } from "./api";
+import type { AssistantClientConfig, ConversationSummary, UsageResponse } from "./api";
 import {
   deleteConversation,
   fetchAssistantConfig,
+  fetchUsage,
   isValidThreadId,
   listConversations,
   newThreadId,
@@ -19,6 +20,7 @@ import { ConversationList } from "./ConversationList";
 import type { AssistantNotice } from "./errors";
 import { noticeForClientError } from "./errors";
 import type { DocumentRef, EntitySlugs } from "./tools";
+import { UsageSummary } from "./UsageSummary";
 
 export interface AssistantChatProps {
   /** From the server: `false` when no API key is set (the config endpoint says the same). */
@@ -88,6 +90,7 @@ export function AssistantChat({
   const [newThread, setNewThread] = useState<string | null>(null);
   const [model, setModel] = useState<string>("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [usage, setUsage] = useState<UsageResponse | null>(null);
 
   useEffect(() => {
     const fromUrl = readThreadFromUrl();
@@ -128,6 +131,20 @@ export function AssistantChat({
     void refreshList();
   }, [refreshList]);
 
+  // The budget line (#68): today's usage and this conversation's cost. Best effort: a failure
+  // only hides the line (a refused send still says why).
+  const refreshUsage = useCallback(async () => {
+    try {
+      setUsage(await fetchUsage(apiRoute, threadId ?? undefined));
+    } catch {
+      setUsage(null);
+    }
+  }, [apiRoute, threadId]);
+
+  useEffect(() => {
+    if (threadId) void refreshUsage();
+  }, [refreshUsage, threadId]);
+
   const selectThread = useCallback((next: string) => {
     setThreadId(next);
     writeThreadToUrl(next);
@@ -147,7 +164,8 @@ export function AssistantChat({
     if (threadId) writeThreadToUrl(threadId);
     setNewThread(null);
     void refreshList();
-  }, [refreshList, threadId]);
+    void refreshUsage();
+  }, [refreshList, refreshUsage, threadId]);
 
   const onRename = useCallback(
     async (id: string, title: string) => {
@@ -220,6 +238,7 @@ export function AssistantChat({
         <h1 className="assistant-heading assistant-heading--medium assistant-view__title">
           {activeTitle ?? "Assistant"}
         </h1>
+        <UsageSummary usage={usage} />
       </header>
       {!configured ? (
         <Banner type="warning">
@@ -227,6 +246,9 @@ export function AssistantChat({
         </Banner>
       ) : null}
       {loadNotice ? <Banner type={loadNotice.type}>{loadNotice.message}</Banner> : null}
+      {usage?.exceeded ? (
+        <Banner type="warning">You have used today&apos;s assistant budget. It resets at midnight UTC.</Banner>
+      ) : null}
       <div className="assistant-view__body">
         <div
           className={`assistant-view__sidebar${sidebarOpen ? " assistant-view__sidebar--open" : ""}`}
@@ -248,6 +270,7 @@ export function AssistantChat({
             adminRoute={adminRoute}
             apiRoute={apiRoute}
             ApprovalComponent={ApprovalComponent}
+            budgetExceeded={usage?.exceeded ?? false}
             configured={configured}
             hrefFor={hrefFor}
             isNew={threadId === newThread}

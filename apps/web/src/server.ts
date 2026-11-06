@@ -1,3 +1,5 @@
+import { analyticsEngineAuditSink } from '@cargo/payload-plugin-assistant'
+import { AssistantConversation as AssistantConversationBase } from '@cargo/payload-plugin-assistant/do'
 import { runSeoJobs } from '@cargo/payload-seo-analyzer'
 import {
   createServerEntry,
@@ -8,10 +10,18 @@ import {
 // The admin assistant's Durable Objects (one per conversation, one per user's conversation list):
 // a Worker must export every Durable Object class it binds (`durable_objects` in wrangler.jsonc).
 // Workerd-only; the `./do` entry never reaches the Payload config or the admin bundle.
-export {
-  AssistantConversation,
-  AssistantConversationIndex,
-} from '@cargo/payload-plugin-assistant/do'
+export { AssistantConversationIndex } from '@cargo/payload-plugin-assistant/do'
+
+/**
+ * The conversation object, with the audit log (#68): turns run here on Workers, so the writes they
+ * apply are reported from here, to the `ASSISTANT_AUDIT` Analytics Engine dataset (the plugin never
+ * reads `env` itself). Same sink as the plugin's `audit` option (src/plugins/assistant.ts).
+ */
+export class AssistantConversation extends AssistantConversationBase<Cloudflare.Env> {
+  protected override auditSink() {
+    return analyticsEngineAuditSink(this.env.ASSISTANT_AUDIT)
+  }
+}
 
 // Worker entry. TanStack Start uses `src/server.ts` as its server entry when it exists, so
 // this replaces the default one: same `fetch`, plus a `scheduled` handler for the Cron

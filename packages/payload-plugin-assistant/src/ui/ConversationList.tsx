@@ -3,6 +3,7 @@
 import { Button, ConfirmationModal, EditIcon, PlusIcon, TrashIcon, useModal } from "@payloadcms/ui";
 import React, { useState } from "react";
 import type { ConversationSummary } from "./api";
+import { formatUsd } from "../usage";
 
 export const DELETE_MODAL_SLUG = "assistant-delete-conversation";
 
@@ -100,7 +101,12 @@ export function ConversationList({
                       title={title}
                       type="button"
                     >
-                      {title}
+                      <span className="assistant-sidebar__title">{title}</span>{" "}
+                      {typeof conversation.costUsd === "number" ? (
+                        <span className="assistant-text assistant-text--secondary assistant-text--small assistant-sidebar__cost">
+                          {formatUsd(conversation.costUsd)}
+                        </span>
+                      ) : null}
                     </button>
                     <span className="assistant-sidebar__actions">
                       <Button

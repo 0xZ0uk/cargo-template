@@ -14,6 +14,7 @@ export interface AssistantNotice {
     | "invalid_key"
     | "out_of_credits"
     | "rate_limited"
+    | "budget_exceeded"
     | "model_unavailable"
     | "context_overflow"
     | "not_signed_in"
@@ -41,6 +42,10 @@ const NOTICES: Record<AssistantNotice["kind"], Omit<AssistantNotice, "kind">> = 
     message: "The OpenRouter account is out of credits. Ask an administrator to top it up.",
   },
   rate_limited: { type: "warning", message: "Too many requests. Wait a moment and try again." },
+  budget_exceeded: {
+    type: "warning",
+    message: "You have used today's assistant budget. It resets at midnight UTC.",
+  },
   model_unavailable: {
     type: "danger",
     message: "This model is not available right now. Pick another model and try again.",
@@ -67,6 +72,7 @@ const BY_CODE: Record<string, AssistantNotice["kind"]> = {
   openrouter_out_of_credits: "out_of_credits",
   openrouter_rate_limited: "rate_limited",
   rate_limited: "rate_limited",
+  budget_exceeded: "budget_exceeded",
   model_unavailable: "model_unavailable",
   model_not_allowed: "model_unavailable",
   context_overflow: "context_overflow",
@@ -83,6 +89,7 @@ const BY_CODE: Record<string, AssistantNotice["kind"]> = {
 const BY_STATUS: Record<number, AssistantNotice["kind"]> = {
   400: "invalid_request",
   401: "not_signed_in",
+  402: "budget_exceeded",
   403: "forbidden",
   404: "not_found",
   429: "rate_limited",

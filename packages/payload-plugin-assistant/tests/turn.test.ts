@@ -61,6 +61,7 @@ async function runTurn(options: {
   settings?: Partial<TurnSettings>;
   mcpFetch?: typeof fetch;
   signal?: AbortSignal;
+  recordUsage?: (amount: { costUsd: number; tokens: number }) => Promise<void>;
 }) {
   const sent: Sent[] = [];
   const runner = createTurnRunner({
@@ -81,6 +82,7 @@ async function runTurn(options: {
     persistence: memoryPersistence() as never,
     mcpFetch: options.mcpFetch ?? (((request: Request) => mcp.fetch(request)) as typeof fetch),
     signal: options.signal ?? new AbortController().signal,
+    ...(options.recordUsage ? { recordUsage: options.recordUsage } : {}),
   })) {
     chunks.push(chunk);
   }
@@ -88,6 +90,23 @@ async function runTurn(options: {
 }
 
 describe("the OpenRouter request", () => {
+  it("asks for usage in the stream, and each call's reported cost reaches recordUsage (#68)", async () => {
+    const recorded: Array<{ costUsd: number; tokens: number }> = [];
+    const { sent } = await runTurn({
+      respond: () =>
+        sse(
+          { id: "gen-1", object: "chat.completion.chunk", created: 1, model: "m", choices: [{ index: 0, delta: { role: "assistant", content: "Hi" }, finish_reason: null }] },
+          { id: "gen-1", object: "chat.completion.chunk", created: 1, model: "m", choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120, cost: 0.00042 } },
+          "[DONE]"
+        ),
+      recordUsage: async (amount) => {
+        recorded.push(amount);
+      },
+    });
+    expect(sent[0]!.body.stream_options).toEqual({ include_usage: true });
+    expect(recorded).toEqual([{ tokens: 120, costUsd: 0.00042 }]);
+  });
+
   it("serialises the camelCase provider options to require_parameters / data_collection", async () => {
     const { sent, chunks } = await runTurn({ respond: () => answer("Hello") });
     expect(sent).toHaveLength(1);

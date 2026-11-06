@@ -9,7 +9,8 @@ with one Durable Object per conversation. Plan: [#58](https://github.com/0xZ0uk/
 > [Endpoints](#endpoints-the-contract-for-the-admin-ui)) and the chat view (#64, see
 > [Admin UI](#admin-ui)) are in, with approval cards that show a diff before any write (#65, see
 > [Approvals](#approvals-diff-cards)). Registered in `apps/web` (#66, see [App wiring](#app-wiring-66));
-> the deployed-Worker checks of #66 are still to do.
+> the deployed-Worker checks of #66 are still to do. Per-user daily budgets, the audit log and field
+> redaction are in (#68, see [Budgets, audit log and redaction](#budgets-audit-log-and-redaction-68)).
 
 ```ts
 import { assistantPlugin } from '@cargo/payload-plugin-assistant'
@@ -19,6 +20,8 @@ assistantPlugin({
   apiKey: env.OPENROUTER_API_KEY, // passed in: the plugin never reads process.env
   // Durable Object namespaces (see "App wiring"); omit both for the in-memory fallback.
   conversations: { namespace: cloudflare.ASSISTANT_CONVERSATIONS, index: cloudflare.ASSISTANT_INDEX },
+  budget: { dailyCostUsd: 5 },                                    // the default
+  audit: analyticsEngineAuditSink(cloudflare.ASSISTANT_AUDIT),     // + the DO's auditSink(), see "Audit log"
 })
 ```
 
@@ -26,7 +29,7 @@ assistantPlugin({
 
 | | |
 | --- | --- |
-| `/api/assistant/*` | The chat turn, rejoin, stop and the conversation list: see [Endpoints](#endpoints-the-contract-for-the-admin-ui). Every endpoint: signed in (401), `access` (403). |
+| `/api/assistant/*` | The chat turn, rejoin, stop, the conversation list and the usage: see [Endpoints](#endpoints-the-contract-for-the-admin-ui). Every endpoint: signed in (401), `access` (403). |
 | `/admin/assistant` | The chat view, registered through `admin.components.views`. Anonymous visitors go to login, users `access` refuses to `admin.routes.unauthorized`. |
 | Nav link | "Assistant › Chat" in the admin sidebar (`admin.components.afterNavLinks`), shown only to users `access` admits. |
 
@@ -49,6 +52,9 @@ No collections, globals or injected fields. With `enabled: false` the config is 
 | `toolFilter(tool)` | Which MCP tools the model sees, after the built-in filter (auth tools and `getUploadInstructions` are always dropped). Gets the raw MCP tool (`name`, `description`, `annotations`). Default: all the rest. By name only: to hide deletes for one collection, use plugin-mcp's own `collections.<slug>.tools`. |
 | `conversations` | `{ namespace, index, retentionDays, caps }`. `namespace` (`AssistantConversation`) and `index` (`AssistantConversationIndex`) go together; omit both for the in-memory fallback (Node dev, tests). `retentionDays`: delete a conversation idle this long, default 30. `caps`: size limits, see [Size caps](#size-caps). The namespace types are structural (no `@cloudflare/workers-types`). |
 | `testModel` | **Tests only.** Answer turns with a scripted model instead of OpenRouter; see [Test model](#test-model). Only requests to a loopback host use it. Default `false`. |
+| `budget` | Daily allowance per user (#68): `{ dailyCostUsd?, dailyTokens? }`, at least one; default `{ dailyCostUsd: 5 }`; `false` turns budgets off. Counted from the cost OpenRouter reports per model call, reset at midnight UTC. Past a cap a send or an approval gets 402 `budget_exceeded` before the model is called; a rejection still goes through. See [Budgets](#budgets). |
+| `redact` | Fields the model never sees (#68): `{ [slug]: dotted paths }`, e.g. `{ customers: ['phone', 'address.street'] }`. **Added to** the defaults: every auth collection hides `DEFAULT_AUTH_REDACTIONS`. Throws on a path that isn't dotted field names. See [Redaction](#redaction). |
+| `audit(event)` | Where applied writes are reported (#68), one `AssistantAuditEvent` each, no content. Used where turns run in this process (the in-memory backend); the conversation Durable Object takes its sink from `auditSink()`, which the app overrides. See [Audit log](#audit-log). |
 | `rateLimit(req)` | Return `false` for 429. Called for each chat turn (a send or an approval resume), after `access`, before any model call; reads, rejoins, stop and the conversation endpoints aren't limited. Key it per user (`req.user.collection` + `id`); the app connects it to a Workers Rate Limiting binding (#66). |
 
 OpenRouter provider routing is fixed (`src/utils/provider.ts`): `{ requireParameters: true,
@@ -61,7 +67,7 @@ serialised request body, not the options object.
 
 | Entry | |
 | --- | --- |
-| `.` | The plugin and option types (server). |
+| `.` | The plugin and option types (server), plus the pure #68 helpers: `analyticsEngineAuditSink`, `DEFAULT_AUTH_REDACTIONS`, `DEFAULT_BUDGET` and their types (`AssistantAuditEvent`, `AssistantAuditSink`, `AssistantBudget`, `RedactionMap`, `UsageResponse`…). |
 | `./admin/AssistantView` | The admin view (a server component wrapped in `DefaultTemplate`; the import-map target). |
 | `./admin/AssistantNavLink` | The nav link (a server component that asks `access`; the import-map target). |
 | `./client` | The chat UI, client components only (`"use client"`): `AssistantChat`, `AssistantNavLinkClient`, `ApprovalCard` (the default), `ApprovalControl` (minimal), `pendingApprovalFrom`, `answerInterrupt`, the `PendingApproval` / `ApprovalRenderer` / `ApprovalDecision` types and the proposal types (`ApprovalProposal`, `FieldChange`…). Its CSS is `./client.css`, imported by `client.js`. |
@@ -103,7 +109,7 @@ browser ──POST …/chat/stop ──────────▶ backend.stop(
 | `runs` | Required with `interrupts`. `findActiveRun`, `listByThread`, `listByParentRun`, `listReclaimable`. A run still `running` when the object starts lost its producer (restart, deploy): it becomes `failed` with `code: 'producer_lost'`. |
 | `interrupts` | Insert-if-absent `create`; `resolve`/`cancel` no-op on unknown ids; lists ordered by `requestedAt`; `commitBatch` in one SQLite transaction, so a resume applies every approval or none. |
 | `metadata` | With `getVersioned`/`setIf` (a persisted revision counter: a revision never repeats). |
-| `sessions` | In the index object (below), not the conversation. |
+| `sessions` | In the index object (below), not the conversation. The index also keeps the user's daily usage and each conversation's cost (#68, see [Budgets](#budgets)). |
 
 There is no lock store in 1.0.1 (locks are `withLocks` from `@tanstack/ai`); the object's single
 writer serialises every write to a conversation anyway. The stores are faithful and know nothing
@@ -314,10 +320,19 @@ All under Payload's API route (`/api`), authenticated by the admin session cooki
 | 403 | `forbidden` | `access` refused (every endpoint). |
 | 503 | `not_configured` | No API key (`POST /chat` only). |
 | 429 | `rate_limited` | `rateLimit(req)` returned `false` (`POST /chat` only). |
+| 402 | `budget_exceeded` | The user's daily budget is used up (`POST /chat` only: sends, and resumes that approve anything; checked after the body and model, before anything that costs). A resume that only rejects or cancels is not refused. The body adds `usage` (the `GET /usage` body). |
 | 400 | `invalid_body` / `invalid_query` / `model_not_allowed` | Bad request; `model_not_allowed` also lists `models`. |
 | 404 | `not_found` | The conversation (or run) doesn't exist **or isn't the caller's**: the two are indistinguishable. |
 | 409 | `run_id_used` | A turn reused a run id: rejoin it instead. |
 | 502 | `tools_unavailable` | Only with a `toolFilter`: the Worker could not list the tools. |
+
+### `GET /api/assistant/usage?threadId=…`
+
+The caller's usage today (UTC) and the budget (#68), for the chat header: `{ day, costUsd, tokens,
+budget: { dailyCostUsd?, dailyTokens? } | null, remaining: { costUsd, tokens } (null per cap not set),
+exceeded, resetsAt (next midnight UTC), conversation: { costUsd, tokens } | null }`. `conversation` is
+only there with `threadId`, and `null` when the conversation is someone else's or hasn't used
+anything yet.
 
 ### `GET /api/assistant/config`
 
@@ -431,7 +446,7 @@ Closing the tab or aborting the `fetch` does **not** stop a run; only this does.
 
 | | |
 | --- | --- |
-| `GET /api/assistant/conversations?limit=50&cursor=&search=` | `{ conversations: [{ threadId, title, createdAt, updatedAt }], nextCursor }`, newest first, the caller's only. `limit` ≤ 100. |
+| `GET /api/assistant/conversations?limit=50&cursor=&search=` | `{ conversations: [{ threadId, title, createdAt, updatedAt, costUsd?, tokens? }], nextCursor }`, newest first, the caller's only. `limit` ≤ 100. `costUsd`/`tokens`: the conversation's running total, once it used any (#68). |
 | `GET /api/assistant/conversations/:threadId` | The same body as the load above, or 404 when it doesn't exist or isn't the caller's. |
 | `PATCH /api/assistant/conversations/:threadId` | `{ title }` (1–200 characters) → `{ threadId, title }`. |
 | `DELETE /api/assistant/conversations/:threadId` | → `{ deleted: true }`. Transcript, runs, approvals, logs and the list entry; a live run is aborted. |
@@ -494,6 +509,23 @@ As `apps/web` does it:
 4. **`rateLimit`** from a Workers Rate Limiting binding, keyed by `<collection>:<id>`
    (`apps/web/src/plugins/assistantRateLimit.ts`).
 
+5. **The audit log** (#68): an Analytics Engine dataset, `{ "binding": "ASSISTANT_AUDIT", "dataset":
+   "cargo_assistant_audit" }` in `analytics_engine_datasets` (and a `_staging` one in the staging
+   env), then `audit: analyticsEngineAuditSink(cloudflare.ASSISTANT_AUDIT)` in the plugin options and,
+   because turns run in the conversation object, a subclass exported from the Worker entry instead
+   of the plain class:
+
+   ```ts
+   import { analyticsEngineAuditSink } from '@cargo/payload-plugin-assistant'
+   import { AssistantConversation as AssistantConversationBase } from '@cargo/payload-plugin-assistant/do'
+
+   export class AssistantConversation extends AssistantConversationBase<Cloudflare.Env> {
+     protected override auditSink() {
+       return analyticsEngineAuditSink(this.env.ASSISTANT_AUDIT)
+     }
+   }
+   ```
+
 No D1 migration: nothing here touches D1.
 
 ## Test model
@@ -509,6 +541,9 @@ survives a restarted object:
 | A tool result | `Tool <name> finished: <the result, cut at 300 characters>` |
 | A rejected approval | `The change was rejected. Nothing was written.` |
 | Anything else | `Test model: you said "<message>".` |
+
+Every call reports a cost of $1 per million (estimated) tokens on its `RUN_FINISHED`, as OpenRouter's
+`usage.cost` does (`withFakeCost`), so budgets and conversation costs show in end-to-end tests.
 
 **Safeguard.** The endpoint uses it only when the request was made to a loopback host
 (`localhost`, `*.localhost`, 127.0.0.1, ::1; `usesTestModel`) and then tells the turn through
@@ -837,6 +872,134 @@ The reply is over when the stream ends (`isLoading`), not at a `RUN_FINISHED` (o
   `PendingApproval` with `proposal`, `status`, `decision`, `outcomeMessage`, `staleReview`,
   `waitingFor`, `approve()`, `reject(reason?)`, `undo()` and `documentHref(id)`.
 
+## Budgets, audit log and redaction (#68)
+
+All three hook into the turn as one `chat()` middleware (`turnPolicyMiddleware`,
+`src/server/policy.ts`), where every model call and every tool result passes, inside the
+conversation's Durable Object (or the Node process with the in-memory backend).
+
+### Budgets
+
+- **What counts.** `onUsage` fires once per model call (failed calls included) with TanStack's
+  usage: `promptTokens`, `completionTokens`, `totalTokens` and, from the OpenRouter adapter
+  (`@tanstack/ai-openrouter` 1.1.1), `cost`: the adapter asks for usage in the stream
+  (`stream_options: { include_usage: true }`) and copies OpenRouter's `usage.cost` (USD) onto each
+  call's `RUN_FINISHED` (`tests/turn.test.ts` checks it against the real adapter). A model call
+  without a reported cost counts its tokens and $0.
+- **Where it is stored.** In the user's `AssistantConversationIndex` object (single writer):
+  `addUsage(tenant, thread, day, amount)` adds to `assistant_usage (tenant_id, day)` and to the
+  conversation's index entry (`metadata.costUsd` / `metadata.tokens`) in one SQLite transaction,
+  never a read-modify-write in a Worker. Daily rows are kept 35 days. The entry write bumps its
+  revision, so a rename racing it retries. A deleted conversation's spend still counts for the
+  day. The in-memory backend keeps the same in process memory.
+- **Recorded after a disconnect.** The conversation object calls `addUsage` from inside the run
+  (`TurnContext.recordUsage`), so a closed tab changes nothing.
+- **The check.** `POST /chat` reads today's usage (`backend.usage`) before tool discovery and the
+  turn, and answers 402 `budget_exceeded` ("You have used today's assistant budget ($5.00). It
+  resets at midnight UTC.") once `costUsd ≥ dailyCostUsd` or `tokens ≥ dailyTokens`. Resumes are
+  checked too: approving applies a write and lets the run go on, so it waits for the next day.
+- **Rejecting still works.** A resume whose decisions all reject (or cancel) goes through over the
+  cap: it writes nothing and lets the paused run end. The run still needs the model's closing
+  answer, so it runs with `maxSteps` 1: one model call, whose cost is recorded (a rejection can
+  overshoot slightly). If that call asks for a tool anyway, a read runs and its result is stored
+  without another model call; a write pauses on a new card, which can again only be rejected.
+- **Overshoot.** The check is at the start of a turn and usage is recorded as calls finish, so a
+  run that starts under the cap finishes, and concurrent turns can each start just under it. One
+  run (up to `maxSteps` model calls) per tab can go over. The OpenRouter key's credit limit is the
+  hard, account-wide cap.
+- **Shown** in the view's header (what is left today, this conversation's cost; a banner once
+  used up) from `GET /usage`, refreshed when a run starts and ends, and per conversation in the
+  list.
+
+### Redaction
+
+- **Defaults.** Every auth collection of the config hides `DEFAULT_AUTH_REDACTIONS`: `email`,
+  `apiKey`, `apiKeyIndex`, `apiKeyLast4`, `enableAPIKey`, `sessions`, `salt`, `hash`,
+  `resetPasswordToken`, `resetPasswordExpiration`, `_verificationToken`, `loginAttempts`,
+  `lockUntil` (some of which Payload strips already). `redact` adds to them. The endpoint resolves
+  the policy from the running (sanitized) config, so auth collections added by later plugins count
+  too, and sends it with the turn (`settings.redact`, `settings.relations`).
+- **Paths.** Dotted field names (`profile.phone`); arrays and blocks rows are walked implicitly
+  (`layout.trackingId` drops it from every row). Documents of the call's collection are found at
+  the top of a result and inside `docs`, `doc`, `version` and `parent` (the versions tools) and
+  `result`. Copies, never mutations.
+- **Populated relations.** A relationship, upload or join populated with `depth > 0` is redacted
+  with the paths of the collection it points to, not its parent's: Payload 4's `createdBy` /
+  `updatedBy` (on every collection, polymorphic `{ relationTo, value }` to the auth collections)
+  lose the user's email like a read of `users` would. `relationMapOf` reads every collection's and
+  global's relationship, upload and join fields from the sanitized config (through groups, named
+  tabs, arrays and blocks, inline or by reference; `relationTo` single, polymorphic or `hasMany`;
+  joins' `{ docs }`) and keeps those that lead to a redacted field, directly or through other
+  relations (a page's `hero` → `media` → `createdBy` → `users`). Nested documents are followed
+  recursively, at most 8 levels deep; a document past that is cut down to its id. Any polymorphic
+  `{ relationTo, value: {…} }` elsewhere (a Lexical relationship or upload node, a custom tool's
+  result, a tool without a `slug`) is redacted by its `relationTo` too.
+- **Queries on hidden fields are refused.** A call whose `where` (through `and` / `or`), `sort`,
+  `select` (fields turned on) or `findDistinct` `field` names a redacted field, directly or
+  through a relation (`createdBy.email`, `hero.createdBy.email`), doesn't run: `onBeforeToolCall`
+  answers with a tool error saying the field is hidden, so the model can't probe a value by
+  filtering, counting or ordering on it. `findDistinct` on a redacted field is refused rather
+  than answered with empty values, so the model doesn't conclude there are none (and its rows are
+  keyed by the literal dotted path, which the document walker wouldn't match). A write is checked
+  when it is applied, since `chat()` asks no hook before the approval: its card shows a notice
+  that it will be refused, and if approved anyway it is refused (and not audited). The versions
+  tools (`findVersions`, `countVersions`, the globals' versions tools: any tool whose name says
+  "version") hold the document's fields under `version.` and the collection document under
+  `parent`, so for them `version.createdBy.email`, `version.email` and `parent.email` are
+  refused like `createdBy.email` and `email`. On other tools a field called `version` is just a field.
+- **Tool results → model.** `onAfterToolCall` returns `replaceResult` with the redacted result, so
+  the model, the stream (and its log) and the stored transcript all get the same redacted value.
+  plugin-mcp answers in text, so every JSON object in the text (fenced or not; `findDocuments`
+  with rich text as Markdown included) is parsed, redacted and written back; the text around it
+  is untouched. Checked against every plugin-mcp result shape: `findDocuments` (by id and by
+  `where`), `updateDocument` and `deleteDocuments` (by id and by `where`), `createDocuments`
+  (`{ docs: [{ doc }], errors }`), `duplicateDocument`, `findVersions`, `findVersionByID`,
+  `restoreVersion`, `updateGlobal` and `findDistinct` (`{ values }`).
+- **Stored messages.** The turn's message store also redacts every tool message on save
+  (`redactedMessageStore`), whatever put it there.
+- **Approval cards.** The documents read for a diff (the current document, the version to
+  restore, the documents a `where` matches) lose the redacted fields first, populated relations
+  included, so their current values never show. Values the model proposes to write are shown: it
+  authored them.
+- **Limits.** Free text is not redacted: an error message that quotes a value (a validation error
+  echoing what was sent) passes through, and so does a redacted value the user types into the chat.
+
+### Audit log
+
+- **What.** One `AssistantAuditEvent` per document a successful call of a tool that needs approval
+  (a write) changed: `userKey`, `userId`, `tool`, `collection` (the call's `slug`), `documentId`,
+  `conversationId`, `runId`, `model`, `timestamp`. No content: versions hold the history. Reads
+  don't need approval; a rejected approval never runs the tool (`chat()` calls no hook for it); a
+  call that failed (an access error at apply time) has `ok: false`; a call refused for a hidden
+  field never ran. None of those are logged.
+- **Document ids** (`auditDocumentIds`), never a wrong one: the call's `id` argument; for
+  `duplicateDocument` and `restoreVersion`, the document written (the copy, the restored
+  document), not the `id` argument (the source, the version); for a write by `where` or a create,
+  one event per id plugin-mcp lists in its result (`Updated documents:` / `Deleted documents:`, the
+  `docs` of `createDocuments`), ignoring its `Errors:` section (documents not changed). A write by
+  `where` that changed nothing ("Updated: 0 documents") gives no event. `""` for a global, or a
+  custom tool whose result has no ids.
+- **Large writes** (`AUDIT_DOCUMENT_EVENT_LIMIT` = 200). Analytics Engine takes at most 250 data
+  points per Worker invocation and silently drops the rest, so a `where` update or delete that
+  changes hundreds of documents would under-report. A turn emits one event per document until
+  it has sent 200 (the count is kept across the turn's tool calls); every document past that is
+  covered by one **summary event** per tool call: same user, tool, collection, conversation, run
+  and model, `documentId` `"*"` and `documents` = how many documents it stands for. The 50 data
+  points left are for the summaries (a run makes at most 25 tool calls). Nothing is lost
+  silently: per-document events plus the `documents` of the summaries add up to the documents
+  changed. Writes of up to 200 documents are unchanged. A turn is one invocation: a resume after
+  an approval starts a new count.
+- **Where.** The sink is the app's: the plugin never reads `env`. With the Durable Objects, turns
+  run in the conversation object, which has no plugin options, so the object asks its own
+  `auditSink()` (default: none), and the app exports a subclass that returns one (see
+  [App wiring](#app-wiring-66), step 5). With the in-memory backend the plugin's `audit` option is
+  used. A failing sink is logged and never fails the run.
+- **Analytics Engine.** `analyticsEngineAuditSink(dataset)` writes `indexes: [userKey]`, `blobs:
+  [userKey, tool, collection, documentId, conversationId, model, runId]`, `doubles: [1]` (a
+  summary event: `[documents]`, so `SUM(double1 * _sample_interval)` counts documents); query
+  with the SQL API (`SELECT blob1 AS user, blob2 AS tool … FROM cargo_assistant_audit`). Analytics
+  Engine keeps 3 months.
+
 ## Development
 
 ```bash
@@ -857,10 +1020,22 @@ proposals, approve, reject with a reason, batches, stale proposals, an access er
 time and ownership end to end; `tests/integration/richText.test.ts`: the Markdown tool and reads
 through plugin-mcp on app-shaped editors (block references, columns → content blocks) plus a list
 fixture, paths and errors, ids kept, formatting loss, access, the card and the system prompt; `tests/ui/approvals.test.tsx`: the card, and the chat panel's
-batch, stale and refused-send handling with a fake `useChat`). `vitest.workerd.config.ts` runs `tests/workerd/` under workerd with
+batch, stale and refused-send handling with a fake `useChat`; `tests/policies.test.ts`: redaction,
+usage and audit helpers; `tests/integration/policies.test.ts` (#68): budgets recorded, refused with
+402 before any model call, per user, reset at midnight UTC, recorded after a disconnect, approving
+refused but rejecting let through over the cap with one closing model call; one audit event per
+approved write and none for reads, rejections or failures, also past `maxToolCalls` (only the calls
+that ran), one per document with its own id for updates and deletes by `where` and multi-document
+creates; redacted fields absent from what the model sees, the stream, the stored transcript and
+the approval cards, including an `updateDocument` result with rich text as Markdown and a page's
+populated `createdBy`; `findDistinct`, `where` and `sort` on a hidden field refused, directly and
+through a relation, and a write by such a `where` refused after approval and not audited). `vitest.workerd.config.ts` runs `tests/workerd/` under workerd with
 `@cloudflare/vitest-plugin` 1.4.11 (its Miniflare and Wrangler match the app's), against the test
 Worker in `tests/workerd/` (same bindings as the app wiring above): conformance of both objects,
 ownership, retention (alarm), reconnect after a mid-run disconnect, restart mid-run, and the MCP
 transport prototype, and the real turn in the object (`tests/workerd/chat.test.ts`: tools,
-approval resume, a reject reason reaching the model, disconnect + rejoin, stop). Storage is shared between the tests of a file there, so each test uses its own
+approval resume, a reject reason reaching the model, disconnect + rejoin, stop;
+`tests/workerd/policies.test.ts`: usage in the index object per day and conversation, after a
+disconnect, atomic and pruned, the audit sink in the object, redaction in the stream, log and
+transcript, populated relations redacted by their collection, a hidden-field query refused). Storage is shared between the tests of a file there, so each test uses its own
 ids.

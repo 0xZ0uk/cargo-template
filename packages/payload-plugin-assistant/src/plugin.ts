@@ -4,6 +4,7 @@ import { NAV_LINK_COMPONENT_PATH, VIEW_COMPONENT_PATH, VIEW_KEY, VIEW_PATH } fro
 import type { ChatDeps } from "./server/chat";
 import type { AssistantPluginOptions } from "./types/options";
 import { normalizeOptions } from "./utils/normalizeOptions";
+import { withAuthRedactions } from "./redaction";
 
 /**
  * The admin assistant. `enabled: false` returns the config untouched. Otherwise it adds the
@@ -24,7 +25,9 @@ export const assistantPluginWith =
   (incomingConfig: Config): Config => {
     if (pluginOptions.enabled === false) return incomingConfig;
 
-    const options = normalizeOptions(pluginOptions);
+    const normalized = normalizeOptions(pluginOptions);
+    // Every auth collection's email, API key, sessions and auth state stay hidden from the model (#68).
+    const options = { ...normalized, redact: withAuthRedactions(normalized.redact, incomingConfig.collections) };
     const afterNavLinks = incomingConfig.admin?.components?.afterNavLinks;
 
     return {

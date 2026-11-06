@@ -12,6 +12,7 @@ import {
 } from "@tanstack/ai-persistence";
 import type { RunStore } from "@tanstack/ai";
 import type { ConversationCaps } from "./caps";
+import type { UsageSnapshot } from "../usage";
 import {
   DO_HEADERS,
   DO_ROUTES,
@@ -41,6 +42,7 @@ export interface ConversationStubLike {
 /** An index stub: the RPC methods of `AssistantConversationIndex`. */
 export interface IndexStubLike {
   call(method: any, args: unknown[]): Promise<any>;
+  usage(tenantId: string, day: string, threadId?: string): Promise<any>;
 }
 
 export interface NamespaceLike<Stub> {
@@ -196,5 +198,9 @@ export function durableObjectConversations(options: DurableObjectConversationsOp
     },
     // The conversation object checks the owner, deletes its data and its index entry.
     remove: (userKey, threadId) => stub(threadId).destroy(userKey) as Promise<boolean>,
+    // The user's own index object: their day, and the conversation's total from its entry there
+    // (another user's conversation has no entry in this index, so it reads `null`).
+    usage: (userKey, day, threadId) =>
+      options.index.get(options.index.idFromName(userKey)).usage(userKey, day, ...(threadId !== undefined ? [threadId] : [])) as Promise<UsageSnapshot>,
   };
 }

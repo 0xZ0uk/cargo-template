@@ -10,6 +10,9 @@ import { buildProposals, findStaleApprovals } from "./approvals";
 import { buildSystemPrompt, siteUrls } from "./instructions";
 import { createTurnRunner, type CreateAdapter } from "./turn";
 import { isId, validateChatBody } from "./validate";
+import { budgetExceeded, formatUsd, usageResponse, utcDay } from "../usage";
+import type { RedactionPolicy } from "../redaction";
+import { redactionPolicyOf, type ConfigLike } from "../redactionSchema";
 
 /**
  * The assistant's endpoints, behind the checks in `endpoints/index.ts` (signed in, `access`…).
@@ -78,7 +81,26 @@ function withHeaders(response: Response, headers: Record<string, string>): Respo
   return copy;
 }
 
+/** A resume decision that applies nothing: cancelled, or an approval answered `approved: false` (`validate.ts`). */
+const isRejection = (item: { status: string; payload?: unknown }): boolean =>
+  item.status === "cancelled" ||
+  (typeof item.payload === "object" && item.payload !== null && (item.payload as { approved?: unknown }).approved === false);
+
 /** `POST /api/assistant/chat`: a new turn, or a resume with approval decisions. Answers the run's SSE. */
+/** The redaction policy of this Payload (#68): paths, auth defaults, relations to them. */
+function policyOf(req: PayloadRequest, options: NormalizedAssistantOptions): RedactionPolicy {
+  return redactionPolicyOf(req.payload.config as unknown as ConfigLike, options.redact);
+}
+
+/** The policy as turn settings: plain JSON, it travels to the conversation's Durable Object. */
+function redactionSettings(req: PayloadRequest, options: NormalizedAssistantOptions): Pick<TurnSettings, "redact" | "relations"> {
+  const { paths, relations } = policyOf(req, options);
+  return {
+    ...(Object.keys(paths).length ? { redact: paths } : {}),
+    ...(relations && Object.keys(relations).length ? { relations } : {}),
+  };
+}
+
 export async function handleChat(req: PayloadRequest, options: NormalizedAssistantOptions, deps: ChatDeps = {}): Promise<Response> {
   let raw: unknown;
   try {
@@ -98,6 +120,25 @@ export async function handleChat(req: PayloadRequest, options: NormalizedAssista
   }
 
   const backend = backendFor(req, options, deps);
+  // The daily budget (#68), before anything else that costs: no model call once a cap is reached.
+  // A read here, a write only in the user's index object (single writer). A run already going
+  // when the cap is crossed finishes, so one run may overshoot. A resume that only rejects (or
+  // cancels) still goes through: it applies nothing and lets the paused run end, at the price of
+  // the model's closing answer (one model call: `maxSteps` 1), so a rejection can overshoot slightly.
+  const onlyRejects = Boolean(resume?.length) && resume!.every(isRejection);
+  let overBudget = false;
+  if (options.budget) {
+    const usage = await backend.usage(userOf(req), utcDay());
+    overBudget = budgetExceeded(usage, options.budget);
+    if (overBudget && !onlyRejects) {
+      const cap = options.budget.dailyCostUsd !== undefined && usage.costUsd >= options.budget.dailyCostUsd
+        ? `today's assistant budget (${formatUsd(options.budget.dailyCostUsd)})`
+        : `today's assistant token allowance (${options.budget.dailyTokens?.toLocaleString("en-US")} tokens)`;
+      return jsonError(402, "budget_exceeded", `You have used ${cap}. It resets at midnight UTC.`, {
+        usage: usageResponse(usage, options.budget),
+      });
+    }
+  }
   // Approvals sent with the `updatedAt` their card showed: refuse the whole batch (TanStack
   // resumes a batch all or nothing) when one of those documents changed since, so the user
   // reviews the new diff first. Ownership first: another user's conversation is a 404.
@@ -127,7 +168,7 @@ export async function handleChat(req: PayloadRequest, options: NormalizedAssista
     model,
     apiKey: options.apiKey,
     systemPrompt: await buildSystemPrompt(req, options),
-    maxSteps: options.maxSteps,
+    maxSteps: overBudget ? 1 : options.maxSteps,
     maxToolCalls: options.maxToolCalls,
     maxContextTokens: options.maxContextTokens,
     mcpEndpoint: `${api}/mcp`,
@@ -135,6 +176,7 @@ export async function handleChat(req: PayloadRequest, options: NormalizedAssista
     httpReferer: site || origin,
     appTitle: options.appTitle,
     ...(testModel ? { testModel: true } : {}),
+    ...redactionSettings(req, options),
   };
   const body: ChatTurnBody = { messages, ...(resume ? { resume } : {}), settings };
   const runId = parsed.value.runId ?? crypto.randomUUID();
@@ -179,7 +221,7 @@ export async function handleApprovals(req: PayloadRequest, options: NormalizedAs
   if (!isId(threadId)) return jsonError(400, "invalid_query", '"threadId" is required');
   const transcript = await backendFor(req, options, deps).transcript(userOf(req), threadId);
   if (!transcript) return jsonError(404, "not_found", "Not found");
-  return Response.json({ approvals: await buildProposals(req, transcript.pendingInterrupts) });
+  return Response.json({ approvals: await buildProposals(req, transcript.pendingInterrupts, policyOf(req, options)) });
 }
 
 /** `POST /api/assistant/chat/stop` `{ threadId, runId }`: abort a live run. */
@@ -196,6 +238,9 @@ export interface ConversationSummary {
   title: string | null;
   createdAt: number;
   updatedAt: number;
+  /** What the conversation has cost so far (USD, OpenRouter's figure), when it used any (#68). */
+  costUsd?: number;
+  tokens?: number;
 }
 
 /** `GET /api/assistant/conversations?limit=&cursor=&search=`: the caller's conversations, newest first. */
@@ -210,13 +255,30 @@ export async function handleListConversations(req: PayloadRequest, options: Norm
     ...(cursor ? { cursor } : {}),
     ...(search ? { search } : {}),
   });
-  const conversations: ConversationSummary[] = page.entries.map((entry) => ({
-    threadId: entry.threadId,
-    title: entry.title ?? null,
-    createdAt: entry.createdAt,
-    updatedAt: entry.updatedAt,
-  }));
+  const conversations: ConversationSummary[] = page.entries.map((entry) => {
+    const metadata = entry.metadata as { costUsd?: unknown; tokens?: unknown } | undefined;
+    return {
+      threadId: entry.threadId,
+      title: entry.title ?? null,
+      createdAt: entry.createdAt,
+      updatedAt: entry.updatedAt,
+      ...(typeof metadata?.costUsd === "number" ? { costUsd: metadata.costUsd } : {}),
+      ...(typeof metadata?.tokens === "number" ? { tokens: metadata.tokens } : {}),
+    };
+  });
   return Response.json({ conversations, nextCursor: page.cursor ?? null });
+}
+
+/**
+ * `GET /api/assistant/usage?threadId=`: the caller's usage today (UTC), the caps, what is left and
+ * when it resets; with `threadId`, the conversation's total too (`null` if it isn't theirs).
+ */
+export async function handleUsage(req: PayloadRequest, options: NormalizedAssistantOptions, deps: ChatDeps = {}): Promise<Response> {
+  const threadId = requestUrl(req).searchParams.get("threadId");
+  if (threadId !== null && !isId(threadId)) return jsonError(400, "invalid_query", '"threadId" is not a valid id');
+  const now = Date.now();
+  const snapshot = await backendFor(req, options, deps).usage(userOf(req), utcDay(now), threadId ?? undefined);
+  return Response.json(usageResponse(snapshot, options.budget, now));
 }
 
 const threadParam = (req: PayloadRequest): string | undefined => {

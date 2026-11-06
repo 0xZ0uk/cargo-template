@@ -20,6 +20,9 @@ import type {
 } from "../types/options";
 import { resolveCaps, type ConversationCaps } from "../conversations/caps";
 import { OPENROUTER_PROVIDER } from "./provider";
+import type { AssistantAuditSink } from "../audit";
+import { mergeRedactions } from "../redaction";
+import { DEFAULT_BUDGET, type AssistantBudget } from "../usage";
 
 const PREFIX = `[${PLUGIN_NAME}]`;
 
@@ -72,6 +75,48 @@ export interface NormalizedAssistantOptions {
   openRouter: { provider: typeof OPENROUTER_PROVIDER };
   /** Scripted test model for loopback requests (`usesTestModel`). */
   testModel: boolean;
+  /** The daily caps, or `null` when budgets are off. */
+  budget: AssistantBudget | null;
+  /**
+   * Slug → redacted paths: the app's `redact`. The plugin adds the auth defaults for every auth
+   * collection of the config (`withAuthRedactions`, in `plugin.ts`).
+   */
+  redact: Record<string, string[]>;
+  audit: AssistantAuditSink | undefined;
+}
+
+function normalizeBudget(budget: AssistantPluginOptions["budget"]): AssistantBudget | null {
+  if (budget === false) return null;
+  if (budget === undefined) return { ...DEFAULT_BUDGET };
+  if (typeof budget !== "object" || budget === null) {
+    throw new Error(`${PREFIX} "budget" must be { dailyCostUsd?, dailyTokens? } or false.`);
+  }
+  const resolved: AssistantBudget = {};
+  for (const key of ["dailyCostUsd", "dailyTokens"] as const) {
+    const value = budget[key];
+    if (value === undefined) continue;
+    if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+      throw new Error(`${PREFIX} "budget.${key}" must be a positive number (got ${String(value)}).`);
+    }
+    resolved[key] = value;
+  }
+  if (resolved.dailyCostUsd === undefined && resolved.dailyTokens === undefined) {
+    throw new Error(`${PREFIX} "budget" needs "dailyCostUsd" and/or "dailyTokens" (or pass false to turn budgets off).`);
+  }
+  return resolved;
+}
+
+function normalizeRedact(redact: AssistantPluginOptions["redact"]): Record<string, string[]> {
+  if (redact === undefined) return {};
+  if (typeof redact !== "object" || redact === null || Array.isArray(redact)) {
+    throw new Error(`${PREFIX} "redact" must map collection or global slugs to arrays of field paths.`);
+  }
+  for (const [slug, paths] of Object.entries(redact)) {
+    if (!Array.isArray(paths) || paths.some((path) => typeof path !== "string" || !/^[^.\s]+(\.[^.\s]+)*$/.test(path))) {
+      throw new Error(`${PREFIX} "redact.${slug}" must be an array of dotted field paths (e.g. ["email", "profile.phone"]).`);
+    }
+  }
+  return mergeRedactions(redact);
 }
 
 /**
@@ -154,5 +199,8 @@ export function normalizeOptions(options: AssistantPluginOptions): NormalizedAss
     rateLimit: options.rateLimit,
     openRouter: { provider: OPENROUTER_PROVIDER },
     testModel,
+    budget: normalizeBudget(options.budget),
+    redact: normalizeRedact(options.redact),
+    audit: options.audit,
   };
 }
