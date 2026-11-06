@@ -123,12 +123,17 @@ export function onpage(options: OnPageOptions): OnPagePlugin {
       }
     }
 
-    const control = (kind: DocRef['kind'], slug: string) => ({
+    const control = (kind: DocRef['kind'], slug: string, entry: Entry) => ({
       path: '@cargo/onpage-plugin/admin#OnPageAdminControls',
-      clientProps: { kind, slug, prefix },
+      clientProps: {
+        kind,
+        slug,
+        prefix,
+        ...(entry.options.hideEditWhen ? { hideEditWhen: entry.options.hideEditWhen } : {}),
+      },
     })
 
-    const withCollectionAdmin = (c: CollectionConfig): CollectionConfig => {
+    const withCollectionAdmin = (c: CollectionConfig, entry: Entry): CollectionConfig => {
       const edit = c.admin?.components?.edit ?? {}
       return {
         ...c,
@@ -140,14 +145,14 @@ export function onpage(options: OnPageOptions): OnPagePlugin {
               ...edit,
               beforeDocumentControls: [
                 ...(edit.beforeDocumentControls ?? []),
-                control('collection', c.slug),
+                control('collection', c.slug, entry),
               ],
             },
           },
         },
       }
     }
-    const withGlobalAdmin = (g: GlobalConfig): GlobalConfig => {
+    const withGlobalAdmin = (g: GlobalConfig, entry: Entry): GlobalConfig => {
       const edit = g.admin?.components?.edit ?? {}
       return {
         ...g,
@@ -159,7 +164,7 @@ export function onpage(options: OnPageOptions): OnPagePlugin {
               ...edit,
               beforeDocumentControls: [
                 ...(edit.beforeDocumentControls ?? []),
-                control('global', g.slug),
+                control('global', g.slug, entry),
               ],
             },
           },
@@ -178,7 +183,7 @@ export function onpage(options: OnPageOptions): OnPagePlugin {
       collections: [
         ...(incoming.collections ?? []).map((c) => {
           const entry = byKey.get(keyOf('collection', c.slug))
-          return entry ? withCollectionAdmin(withCollectionHooks(c, entry)) : c
+          return entry ? withCollectionAdmin(withCollectionHooks(c, entry), entry) : c
         }),
         ...(options.patterns && !incoming.collections?.some((c) => c.slug === PATTERNS)
           ? [patternsCollection(incoming.admin?.user ?? 'users')]
@@ -194,7 +199,7 @@ export function onpage(options: OnPageOptions): OnPagePlugin {
       ],
       globals: (incoming.globals ?? []).map((g) => {
         const entry = byKey.get(keyOf('global', g.slug))
-        return entry ? withGlobalAdmin(withGlobalHooks(g, entry)) : g
+        return entry ? withGlobalAdmin(withGlobalHooks(g, entry), entry) : g
       }),
       endpoints: [
         ...(incoming.endpoints ?? []),

@@ -329,6 +329,28 @@ describe('onpage() plugin', () => {
     expect(out.globals[0]!.admin.components.edit.beforeDocumentControls).toHaveLength(1)
   })
 
+  it('passes hideEditWhen to the admin controls only when set', () => {
+    const pages = out.collections.find((c: any) => c.slug === 'pages')
+    expect(pages.admin.components.edit.beforeDocumentControls[0]!.clientProps).toEqual({
+      kind: 'collection',
+      slug: 'pages',
+      prefix: '/onpage',
+    })
+    const hidden: any = onpage({
+      collections: { pages: { hideEditWhen: '_abVariantOf' } },
+      session,
+    })(config)
+    expect(
+      hidden.collections.find((c: any) => c.slug === 'pages').admin.components.edit
+        .beforeDocumentControls[0]!.clientProps,
+    ).toEqual({
+      kind: 'collection',
+      slug: 'pages',
+      prefix: '/onpage',
+      hideEditWhen: '_abVariantOf',
+    })
+  })
+
   it('marks reads only when asked, and strips markers from writes', async () => {
     const pages = out.collections.find((c: any) => c.slug === 'pages')
     const afterRead = pages.hooks.afterRead[1]

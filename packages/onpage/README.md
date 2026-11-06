@@ -28,6 +28,7 @@ All are private workspace packages. `packages/onpage` itself is the private `@ca
 - **Tooling**: pnpm + Turborepo instead of Bun + changesets. Packages still build with `tsc -b` (one output file per source, which keeps `'use client'` directives and the lazy editor chunk), not tsup.
 - **`previewGrantFor(pathname)`** (`@cargo/onpage-tanstack-start/session`): the document a live preview-link grant shares at a server-derived path. Unlike `isDraftEnabled()` it doesn't depend on the request URL, so it holds when a route loader re-runs as a server-function call; callers read the returned document by id (see the app's `loadPage`).
 - **Link viewers' full-page navigation uses `location.replace`**: the router has already pushed the entry, and `assign` added a second one, so Back took two presses.
+- **`hideEditWhen`** (per collection/global option): the admin hides **Edit on page** while the open document has a value in the named field. The app uses it to hide the control on A/B variants (`_abVariantOf`), which the Variants panel edits.
 - **Docs** trimmed to what applies here (`docs/`); screenshots, the Next guides and the upstream issue links are gone.
 
 ## Commands
@@ -46,7 +47,7 @@ The app's end-to-end spec is `apps/web/tests/e2e/onpage.e2e.spec.ts` (visitors, 
 
 ## How the app uses it
 
-- `apps/web/src/payload.config.ts`: `onpage({ collections: { pages: { url } }, session: tanstackSession({ secret }) })`. Pages only: Header and Footer have no drafts, so edits there would publish at once. `comments` and `patterns` stay off; each adds a collection to the main D1. Without them the plugin adds no schema, so no migration.
+- `apps/web/src/payload.config.ts`: `onpage({ collections: { pages: { url, hideEditWhen: '_abVariantOf' } }, session: tanstackSession({ secret }) })`. Pages only: Header and Footer have no drafts, so edits there would publish at once. `comments` and `patterns` stay off; each adds a collection to the main D1. Without them the plugin adds no schema, so no migration.
 - `apps/web/src/app/_frontend.tsx`: `<OnPage />` in the frontend layout.
 - `apps/web/src/app/_frontend/pages.functions.ts`: draft reads. Logged-in users see drafts with `?draft=true` (live preview) or in edit mode, read with their own access. Preview-link viewers have no Payload user: `previewGrantFor(pagePath(slug))` returns the granted document when the grant was made for this page's path, and the loader reads that document by id with `overrideAccess` (that query only). A page that later takes over the slug isn't covered. `onpageContext()` adds the field markers in edit mode. `PageTemplate` mounts Payload's live-preview listener only for the admin's `?draft=true` flow: it re-runs the loader on mount.
 - `apps/web/vite.config.ts`: Lexical in `optimizeDeps.include`, so `vite dev` doesn't re-bundle and reload when an editor first opens a rich-text field.

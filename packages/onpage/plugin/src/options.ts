@@ -14,6 +14,14 @@ export interface OnPageDocOptions {
     locale?: string | undefined
     req: PayloadRequest
   }) => string | null | Promise<string | null>
+  /**
+   * Name of a top-level field: while the open document has a value in it, the
+   * admin hides **Edit on page** for that document (Copy preview link stays).
+   * For documents that are edited elsewhere, e.g. A/B variants marked by
+   * `_abVariantOf`. Only the admin control is hidden; the endpoints still
+   * apply the usual access checks.
+   */
+  hideEditWhen?: string
 }
 
 /**
