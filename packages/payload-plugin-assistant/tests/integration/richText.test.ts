@@ -244,6 +244,8 @@ describe("converters: Markdown round trip", () => {
 
   it("names what Markdown can't keep", () => {
     expect(markdownLosses(state(p(t("plain"), t("bold", 1))))).toEqual([]);
+    // An autolink (a pasted URL) exports as `[url](url)`: not a loss.
+    expect(markdownLosses(state(p({ type: "autolink", fields: { linkType: "custom", url: "https://example.com" }, children: [t("https://example.com")], version: 2 })))).toEqual([]);
     expect(
       markdownLosses(
         state(

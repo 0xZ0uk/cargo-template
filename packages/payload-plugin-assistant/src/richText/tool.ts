@@ -14,6 +14,7 @@ import {
   setAtPath,
   toMarkdown,
   unsupportedMarkdown,
+  SET_RICH_TEXT_TOOL_NAME,
 } from "./fields";
 
 /**
@@ -25,7 +26,7 @@ import {
  * ```
  */
 
-export const SET_RICH_TEXT_TOOL_NAME = "setRichTextFromMarkdown";
+export { SET_RICH_TEXT_TOOL_NAME };
 
 type MCPResponseOverride = NonNullable<NonNullable<MCPPluginConfig["collections"]>[string]>["overrideResponse"] & {};
 type MCPToolResponse = Parameters<MCPResponseOverride>[0];

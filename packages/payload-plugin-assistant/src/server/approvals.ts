@@ -2,7 +2,7 @@ import type { CollectionSlug, GlobalSlug, PayloadRequest } from "payload";
 import { diffDocument, labelText, type BlockLike, type DiffMode, type FieldLike } from "../approvals/diff";
 import type { ApprovalAction, ApprovalProposal, ProposalDocument, ProposalItem } from "../approvals/types";
 import { lexicalToText } from "../approvals/lexical";
-import { blocksBySlugOf, collectionOf as richTextCollectionOf, markdownLosses, resolveRichText, RichTextPathError, toMarkdown, unsupportedMarkdown } from "../richText/fields";
+import { blocksBySlugOf, collectionOf as richTextCollectionOf, markdownLosses, resolveRichText, RichTextPathError, SET_RICH_TEXT_TOOL_NAME, toMarkdown, unsupportedMarkdown } from "../richText/fields";
 
 /**
  * Approval proposals (#65): what a pending write would change, read as the signed-in user.
@@ -43,11 +43,9 @@ export function interruptCall(record: PendingInterruptLike): InterruptCall {
   };
 }
 
-/** plugin-mcp's name for the rich text tool (`src/richText/tool.ts`; not imported: no plugin-mcp here). */
-const SET_RICH_TEXT_TOOL = "setRichTextFromMarkdown";
 
 export function actionOf(toolName: string): ApprovalAction {
-  if (toolName === SET_RICH_TEXT_TOOL) return "update";
+  if (toolName === SET_RICH_TEXT_TOOL_NAME) return "update";
   if (/^create/i.test(toolName)) return "create";
   if (/^update/i.test(toolName)) return "update";
   if (/^delete/i.test(toolName)) return "delete";
@@ -248,7 +246,7 @@ export async function buildProposal(req: PayloadRequest, record: PendingInterrup
     return { ...base, notice: `“${slug}” is not a collection or global of this site.`, items: [diff("create", undefined, input)] };
   }
 
-  if (toolName === SET_RICH_TEXT_TOOL && slug && collectionConfig) {
+  if (toolName === SET_RICH_TEXT_TOOL_NAME && slug && collectionConfig) {
     return richTextProposal(req, record, call, { ...base, ...(versioned ? { draft: input.draft !== false } : {}) }, asDocument);
   }
 

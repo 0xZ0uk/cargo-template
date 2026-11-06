@@ -284,8 +284,12 @@ const LOSSY_TEXT_FORMATS: ReadonlyArray<[bit: number, name: string]> = [
   [128, "highlight"],
 ];
 
+/** plugin-mcp's name for the rich text write tool, shared by the tool, the approval card and the prompt. */
+export const SET_RICH_TEXT_TOOL_NAME = "setRichTextFromMarkdown";
+
 /** Node types the Markdown converters write and read back. Anything else is lost. */
-const KEPT_NODE_TYPES = new Set(["root", "paragraph", "text", "linebreak", "tab", "heading", "link", "list", "listitem", "quote", "horizontalrule"]);
+// `autolink` extends `link`, and the link transformer exports it as `[url](url)`: nothing lost.
+const KEPT_NODE_TYPES = new Set(["root", "paragraph", "text", "linebreak", "tab", "heading", "link", "autolink", "list", "listitem", "quote", "horizontalrule"]);
 
 /**
  * What a Markdown round trip would lose in this editor state, as readable names (`underline`,
