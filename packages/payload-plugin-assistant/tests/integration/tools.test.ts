@@ -23,6 +23,7 @@ import {
   type PayloadToolSource,
   type PayloadToolSourceOptions,
 } from "../../src/tools/payloadToolSource";
+import { DEFAULT_MAX_TOOL_CALLS, MCP_REQUESTS_PER_RUN, MCP_SETUP_REQUESTS } from "../../src/constants";
 import { inProcessDispatch } from "../../src/tools/inProcess";
 
 /**
@@ -395,6 +396,79 @@ describe("in chat()", () => {
       overrideAccess: true,
     });
     expect((page as { title?: string }).title).toBe("Home");
+  });
+});
+
+describe("Cloudflare's Worker invocation limit (#116)", () => {
+  /** A dispatcher that records each MCP request (`POST <JSON-RPC method>`) before sending it. */
+  const counting = () => {
+    const seen: string[] = [];
+    const inner = dispatch();
+    const fetch = async (request: Request) => {
+      const body = request.method === "POST" ? await request.clone().text() : "";
+      seen.push(`${request.method} ${/"method":"([^"]+)"/.exec(body)?.[1] ?? ""}`.trim());
+      return inner(request);
+    };
+    return { seen, fetch };
+  };
+  const toolResults = (chunks: StreamChunk[]) => findChunk(chunks, "TOOL_CALL_RESULT").map((c) => String(c.content));
+
+  it("one MCP session per run: 3 requests to connect, then one per tool call, none to close", async () => {
+    const { seen, fetch } = counting();
+    const adapter = fakeText();
+    adapter.setResponses([
+      { toolCalls: [{ name: "findDocuments", input: { slug: "pages", limit: 1, depth: 0 } }, { name: "countDocuments", input: { slug: "pages" } }] },
+      { toolCalls: [{ name: "getConfigInfo", input: {} }] },
+      { text: "Done." },
+    ]);
+    await collect(
+      chat({ adapter, threadId: "t-session", messages: [{ role: "user", content: "Look around" }], mcp: payloadToolsMcpOptions(source({ dispatch: fetch })) }) as AsyncIterable<StreamChunk>
+    );
+    expect(seen).toEqual(["POST server/discover", "POST subscriptions/listen", "POST tools/list", "POST tools/call", "POST tools/call", "POST tools/call"]);
+    expect(MCP_SETUP_REQUESTS).toBe(3);
+    // The defaults fit: the Worker, the Durable Object, the setup and every allowed tool call.
+    expect(2 + MCP_SETUP_REQUESTS + DEFAULT_MAX_TOOL_CALLS).toBeLessThanOrEqual(MCP_REQUESTS_PER_RUN + 2);
+    expect(MCP_REQUESTS_PER_RUN + 2).toBeLessThan(32);
+  });
+
+  it("past maxToolCalls a call sends nothing and tells the model to stop and answer", async () => {
+    const { seen, fetch } = counting();
+    const adapter = fakeText();
+    let toolMessages: unknown[] = [];
+    adapter.setResponses([
+      // Three parallel calls in one step, then one more in the next: only the first two run.
+      { toolCalls: [0, 1, 2].map(() => ({ name: "countDocuments", input: { slug: "pages" } })) },
+      { toolCalls: [{ name: "getConfigInfo", input: {} }] },
+      ({ request }) => {
+        toolMessages = request.messages.filter((m) => m.role === "tool").map((m) => m.content);
+        return { text: "Here is what I found." };
+      },
+    ]);
+    const chunks = await collect(
+      chat({ adapter, threadId: "t-cap", messages: [{ role: "user", content: "Count" }], mcp: payloadToolsMcpOptions(source({ dispatch: fetch, maxToolCalls: 2 })) }) as AsyncIterable<StreamChunk>
+    );
+    expect(seen.filter((r) => r === "POST tools/call")).toHaveLength(2);
+    const results = toolResults(chunks);
+    expect(results).toHaveLength(4);
+    expect(results.filter((r) => r.includes("Tool call limit reached"))).toHaveLength(2);
+    expect(JSON.stringify(toolMessages)).toContain("Do not call any more tools in this turn");
+    expect(findChunk(chunks, "TEXT_MESSAGE_CONTENT").map((c) => c.delta).join("")).toBe("Here is what I found.");
+  });
+
+  it("maxRequests is a backstop on every MCP request, connecting included", async () => {
+    const { seen, fetch } = counting();
+    const adapter = fakeText();
+    adapter.setResponses([
+      { toolCalls: [{ name: "countDocuments", input: { slug: "pages" } }] },
+      { toolCalls: [{ name: "countDocuments", input: { slug: "pages" } }] },
+      { text: "Stopped calling tools." },
+    ]);
+    const chunks = await collect(
+      chat({ adapter, threadId: "t-budget", messages: [{ role: "user", content: "Count twice" }], mcp: payloadToolsMcpOptions(source({ dispatch: fetch, maxRequests: 4 })) }) as AsyncIterable<StreamChunk>
+    );
+    expect(seen).toHaveLength(4); // connect (3) + the first call
+    const results = toolResults(chunks);
+    expect(results[1]).toContain("limit of 4 requests");
   });
 });
 

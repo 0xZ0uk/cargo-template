@@ -26,8 +26,8 @@ vi.mock("@payloadcms/ui/rsc", () => ({ DefaultTemplate: () => null }));
 
 import type { ApprovalProposal } from "../../src/approvals/types";
 import { assistantPluginWith } from "../../src/plugin";
-import { markdownLosses, unsupportedMarkdown, resolveRichText, RichTextPathError, convertersOf, blocksBySlugOf, collectionOf, type FieldLike } from "../../src/richText/fields";
-import { sameMarkdown, setRichTextFromMarkdownTool, SET_RICH_TEXT_TOOL_NAME, withMarkdownRichText } from "../../src/richText/tool";
+import { markdownLosses, unsupportedMarkdown, resolveRichText, RichTextPathError, convertersOf, blocksBySlugOf, collectionOf, parseInternalLinkUrl, type FieldLike } from "../../src/richText/fields";
+import { describeRichTextAsMarkdown, sameMarkdown, setRichTextFromMarkdownTool, SET_RICH_TEXT_TOOL_NAME, withMarkdownRichText } from "../../src/richText/tool";
 import { buildSystemPrompt } from "../../src/server/instructions";
 import { createPayloadToolSource, authHeadersFrom, type PayloadToolSource } from "../../src/tools/payloadToolSource";
 import { inProcessDispatch } from "../../src/tools/inProcess";
@@ -251,10 +251,13 @@ describe("converters: Markdown round trip", () => {
         state(
           { ...p(t("u", 8)), format: "center", indent: 1 },
           p({ type: "link", fields: { linkType: "internal", doc: { relationTo: "pages", value: 1 }, newTab: true }, children: [t("x")], version: 3 }),
+          p({ type: "link", fields: { linkType: "internal", doc: null }, children: [t("nowhere")], version: 3 }),
           { type: "upload", relationTo: "media", value: 1, version: 3 }
         )
       ).sort()
-    ).toEqual(["indentation", "internal links (to documents)", "links opening in a new tab", "text alignment", "underline", "upload nodes"].sort());
+    ).toEqual(["indentation", "internal links without a target document", "links opening in a new tab", "text alignment", "underline", "upload nodes"].sort());
+    // An internal link with a target is kept (as payload://pages/1), not a loss.
+    expect(markdownLosses(state(p({ type: "link", fields: { linkType: "internal", doc: { relationTo: "pages", value: 1 } }, children: [t("x")], version: 3 })))).toEqual([]);
   });
 });
 
@@ -408,6 +411,149 @@ describe("findDocuments returns rich text as Markdown", () => {
   it("leaves documents without rich text and errors as they are", async () => {
     const missing = await run("findDocuments", { slug: "pages", id: 999999 });
     expect(missing).toContain("not found");
+  });
+});
+
+describe("internal links round-trip as payload://<collection>/<id> (#116)", () => {
+  const internal = (text: string, value: number | string | Record<string, unknown>) =>
+    ({ type: "link", fields: { linkType: "internal", doc: { relationTo: "pages", value }, newTab: false }, children: [t(text)], direction: "ltr", format: "", indent: 0, version: 3 });
+  const links = (value: unknown): Array<Record<string, any>> => {
+    const out: Array<Record<string, any>> = [];
+    const visit = (node: any) => {
+      if (!node || typeof node !== "object") return;
+      if (node.type === "link") out.push(node.fields);
+      (node.children ?? []).forEach(visit);
+    };
+    visit((value as any)?.root);
+    return out;
+  };
+  const blockField = () => {
+    const block = blocksBySlugOf({ payload: app.payload } as unknown as PayloadRequest).get("richText")!;
+    return (block.flattenedFields ?? block.fields)!.find((f) => f.name === "richText")!;
+  };
+
+  it("the converters write an internal link as payload://pages/<id> and read it back as internal", () => {
+    const converters = convertersOf(blockField())!;
+    const markdown = converters.toMarkdown({ data: state(p(t("See "), internal("about us", 12), t(" and "), internal("pricing", { id: 7, title: "Pricing" }), t("."))) });
+    expect(markdown).toBe("See [about us](payload://pages/12) and [pricing](payload://pages/7).");
+    const back = converters.fromMarkdown({ markdown: `${markdown} Or [the docs](https://example.com).` });
+    expect(links(back)).toEqual([
+      expect.objectContaining({ linkType: "internal", doc: { relationTo: "pages", value: 12 } }),
+      expect.objectContaining({ linkType: "internal", doc: { relationTo: "pages", value: 7 } }),
+      expect.objectContaining({ linkType: "custom", url: "https://example.com" }),
+    ]);
+    expect(links(back)[0]).not.toHaveProperty("url");
+    expect(parseInternalLinkUrl("payload://pages/abc%2Fdef")).toEqual({ relationTo: "pages", id: "abc/def" });
+    expect(parseInternalLinkUrl("https://pages/1")).toBeUndefined();
+  });
+
+  it("findDocuments shows the link, and setRichTextFromMarkdown keeps it and adds new ones", async () => {
+    const target = await newPage({ title: "About" });
+    const other = await newPage({ title: "Pricing" });
+    const page = await newPage({ title: "Linking", layout: [{ blockType: "richText", richText: state(p(t("Read "), internal("about us", target.id), t("."))) }] });
+
+    const read = await run("findDocuments", { slug: "pages", id: page.id, draft: true, depth: 0 });
+    expect(read).toContain(`[about us](payload://pages/${target.id})`);
+
+    const markdown = `Read [about us](payload://pages/${target.id}) and [pricing](payload://pages/${other.id}).`;
+    const out = await run(SET_RICH_TEXT_TOOL_NAME, { slug: "pages", id: page.id, path: "layout.0.richText", markdown });
+    expect(out).toContain('Updated "layout.0.richText"');
+    expect(out).not.toMatch(/Not written/);
+    const stored = (await readPage(page.id)).layout[0].richText;
+    expect(links(stored)).toEqual([
+      expect.objectContaining({ linkType: "internal", doc: expect.objectContaining({ relationTo: "pages", value: expect.anything() }) }),
+      expect.objectContaining({ linkType: "internal", doc: expect.objectContaining({ relationTo: "pages", value: expect.anything() }) }),
+    ]);
+    const ids = links(stored).map((f) => (typeof f.doc.value === "object" ? f.doc.value.id : f.doc.value));
+    expect(ids).toEqual([target.id, other.id]);
+    expect(await run("findDocuments", { slug: "pages", id: page.id, draft: true, depth: 0 })).toContain(`[pricing](payload://pages/${other.id})`);
+  });
+
+  it("refuses a link to a document that doesn't exist, with a clear message", async () => {
+    const page = await newPage({ title: "Broken link", layout: [{ blockType: "richText", richText: state(p(t("Old."))) }] });
+    const out = await run(SET_RICH_TEXT_TOOL_NAME, { slug: "pages", id: page.id, path: "layout.0.richText", markdown: "See [this](payload://pages/999999) and [that](payload://nope/1)." });
+    expect(out).toContain("Not written");
+    expect(out).toContain("payload://pages/999999");
+    expect(out).toContain('payload://nope/1 (no collection "nope")');
+    expect(md(blockField(), (await readPage(page.id)).layout[0].richText)).toBe("Old.");
+  });
+});
+
+describe("other tools' results and the schema (#116)", () => {
+  const noLexical = (out: string) => {
+    expect(out).not.toContain('\\"root\\"');
+    expect(out).not.toContain('"root"');
+    expect(out).not.toContain(`\\"type\\":\\"paragraph\\"`);
+  };
+
+  it("updateDocument (returning), the version tools and duplicate show rich text as Markdown", async () => {
+    const page = await layoutPage();
+    const updated = await run("updateDocument", { slug: "pages", id: page.id, draft: true, data: { title: "Home 2" }, returning: true, depth: 0 });
+    expect(updated).toContain("Document updated successfully");
+    expect(updated).toContain("Old hero.");
+    expect(updated).toContain(`change them with ${SET_RICH_TEXT_TOOL_NAME}`);
+    noLexical(updated);
+
+    const versions = await run("findVersions", { slug: "pages", where: { parent: { equals: page.id } }, limit: 2, depth: 0 });
+    expect(versions).toContain("Versions for collection");
+    expect(versions).toContain("Old column text.");
+    noLexical(versions);
+    const versionId = /"id":(\d+|"[^"]+")/.exec(versions.slice(versions.indexOf('"docs"')))![1]!.replace(/"/g, "");
+
+    const version = await run("findVersionByID", { slug: "pages", id: versionId, depth: 0 });
+    expect(version).toContain("First paragraph.");
+    noLexical(version);
+
+    const restored = await run("restoreVersion", { slug: "pages", id: versionId, depth: 0 });
+    expect(restored).toContain("restored successfully");
+    expect(restored).toContain("First paragraph.");
+    noLexical(restored);
+
+    const duplicated = await run("duplicateDocument", { slug: "pages", id: page.id, depth: 0 });
+    expect(duplicated).toContain("duplicated successfully");
+    expect(duplicated).toContain("Old hero.");
+    noLexical(duplicated);
+  });
+
+  it("updateDocument without returning is left as it is (only the id)", async () => {
+    const page = await layoutPage();
+    const out = await run("updateDocument", { slug: "pages", id: page.id, draft: true, data: { title: "Plain" } });
+    expect(out).toContain("Document updated successfully");
+    expect(out).not.toContain(SET_RICH_TEXT_TOOL_NAME);
+  });
+
+  it("describes rich text fields Payload deduplicated into $defs, and prunes the Lexical defs", () => {
+    const lexical = { type: "object", properties: { root: { type: "object", properties: { type: { const: "root" }, children: { items: { $ref: "#/$defs/paragraph" } } } } } };
+    const schema = {
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      type: "object",
+      properties: {
+        intro: { $ref: "#/$defs/shared_0" },
+        body: { $ref: "#/$defs/shared_0" },
+        blocks: { type: "array", items: { $ref: "#/$defs/block" } },
+      },
+      $defs: {
+        shared_0: lexical,
+        paragraph: { type: "object", properties: { type: { const: "paragraph" } } },
+        block: { type: "object", properties: { text: lexical, label: { type: "string" } } },
+      },
+    };
+    const { schema: out, changed } = describeRichTextAsMarkdown(schema) as { schema: { properties: Record<string, unknown>; $defs?: Record<string, unknown> }; changed: boolean };
+    expect(changed).toBe(true);
+    expect(out.properties.intro).toEqual({ description: expect.stringContaining(SET_RICH_TEXT_TOOL_NAME) });
+    expect(out.properties.body).toEqual({ description: expect.stringContaining(SET_RICH_TEXT_TOOL_NAME) });
+    expect(Object.keys(out.$defs ?? {})).toEqual(["block"]);
+    expect(JSON.stringify(out)).not.toContain("paragraph");
+    expect(JSON.stringify(out)).not.toContain('"root"');
+  });
+
+  it("getCollectionSchema describes rich text as Markdown written with the tool, without the Lexical schema", async () => {
+    const out = await run("getCollectionSchema", { slug: "pages" });
+    expect(out).toContain(`Write it only with ${SET_RICH_TEXT_TOOL_NAME}`);
+    expect(out).toContain('"title"');
+    expect(out).toContain('"hero"');
+    expect(out).not.toContain('\\"const\\":\\"root\\"');
+    expect(out).not.toContain("paragraph");
   });
 });
 

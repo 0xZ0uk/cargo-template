@@ -101,6 +101,13 @@ export interface AssistantPluginOptions {
   /** Most model calls in one run (each tool round trip is one). Default 10. */
   maxSteps?: number;
   /**
+   * Most tool calls in one run, parallel calls included. Default 20, at most 25: every tool call
+   * is a request to `/api/mcp` through the `ASSISTANT_SELF` service binding, and Cloudflare allows
+   * 32 Worker invocations per request (README, "Worker invocation limit"). Past it the model gets
+   * a tool error asking it to answer with what it has; the user's next message starts a new run.
+   */
+  maxToolCalls?: number;
+  /**
    * Compaction budget: when the transcript sent to the model passes this many estimated tokens,
    * old tool results are cleared, then the oldest turns dropped. Default 64,000. The stored
    * transcript is not changed.

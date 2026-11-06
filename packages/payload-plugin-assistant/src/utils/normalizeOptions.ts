@@ -1,5 +1,14 @@
 import type { PayloadRequest } from "payload";
-import { DEFAULT_APP_TITLE, DEFAULT_MAX_CONTEXT_TOKENS, DEFAULT_MAX_STEPS, DEFAULT_RETENTION_DAYS, PLUGIN_NAME } from "../constants";
+import {
+  DEFAULT_APP_TITLE,
+  DEFAULT_MAX_CONTEXT_TOKENS,
+  DEFAULT_MAX_STEPS,
+  DEFAULT_MAX_TOOL_CALLS,
+  DEFAULT_RETENTION_DAYS,
+  MAX_TOOL_CALLS_LIMIT,
+  PLUGIN_NAME,
+  WORKER_INVOCATIONS_PER_REQUEST,
+} from "../constants";
 import type {
   AssistantAccess,
   AssistantContext,
@@ -54,6 +63,7 @@ export interface NormalizedAssistantOptions {
   apiKey: string;
   instructions: string | ((context: AssistantContext) => string | Promise<string>) | undefined;
   maxSteps: number;
+  maxToolCalls: number;
   maxContextTokens: number;
   appTitle: string;
   toolFilter: ((tool: AssistantToolInfo) => boolean) | undefined;
@@ -105,6 +115,13 @@ export function normalizeOptions(options: AssistantPluginOptions): NormalizedAss
     throw new Error(`${PREFIX} "maxSteps" must be a positive integer (got ${String(maxSteps)}).`);
   }
 
+  const maxToolCalls = options.maxToolCalls ?? DEFAULT_MAX_TOOL_CALLS;
+  if (!Number.isInteger(maxToolCalls) || maxToolCalls <= 0 || maxToolCalls > MAX_TOOL_CALLS_LIMIT) {
+    throw new Error(
+      `${PREFIX} "maxToolCalls" must be an integer from 1 to ${MAX_TOOL_CALLS_LIMIT} (got ${String(maxToolCalls)}): each tool call is a Worker invocation, and Cloudflare allows ${WORKER_INVOCATIONS_PER_REQUEST} per request.`
+    );
+  }
+
   const maxContextTokens = options.maxContextTokens ?? DEFAULT_MAX_CONTEXT_TOKENS;
   if (!Number.isInteger(maxContextTokens) || maxContextTokens < 1000) {
     throw new Error(`${PREFIX} "maxContextTokens" must be an integer of at least 1000 (got ${String(maxContextTokens)}).`);
@@ -129,6 +146,7 @@ export function normalizeOptions(options: AssistantPluginOptions): NormalizedAss
     apiKey,
     instructions: options.instructions,
     maxSteps,
+    maxToolCalls,
     maxContextTokens,
     appTitle: options.appTitle?.trim() || DEFAULT_APP_TITLE,
     toolFilter: options.toolFilter,
