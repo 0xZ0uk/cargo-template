@@ -1,13 +1,16 @@
 import type { NormalizedAssistantOptions } from "../utils/normalizeOptions";
 import { durableObjectConversations } from "./durableObject";
-import { memoryConversations, type MemoryConversationsOptions } from "./memory";
+import { createMemoryConversationState, memoryConversations, type MemoryConversationsOptions } from "./memory";
 import type { ConversationBackend } from "./types";
 
-let memoryBackend: ConversationBackend | undefined;
+/** The in-memory conversations of this process, shared by every memory backend built below. */
+const memoryState = createMemoryConversationState();
 
 /**
- * The conversation backend for the configured storage: the Durable Objects on Workers, or one
- * process-wide in-memory backend (Node dev, tests). #63's endpoint calls this per request.
+ * The conversation backend for the configured storage: the Durable Objects on Workers, or the
+ * in-memory backend (Node dev, tests). #63's endpoint calls this per request: the memory backend
+ * is rebuilt each call with that call's options (`turnRunner`, `mcpFetch`, retention, caps), over
+ * one process-wide set of conversations, so no caller's options stick for the next one.
  */
 export function conversationBackend(
   options: NormalizedAssistantOptions,
@@ -22,6 +25,5 @@ export function conversationBackend(
       caps: storage.caps,
     });
   }
-  memoryBackend ??= memoryConversations({ ...memory, retentionMs: storage.retentionMs, caps: storage.caps });
-  return memoryBackend;
+  return memoryConversations({ ...memory, retentionMs: storage.retentionMs, caps: storage.caps, state: memoryState });
 }

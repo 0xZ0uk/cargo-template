@@ -1,6 +1,8 @@
 import type { StreamChunk } from "@tanstack/ai";
 import { describe, expect, it } from "vitest";
+import { conversationBackend } from "../src/conversations/backend";
 import { memoryConversations } from "../src/conversations/memory";
+import { normalizeOptions } from "../src/utils/normalizeOptions";
 import type { TurnContext, TurnInput } from "../src/conversations/types";
 
 const chunk = (value: Record<string, unknown>) => ({ timestamp: Date.now(), ...value }) as unknown as StreamChunk;
@@ -94,5 +96,18 @@ describe("memoryConversations (Node fallback)", () => {
 
   it("answers 501 until the turn (#63) exists", async () => {
     expect((await memoryConversations().startTurn(input("users:1", "t4"))).status).toBe(501);
+  });
+
+  it("conversationBackend: each call uses its own options, over one set of conversations", async () => {
+    const options = normalizeOptions({ models: [{ id: "test/model", label: "Test" }], apiKey: "sk-test" });
+    // The first call in the process comes from a path without a turn runner (a list, say).
+    const bare = conversationBackend(options);
+    expect((await bare.startTurn(input("users:9", "shared"))).status).toBe(501);
+    // A later call with the runner is not stuck with the first call's options.
+    const start = input("users:9", "shared");
+    expect((await events(await conversationBackend(options, { turnRunner }).startTurn(start))).at(-1)?.type).toBe("RUN_FINISHED");
+    // And the data is shared between calls, as Node dev needs across requests.
+    expect((await conversationBackend(options).transcript("users:9", "shared"))?.messages).toHaveLength(2);
+    expect((await conversationBackend(options).list("users:9")).entries.map((e) => e.threadId)).toEqual(["shared"]);
   });
 });

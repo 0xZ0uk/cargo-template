@@ -51,9 +51,12 @@ export function runIdOfOffset(offset: string | null): string | null {
 export class StreamHub {
   readonly producers = new Set<string>();
   private readonly waiters = new Map<string, Set<() => void>>();
+  /** Set by `closeAll()`: the conversation was deleted, every reader ends. */
+  closed = false;
 
   wait(runId: string, signal?: AbortSignal): Promise<void> {
     return new Promise((resolve) => {
+      if (this.closed) return resolve();
       const set = this.waiters.get(runId) ?? new Set();
       this.waiters.set(runId, set);
       const done = () => {
@@ -69,6 +72,13 @@ export class StreamHub {
 
   wake(runId: string): void {
     for (const wake of [...(this.waiters.get(runId) ?? [])]) wake();
+  }
+
+  /** End this hub for good (the conversation was deleted): forget every producer, release every reader. */
+  closeAll(): void {
+    this.closed = true;
+    this.producers.clear();
+    for (const runId of [...this.waiters.keys()]) this.wake(runId);
   }
 }
 
@@ -156,6 +166,7 @@ export function sqlStreamDurability(storage: SqlStorageLike, hub: StreamHub, opt
         }
         threshold = decoded.seq;
       }
+      if (hub.closed) return;
       if (!log() && !hub.producers.has(runId)) {
         throw new Error(`Unknown or expired stream run: ${JSON.stringify(runId)}`);
       }
@@ -166,6 +177,8 @@ export function sqlStreamDurability(storage: SqlStorageLike, hub: StreamHub, opt
         closeNow();
       }
       for (;;) {
+        // The conversation was deleted while we waited: its tables are gone, end here.
+        if (hub.closed) return;
         // Read `complete` BEFORE the rows, synchronously: if it was set, every entry already is.
         const complete = Boolean(log()?.complete);
         const rows = all<{ seq: number; chunk: string }>(

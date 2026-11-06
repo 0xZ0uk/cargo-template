@@ -128,7 +128,10 @@ object can't answer without a fan-out the interface doesn't allow, and a single 
 would be a hot spot holding everyone's titles. Per user, list/rename/delete are one small object;
 storage grows per user; it passes the conformance suite as one store. Rename is `getVersioned` +
 `upsertIf` (full replace). Delete goes through the conversation object (owner check), which drops
-its data and its index entry.
+its data and its index entry. A run still live at that moment is aborted and fenced off: the
+object bumps an epoch the run captured at its start, and the run's store writes, log appends,
+activity and alarm only go through while that epoch is current. Readers tailing it end. So the
+aborted run's last events never land in the deleted (or a re-claimed) conversation.
 
 ### Retention
 
@@ -173,7 +176,9 @@ foreign origin, the server advertises no tools (`-32601`, the "not logged in" ca
 
 `ConversationBackend` (`src/conversations/types.ts`), from `conversationBackend(options)` in the
 endpoint's lazy chunk: Durable Objects when `conversations.namespace`/`index` are set, otherwise
-one process-wide `memoryConversations()`.
+`memoryConversations()`. Call it per request: the memory backend is rebuilt with each call's
+options (`turnRunner`, `mcpFetch`) over one process-wide set of conversations
+(`createMemoryConversationState()`), so one caller's options never stick for the next.
 
 ```ts
 const backend = conversationBackend(options, { turnRunner, mcpFetch }) // memory options: Node only
@@ -200,7 +205,9 @@ until #63 overrides it in `AssistantConversation`) with a `TurnContext`: `input`
 body, auth), `persistence` (the four stores, messages capped: pass it to `withPersistence`),
 `mcpFetch` and an abort `signal` (only an explicit `stop(userKey, runId)` aborts; a disconnect
 doesn't). The runner returns `chat({ ..., threadId, runId, middleware: [withPersistence(persistence)] })`.
-A run id is used once (409 on reuse): a resume is a new run id with `resume` in the body.
+A run id is used once (409 on reuse) for the conversation's lifetime: the object keeps every
+accepted id in `assistant_run_ids`, which outlives the stream logs pruned an hour after a run. A
+resume is a new run id with `resume` in the body.
 
 ## App wiring (#66)
 

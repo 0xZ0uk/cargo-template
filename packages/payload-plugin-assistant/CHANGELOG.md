@@ -14,6 +14,9 @@
 - `ConversationBackend` for the endpoint (#63): Durable Objects, or `memoryConversations()` in Node. Turns run through a `TurnRunner` with the capped persistence, an MCP `fetch` and a stop signal.
 - MCP from inside the object: `serviceBindingMcpFetch` over a service binding to the same Worker (`ASSISTANT_SELF`), forwarding the admin's Cookie and Origin; prototyped under workerd against a real MCP server.
 - Options: `conversations: { namespace, index, retentionDays, caps }` (`namespace` and `index` go together).
+- Deleting a conversation during a live run aborts the run and fences it off (an epoch per purge): its last events, rows, activity and alarm never land in the deleted conversation, and readers tailing it end.
+- A run id is rejected (409) for the conversation's whole lifetime, also after its stream log was pruned (`assistant_run_ids`, plus the runs table).
+- `conversationBackend()` rebuilds the memory backend on every call with that call's options, over one process-wide set of conversations (`createMemoryConversationState()`, `memoryConversations({ state })`); the first caller's options no longer stick.
 - Tests: a workerd suite (`vitest.workerd.config.ts`, `@cloudflare/vitest-plugin` 1.4.11) run by `pnpm test` after the Node suite.
 
 - Package scaffold (#60): `assistantPlugin(options)` registers `POST /api/assistant/chat` and the `/admin/assistant` view. The endpoint checks sign-in (401), `access` (403), configuration (503), `rateLimit` (429), then answers `501 { error: "not implemented" }`; the view is a placeholder. No collections, globals or fields, so no migration and no import-map change beyond the view.

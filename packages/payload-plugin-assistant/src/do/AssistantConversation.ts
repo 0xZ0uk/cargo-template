@@ -5,6 +5,7 @@ import { DEFAULT_CONVERSATION_CAPS, withConversationCaps, type ConversationCaps 
 import { missingSelfBinding, serviceBindingMcpFetch } from "../conversations/mcpTransport";
 import { DO_HEADERS, type ClaimResult, type ConversationTranscript, type TurnInput, type TurnRunner } from "../conversations/types";
 import type { AssistantConversationIndex } from "./AssistantConversationIndex";
+import { fenceDurability, fencePersistence } from "./fence";
 import { first, run, type SqlStorageLike } from "./sql";
 import { CONVERSATION_SCHEMA, sqlConversationPersistence, type ConversationPersistence } from "./sqlStores";
 import { pruneStreamLogs, runIdOfOffset, sqlStreamDurability, STREAM_SCHEMA, StreamHub } from "./sqlStream";
@@ -45,6 +46,15 @@ const META_SCHEMA = `CREATE TABLE IF NOT EXISTS assistant_conversation (
   caps TEXT NOT NULL
 )`;
 
+/**
+ * Every run id `startTurn` accepted, for the conversation's lifetime: a run id is used once,
+ * even after its stream log was pruned. One small row per turn; dropped with the conversation.
+ */
+const RUN_IDS_SCHEMA = `CREATE TABLE IF NOT EXISTS assistant_run_ids (
+  run_id TEXT PRIMARY KEY,
+  started_at INTEGER NOT NULL
+)`;
+
 type Meta = {
   thread_id: string;
   owner: string;
@@ -77,9 +87,15 @@ const notFound = () => Response.json({ error: "Not found" }, { status: 404 });
 export class AssistantConversation<Env extends AssistantConversationEnv = AssistantConversationEnv> extends DurableObject<Env> {
   protected readonly storage: SqlStorageLike;
   protected readonly persistence: ConversationPersistence;
-  private readonly hub = new StreamHub();
+  private hub = new StreamHub();
   private readonly controllers = new Map<string, AbortController>();
   private schemaReady = false;
+  /**
+   * Bumped by every purge. A run remembers the epoch it started in; its writes (stores, log,
+   * activity, alarm) go through only while that is still the current one, so a run the
+   * deletion aborted can't write its last events into the deleted (or a re-claimed) conversation.
+   */
+  private epoch = 0;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -192,21 +208,24 @@ export class AssistantConversation<Env extends AssistantConversationEnv = Assist
     const userKey = request.headers.get(DO_HEADERS.user) ?? "";
     // The owner check runs again here, so a join can never skip it.
     if (!this.owns(userKey)) return notFound();
-    if (url.pathname === "/turn" && request.method === "POST") return this.startTurn(request, userKey);
+    if (url.pathname === "/turn" && request.method === "POST") return this.startTurn(request, userKey, this.epoch);
     if (url.pathname === "/join" && request.method === "GET") return this.join(request);
     return notFound();
   }
 
-  private async startTurn(request: Request, userKey: string): Promise<Response> {
+  private async startTurn(request: Request, userKey: string, epoch: number): Promise<Response> {
+    const live = () => this.epoch === epoch;
     const runner = await this.turnRunner();
     if (!runner) return Response.json({ error: "not implemented" }, { status: 501 });
     const runId = request.headers.get(DO_HEADERS.runId) ?? "";
     if (!runId || /[\r\n]/.test(runId)) return Response.json({ error: "X-Run-Id required" }, { status: 400 });
-    if (this.hub.producers.has(runId) || this.logExists(runId)) {
+    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    // Deleted while we read the request: answer like any missing conversation.
+    if (!live()) return notFound();
+    if (!this.reserveRunId(runId)) {
       return Response.json({ error: "run id already used; rejoin it instead" }, { status: 409 });
     }
     const meta = this.meta()!;
-    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
     const input: TurnInput = {
       threadId: meta.thread_id,
       runId,
@@ -220,17 +239,17 @@ export class AssistantConversation<Env extends AssistantConversationEnv = Assist
     const controller = new AbortController();
     this.controllers.set(runId, controller);
     this.hub.producers.add(runId);
-    const durability = this.producerLog(runId, caps.maxStreamChunkBytes);
+    const durability = this.producerLog(runId, caps.maxStreamChunkBytes, live);
     const stream = runner({
       input,
-      persistence: withConversationCaps(this.persistence, caps),
+      persistence: withConversationCaps(fencePersistence(this.persistence, live), caps),
       mcpFetch: this.env.ASSISTANT_SELF
         ? serviceBindingMcpFetch({ fetcher: this.env.ASSISTANT_SELF, ...input.auth })
         : missingSelfBinding,
       signal: controller.signal,
     });
     await this.touch();
-    await this.armAlarm();
+    if (live()) await this.armAlarm();
     // Fresh run + durability: TanStack drains the stream into the log under its own controller.
     // The response is only a viewer; cancelling it (closed tab) detaches, the run goes on here.
     return toServerSentEventsResponse(stream, { durability: { adapter: durability }, abortController: controller });
@@ -258,17 +277,27 @@ export class AssistantConversation<Env extends AssistantConversationEnv = Assist
     return resumeServerSentEventsResponse({ adapter });
   }
 
-  /** The producer's log; closing it marks the run finished here and records the activity. */
-  private producerLog(runId: string, maxChunkBytes: number): StreamDurability {
-    const inner = sqlStreamDurability(this.storage, this.hub, { runId, offset: null, maxChunkBytes });
+  /**
+   * The producer's log; closing it marks the run finished here and records the activity.
+   * Fenced: after a purge it neither writes nor touches the (new) conversation's state.
+   */
+  private producerLog(runId: string, maxChunkBytes: number, live: () => boolean): StreamDurability {
+    const inner = fenceDurability(sqlStreamDurability(this.storage, this.hub, { runId, offset: null, maxChunkBytes }), live);
     return {
       ...inner,
       close: async () => {
-        await inner.close();
-        this.hub.producers.delete(runId);
-        this.controllers.delete(runId);
+        try {
+          await inner.close();
+        } finally {
+          // Even when the close failed, so no phantom producer keeps readers or the heartbeat alive.
+          if (live()) {
+            this.hub.producers.delete(runId);
+            this.controllers.delete(runId);
+          }
+        }
+        if (!live()) return;
         await this.touch();
-        await this.armAlarm();
+        if (live()) await this.armAlarm();
       },
     };
   }
@@ -306,11 +335,19 @@ export class AssistantConversation<Env extends AssistantConversationEnv = Assist
     }
   }
 
-  /** Delete every row, the alarm and the index entry. The object is empty (unclaimed) afterwards. */
+  /**
+   * Delete every row, the alarm and the index entry. The object is empty (unclaimed) afterwards.
+   * Live runs are aborted and fenced off first (the epoch), so nothing they write afterwards
+   * lands; their readers end and their run ids are forgotten with the old hub.
+   */
   private async purge(): Promise<void> {
     const meta = this.meta();
+    this.epoch += 1;
     for (const controller of this.controllers.values()) controller.abort();
     this.controllers.clear();
+    const hub = this.hub;
+    this.hub = new StreamHub();
+    hub.closeAll();
     await this.ctx.storage.deleteAlarm();
     await this.ctx.storage.deleteAll();
     this.schemaReady = false;
@@ -327,7 +364,7 @@ export class AssistantConversation<Env extends AssistantConversationEnv = Assist
 
   private ensureSchema(): void {
     if (this.schemaReady) return;
-    for (const statement of [META_SCHEMA, ...CONVERSATION_SCHEMA, ...STREAM_SCHEMA]) run(this.storage, statement);
+    for (const statement of [META_SCHEMA, RUN_IDS_SCHEMA, ...CONVERSATION_SCHEMA, ...STREAM_SCHEMA]) run(this.storage, statement);
     this.schemaReady = true;
   }
 
@@ -343,6 +380,21 @@ export class AssistantConversation<Env extends AssistantConversationEnv = Assist
   private caps(): ConversationCaps {
     const stored = this.meta()?.caps;
     return { ...DEFAULT_CONVERSATION_CAPS, ...(stored ? (JSON.parse(stored) as Partial<ConversationCaps>) : {}) };
+  }
+
+  /**
+   * Claim `runId` for a new turn; `false` if it was ever used in this conversation: live, in a
+   * stream log, in the runs table or in the run-id ledger (which outlives the pruned logs).
+   */
+  private reserveRunId(runId: string): boolean {
+    const used =
+      this.hub.producers.has(runId) ||
+      this.logExists(runId) ||
+      Boolean(first(this.storage, `SELECT 1 AS found FROM assistant_runs WHERE run_id = ?`, runId)) ||
+      Boolean(first(this.storage, `SELECT 1 AS found FROM assistant_run_ids WHERE run_id = ?`, runId));
+    if (used) return false;
+    run(this.storage, `INSERT INTO assistant_run_ids (run_id, started_at) VALUES (?, ?)`, runId, Date.now());
+    return true;
   }
 
   private logExists(runId: string): boolean {

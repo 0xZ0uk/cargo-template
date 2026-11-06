@@ -15,6 +15,21 @@ export interface MemoryConversationsOptions {
   caps?: Partial<ConversationCaps>;
   /** Clock, for tests. */
   now?: () => number;
+  /**
+   * The conversations themselves. Pass the same state to several backends (built with different
+   * options) to share the data: `conversationBackend` keeps one per process. Default: a new one.
+   */
+  state?: MemoryConversationState;
+}
+
+/** The data of the memory backend, separate from its options (`createMemoryConversationState`). */
+export interface MemoryConversationState {
+  conversations: Map<string, Conversation>;
+  sessions: ReturnType<typeof memoryPersistence>["stores"]["sessions"];
+}
+
+export function createMemoryConversationState(): MemoryConversationState {
+  return { conversations: new Map(), sessions: memoryPersistence().stores.sessions };
 }
 
 type Conversation = {
@@ -41,8 +56,7 @@ export function memoryConversations(options: MemoryConversationsOptions = {}): C
   const now = options.now ?? Date.now;
   const retentionMs = options.retentionMs ?? 30 * DAY;
   const caps = { ...DEFAULT_CONVERSATION_CAPS, ...options.caps };
-  const conversations = new Map<string, Conversation>();
-  const sessions = memoryPersistence().stores.sessions;
+  const { conversations, sessions } = options.state ?? createMemoryConversationState();
 
   const sweep = () => {
     for (const [threadId, conversation] of conversations) {
