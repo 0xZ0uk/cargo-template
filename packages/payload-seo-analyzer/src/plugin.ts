@@ -1090,6 +1090,8 @@ export const seoAnalyzerPlugin =
         // Where the endpoints are mounted, so the UI builds URLs from the real
         // `routes.api` + this path (hooks/useSeoApi.ts) instead of '/api/seo-plugin'.
         endpointBasePath: basePath,
+        // The analyzed collections that exist in this config (the schema builder's page picker).
+        collections: targetCollections.filter((slug) => config.collections?.some((c) => c.slug === slug)),
       },
     }
 
