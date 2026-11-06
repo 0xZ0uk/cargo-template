@@ -4,10 +4,10 @@ An admin assistant for Payload 4 on Cloudflare Workers: chat with your content t
 [`@payloadcms/plugin-mcp`](https://payloadcms.com/docs) tools, using TanStack AI and OpenRouter,
 with one Durable Object per conversation. Plan: [#58](https://github.com/0xZ0uk/cargo-template/issues/58).
 
-> **Status: tools and storage done, chat turn pending.** The Payload tool source (#61, see
-> [Payload tools](#payload-tools-srctoolspayloadtoolsourcets)) and conversations, approvals and
-> stream durability in Durable Objects (#62, below) are in. The endpoint still answers `501` and
-> the admin view is a placeholder; the turn and UI arrive in #63–#66. Not registered in the app yet (#66).
+> **Status: the chat turn works; the UI is pending.** The Payload tool source (#61), conversations
+> in Durable Objects (#62) and the chat turn on OpenRouter with its endpoints (#63, see
+> [Endpoints](#endpoints-the-contract-for-the-admin-ui)) are in. The admin view is still a
+> placeholder (#64, approval cards #65). Not registered in the app yet (#66).
 
 ```ts
 import { assistantPlugin } from '@cargo/payload-plugin-assistant'
@@ -24,7 +24,7 @@ assistantPlugin({
 
 | | |
 | --- | --- |
-| `POST /api/assistant/chat` | Signed in (401), `access` (403), configured (503), `rateLimit` (429), then the turn (stub: 501). |
+| `/api/assistant/*` | The chat turn, rejoin, stop and the conversation list: see [Endpoints](#endpoints-the-contract-for-the-admin-ui). Every endpoint: signed in (401), `access` (403). |
 | `/admin/assistant` | Placeholder view, registered through `admin.components.views`. Anonymous visitors go to login, users `access` refuses to `admin.routes.unauthorized`. |
 
 No collections, globals or injected fields. With `enabled: false` the config is returned untouched.
@@ -37,17 +37,20 @@ No collections, globals or injected fields. With `enabled: false` the config is 
 | `access({ user, req })` | Who may use the assistant: the chat endpoint (403) and the admin view (redirect to `admin.routes.unauthorized`) both ask it. Default: users of the admin auth collection (`user.collection === config.admin.user`, Payload's own admin gate), so a session on another auth collection can neither chat nor see the admin shell. Payload's own access applies to every tool call, as that user. |
 | `models` | Allowlist of `{ id, label }`. At least one, unique ids; throws otherwise. |
 | `defaultModel` | One of `models`. Default: the first. Throws if unknown. |
-| `apiKey` | OpenRouter key. A missing key **warns and leaves the assistant unconfigured**: the endpoint (503 `not configured`) and the view (a notice) are still registered, so the schema, import map and admin shape never depend on a secret. |
-| `instructions` | System prompt, or `(ctx) => string`. |
-| `maxSteps` | Most model/tool round trips per run. Positive integer, default 10. |
+| `apiKey` | OpenRouter key. A missing key **warns and leaves the assistant unconfigured**: the endpoints (a turn answers 503 `not_configured`) and the view (a notice) are still registered, so the schema, import map and admin shape never depend on a secret. |
+| `instructions` | Added to the system prompt (what the site is, house style…), or `({ req }) => string`. See [System prompt](#system-prompt). |
+| `maxSteps` | Most model calls per run (each tool round trip is one): `maxIterations(maxSteps)`. Positive integer, default 10. |
+| `maxContextTokens` | Compaction budget, in estimated tokens of what is sent to the model: past it, old tool results are cleared, then the oldest turns dropped (the stored transcript is untouched). Default 64,000. |
+| `appTitle` | OpenRouter attribution (`X-OpenRouter-Title`). Default "Payload admin assistant". `HTTP-Referer` is the site's URL. |
 | `toolFilter(tool)` | Which MCP tools the model sees, after the built-in filter (auth tools and `getUploadInstructions` are always dropped). Gets the raw MCP tool (`name`, `description`, `annotations`). Default: all the rest. By name only: to hide deletes for one collection, use plugin-mcp's own `collections.<slug>.tools`. |
 | `conversations` | `{ namespace, index, retentionDays, caps }`. `namespace` (`AssistantConversation`) and `index` (`AssistantConversationIndex`) go together; omit both for the in-memory fallback (Node dev, tests). `retentionDays`: delete a conversation idle this long, default 30. `caps`: size limits, see [Size caps](#size-caps). The namespace types are structural (no `@cloudflare/workers-types`). |
-| `rateLimit(req)` | Return `false` for 429. |
+| `rateLimit(req)` | Return `false` for 429. Called for each chat turn (a send or an approval resume), after `access`, before any model call; reads, rejoins, stop and the conversation endpoints aren't limited. Key it per user (`req.user.collection` + `id`); the app connects it to a Workers Rate Limiting binding (#66). |
 
-OpenRouter provider routing is fixed in the normalised options: `{ requireParameters: true,
+OpenRouter provider routing is fixed (`src/utils/provider.ts`): `{ requireParameters: true,
 dataCollection: 'deny' }`. **The keys must be camelCase**: the SDK serialises them to
 `require_parameters` / `data_collection`, and the snake_case spelling is silently dropped, which
-would send drafts to providers that log or train on prompts.
+would send drafts to providers that log or train on prompts. `tests/turn.test.ts` asserts the
+serialised request body, not the options object.
 
 ## Exports
 
@@ -57,8 +60,9 @@ would send drafts to providers that log or train on prompts.
 | `./admin/AssistantView` | The admin view (a server component wrapped in `DefaultTemplate`; the import-map target). |
 | `./do` | The Durable Object classes `AssistantConversation` and `AssistantConversationIndex`, plus their stores. Workerd-only (`cloudflare:workers`): re-export them from the Worker entry, never import this entry from `payload.config.ts` or the admin bundle. |
 
-The endpoint loads the AI runtime with `await import('./server/chat')`, and tsup code-splits it
-into its own chunk, so `@tanstack/ai` and friends stay out of the config's import graph.
+The endpoints load the AI runtime with `await import('./server/chat')`, and tsup code-splits it
+into its own chunk, so `@tanstack/ai` and friends stay out of the config's import graph. The `./do`
+bundle has the turn runner inlined and never imports `payload`.
 
 ## Conversations (Durable Objects)
 
@@ -69,12 +73,14 @@ owner's decision after the spike, #58). One `AssistantConversationIndex` per use
 Nothing goes to D1.
 
 ```
-browser ──POST /api/assistant/chat──▶ Worker endpoint (#63)            AssistantConversation (per thread)
+browser ──POST /api/assistant/chat──▶ Worker endpoint                  AssistantConversation (per thread)
                                        auth · access · rate limit       ├─ owner, last_active, retention, caps
-                                       userKey = "<collection>:<id>"    ├─ messages · runs · interrupts · metadata
-                                       backend.startTurn(input) ───────▶├─ stream log (StreamDurability)
-          ◀──────── SSE (proxied as is) ─────────────────────────────── └─ chat() → MCP via ASSISTANT_SELF
+                                       validate · model allowlist       ├─ messages · runs · interrupts · metadata
+                                       system prompt · settings         ├─ stream log (StreamDurability)
+                                       backend.startTurn(input) ───────▶└─ createTurnRunner(): chat() → OpenRouter
+          ◀──────── SSE (proxied as is) ───────────────────────────────     tools → MCP via ASSISTANT_SELF
 browser ──GET  …?runId (Last-Event-ID)▶ backend.join(...) ─────────────▶ log replay, never a model call
+browser ──POST …/chat/stop ──────────▶ backend.stop(...) ─────────────▶ abort chat() → RUN_ERROR "stopped"
                                        backend.list/rename/remove ────▶ AssistantConversationIndex (per user)
 ```
 
@@ -172,42 +178,204 @@ the test Worker's `/api/mcp` (gated like plugin-mcp + Payload `csrf`): with the 
 origin it lists and calls the tool and both headers arrive intact; without the cookie, or with a
 foreign origin, the server advertises no tools (`-32601`, the "not logged in" case #61 maps).
 
-### The interface #63 builds on
+### The backend interface
 
 `ConversationBackend` (`src/conversations/types.ts`), from `conversationBackend(options)` in the
-endpoint's lazy chunk: Durable Objects when `conversations.namespace`/`index` are set, otherwise
-`memoryConversations()`. Call it per request: the memory backend is rebuilt with each call's
+endpoints' lazy chunk: Durable Objects when `conversations.namespace`/`index` are set, otherwise
+`memoryConversations()`. Called per request: the memory backend is rebuilt with each call's
 options (`turnRunner`, `mcpFetch`) over one process-wide set of conversations
 (`createMemoryConversationState()`), so one caller's options never stick for the next.
 
 ```ts
 const backend = conversationBackend(options, { turnRunner, mcpFetch }) // memory options: Node only
-const userKey = userKeyOf(req.user)
+const userKey = userKeyOf(req.user)                                     // "<collection>:<id>"
 
-// POST: a new turn or a resume (approval decisions in the body). The object claims the id for
-// this user (404 if someone else owns it) and answers with the run's SSE, which the endpoint
-// returns as is.
-return backend.startTurn({
-  userKey, threadId, runId: req.headers.get('X-Run-Id') ?? crypto.randomUUID(),
-  body,                                              // messages / resume / model, as #63 defines
-  auth: { cookie: req.headers.get('cookie') ?? '', origin: new URL(req.url).origin },
-})
-
-// GET with Last-Event-ID (or ?offset) + X-Run-Id (or ?runId): rejoin. No MCP client, no model call.
-return backend.join(userKey, threadId, request)
-
-backend.transcript(userKey, threadId) // messages, pending approvals, the live run to rejoin
+backend.startTurn({ userKey, threadId, runId, body, auth: { cookie, origin }, title }) // → SSE Response
+backend.join(userKey, threadId, request)       // rejoin from the log; no MCP client, no model call
+backend.stop(userKey, threadId, runId)         // abort a live run → RUN_ERROR "stopped"
+backend.hydrate(userKey, threadId, request)    // reconstructChat body (what useChat's hydrate() reads)
+backend.transcript(userKey, threadId)          // model messages, pending approvals, active run; null if not owned
 backend.list(userKey) / rename(userKey, threadId, title) / remove(userKey, threadId)
 ```
 
-Inside the object, `startTurn` calls `turnRunner()` (a protected method returning `null`, so 501,
-until #63 overrides it in `AssistantConversation`) with a `TurnContext`: `input` (thread, run, user,
-body, auth), `persistence` (the four stores, messages capped: pass it to `withPersistence`),
-`mcpFetch` and an abort `signal` (only an explicit `stop(userKey, runId)` aborts; a disconnect
-doesn't). The runner returns `chat({ ..., threadId, runId, middleware: [withPersistence(persistence)] })`.
-A run id is used once (409 on reuse) for the conversation's lifetime: the object keeps every
-accepted id in `assistant_run_ids`, which outlives the stream logs pruned an hour after a run. A
-resume is a new run id with `resume` in the body.
+Inside the object, `startTurn` calls `turnRunner()` (by default `createTurnRunner()`; a subclass
+can override it, as the workerd tests do with `fakeText()`) with a `TurnContext`: `input` (thread,
+run, user, body, auth), `persistence` (the four stores, messages capped, fenced against a delete),
+`mcpFetch` (`ASSISTANT_SELF` with the admin's Cookie and Origin) and the stop `signal`. A run id is
+used once (409 `run_id_used`) for the conversation's lifetime: the object keeps every accepted id
+in `assistant_run_ids`, which outlives the stream logs pruned an hour after a run. A resume is a
+new run id with `resume` in the body.
+
+`RunControl` keeps the two early endings apart: **stop** aborts the runner's signal, so `chat()`
+winds down and the stream ends with a logged `RUN_ERROR` (`code: "stopped"`), cut anyway after 10 s
+if a custom runner ignores the signal; **delete** aborts the signal and cuts the stream at once
+(then the epoch fence drops whatever the run still tries to write). A closed tab is neither.
+
+## The chat turn
+
+### Turn flow
+
+1. **Worker endpoint** (`POST /api/assistant/chat`, `src/server/chat.ts`): signed in (401),
+   `access` (403), configured (503), `rateLimit(req)` (429), body (400 `invalid_body`), model in the
+   allowlist (400 `model_not_allowed`). Then it resolves the turn's **settings**, plain data because
+   the turn runs in another object that has neither the plugin's options nor `req`
+   (`TurnSettings`): model, API key, the system prompt, `maxSteps`, `maxContextTokens`,
+   `${serverURL or origin}/api/mcp`, the OpenRouter attribution and, when the app has a
+   `toolFilter`, the tool names it admits (one in-process tool discovery on the Worker, where the
+   function lives). The key travels to the object in the internal request and stays in memory for
+   the run; it is never stored or logged.
+2. **Backend** `startTurn`: claims the conversation for the user (404 if someone else owns it;
+   a new one is titled from its first message), then the object answers with the run's SSE, which
+   the endpoint returns with `X-Run-Id` / `X-Thread-Id` headers.
+3. **In the object** (`createTurnRunner`, `src/server/turn.ts`):
+   `chat({ adapter: createOpenRouterText(model, apiKey, { appTitle, httpReferer }), threadId, runId,
+   messages: [the new user message] or [], resume, systemPrompts: [prompt], mcp:
+   payloadToolsMcpOptions(source), modelOptions: { provider: { requireParameters: true,
+   dataCollection: 'deny' } }, promptCache: { retention: 'short', key: threadId },
+   agentLoopStrategy: maxIterations(maxSteps), abortController, middleware: [withPersistence(stores),
+   withCompaction({ maxTokens, strategy: composeStrategies(clearToolResults(), evictOldest()) })] })`.
+   `withPersistence` loads the stored transcript and appends the new message; the stream goes
+   through the durable log; every `RUN_ERROR` is rewritten with an assistant code
+   (`withAssistantErrors`, `src/server/errors.ts`).
+4. **A write tool** pauses the run: `RUN_FINISHED` with `outcome: { type: "interrupt", interrupts }`,
+   the interrupt stored. The UI sends a **resume** (a new turn with `resume`, no message): approved,
+   the tool runs as the user and the model continues; rejected, nothing is written and the model is
+   told so.
+
+Prompt caching: OpenRouter gets `session_id` = the thread (sticky routing, so the provider's cache
+is reused across turns) and, for `anthropic/*` models, cache markers on the system prompt, the last
+tool and the last message (`addPromptCacheMarkers`, applied by the adapter). The system prompt and
+the tool list are fixed per site, so they stay the cached prefix.
+
+### System prompt
+
+Built on the Worker per turn (`buildSystemPrompt`, `src/server/instructions.ts`):
+
+1. Who and where: the content assistant in the Payload admin of the site at `serverURL` (or the request's origin).
+2. The collections and globals (not `payload-*`), each with the description given to plugin-mcp
+   (`mcpPlugin({ collections: { pages: { description } } })`), falling back to the collection's own
+   `admin.description`, and `(drafts)` for versioned ones.
+3. Conventions: save drafts, never publish unless asked in so many words; `getCollectionSchema` /
+   `getGlobalSchema` before writing; small targeted updates (only the changed fields); after a change
+   say what changed with a link to `<admin>/collections/<slug>/<id>` or `<admin>/globals/<slug>`;
+   ask when ambiguous.
+4. The app's `instructions`.
+5. `payloadToolsSystemPrompt`: `getConfigInfo` for slugs, `select` + small `limit` + `depth: 0`, `_status`, approvals, access errors.
+
+## Endpoints: the contract for the admin UI
+
+All under Payload's API route (`/api`), authenticated by the admin session cookie (the UI's
+`fetch` sends it with `credentials: "same-origin"`). JSON errors are `{ error, code }`.
+
+| Status | `code` | When |
+| --- | --- | --- |
+| 401 | `unauthorized` | Not signed in (every endpoint). |
+| 403 | `forbidden` | `access` refused (every endpoint). |
+| 503 | `not_configured` | No API key (`POST /chat` only). |
+| 429 | `rate_limited` | `rateLimit(req)` returned `false` (`POST /chat` only). |
+| 400 | `invalid_body` / `invalid_query` / `model_not_allowed` | Bad request; `model_not_allowed` also lists `models`. |
+| 404 | `not_found` | The conversation (or run) doesn't exist **or isn't the caller's**: the two are indistinguishable. |
+| 409 | `run_id_used` | A turn reused a run id: rejoin it instead. |
+| 502 | `tools_unavailable` | Only with a `toolFilter`: the Worker could not list the tools. |
+
+### `GET /api/assistant/config`
+
+`{ configured, models: [{ id, label }], defaultModel, maxSteps }`: for the model picker and the
+"not configured" notice.
+
+### `POST /api/assistant/chat`: send a turn, or resume after approvals
+
+Body: what `useChat`'s `fetchServerSentEvents(url)` sends (AG-UI `RunAgentInput`), or a short form:
+
+```jsonc
+{
+  "threadId": "thread_…",           // required; [A-Za-z0-9][A-Za-z0-9_.:-]{0,127}; the client makes it
+  "runId": "run_…",                 // optional (or the X-Run-Id header); minted when absent
+  "model": "deepseek/deepseek-v4.1-flash", // optional (or forwardedProps.model); default: defaultModel
+  "messages": [/* …, */ { "id": "msg_…", "role": "user", "content": "Which pages have no meta description?" }],
+  // or "message": "Which pages…" (scripts, curl)
+  // or, to answer approvals (no message):
+  "resume": [{ "interruptId": "approval_call_…", "status": "resolved", "payload": { "approved": true } }]
+}
+```
+
+- **Server-authoritative history**: only the last element of `messages` is used, and it must be
+  the user's (text, or `[{ type: "text", text }]` parts; at most 32,000 characters). Earlier
+  messages, assistant messages and tool results from the client are ignored: the stored transcript
+  is the history. A message without an `id` gets one, so hydration ids are stable.
+- **Resume**: one entry per pending interrupt, `status: "resolved"` with `payload: { approved: true | false }`
+  (or `status: "cancelled"`). A resume takes no message; it is a new run (new `runId`).
+- Response: `200 text/event-stream`, headers `X-Run-Id`, `X-Thread-Id`. Each event is
+  `id: <opaque offset>` + `data: <AG-UI chunk JSON>`; keep the last `id` to rejoin. The first event
+  is TanStack's `CUSTOM run.accepted`.
+
+SSE events (AG-UI, as `@tanstack/ai` emits them; the ones the UI cares about):
+
+| `type` | |
+| --- | --- |
+| `RUN_STARTED` | `{ threadId, runId }`. |
+| `TEXT_MESSAGE_START` / `TEXT_MESSAGE_CONTENT` / `TEXT_MESSAGE_END` | The answer, `delta` by `delta`, per `messageId`. |
+| `TOOL_CALL_START` / `TOOL_CALL_ARGS` / `TOOL_CALL_END` | A tool call (`toolCallName`, streamed args). |
+| `TOOL_CALL_RESULT` | `{ toolCallId, content }`. An access denial is a result whose content is an error, not a failed run: an approved write can still come back denied. |
+| `RUN_FINISHED` | One after **every model call**: `metadata.tanstack.finishReason` is `tool_calls` while the run goes on (tools run, the model is called again), `stop` on the last. The run is over when the stream ends. With `outcome: { type: "interrupt", interrupts: [{ id, toolCallId, reason: "tool_call", metadata: { kind: "approval", toolName, input } }] }` the run is **waiting for approval**: show a card per interrupt (#65) and send a resume. `metadata.input` is what the tool would write. |
+| `RUN_ERROR` | The run ended in error, `{ code, message, error: { code, message } }`; `message` is ready to show. Codes below. |
+| `CUSTOM` | `compaction:*` (old context was compacted), `run.accepted`. Safe to ignore. |
+
+`RUN_ERROR` codes (`ASSISTANT_ERROR_CODES`, `src/server/errors.ts`). The provider's own error body
+stays in `rawEvent`.
+
+| `code` | Cause | Suggested UI |
+| --- | --- | --- |
+| `stopped` | The user pressed Stop. | Mark the answer as stopped. |
+| `openrouter_invalid_key` | OpenRouter 401. | "Ask an administrator" (not the user's fault). |
+| `openrouter_out_of_credits` | OpenRouter 402. | Same. |
+| `openrouter_rate_limited` | OpenRouter 429 (`retryAfterMs` when known). | Retry later. |
+| `model_unavailable` | 404/502/503, "no endpoints found…" (no provider serves it with tools and `data_collection: deny`). | Offer another model. |
+| `context_overflow` | Too long even after compaction. | Start a new conversation. |
+| `not_signed_in` | `/api/mcp` refused the forwarded session. | Sign in again. |
+| `tools_unavailable` | Payload's tools could not be listed. | Retry. |
+| `run_failed` | Anything else. | Retry. |
+
+### `GET /api/assistant/chat?threadId=…`: rejoin a run, or load a conversation
+
+- **Rejoin** (a reload, a dropped connection, another tab): add `runId` (or `X-Run-Id`) and an
+  offset: `Last-Event-ID: <last id seen>` or `?offset=-1` from the start. Replays the run's log
+  from there and tails it live until it ends; never calls the model. This is `useChat`'s
+  `joinRun()` and its reconnect, if the adapter URL carries `?threadId=`:
+  `` fetchServerSentEvents(() => `/api/assistant/chat?threadId=${threadId}`) ``.
+  404 for an unknown run or someone else's conversation. Logs are kept an hour after a run.
+- **Load** (no run, no offset): `reconstructChat`'s body, what `useChat`'s `hydrate()` expects:
+  `{ messages: UIMessage[], activeRun: { runId } | null, interrupts: { runId, pending: [...] } | null,
+  runs: [{ runId, status: "completed" | "aborted" | "failed", startedAt, finishedAt }], page? }`.
+  `activeRun` set: rejoin it. `interrupts` set: show the approval cards again (they come from the
+  server, so a reload or another device re-prompts). `?limit=` / `?before=` page the messages.
+  A conversation that doesn't exist yet, or isn't the caller's, gives the empty body
+  (`{ messages: [], activeRun: null, interrupts: null }`), like a new chat.
+
+### `POST /api/assistant/chat/stop`
+
+Body `{ threadId, runId }` (what `fetchServerSentEvents`' `cancelUrl` sends) → `{ stopped: boolean }`.
+`true`: the run's `chat()` is aborted; its stream (and log) ends with `RUN_ERROR { code: "stopped" }`
+and the run is recorded `aborted`. `false`: not live (finished already) or not the caller's.
+Closing the tab or aborting the `fetch` does **not** stop a run; only this does.
+
+### Conversations
+
+| | |
+| --- | --- |
+| `GET /api/assistant/conversations?limit=50&cursor=&search=` | `{ conversations: [{ threadId, title, createdAt, updatedAt }], nextCursor }`, newest first, the caller's only. `limit` ≤ 100. |
+| `GET /api/assistant/conversations/:threadId` | The same body as the load above, or 404 when it doesn't exist or isn't the caller's. |
+| `PATCH /api/assistant/conversations/:threadId` | `{ title }` (1–200 characters) → `{ threadId, title }`. |
+| `DELETE /api/assistant/conversations/:threadId` | → `{ deleted: true }`. Transcript, runs, approvals, logs and the list entry; a live run is aborted. |
+
+Checked live (#63) under workerd (`vite preview`, local D1, a temporary registration with the
+app wiring below): "Which pages exist on the site?" → `findDocuments` with `select` →
+an answer with the admin link, streamed over SSE from the object; 3 model calls on
+`deepseek/deepseek-v4.1-flash`, the last one with 10,368 of 10,700 input tokens cached; a rejoin
+from `offset=-1` replayed all 109 events.
+
+New conversations: the client makes a `threadId` and sends the first turn; the conversation is
+created (and listed, titled from that first message) by that turn.
 
 ## App wiring (#66)
 
@@ -253,7 +421,7 @@ the spike (#59) validated on workerd; `ai-react` 1.0.2 and `ai-compaction` 1.0.0
 `@openrouter/sdk` is not allowed to run its `prepare` script (`allowBuilds` in
 `pnpm-workspace.yaml`); the install fails without that.
 
-## Payload tools (`src/tools/payloadToolSource.ts`)
+## Payload tools (`src/tools/payloadToolSource.ts`, `src/tools/inProcess.ts`)
 
 The model's tools are plugin-mcp's, called **as the signed-in admin user**. An MCP client from
 `@tanstack/ai-mcp` speaks to plugin-mcp's `POST /api/mcp` with the admin request's `Cookie`,
@@ -262,12 +430,8 @@ The model's tools are plugin-mcp's, called **as the signed-in admin user**. An M
 chat turn (#63) and the conversation's Durable Object (#62) import it from inside the package.
 
 ```ts
-import {
-  createPayloadToolSource,
-  payloadToolSourceForRequest,
-  payloadToolsMcpOptions,
-  payloadToolsSystemPrompt,
-} from './tools/payloadToolSource'
+import { createPayloadToolSource, payloadToolsMcpOptions, payloadToolsSystemPrompt } from './tools/payloadToolSource'
+import { payloadToolSourceForRequest } from './tools/inProcess' // needs payload: Worker / Node only
 
 // On the Worker that serves the admin request (has a Payload instance):
 const source = payloadToolSourceForRequest(req, { toolFilter: options.toolFilter })
@@ -292,9 +456,9 @@ chat({
 | --- | --- |
 | `createPayloadToolSource({ endpoint, headers, dispatch, toolFilter?, logger? })` | The source `chat({ mcp })` takes (`tools()` + `close()`). Connects lazily on the first `tools()`. Holds the user's credentials: one per run, never in module state. |
 | `McpDispatch` | `(request: Request) => Promise<Response>`: how an MCP request reaches `/api/mcp`. The request already carries the auth headers; a dispatcher must not add or drop any. |
-| `inProcessDispatch(config, { payloadInstanceCacheKey? })` | The dispatcher where Payload lives: `handleEndpoints({ config, path: '/api/mcp', request })`, no network hop. |
+| `inProcessDispatch(config, { payloadInstanceCacheKey? })` (`inProcess.ts`) | The dispatcher where Payload lives: `handleEndpoints({ config, path: '/api/mcp', request })`, no network hop. |
 | `authHeadersFrom(request)` | `cookie`, `authorization` and `origin` from the admin request; `origin` falls back to the request's own (Payload's CSRF check needs it once `serverURL`/`csrf` is set, and an internal request has no `Sec-Fetch-Site`). |
-| `payloadToolSourceForRequest(req, { toolFilter?, dispatch? })` | The three above wired for a `PayloadRequest`; the endpoint is `${serverURL or the request's origin}${routes.api}/mcp`. |
+| `payloadToolSourceForRequest(req, { toolFilter?, dispatch? })` (`inProcess.ts`) | The three above wired for a `PayloadRequest`; the endpoint is `${serverURL or the request's origin}${routes.api}/mcp`. |
 | `payloadToolsMcpOptions(source)` | The `mcp` option for `chat()`: closes the connection when the run ends, and rethrows a discovery failure as one of the errors below. |
 | `payloadToolsSystemPrompt(instructions?)` / `PAYLOAD_TOOLS_SYSTEM_PROMPT` | Tool guidance for the system prompt: `getConfigInfo` for slugs, **`select` + small `limit` + `depth: 0` on `findDocuments`** (without them the spike measured whole documents flooding the context), `_status`, drafts, approvals, don't retry access errors. |
 | `needsApproval`, `AUTH_TOOL_NAMES`, `UNSUPPORTED_TOOL_NAMES` | The rules below, for the UI and tests. |
@@ -348,9 +512,12 @@ pnpm --filter @cargo/payload-plugin-assistant typecheck  # tsconfig.json + tscon
 ```
 
 `vitest.config.ts` is the Node suite (options, boot, caps, the in-memory fallback and its
-conformance). `vitest.workerd.config.ts` runs `tests/workerd/` under workerd with
+conformance; `tests/integration/chat.test.ts`: every endpoint through Payload's router against real
+Payload + plugin-mcp, turns with `fakeText()`; `tests/turn.test.ts`: the real OpenRouter adapter with
+its `httpClient` replaced, asserting the serialised request and the error mapping). `vitest.workerd.config.ts` runs `tests/workerd/` under workerd with
 `@cloudflare/vitest-plugin` 1.4.11 (its Miniflare and Wrangler match the app's), against the test
 Worker in `tests/workerd/` (same bindings as the app wiring above): conformance of both objects,
 ownership, retention (alarm), reconnect after a mid-run disconnect, restart mid-run, and the MCP
-transport prototype. Storage is shared between the tests of a file there, so each test uses its own
+transport prototype, and the real turn in the object (`tests/workerd/chat.test.ts`: tools,
+approval resume, disconnect + rejoin, stop). Storage is shared between the tests of a file there, so each test uses its own
 ids.
