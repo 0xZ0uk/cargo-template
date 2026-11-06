@@ -83,5 +83,35 @@
       "namespace_id": "1004",
       "simple": { "limit": 20, "period": 60 },
     },
+    // Assistant chat turns (`POST /api/assistant/chat`, a send or an approval), per admin user.
+    // A turn is up to 10 model calls; this only brakes a runaway client. The real spend cap is
+    // the credit limit on the OpenRouter key. See src/plugins/assistantRateLimit.ts.
+    {
+      "name": "ASSISTANT_RATE_LIMIT",
+      "namespace_id": "1005",
+      "simple": { "limit": 20, "period": 60 },
+    },
   ],
+  // The admin assistant (packages/payload-plugin-assistant): one Durable Object per conversation
+  // (transcript, runs, approvals, stream log, in its own SQLite: nothing in D1) and one per user
+  // listing their conversations. The classes are re-exported from src/server.ts. The binding
+  // names ASSISTANT_INDEX and ASSISTANT_SELF are fixed: the conversation object reads them.
+  "durable_objects": {
+    "bindings": [
+      { "name": "ASSISTANT_CONVERSATIONS", "class_name": "AssistantConversation" },
+      { "name": "ASSISTANT_INDEX", "class_name": "AssistantConversationIndex" },
+    ],
+  },
+  // Durable Object class lifecycle, declaratively (Wrangler's recommendation for new Workers,
+  // instead of the `migrations` array; the two are mutually exclusive, and a Worker deployed
+  // with `exports` can't go back). `wrangler deploy` creates the namespaces on first deploy;
+  // `wrangler versions upload` can't. Storage is fixed once created: SQLite.
+  "exports": {
+    "AssistantConversation": { "type": "durable-object", "storage": "sqlite" },
+    "AssistantConversationIndex": { "type": "durable-object", "storage": "sqlite" },
+  },
+  // The assistant's tools: the conversation object calls this Worker's own `POST /api/mcp`
+  // through a service binding, with the admin's cookie (no public URL, no network hop).
+  // `service` must be this Worker's `name`.
+  "services": [{ "binding": "ASSISTANT_SELF", "service": "cargo-template" }],
 }

@@ -46,7 +46,7 @@ Then add the bucket's lifecycle rule. It expires the SEO analyzer's cache object
 pnpm r2:lifecycle
 ```
 
-If you rename the Worker, database or bucket, update the names in `wrangler.jsonc` (and in the `r2:lifecycle` script) too, then run `pnpm cf-typegen`. The `ratelimits` bindings in `wrangler.jsonc` use account-wide `namespace_id`s: give each Worker on the account its own ids, or they share counters. Workers Rate Limiting is approximate (counts sync between machines eventually), so a burst can get past the limit.
+If you rename the Worker, database or bucket, update the names in `wrangler.jsonc` (and in the `r2:lifecycle` script) too, then run `pnpm cf-typegen`. The assistant's `ASSISTANT_SELF` service binding names the Worker itself (`"service": "cargo-template"`), so it must follow a rename. The `ratelimits` bindings in `wrangler.jsonc` use account-wide `namespace_id`s: give each Worker on the account its own ids, or they share counters. Workers Rate Limiting is approximate (counts sync between machines eventually), so a burst can get past the limit.
 
 Wrangler stores the local D1 database under `.wrangler/state` by `database_id`, so changing the id gives `pnpm dev` a new, empty local database. To keep your local data, change the id before you start developing. Otherwise, copy the old `.sqlite` file in `.wrangler/state/v3/d1/miniflare-D1DatabaseObject/` to the new file name.
 
@@ -66,6 +66,13 @@ pnpm run deploy
 ```
 
 The Worker's entry is [`src/server.ts`](./src/server.ts): TanStack Start's `fetch` plus a `scheduled` handler. A Cron Trigger (`triggers.crons` in `wrangler.jsonc`, every 5 minutes) runs the due Payload jobs through it. Today that's the SEO analyzer's `seo` queue, which finishes dashboard audits too big for one request. To run a tick locally against `pnpm preview`, open `/cdn-cgi/handler/scheduled?cron=*/5+*+*+*+*`.
+
+The assistant's two Durable Object classes (`AssistantConversation`, `AssistantConversationIndex`, re-exported from `src/server.ts`) are declared in the `exports` field of `wrangler.jsonc`, Wrangler's declarative replacement for the `migrations` array. The first `pnpm run deploy` creates their namespaces (SQLite storage); there's nothing to create by hand. Keep in mind:
+
+- Durable Object classes are created and deleted only by `wrangler deploy`. `wrangler versions upload` refuses a config with `exports` entries, so gradual deployments and preview (version) URLs aren't available for this Worker.
+- Rollbacks can't cross a lifecycle change (adding, renaming or deleting a class).
+- Once deployed with `exports`, the Worker can't go back to `migrations`. Removing a class means marking it `"state": "deleted"`, which deletes all of its data.
+- An object's storage type (SQLite) is fixed once its namespace exists.
 
 `pnpm run deploy` (not `pnpm deploy`, which is pnpm's own command) applies migrations to the remote D1 database, runs `PRAGMA optimize`, builds the Worker with `APP_ENV=production` and deploys it with `varlock-wrangler`. Non-sensitive values become Worker vars and sensitive ones become secrets. `varlock-wrangler deploy` replaces the Worker's vars and secrets with the schema's, so define any new ones in `.env.schema` rather than the dashboard. The build fails if `PAYLOAD_SECRET` doesn't resolve for production. If you add a named Wrangler environment, set `CLOUDFLARE_ENV` so the migration commands use the same bindings.
 
@@ -166,6 +173,22 @@ To connect a client:
    Clients that only support stdio can use `npx -y mcp-remote <url> --header "Authorization: users API-Key <key>"`.
 
 In development you can skip auth with `http://localhost:3000/api/mcp?overrideAccess=true`; the endpoint rejects that parameter in production. Configure descriptions, tools, prompts and resources in the `mcpPlugin` call in `src/payload.config.ts`.
+
+### Assistant
+
+[`@cargo/payload-plugin-assistant`](../../packages/payload-plugin-assistant) adds a chat at `/admin/assistant` ("Assistant › Chat" in the admin sidebar) that reads and edits content through the MCP tools above, **as the signed-in admin user**: Payload's access control applies to every call. It runs on [OpenRouter](https://openrouter.ai). Registered in `src/payload.config.ts`, after `mcpPlugin`.
+
+**The key.** Create a key at [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys) and set it as `OPENROUTER_API_KEY` (`.env.development.local` for `pnpm dev`, `.env.production.local` or CI for deploys; it's `@sensitive`, so `varlock-wrangler deploy` uploads it as a Worker secret). The SEO analyzer's AI features use the same key. **Give the key a credit limit in OpenRouter**: that is the real cap on spend. The rate limit below only slows a runaway client down. Without a key, the view and the endpoints still exist and say the assistant isn't configured; nothing else changes (the schema, the import map and CI don't need it).
+
+**Models.** The allowlist is one model, DeepSeek V4.1 Flash (`deepseek/deepseek-v4.1-flash`), which is also the default. It handles tool calls well and is cheap: a turn is usually 2–4 model calls of about 10,000 prompt tokens each (mostly the tool definitions, which OpenRouter caches between calls). When the plugin was built, such turns measured around $0.0002–$0.001. Check [the model's page](https://openrouter.ai/deepseek/deepseek-v4.1-flash) for current prices. To offer more models, add `{ id, label }` entries to `models` (any OpenRouter model that supports tool calling and `data_collection: deny`; the picker appears with two or more). Requests are routed with `require_parameters` and `data_collection: deny`, so drafts never reach providers that log or train on prompts.
+
+**Approvals.** Reads (find, count, schemas) run without asking. Every write (create, update, delete, duplicate, restore) pauses on a card that shows the change field by field against the current document. Nothing is written until you approve; a rejection, with an optional reason, goes back to the model. The assistant saves drafts and only publishes when asked to in so many words.
+
+**Conversations live in Durable Objects, not D1.** One `AssistantConversation` per conversation keeps its transcript, runs, pending approvals and stream log in its own SQLite, and runs the chat turn itself, so a reply survives a closed tab and a reload rejoins it. One `AssistantConversationIndex` per user lists their conversations. Conversations idle for 30 days are deleted. The conversation object calls this Worker's own `/api/mcp` through the `ASSISTANT_SELF` service binding with the user's session cookie. `pnpm dev` can't run Durable Objects that the Worker defines itself, so the Node dev server keeps conversations in memory (lost on restart; `src/plugins/assistant.ts`). Use `pnpm preview` to exercise the real objects. Wrangler's proxy also warns on every Node start that the two classes aren't exported; that warning is harmless.
+
+**Rate limit.** `ASSISTANT_RATE_LIMIT` (`wrangler.jsonc`, `namespace_id` 1005) allows 20 chat turns per minute per admin user, where a turn is a message or an approval answer. It's wired to the plugin's `rateLimit` hook in `src/plugins/assistantRateLimit.ts`. Without the binding there's no limit.
+
+**Tests.** `tests/e2e/assistant.e2e.spec.ts` sends a message, then approves and rejects an update to a draft page. It needs no key: `playwright.config.ts` starts the dev server with `ASSISTANT_TEST_MODEL=1`, which turns on the plugin's scripted test model. Only requests to `localhost` use it, and `APP_ENV=production` ignores the flag, so a deployed Worker always uses OpenRouter.
 
 ### Current limitations
 

@@ -6,6 +6,7 @@ import { OPENROUTER_PROVIDER } from "../utils/provider";
 import type { ChatTurnBody, TurnContext, TurnRunner, TurnSettings } from "../conversations/types";
 import { createPayloadToolSource, payloadToolsMcpOptions } from "../tools/payloadToolSource";
 import { withAssistantErrors } from "./errors";
+import { testModelAdapter } from "./testModel";
 
 /** Builds the model adapter for a turn. Default: OpenRouter. Tests pass `fakeText()`. */
 export type CreateAdapter = (settings: TurnSettings) => AnyTextAdapter;
@@ -35,6 +36,10 @@ export type OpenRouterSdkOverrides = Omit<NonNullable<Parameters<typeof createOp
 
 export const openRouterAdapter: CreateAdapter = createOpenRouterAdapter();
 
+/** The default: OpenRouter, or the scripted test model when the endpoint said so (`settings.testModel`). */
+export const defaultAdapter: CreateAdapter = (settings) =>
+  settings.testModel ? testModelAdapter(settings) : openRouterAdapter(settings);
+
 /**
  * The real chat turn (#63). Runs wherever the conversation lives: inside the conversation's
  * Durable Object on Workers, in the Worker process with the in-memory backend. It gets the
@@ -50,7 +55,7 @@ export const openRouterAdapter: CreateAdapter = createOpenRouterAdapter();
  * - Provider routing is fixed: `{ requireParameters: true, dataCollection: 'deny' }`, camelCase.
  */
 export function createTurnRunner(options: TurnRunnerOptions = {}): TurnRunner {
-  const createAdapter = options.createAdapter ?? openRouterAdapter;
+  const createAdapter = options.createAdapter ?? defaultAdapter;
   return (context: TurnContext): AsyncIterable<StreamChunk> => {
     const { input, persistence, mcpFetch, signal } = context;
     const { threadId, runId } = input;

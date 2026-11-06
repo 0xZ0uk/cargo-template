@@ -52,5 +52,8 @@ export default defineConfig({
         // (`pnpm web migrate`): Payload doesn't push the schema.
         timeout: 180_000,
         url: baseURL,
+        // The admin assistant answers with its scripted test model (localhost only, never with
+        // APP_ENV=production), so the assistant spec needs no OpenRouter key.
+        env: { ASSISTANT_TEST_MODEL: '1' },
       },
 })

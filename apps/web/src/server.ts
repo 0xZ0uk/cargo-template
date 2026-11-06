@@ -5,6 +5,14 @@ import {
   defaultStreamHandler,
 } from '@tanstack/react-start/server'
 
+// The admin assistant's Durable Objects (one per conversation, one per user's conversation list):
+// a Worker must export every Durable Object class it binds (`durable_objects` in wrangler.jsonc).
+// Workerd-only; the `./do` entry never reaches the Payload config or the admin bundle.
+export {
+  AssistantConversation,
+  AssistantConversationIndex,
+} from '@cargo/payload-plugin-assistant/do'
+
 // Worker entry. TanStack Start uses `src/server.ts` as its server entry when it exists, so
 // this replaces the default one: same `fetch`, plus a `scheduled` handler for the Cron
 // Trigger in `wrangler.jsonc`.

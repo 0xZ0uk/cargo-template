@@ -8,7 +8,8 @@ with one Durable Object per conversation. Plan: [#58](https://github.com/0xZ0uk/
 > in Durable Objects (#62), the chat turn on OpenRouter with its endpoints (#63, see
 > [Endpoints](#endpoints-the-contract-for-the-admin-ui)) and the chat view (#64, see
 > [Admin UI](#admin-ui)) are in, with approval cards that show a diff before any write (#65, see
-> [Approvals](#approvals-diff-cards)). Not registered in the app yet (#66).
+> [Approvals](#approvals-diff-cards)). Registered in `apps/web` (#66, see [App wiring](#app-wiring-66));
+> the deployed-Worker checks of #66 are still to do.
 
 ```ts
 import { assistantPlugin } from '@cargo/payload-plugin-assistant'
@@ -46,6 +47,7 @@ No collections, globals or injected fields. With `enabled: false` the config is 
 | `appTitle` | OpenRouter attribution (`X-OpenRouter-Title`). Default "Payload admin assistant". `HTTP-Referer` is the site's URL. |
 | `toolFilter(tool)` | Which MCP tools the model sees, after the built-in filter (auth tools and `getUploadInstructions` are always dropped). Gets the raw MCP tool (`name`, `description`, `annotations`). Default: all the rest. By name only: to hide deletes for one collection, use plugin-mcp's own `collections.<slug>.tools`. |
 | `conversations` | `{ namespace, index, retentionDays, caps }`. `namespace` (`AssistantConversation`) and `index` (`AssistantConversationIndex`) go together; omit both for the in-memory fallback (Node dev, tests). `retentionDays`: delete a conversation idle this long, default 30. `caps`: size limits, see [Size caps](#size-caps). The namespace types are structural (no `@cloudflare/workers-types`). |
+| `testModel` | **Tests only.** Answer turns with a scripted model instead of OpenRouter; see [Test model](#test-model). Only requests to a loopback host use it. Default `false`. |
 | `rateLimit(req)` | Return `false` for 429. Called for each chat turn (a send or an approval resume), after `access`, before any model call; reads, rejoins, stop and the conversation endpoints aren't limited. Key it per user (`req.user.collection` + `id`); the app connects it to a Workers Rate Limiting binding (#66). |
 
 OpenRouter provider routing is fixed (`src/utils/provider.ts`): `{ requireParameters: true,
@@ -404,10 +406,10 @@ created (and listed, titled from that first message) by that turn.
 
 ## App wiring (#66)
 
-Not applied to `apps/web` yet. When registering:
+As `apps/web` does it:
 
-1. **`apps/web/wrangler.jsonc`**: the two classes, the app's first `migrations` entry, and the
-   service binding to itself (the Worker's own `name`):
+1. **`apps/web/wrangler.jsonc`**: the two classes, their lifecycle, and the service binding to the
+   Worker itself (its own `name`):
 
    ```jsonc
    "durable_objects": {
@@ -416,15 +418,20 @@ Not applied to `apps/web` yet. When registering:
        { "name": "ASSISTANT_INDEX", "class_name": "AssistantConversationIndex" }
      ]
    },
-   "migrations": [
-     { "tag": "v1", "new_sqlite_classes": ["AssistantConversation", "AssistantConversationIndex"] }
-   ],
+   // Declarative class lifecycle (apps/web pins Wrangler 4.156; mutually exclusive with `migrations`).
+   // A Worker that already uses `migrations` adds `{ "tag": "…", "new_sqlite_classes": [...] }` instead.
+   "exports": {
+     "AssistantConversation": { "type": "durable-object", "storage": "sqlite" },
+     "AssistantConversationIndex": { "type": "durable-object", "storage": "sqlite" }
+   },
    "services": [{ "binding": "ASSISTANT_SELF", "service": "cargo-template" }]
    ```
 
    The binding names `ASSISTANT_INDEX` and `ASSISTANT_SELF` are fixed: the conversation object reads
    them from its `env` (retention/delete of the index entry, the MCP transport).
-   `ASSISTANT_CONVERSATIONS` is only passed to the plugin, so its name is free.
+   `ASSISTANT_CONVERSATIONS` is only passed to the plugin, so its name is free. Only `wrangler
+   deploy` creates the classes (`wrangler versions upload` refuses `exports`), so a Worker with them
+   has no gradual deployments or version preview URLs.
 
 2. **`apps/web/src/server.ts`**: export both classes by name next to the default TanStack Start
    entry (the Worker entry must export every Durable Object class):
@@ -433,10 +440,41 @@ Not applied to `apps/web` yet. When registering:
    export { AssistantConversation, AssistantConversationIndex } from '@cargo/payload-plugin-assistant/do'
    ```
 
-3. **`pnpm web cf-typegen`**, then pass the namespaces from `#cloudflare-runtime`:
+   A Node dev server that loads the Worker entry (TanStack Start's `vite dev`) can't import `./do`
+   (`cloudflare:workers`): alias it to a stub there (`apps/web/vite.config.ts`,
+   `src/runtime/assistantDurableObjects.node.ts`).
+
+3. **`pnpm web cf-typegen`**, then pass the namespaces from `#cloudflare-runtime` on Workers only:
    `conversations: { namespace: cloudflare.ASSISTANT_CONVERSATIONS, index: cloudflare.ASSISTANT_INDEX }`.
+   Under Node, Wrangler's `getPlatformProxy` can't run Durable Objects the Worker defines itself
+   (nor the self service binding), so the app omits `conversations` there and gets the in-memory
+   backend (`apps/web/src/plugins/assistant.ts`).
+
+4. **`rateLimit`** from a Workers Rate Limiting binding, keyed by `<collection>:<id>`
+   (`apps/web/src/plugins/assistantRateLimit.ts`).
 
 No D1 migration: nothing here touches D1.
+
+## Test model
+
+`testModel: true` replaces OpenRouter with a scripted `fakeText()` adapter (`src/server/testModel.ts`),
+so end-to-end tests run real turns (the endpoint, the Durable Object, plugin-mcp's tools as the
+user, approvals, the UI) with no key and no network. It reads the conversation, not a queue, so it
+survives a restarted object:
+
+| The last message | The answer |
+| --- | --- |
+| `/tool <name> <JSON arguments>` | Calls that tool, e.g. `/tool findDocuments {"slug":"pages","limit":5}`. A write pauses for approval as usual. |
+| A tool result | `Tool <name> finished: <the result, cut at 300 characters>` |
+| A rejected approval | `The change was rejected. Nothing was written.` |
+| Anything else | `Test model: you said "<message>".` |
+
+**Safeguard.** The endpoint uses it only when the request was made to a loopback host
+(`localhost`, `*.localhost`, 127.0.0.1, ::1; `usesTestModel`) and then tells the turn through
+`settings.testModel`. Any other request still needs `apiKey` (503 `not_configured` without one), so
+a `testModel` left on can't swap the model of a deployed Worker. `apps/web` also turns it on only
+with `ASSISTANT_TEST_MODEL=1` outside `APP_ENV=production`. `GET /api/assistant/config` answers
+`testModel: true` when it applies.
 
 ## Dependencies
 

@@ -1,6 +1,7 @@
 import { onpage } from '@cargo/onpage-plugin'
 import { tanstackSession } from '@cargo/onpage-tanstack-start/session'
 import { abTestingPlugin } from '@cargo/payload-plugin-ab'
+import { assistantPlugin } from '@cargo/payload-plugin-assistant'
 import { createSqlSeoDataStore, seoAnalyzerPlugin } from '@cargo/payload-seo-analyzer'
 import { sqliteD1Adapter } from '@payloadcms/db-d1-sqlite'
 import { mcpPlugin } from '@payloadcms/plugin-mcp'
@@ -25,6 +26,8 @@ import { defaultLexical } from './fields/defaultLexical'
 import type { Page } from './payload-types'
 import { abMeasurementConfig } from './plugins/abMeasurement'
 import { abStorage } from './plugins/abTesting'
+import { assistantConversations, assistantTestModel } from './plugins/assistant'
+import { workersAssistantRateLimit } from './plugins/assistantRateLimit'
 import { limitVersions } from './plugins/limitVersions'
 import { r2SeoCacheStore } from './plugins/seoCacheStore'
 import { workersSeoRateLimit } from './plugins/seoRateLimit'
@@ -134,6 +137,23 @@ export default buildConfig({
       mcp: {
         serverOptions: { serverInfo: { name: 'Cargo Template' } },
       },
+    }),
+    // Admin assistant (packages/payload-plugin-assistant): /admin/assistant chats with the content
+    // through the MCP tools above, as the signed-in user, on OpenRouter (`OPENROUTER_API_KEY`,
+    // shared with the SEO analyzer; without it the view says "not configured"). Every write waits
+    // for the user's approval on a diff card. Conversations live in Durable Objects, never D1
+    // (wrangler.jsonc); the Node dev server keeps them in memory. See the README, "Assistant".
+    assistantPlugin({
+      models: [{ id: 'deepseek/deepseek-v4.1-flash', label: 'DeepSeek V4.1 Flash' }],
+      apiKey: process.env.OPENROUTER_API_KEY || cloudflare.OPENROUTER_API_KEY || undefined,
+      conversations: assistantConversations(cloudflare),
+      // Per admin user, shared across isolates. The credit limit on the key is the spend cap.
+      rateLimit: workersAssistantRateLimit(cloudflare),
+      // Tests only (Playwright): a scripted model on localhost, never on a deployed Worker.
+      testModel: assistantTestModel({
+        ASSISTANT_TEST_MODEL: process.env.ASSISTANT_TEST_MODEL || cloudflare.ASSISTANT_TEST_MODEL,
+        APP_ENV: process.env.APP_ENV || cloudflare.APP_ENV,
+      }),
     }),
     // Fields are added to Pages by hand (the SEO tab), so no `collections` here.
     seoPlugin({

@@ -114,4 +114,11 @@ export interface AssistantPluginOptions {
   conversations?: AssistantConversationsOptions;
   /** Return `false` to answer 429. Called per chat turn (send or resume), after `access`, before any model call. */
   rateLimit?: (req: PayloadRequest) => boolean | Promise<boolean>;
+  /**
+   * **Tests only.** Answer turns with a scripted model instead of OpenRouter (see the README,
+   * "Test model"): no key, no network, `/tool <name> <JSON>` in a message calls that tool. Only
+   * requests made to a loopback host (`localhost`, 127.0.0.1, ::1) use it; any other request
+   * still needs `apiKey`, so a deployed Worker can't be switched to it. Default `false`.
+   */
+  testModel?: boolean;
 }

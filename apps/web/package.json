@@ -36,6 +36,7 @@
     "@cargo/onpage-react": "workspace:*",
     "@cargo/onpage-tanstack-start": "workspace:*",
     "@cargo/payload-plugin-ab": "workspace:*",
+    "@cargo/payload-plugin-assistant": "workspace:*",
     "@cargo/payload-plugin-socials": "workspace:*",
     "@cargo/payload-seo-analyzer": "workspace:*",
     "@lexical/list": "catalog:",

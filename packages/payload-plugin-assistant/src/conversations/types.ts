@@ -41,6 +41,11 @@ export interface TurnSettings {
   /** OpenRouter attribution headers (`HTTP-Referer`, `X-OpenRouter-Title`). */
   httpReferer: string;
   appTitle: string;
+  /**
+   * Use the scripted test model instead of OpenRouter. Set by the endpoint only when the app
+   * turned `testModel` on and the request was made to a loopback host (`usesTestModel`).
+   */
+  testModel?: boolean;
 }
 
 /** The body of a turn, as the endpoint validated it. `TurnInput.body` carries this. */
