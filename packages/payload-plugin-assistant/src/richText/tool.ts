@@ -5,6 +5,8 @@ import {
   collectionOf,
   fieldsOf,
   hasDrafts,
+  internalLinkTargets,
+  internalLinkUrl,
   markdownLosses,
   resolveRichText,
   richTextCollections,
@@ -33,8 +35,8 @@ type MCPToolResponse = Parameters<MCPResponseOverride>[0];
 type CollectionToolsMap = NonNullable<NonNullable<MCPPluginConfig["collections"]>[string]>["tools"] & {};
 
 const FIDELITY =
-  "Markdown keeps paragraphs, headings, bold, italic, links (to URLs) and, where the field's editor has them, lists, quotes and strikethrough/inline code. " +
-  "It cannot keep underline, sub/superscript, text alignment, indentation, internal links to documents, links set to open in a new tab, or upload/relationship/block nodes.";
+  "Markdown keeps paragraphs, headings, bold, italic, links to URLs, internal links to documents (written `[text](payload://<collection>/<id>)`, e.g. `payload://pages/12`) and, where the field's editor has them, lists, quotes and strikethrough/inline code. " +
+  "It cannot keep underline, sub/superscript, text alignment, indentation, links set to open in a new tab, or upload/relationship/block nodes.";
 
 const DESCRIPTION = [
   "Replace one rich text field of a document with Markdown. Use this, never updateDocument, for any rich text field: updateDocument would need Lexical JSON.",
@@ -119,6 +121,38 @@ export async function readTargetDocument(
 }
 
 /**
+ * Internal links in a converted state whose document doesn't exist, or the user can't read, as
+ * `payload://<collection>/<id>`: a link Lexical would store pointing nowhere.
+ */
+async function brokenInternalLinks(req: PayloadRequest, state: unknown, overrideAccess: boolean): Promise<string[]> {
+  const broken: string[] = [];
+  for (const target of internalLinkTargets(state)) {
+    const url = internalLinkUrl(target.relationTo, target.id);
+    const collection = collectionOf(req, target.relationTo);
+    if (!collection) {
+      broken.push(`${url} (no collection "${target.relationTo}")`);
+      continue;
+    }
+    try {
+      const found = await req.payload.findByID({
+        collection: target.relationTo as CollectionSlug,
+        id: parseDocumentID({ id: target.id, collectionSlug: target.relationTo as CollectionSlug, payload: req.payload }),
+        depth: 0,
+        draft: hasDrafts(collection),
+        overrideAccess,
+        req,
+        disableErrors: true,
+        select: {},
+      } as Parameters<typeof req.payload.findByID>[0]);
+      if (!found) broken.push(url);
+    } catch {
+      broken.push(url);
+    }
+  }
+  return broken;
+}
+
+/**
  * `setRichTextFromMarkdown`: convert Markdown with the field's own editor and write it as the
  * user. Updates the path's top-level field with the document's current value (ids intact), so
  * block and array rows keep their ids and siblings. Never returns Lexical JSON.
@@ -158,6 +192,14 @@ export const setRichTextFromMarkdownTool = defineCollectionTool({
     }
 
     const state = location.converters.fromMarkdown({ markdown: input.markdown });
+    const broken = await brokenInternalLinks(req, state, authorizedMCP.overrideAccess);
+    if (broken.length) {
+      return text(
+        `Not written: ${broken.length === 1 ? "this internal link points" : "these internal links point"} to no document you can read: ${broken.join(", ")}. ` +
+          "Write internal links as [text](payload://<collection>/<id>) with the id of an existing document (find it with findDocuments).",
+        true
+      );
+    }
     const next = structuredClone(doc);
     setAtPath(next, location.path, state);
     const top = location.path.split(".")[0]!;
@@ -238,20 +280,177 @@ export function richTextAsMarkdown(slug: string): MCPResponseOverride {
   };
 }
 
-type CollectionEntry = NonNullable<NonNullable<MCPPluginConfig["collections"]>[string]>;
+const JSON_BLOCK = /```json\n([\s\S]*?)\n```/g;
 
 /**
- * A plugin-mcp collection entry with rich text as Markdown: adds `setRichTextFromMarkdown` and
- * the Markdown read conversion on `findDocuments` (unless `find` is disabled there).
+ * Every document in a plugin-mcp result, converted: a page (`docs`), a create result's rows
+ * (`{ doc, index }`), a version (`version` is the document) or a document itself.
+ */
+function convertResult(value: unknown, convert: (doc: unknown) => unknown): unknown {
+  if (Array.isArray(value)) return value.map((item) => convertResult(item, convert));
+  if (!isRecord(value)) return value;
+  if (Array.isArray(value.docs)) return { ...value, docs: value.docs.map((item) => convertResult(item, convert)) };
+  if (isRecord(value.version)) return { ...value, version: convert(value.version) };
+  if (isRecord(value.doc) && "index" in value) return { ...value, doc: convert(value.doc) };
+  return convert(value);
+}
+
+/**
+ * `overrideResponse` for the tools that print documents in fenced JSON (`updateDocument` with
+ * `returning`, `createDocuments`, `duplicateDocument`, `deleteDocuments`, `findVersions`,
+ * `findVersionByID`, `restoreVersion`): every rich text value in those blocks becomes Markdown, as
+ * in {@link richTextAsMarkdown}; the rest of the text (and any schema block) is kept. The internal
+ * `doc` and `structuredContent` are converted the same way. Errors pass through unchanged.
+ */
+export function richTextResultsAsMarkdown(slug: string): MCPResponseOverride {
+  return (response, doc, req) => {
+    if (response.isError) return response;
+    const first = response.content?.[0];
+    const original = first && first.type === "text" ? first.text : undefined;
+    if (typeof original !== "string") return response;
+    const collection = collectionOf(req, slug);
+    if (!collection) return response;
+    const blocks = blocksBySlugOf(req);
+    const fallback = rootConverters(req);
+    const convert = (value: unknown) => richTextToMarkdownDeep(value, fieldsOf(collection), blocks, fallback);
+    const convertAny = (value: unknown) => convertResult(value, convert);
+
+    let changed = false;
+    const body = original.replace(JSON_BLOCK, (whole, json: string) => {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(json);
+      } catch {
+        return whole;
+      }
+      if (isJsonSchema(parsed)) return whole; // "Use this schema for data": not documents
+      const converted = JSON.stringify(convertAny(parsed));
+      if (converted === JSON.stringify(parsed)) return whole;
+      changed = true;
+      return `\`\`\`json\n${converted}\n\`\`\``;
+    });
+    if (!changed) return response;
+    const structured = (response as { structuredContent?: unknown }).structuredContent;
+    return {
+      ...response,
+      content: [{ type: "text", text: `${body}\n${READ_NOTE}` }, ...response.content.slice(1)],
+      ...(isRecord(doc) && Object.keys(doc).length ? { doc: convertAny(doc) as Record<string, unknown> } : {}),
+      ...(isRecord(structured) ? { structuredContent: { ...(convertAny(structured) as Record<string, unknown>), ...(structured.schema ? { schema: structured.schema } : {}) } } : {}),
+    } as MCPToolResponse;
+  };
+}
+
+/** plugin-mcp's input schemas carry `$schema`; documents never do. */
+const isJsonSchema = (value: unknown): boolean => isRecord(value) && typeof value.$schema === "string";
+
+/** A JSON Schema node for a Lexical rich text value: `{ properties: { root: { properties: { type: { const: "root" } } } } }`. */
+function isRichTextSchema(node: Record<string, unknown>): boolean {
+  const root = isRecord(node.properties) ? node.properties.root : undefined;
+  const type = isRecord(root) && isRecord(root.properties) ? root.properties.type : undefined;
+  return isRecord(type) && type.const === "root";
+}
+
+const RICH_TEXT_SCHEMA_DESCRIPTION = `Rich text, read as Markdown (findDocuments). Write it only with ${SET_RICH_TEXT_TOOL_NAME} (Markdown, after the document exists), never in createDocuments or updateDocument data.`;
+
+/**
+ * A collection input schema with every rich text field described as Markdown written through
+ * {@link setRichTextFromMarkdownTool} instead of the Lexical JSON schema, and the `$defs` only
+ * those schemas used dropped. The field stays in the schema, so the model knows it exists.
+ */
+export function describeRichTextAsMarkdown(schema: unknown): { schema: unknown; changed: boolean } {
+  let changed = false;
+  const visit = (node: unknown): unknown => {
+    if (Array.isArray(node)) return node.map(visit);
+    if (!isRecord(node)) return node;
+    if (isRichTextSchema(node)) {
+      changed = true;
+      return { description: RICH_TEXT_SCHEMA_DESCRIPTION };
+    }
+    return Object.fromEntries(Object.entries(node).map(([key, value]) => [key, key === "$defs" ? value : visit(value)]));
+  };
+  if (!isRecord(schema)) return { schema, changed };
+  const next = visit(schema) as Record<string, unknown>;
+  if (!changed) return { schema, changed };
+  // Keep only the $defs still reachable from the rest of the schema.
+  const defs = isRecord(next.$defs) ? next.$defs : undefined;
+  if (defs) {
+    const used = new Set<string>();
+    const refs = (value: unknown) => {
+      const text = JSON.stringify(value);
+      for (const match of text.matchAll(/"#\/\$defs\/([^"]+)"/g)) {
+        const name = match[1]!;
+        if (!used.has(name) && name in defs) {
+          used.add(name);
+          refs(defs[name]);
+        }
+      }
+    };
+    const { $defs: _defs, ...rest } = next;
+    refs(rest);
+    const kept = Object.fromEntries(Object.entries(defs).filter(([name]) => used.has(name)));
+    if (Object.keys(kept).length) next.$defs = kept;
+    else delete next.$defs;
+  }
+  return { schema: next, changed };
+}
+
+/** `overrideResponse` for `getCollectionSchema`: rich text fields described as Markdown ({@link describeRichTextAsMarkdown}). */
+export function richTextSchemaAsMarkdown(): MCPResponseOverride {
+  return (response) => {
+    if (response.isError) return response;
+    const first = response.content?.[0];
+    const original = first && first.type === "text" ? first.text : undefined;
+    if (typeof original !== "string") return response;
+    let changed = false;
+    let described: unknown;
+    const text = original.replace(JSON_BLOCK, (whole, json: string) => {
+      if (changed) return whole; // the first block is the schema; the next is the upload config
+      try {
+        const result = describeRichTextAsMarkdown(JSON.parse(json));
+        if (!result.changed) return whole;
+        changed = true;
+        described = result.schema;
+        return `\`\`\`json\n${JSON.stringify(result.schema)}\n\`\`\``;
+      } catch {
+        return whole;
+      }
+    });
+    if (!changed) return response;
+    const structured = (response as { structuredContent?: unknown }).structuredContent;
+    return {
+      ...response,
+      content: [{ type: "text", text }, ...response.content.slice(1)],
+      ...(isRecord(structured) ? { structuredContent: { ...structured, schema: described } } : {}),
+    } as MCPToolResponse;
+  };
+}
+
+type CollectionEntry = NonNullable<NonNullable<MCPPluginConfig["collections"]>[string]>;
+
+/** plugin-mcp's built-in tools whose results print documents, by config key. */
+const RESULT_TOOLS = ["create", "update", "duplicate", "delete", "findVersions", "findVersionByID", "restoreVersion"] as const;
+
+/**
+ * A plugin-mcp collection entry with rich text as Markdown: adds `setRichTextFromMarkdown`, the
+ * Markdown read conversion on `findDocuments`, Markdown in the results of the tools that print
+ * documents ({@link RESULT_TOOLS}) and rich text described as Markdown by `getCollectionSchema`.
+ * A tool disabled in the entry (`false`) stays disabled; an entry's own `overrideResponse` on a
+ * tool is replaced.
  */
 export function withMarkdownRichText<T extends CollectionEntry>(slug: string, entry: T = {} as T): T {
   const tools = (entry.tools ?? {}) as CollectionToolsMap;
-  const find = tools.find;
+  const withOverride = (key: string, overrideResponse: MCPResponseOverride) => {
+    const current = (tools as Record<string, unknown>)[key];
+    return current === false ? {} : { [key]: { ...(isRecord(current) ? current : {}), overrideResponse } };
+  };
+  const results = richTextResultsAsMarkdown(slug);
   return {
     ...entry,
     tools: {
       ...tools,
-      ...(find === false ? {} : { find: { ...(isRecord(find) ? find : {}), overrideResponse: richTextAsMarkdown(slug) } }),
+      ...withOverride("find", richTextAsMarkdown(slug)),
+      ...withOverride("getCollectionSchema", richTextSchemaAsMarkdown()),
+      ...Object.assign({}, ...RESULT_TOOLS.map((key) => withOverride(key, results))),
       [SET_RICH_TEXT_TOOL_NAME]: setRichTextFromMarkdownTool,
     },
   } as T;

@@ -316,6 +316,15 @@ describe("nav link (client half)", () => {
   });
 });
 
+describe("internal links in answers (#116)", () => {
+  it("payload://<collection>/<id> navigates to the document in the admin", () => {
+    const { container } = renderMessage(assistantText("See [About us](payload://pages/12)."));
+    const link = container.querySelector("a")!;
+    expect(link.getAttribute("href")).toBe("/admin/collections/pages/12");
+    expect(link.hasAttribute("data-payload-link")).toBe(true);
+  });
+});
+
 describe("an empty conversation (#116)", () => {
   it("shows what the assistant does and example prompts; picking one fills the composer", () => {
     const onPick = vi.fn();

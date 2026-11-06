@@ -43,6 +43,16 @@ export function collectToolResults(messages: ReadonlyArray<MessageLike>): Map<st
 }
 
 /**
+ * Internal links copied from rich text (#116), `[text](payload://<collection>/<id>)`, pointed at the
+ * document's edit view. Done on the Markdown source: `@tanstack/markdown` drops a URL with an
+ * unknown scheme before the link component sees it.
+ */
+export function withInternalLinksAsAdminPaths(markdown: string, adminRoot: string): string {
+  const root = adminRoot.replace(/\/+$/, "");
+  return markdown.replace(/\]\(payload:\/\/([A-Za-z0-9_-]+)\/([^\s/?#()]+)\)/g, (_, slug: string, id: string) => `](${root}/collections/${slug}/${id})`);
+}
+
+/**
  * The admin path of a link the model wrote, or `undefined` when it leads elsewhere: a path under
  * the admin route, or an absolute URL on this origin (the system prompt gives the model the
  * site's URL, so it often writes `https://site/admin/collections/pages/1`).
@@ -117,7 +127,7 @@ export function MessageView({ message, results, slugs, adminRoute, hrefFor, rend
           <TextPart
             className="assistant-markdown"
             components={components}
-            content={content}
+            content={withInternalLinksAsAdminPaths(content, adminRoute)}
             key={key}
             role="assistant"
           />

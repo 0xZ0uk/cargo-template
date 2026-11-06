@@ -3,9 +3,19 @@
  * separate entry so the plugin itself never imports `@payloadcms/plugin-mcp` (an optional peer).
  */
 export {
+  describeRichTextAsMarkdown,
   richTextAsMarkdown,
+  richTextResultsAsMarkdown,
+  richTextSchemaAsMarkdown,
   SET_RICH_TEXT_TOOL_NAME,
   setRichTextFromMarkdownTool,
   withMarkdownRichText,
 } from "./richText/tool";
-export { markdownLosses, RichTextPathError, unsupportedMarkdown } from "./richText/fields";
+export {
+  internalLinkUrl,
+  INTERNAL_LINK_SCHEME,
+  markdownLosses,
+  parseInternalLinkUrl,
+  RichTextPathError,
+  unsupportedMarkdown,
+} from "./richText/fields";

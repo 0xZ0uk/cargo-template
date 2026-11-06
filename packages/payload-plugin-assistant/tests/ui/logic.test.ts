@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { pendingApprovalFrom } from "../../src/ui/ApprovalControl";
 import { assistantUrl, chatUrl, isValidThreadId, newThreadId, readApiError, recordingFetch } from "../../src/ui/api";
 import { noticeForClientError, noticeForHttpError, noticeForRunError } from "../../src/ui/errors";
-import { adminPathOf } from "../../src/ui/MessageView";
+import { adminPathOf, withInternalLinksAsAdminPaths } from "../../src/ui/MessageView";
 import {
   documentRefs,
   formatToolResult,
@@ -239,6 +239,12 @@ describe("admin links in model text", () => {
     expect(adminPathOf("//evil.test/admin", "/admin", "https://cms.test")).toBeUndefined();
     expect(adminPathOf("/pricing", "/admin", "https://cms.test")).toBeUndefined();
     expect(adminPathOf("/administrator", "/admin", "https://cms.test")).toBeUndefined();
+    // An internal link copied from rich text (#116) opens the document's edit view.
+    expect(withInternalLinksAsAdminPaths("[A](payload://pages/12) and [B](payload://posts/ab-1)", "/admin")).toBe(
+      "[A](/admin/collections/pages/12) and [B](/admin/collections/posts/ab-1)"
+    );
+    expect(withInternalLinksAsAdminPaths("[A](payload://pages/12)", "/")).toBe("[A](/collections/pages/12)");
+    expect(withInternalLinksAsAdminPaths("[A](payload://pages/1/../x) payload://pages/3", "/admin")).toBe("[A](payload://pages/1/../x) payload://pages/3");
   });
 });
 

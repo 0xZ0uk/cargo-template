@@ -65,7 +65,7 @@ serialised request body, not the options object.
 | `./admin/AssistantView` | The admin view (a server component wrapped in `DefaultTemplate`; the import-map target). |
 | `./admin/AssistantNavLink` | The nav link (a server component that asks `access`; the import-map target). |
 | `./client` | The chat UI, client components only (`"use client"`): `AssistantChat`, `AssistantNavLinkClient`, `ApprovalCard` (the default), `ApprovalControl` (minimal), `pendingApprovalFrom`, `answerInterrupt`, the `PendingApproval` / `ApprovalRenderer` / `ApprovalDecision` types and the proposal types (`ApprovalProposal`, `FieldChange`…). Its CSS is `./client.css`, imported by `client.js`. |
-| `./mcp` | plugin-mcp items for rich text as Markdown (#67): `withMarkdownRichText`, `setRichTextFromMarkdownTool`, `richTextAsMarkdown`, `SET_RICH_TEXT_TOOL_NAME`, `markdownLosses`, `unsupportedMarkdown`, `RichTextPathError`. Needs `@payloadcms/plugin-mcp` (an optional peer: only this entry imports it). See [Rich text as Markdown](#rich-text-as-markdown-67). |
+| `./mcp` | plugin-mcp items for rich text as Markdown (#67): `withMarkdownRichText`, `setRichTextFromMarkdownTool`, `richTextAsMarkdown` (`findDocuments`), `richTextResultsAsMarkdown` (other results) and `richTextSchemaAsMarkdown` / `describeRichTextAsMarkdown` (`getCollectionSchema`, #116), `SET_RICH_TEXT_TOOL_NAME`, `markdownLosses`, `unsupportedMarkdown`, `RichTextPathError`, `internalLinkUrl` / `parseInternalLinkUrl` / `INTERNAL_LINK_SCHEME` (`payload://<collection>/<id>`). Needs `@payloadcms/plugin-mcp` (an optional peer: only this entry imports it). See [Rich text as Markdown](#rich-text-as-markdown-67). |
 | `./do` | The Durable Object classes `AssistantConversation` and `AssistantConversationIndex`, plus their stores. Workerd-only (`cloudflare:workers`): re-export them from the Worker entry, never import this entry from `payload.config.ts` or the admin bundle. |
 
 The endpoints load the AI runtime with `await import('./server/chat')`, and tsup code-splits it
@@ -649,21 +649,51 @@ markdown, draft?, locale?, allowFormattingLoss? }`.
 groups, tabs, arrays and blocks; Lexical found elsewhere, e.g. in populated relationships, with the
 root editor's), and the response text is rebuilt in plugin-mcp's format, since `findDocuments`
 prints the documents itself. A line tells the model to write rich text with the tool. **This changes
-the output for external MCP clients too**, on purpose (one tool layer, #58). Other tools
-(`updateDocument`'s result, versions) still return Lexical JSON; `getCollectionSchema` still
-describes rich text as Lexical JSON, so the system prompt carries the rule.
+the output for external MCP clients too**, on purpose (one tool layer, #58).
 
-**Fidelity.** Markdown keeps paragraphs, headings, bold, italic, links to URLs and, where the field's
-editor has them, lists, quotes, strikethrough and inline code. It can't keep underline,
-sub/superscript, highlight, text styles, alignment, indentation, internal links (to documents), links
-opening in a new tab, or upload/relationship/block nodes (`markdownLosses`). **Decision: refuse, not
-warn.** If the field holds any of them, the tool writes nothing and says what would be lost; the
-system prompt tells the model to tell the editor and call again with `allowFormattingLoss: true` only
-once they agree, and the card repeats it. A warning alone would only reach the model after the loss.
-The other direction: Markdown the field's editor doesn't support (a heading level, lists) is kept as
-literal text by Lexical; `unsupportedMarkdown` finds it in the converted state, and both the tool
-result and the card say so. Blocks embedded in rich text (`BlocksFeature`) are out of scope: no
-editor in `apps/web` enables it.
+**Other results and the schema (#116).** Every plugin-mcp built-in tool takes an `overrideResponse`
+per collection, so `withMarkdownRichText` sets one on each tool that prints documents:
+`richTextResultsAsMarkdown(slug)` on `updateDocument` (whose result is only `{ id }` unless
+`returning: true`), `createDocuments`, `duplicateDocument`, `deleteDocuments`, `findVersions`,
+`findVersionByID` and `restoreVersion`. It converts the documents in each fenced JSON block (a page's
+`docs`, a create result's `{ doc, index }` rows, a version's `version`), leaves the rest of the text
+and any "use this schema" block alone, and converts the internal `doc` and `structuredContent` too.
+`getCollectionSchema` gets `richTextSchemaAsMarkdown()`: each rich text field's Lexical JSON Schema
+(the `{ root: { type: "root", … } }` node and the `$defs` only it used) becomes
+`{ description: "Rich text, read as Markdown (findDocuments). Write it only with
+setRichTextFromMarkdown …, never in createDocuments or updateDocument data." }`. The field stays
+listed, so the model knows it exists; the schema shrinks (the Lexical node definitions were most of
+it). The system prompt keeps its rule as well. An entry's own `overrideResponse` on those tools is
+replaced; a tool disabled with `false` stays disabled. Globals aren't covered (`withMarkdownRichText`
+is per collection, and `apps/web` has no global with rich text).
+
+**Fidelity.** Markdown keeps paragraphs, headings, bold, italic, links to URLs, internal links (below)
+and, where the field's editor has them, lists, quotes, strikethrough and inline code. It can't keep
+underline, sub/superscript, highlight, text styles, alignment, indentation, links opening in a new
+tab, internal links with no target document, or upload/relationship/block nodes (`markdownLosses`).
+
+**Decision: refuse, not warn.** If the field holds any of them, the tool writes nothing and says
+what would be lost; the system prompt tells the model to tell the editor and call again with
+`allowFormattingLoss: true` only once they agree, and the card repeats it. A warning alone would only
+reach the model after the loss. The other direction: Markdown the field's editor doesn't support (a
+heading level, lists) is kept as literal text by Lexical; `unsupportedMarkdown` finds it in the
+converted state, and both the tool result and the card say so. Blocks embedded in rich text
+(`BlocksFeature`) are out of scope: no editor in `apps/web` enables it.
+
+**Internal links (#116)** read and write as `[text](payload://<collection>/<id>)`, e.g.
+`[About us](payload://pages/12)`. Payload's link transformer exports an internal link through the
+LinkFeature's `internalDocToHref` (an empty href without one: the target was lost) and sanitises
+any other URL it doesn't know to `https://`, while its import keeps a URL as written. So
+`convertersOf` wraps each field's converters: before export, every internal link with a target
+becomes a custom link to a placeholder anchor (`#payload-internal-link-<n>`, which the sanitiser
+accepts), replaced in the Markdown by its `payload://` URL; after import, a link to
+`payload://<collection>/<id>` becomes `{ linkType: "internal", doc: { relationTo, value } }` again
+(digits become a number id, as D1 ids are). Why a pseudo-URL rather than the document's site path:
+it's stable, needs no per-collection URL scheme, and maps back without a lookup. Every conversion
+goes through it (reads, the write tool, the approval card), so an edit keeps the links it didn't
+touch, and the model can add one. `setRichTextFromMarkdown` refuses (writes nothing) when a link
+names a collection that doesn't exist or a document the user can't read, and says which. In the
+chat, a `payload://` link the model writes in an answer opens that document's edit view.
 
 **Approval card.** `buildProposal` special-cases the tool: one `richText` change at the path's label
 (`Layout › 3 · Rich text › Rich Text`), before = the current value as Markdown, after = the proposed

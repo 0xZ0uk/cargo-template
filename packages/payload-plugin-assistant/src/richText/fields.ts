@@ -54,13 +54,127 @@ const isRecord = (value: unknown): value is Doc => Boolean(value) && typeof valu
 const subFields = (field: { flattenedFields?: FieldLike[]; fields?: FieldLike[] }): FieldLike[] =>
   field.flattenedFields ?? field.fields ?? [];
 
-/** The converters of a rich text field, or `undefined` for an editor that has none (not Lexical). */
+// ── Internal links (to documents) in Markdown ───────────────────────────────────────────────
+//
+// Payload's link transformer exports an internal link through the LinkFeature's
+// `internalDocToHref` (empty without one, so the target was lost), and sanitises any other URL to
+// `https://` unless it is http(s), mailto, tel… or relative. Its import keeps the URL as written.
+// So: before export, each internal link becomes a custom link to a placeholder anchor that passes
+// the sanitiser, replaced in the Markdown by `payload://<collection>/<id>`; on import, a link to
+// `payload://<collection>/<id>` becomes an internal link again (#116).
+
+/** The scheme of internal links in Markdown: `[About us](payload://pages/12)`. */
+export const INTERNAL_LINK_SCHEME = "payload:";
+
+const PLACEHOLDER = "#payload-internal-link-";
+const INTERNAL_URL = /^payload:\/\/([A-Za-z0-9_-]+)\/([^\s/?#]+)$/;
+
+/** `payload://<collection>/<id>` for an internal link's target. */
+export const internalLinkUrl = (relationTo: string, id: string | number): string => `${INTERNAL_LINK_SCHEME}//${relationTo}/${encodeURIComponent(String(id))}`;
+
+/** The collection and id an internal link points to (`doc.value` may be populated), if any. */
+function linkTarget(fields: Doc): { relationTo: string; id: string | number } | undefined {
+  const doc = fields.doc;
+  if (!isRecord(doc) || typeof doc.relationTo !== "string" || !doc.relationTo) return undefined;
+  const value = isRecord(doc.value) ? doc.value.id : doc.value;
+  return (typeof value === "string" && value !== "") || typeof value === "number" ? { relationTo: doc.relationTo, id: value } : undefined;
+}
+
+/** `payload://pages/12` → `{ relationTo: "pages", id: 12 }` (digits become a number, as D1 ids are). */
+export function parseInternalLinkUrl(url: unknown): { relationTo: string; id: string | number } | undefined {
+  if (typeof url !== "string") return undefined;
+  const match = INTERNAL_URL.exec(url.trim());
+  if (!match) return undefined;
+  let id: string;
+  try {
+    id = decodeURIComponent(match[2]!);
+  } catch {
+    return undefined;
+  }
+  return { relationTo: match[1]!, id: /^\d+$/.test(id) && Number.isSafeInteger(Number(id)) ? Number(id) : id };
+}
+
+const isLinkNode = (node: Doc) => node.type === "link" && isRecord(node.fields);
+
+/** Every internal link target in an editor state (for checking the documents exist). */
+export function internalLinkTargets(state: unknown): Array<{ relationTo: string; id: string | number }> {
+  const out: Array<{ relationTo: string; id: string | number }> = [];
+  const visit = (node: unknown) => {
+    if (!isRecord(node)) return;
+    if (isLinkNode(node) && (node.fields as Doc).linkType === "internal") {
+      const target = linkTarget(node.fields as Doc);
+      if (target) out.push(target);
+    }
+    if (Array.isArray(node.children)) node.children.forEach(visit);
+  };
+  if (isRecord(state)) visit(state.root);
+  return out;
+}
+
+/** A copy of the state with each internal link pointing at a placeholder anchor, and their URLs. */
+function internalLinksToPlaceholders(state: unknown): { state: unknown; urls: string[] } {
+  const urls: string[] = [];
+  const visit = (node: unknown): unknown => {
+    if (Array.isArray(node)) return node.map(visit);
+    if (!isRecord(node)) return node;
+    const out: Doc = { ...node };
+    if (isLinkNode(node) && (node.fields as Doc).linkType === "internal") {
+      const target = linkTarget(node.fields as Doc);
+      if (target) {
+        out.fields = { ...(node.fields as Doc), linkType: "custom", url: `${PLACEHOLDER}${urls.length}`, doc: null };
+        urls.push(internalLinkUrl(target.relationTo, target.id));
+      }
+    }
+    if (Array.isArray(node.children)) out.children = node.children.map(visit);
+    return out;
+  };
+  if (!isRecord(state)) return { state, urls };
+  return { state: { ...state, root: visit(state.root) }, urls };
+}
+
+/** In place: links to `payload://<collection>/<id>` become internal links to that document. */
+function placeholdersToInternalLinks(state: unknown): unknown {
+  const visit = (node: unknown) => {
+    if (!isRecord(node)) return;
+    if (isLinkNode(node)) {
+      const fields = node.fields as Doc;
+      const target = fields.linkType !== "internal" ? parseInternalLinkUrl(fields.url) : undefined;
+      if (target) {
+        const { url: _url, ...rest } = fields;
+        node.fields = { ...rest, linkType: "internal", doc: { relationTo: target.relationTo, value: target.id } };
+      }
+    }
+    if (Array.isArray(node.children)) node.children.forEach(visit);
+  };
+  if (isRecord(state)) visit(state.root);
+  return state;
+}
+
+/** The field editor's converters, with internal links kept as `payload://<collection>/<id>`. */
+function withInternalLinks(raw: MarkdownConverters): MarkdownConverters {
+  return {
+    toMarkdown: ({ data }) => {
+      const { state, urls } = internalLinksToPlaceholders(data);
+      let markdown = raw.toMarkdown({ data: state });
+      urls.forEach((url, i) => {
+        markdown = markdown.split(`](${PLACEHOLDER}${i})`).join(`](${url})`);
+      });
+      return markdown;
+    },
+    fromMarkdown: ({ markdown }) => placeholdersToInternalLinks(raw.fromMarkdown({ markdown })),
+  };
+}
+
+/**
+ * The converters of a rich text field, or `undefined` for an editor that has none (not Lexical).
+ * Internal links round-trip as `payload://<collection>/<id>` ({@link INTERNAL_LINK_SCHEME}).
+ */
 export function convertersOf(field: FieldLike | undefined): MarkdownConverters | undefined {
   if (!field || field.type !== "richText" || !isRecord(field.editor)) return undefined;
   const converters = (field.editor as { converters?: unknown }).converters;
   if (!isRecord(converters)) return undefined;
   const { fromMarkdown, toMarkdown } = converters as Partial<MarkdownConverters>;
-  return typeof fromMarkdown === "function" && typeof toMarkdown === "function" ? { fromMarkdown, toMarkdown } : undefined;
+  return typeof fromMarkdown === "function" && typeof toMarkdown === "function" ? withInternalLinks({ fromMarkdown, toMarkdown }) : undefined;
 }
 
 function labelOf(label: unknown, fallback: string): string {
@@ -313,7 +427,8 @@ export function markdownLosses(state: unknown): string[] {
     }
     if (type === "link") {
       const fields = isRecord(node.fields) ? node.fields : {};
-      if (fields.linkType === "internal") losses.add("internal links (to documents)");
+      // Kept as `payload://<collection>/<id>`, unless the link has no target to write.
+      if (fields.linkType === "internal" && !linkTarget(fields)) losses.add("internal links without a target document");
       if (fields.newTab === true) losses.add("links opening in a new tab");
     }
     if (Array.isArray(node.children)) node.children.forEach(visit);
