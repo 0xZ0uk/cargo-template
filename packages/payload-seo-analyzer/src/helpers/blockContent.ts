@@ -227,9 +227,17 @@ export function extractBlocksContent(blocks: unknown, maxDepth = 10): BlocksCont
     }
   }
 
-  for (const block of blocks) {
-    if (!isRecord(block)) continue
+  const walkBlock = (block: unknown, nested = false) => {
+    if (!isRecord(block)) return
     const blockType = typeof block.blockType === 'string' ? block.blockType : ''
+    // A reusable section (`globalSection`) renders its own blocks inline on the page, so a
+    // populated one counts like the page's own blocks (its admin `title` doesn't). Unpopulated
+    // (an ID: the sidebar's form state, depth-0 reads) contributes nothing, like uploads.
+    // Sections can't embed sections, so one level is enough.
+    if (!nested && isRecord(block.reusableSection) && Array.isArray(block.reusableSection.layout)) {
+      for (const inner of block.reusableSection.layout) walkBlock(inner, true)
+      return
+    }
     if (FAQ_BLOCK_TYPES.has(blockType)) out.hasFaq = true
 
     const title = typeof block.title === 'string' ? block.title.trim() : ''
@@ -255,6 +263,8 @@ export function extractBlocksContent(blocks: unknown, maxDepth = 10): BlocksCont
     }
     visitFields(block, 0, 'title')
   }
+
+  for (const block of blocks) walkBlock(block)
 
   return out
 }

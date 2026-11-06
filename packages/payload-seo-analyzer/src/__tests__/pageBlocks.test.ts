@@ -222,6 +222,24 @@ describe('page-builder blocks: server extraction', () => {
     expect(joined).not.toContain('youtu.be')
   })
 
+  it('reads a populated reusable section like the page\'s own blocks, and skips an unpopulated one', () => {
+    const section = {
+      blockType: 'globalSection',
+      reusableSection: {
+        id: 7,
+        title: 'Admin-only section name',
+        layout: [{ blockType: 'hero', title: 'Coffee subscriptions', description: 'Fresh beans every week.' }],
+      },
+    }
+    const populated = extractBlocksContent([section])
+    expect(populated.headings).toEqual([{ tag: 'h1', text: 'Coffee subscriptions' }])
+    expect(populated.text).toContain('Fresh beans every week.')
+    expect(populated.text).not.toContain('Admin-only section name')
+
+    const unpopulated = extractBlocksContent([{ blockType: 'globalSection', reusableSection: 7 }])
+    expect(unpopulated.headings).toEqual([])
+  })
+
   it('keeps reading the upstream shapes (columns[].richText, services, testimonials)', () => {
     const extracted = extractDocContent({
       layout: [
