@@ -125,8 +125,9 @@ test.describe('SEO analyzer: page sidebar', () => {
 
     // A keyword adds keyword-only checks. Wait for one rather than for the score to move: the
     // score is a weighted average, and the checks a keyword adds can net out to the same number.
+    // ("Keyword in introduction" is an important check, so its section is open by default.)
     await page.getByLabel('Primary SEO keyword').fill('espresso')
-    await expect(sidebar().getByText('Keyphrase length', { exact: true })).toBeVisible()
+    await expect(sidebar().getByText('Keyword in introduction', { exact: true })).toBeVisible()
     const withKeyword = await readScore()
 
     await page.getByRole('tab', { name: 'SEO' }).click()
