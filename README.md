@@ -8,6 +8,7 @@ A Payload 4 + TanStack Start template on Cloudflare Workers (D1 + R2), and the i
 | [`packages/payload-seo-analyzer`](packages/payload-seo-analyzer) | `@cargo/payload-seo-analyzer` | SEO analysis plugin (Payload 4 port of `@consilioweb/payload-seo-analyzer`). See its [README](packages/payload-seo-analyzer/README.md). |
 | [`packages/payload-plugin-socials`](packages/payload-plugin-socials) | `@cargo/payload-plugin-socials` | Social publishing to Pinterest, Instagram, Facebook Pages and Google Business Profile (Payload 4 port of `payload-plugin-socials`). Not registered in the app yet. See its [README](packages/payload-plugin-socials/README.md). |
 | [`packages/payload-plugin-ab`](packages/payload-plugin-ab) | `@cargo/payload-plugin-ab` | A/B testing: page variants with traffic shares in the admin, and a framework-agnostic request resolver (Payload 4 port of `@focus-reactive/payload-plugin-ab`). Registered on Pages; `loadPage` routes visitors. See its [README](packages/payload-plugin-ab/README.md). |
+| [`packages/payload-plugin-assistant`](packages/payload-plugin-assistant) | `@cargo/payload-plugin-assistant` | Admin assistant: chat with the content through the MCP tools (TanStack AI + OpenRouter, a Durable Object per conversation). Scaffold only: the chat endpoint answers 501. Not registered in the app yet. See its [README](packages/payload-plugin-assistant/README.md). |
 
 ## Quick start
 

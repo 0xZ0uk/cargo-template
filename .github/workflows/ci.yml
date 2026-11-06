@@ -63,6 +63,10 @@ jobs:
       - name: A/B testing plugin tests
         run: pnpm --filter @cargo/payload-plugin-ab test
 
+      # Option validation plus a Payload boot next to plugin-mcp (in-memory SQLite), against source.
+      - name: Assistant plugin tests
+        run: pnpm --filter @cargo/payload-plugin-assistant test
+
       # Unit, component and Payload integration tests (in-memory SQLite), against source.
       - name: On-page editor tests
         run: pnpm --filter @cargo/onpage test

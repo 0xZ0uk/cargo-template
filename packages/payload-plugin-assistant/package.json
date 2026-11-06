@@ -1,0 +1,72 @@
+{
+  "name": "@cargo/payload-plugin-assistant",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Payload CMS 4 admin assistant for Cargo: chat with your content through the MCP tools, backed by TanStack AI and OpenRouter, with a Durable Object per conversation",
+  "license": "MIT",
+  "keywords": [
+    "payload-cms",
+    "payload-plugin",
+    "ai-assistant",
+    "mcp",
+    "payload-4",
+    "cloudflare-workers"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./admin/AssistantView": {
+      "types": "./dist/admin/AssistantView.d.ts",
+      "default": "./dist/admin/AssistantView.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tanstack/ai": "1.2.0",
+    "@tanstack/ai-compaction": "1.0.0",
+    "@tanstack/ai-mcp": "1.1.0",
+    "@tanstack/ai-openrouter": "1.1.1",
+    "@tanstack/ai-persistence": "1.0.1",
+    "@tanstack/ai-react": "1.0.2"
+  },
+  "peerDependencies": {
+    "@payloadcms/ui": ">=4.0.0-beta.6 <5.0.0",
+    "payload": ">=4.0.0-beta.6 <5.0.0",
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@payloadcms/db-sqlite": "catalog:",
+    "@payloadcms/plugin-mcp": "catalog:",
+    "@payloadcms/ui": "catalog:",
+    "@types/node": "24.12.3",
+    "@types/react": "catalog:",
+    "graphql": "^16.8.1",
+    "payload": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "tsup": "^8.5.1",
+    "typescript": "catalog:",
+    "vitest": "^4.1.11"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}
