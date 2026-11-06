@@ -7,6 +7,12 @@ export const AB_MAX_VARIANT_TOTAL = 99;
 
 export const AB_PENDING_CONTEXT_KEY = "abPendingPercentages";
 export const AB_CASCADE_CONTEXT_KEY = "abCascade";
+/**
+ * `req.context` marker set by the plugin's own writes (the duplicate endpoint) so the
+ * field-level access on `_abVariantOf` / `_abPassPercentage` lets them through. REST, GraphQL
+ * and MCP writes run without it and can't set either field.
+ */
+export const AB_WRITE_CONTEXT_KEY = "abPluginWrite";
 
 export const AB_EXPERIMENTS_SLUG = "ab-experiments";
 

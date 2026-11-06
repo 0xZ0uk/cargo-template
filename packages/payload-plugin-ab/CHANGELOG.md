@@ -7,6 +7,7 @@
 - **Breaking:** `payloadGlobalAdapter` (`/adapters/payload-global`) is replaced by `payloadCollectionAdapter` (`/adapters/payload-collection`). The manifest moves from the `_abManifest` global to the hidden `ab-manifest` collection, one row per key (`key` unique and indexed, `variants` JSON). A write updates or creates only its key's row and a clear deletes it, so concurrent publishes of different pages no longer drop each other's entries. A create race on a new key re-finds the row and updates it. No data migration: the plugin wasn't registered in an app yet.
 - **Breaking:** the manifest and `ab-experiments` are no longer publicly readable: REST reads need a signed-in user, and nobody writes the manifest over the API. The adapter's REST fallback sends the new `authorization` option and returns `null` without it.
 - `StorageAdapter.createCollection?(debug)` lets an adapter add a collection, like `createGlobal`.
+- **Breaking:** `_abVariantOf` and `_abPassPercentage` have field-level `create`/`update` access: only `POST /api/_ab/duplicate` (through the `AB_WRITE_CONTEXT_KEY` `req.context` marker) and the plugin's own `overrideAccess` writes can set them. REST, GraphQL and MCP writes can no longer create variants, variants of variants, or change percentages directly.
 - The unchanged-entry check moved from the recompute into the adapter's `write`, so a cached read can't wrongly skip a write.
 
 ### Added

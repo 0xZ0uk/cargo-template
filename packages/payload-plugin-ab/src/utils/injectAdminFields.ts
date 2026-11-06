@@ -1,13 +1,24 @@
-import type { CollectionConfig, Field, Where } from "payload";
+import type { CollectionConfig, Field, FieldAccess, Where } from "payload";
 import type { CollectionABConfig } from "../types/config";
 import {
   AB_PASS_PERCENTAGE_FIELD,
   AB_VARIANT_OF_FIELD,
   AB_PENDING_PERCENTAGES_FIELD,
+  AB_WRITE_CONTEXT_KEY,
   DEFAULT_SLUG_FIELD,
 } from "../constants";
 
 const VARIANTS_FIELD_PATH = "@cargo/payload-plugin-ab/admin/VariantsField#VariantsField";
+
+/**
+ * Only the plugin's own writes may set `_abVariantOf` / `_abPassPercentage`: the duplicate
+ * endpoint marks `req.context`, and the hooks write with `overrideAccess: true`. A REST,
+ * GraphQL or MCP write can't make a page a variant (skipping the endpoint's checks: no
+ * variant of a variant, created as a draft) or change a pass percentage directly. Payload
+ * drops a denied field from the incoming data and keeps the stored value.
+ */
+const pluginWritesOnly: FieldAccess = ({ req }) => req.context?.[AB_WRITE_CONTEXT_KEY] === true;
+const pluginWriteAccess = { create: pluginWritesOnly, update: pluginWritesOnly };
 
 function isVariant(data: Record<string, unknown>): boolean {
   return Boolean(data[AB_VARIANT_OF_FIELD]);
@@ -52,6 +63,7 @@ export function injectAdminFields<TVariantData extends object>(
     type: "relationship",
     relationTo: collectionSlug as CollectionConfig["slug"],
     label: "Variant of",
+    access: pluginWriteAccess,
     admin: {
       position: "sidebar",
       readOnly: true,
@@ -66,6 +78,7 @@ export function injectAdminFields<TVariantData extends object>(
     type: "number",
     min: 1,
     max: 99,
+    access: pluginWriteAccess,
     admin: {
       hidden: true,
     },
