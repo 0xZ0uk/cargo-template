@@ -42,6 +42,7 @@ import {
   type Tone,
 } from '../ui/index.js'
 import { usePayloadApi, useSeoApi } from '../hooks/useSeoApi.js'
+import { useResolvedThresholds } from '../hooks/useSeoThresholds.js'
 import './SeoView.css'
 
 // ---------------------------------------------------------------------------
@@ -213,6 +214,7 @@ function InlineEditPanel({
   // One panel is rendered per expanded row: literal ids would collide the moment
   // two rows are open at once.
   const uid = useId()
+  const limits = useResolvedThresholds()
   const titleId = `${uid}-meta-title`
   const descId = `${uid}-meta-desc`
   const [metaTitle, setMetaTitle] = useState(item.metaTitle || '')
@@ -220,8 +222,8 @@ function InlineEditPanel({
 
   const titleLen = metaTitle.length
   const descLen = metaDescription.length
-  const titleOk = titleLen > 0 && titleLen <= 60
-  const descOk = descLen > 0 && descLen <= 160
+  const titleOk = titleLen > 0 && titleLen <= limits.titleLengthMax
+  const descOk = descLen > 0 && descLen <= limits.metaDescLengthMax
 
   return (
     <tr className="seo-audit__edit-row">
@@ -235,7 +237,7 @@ function InlineEditPanel({
                 {t.seoView.metaTitle}
               </label>
               <span className={cx('seo-text seo-text--small seo-text--strong', toneText(titleOk ? 'success' : 'danger'))}>
-                {titleLen}/60
+                {titleLen}/{limits.titleLengthMax}
               </span>
             </div>
             <input
@@ -243,7 +245,7 @@ function InlineEditPanel({
               type="text"
               value={metaTitle}
               onChange={(e) => setMetaTitle(e.target.value)}
-              maxLength={70}
+              maxLength={limits.titleLengthMax + 10}
               className={cx('seo-input', !titleOk && 'seo-audit__input--invalid')}
             />
           </div>
@@ -255,14 +257,14 @@ function InlineEditPanel({
                 {t.seoView.metaDesc}
               </label>
               <span className={cx('seo-text seo-text--small seo-text--strong', toneText(descOk ? 'success' : 'danger'))}>
-                {descLen}/160
+                {descLen}/{limits.metaDescLengthMax}
               </span>
             </div>
             <textarea
               id={descId}
               value={metaDescription}
               onChange={(e) => setMetaDescription(e.target.value)}
-              maxLength={170}
+              maxLength={limits.metaDescLengthMax + 10}
               rows={2}
               className={cx('seo-textarea', !descOk && 'seo-audit__input--invalid')}
             />
@@ -553,6 +555,7 @@ export function SeoView() {
   const payloadApi = usePayloadApi()
   const seoApi = useSeoApi()
   const t = useDashboardT()
+  const limits = useResolvedThresholds()
   // The `/ai-optimize-bulk` endpoint only exists with `features.aiFeatures`.
   const aiEnabled = useSeoFeature('aiFeatures') !== false
   const {
@@ -759,9 +762,9 @@ export function SeoView() {
     return {
       noMeta: items.filter((i) => !i.metaTitle || !i.metaDescription).length,
       noH1: items.filter((i) => i.h1Count !== 1).length,
-      lowReadability: items.filter((i) => i.readabilityScore > 0 && i.readabilityScore < 40).length,
+      lowReadability: items.filter((i) => i.readabilityScore > 0 && i.readabilityScore < limits.fleschScoreWarn).length,
     }
-  }, [items])
+  }, [items, limits.fleschScoreWarn])
 
   const filteredItems = useMemo(() => {
     let result = [...items]
@@ -790,7 +793,7 @@ export function SeoView() {
     } else if (quickFilter === 'noH1') {
       result = result.filter((i) => i.h1Count !== 1)
     } else if (quickFilter === 'lowReadability') {
-      result = result.filter((i) => i.readabilityScore > 0 && i.readabilityScore < 40)
+      result = result.filter((i) => i.readabilityScore > 0 && i.readabilityScore < limits.fleschScoreWarn)
     }
 
     result.sort((a, b) => {
@@ -828,7 +831,7 @@ export function SeoView() {
     })
 
     return result
-  }, [items, filter, scoreFilter, search, sortBy, sortDir, quickFilter])
+  }, [items, filter, scoreFilter, search, sortBy, sortDir, quickFilter, limits.fleschScoreWarn])
 
   // Reset to page 1 when filters change
   useEffect(() => {
@@ -1153,8 +1156,8 @@ export function SeoView() {
         if (!i.metaDescription) issues.push(t.seoView.missingMetaDescription)
         if (!i.focusKeyword) issues.push(t.seoView.missingKeyword)
         if (i.h1Count !== 1) issues.push(i.h1Count === 0 ? t.seoView.missingH1 : `${i.h1Count} H1`)
-        if (i.wordCount < 300) issues.push(`${t.seoView.shortContent} (${i.wordCount})`)
-        if (i.readabilityScore > 0 && i.readabilityScore < 40) issues.push(t.seoView.lowReadabilityIssue)
+        if (i.wordCount < (i.collection === 'posts' ? limits.minWordsPost : limits.minWordsGeneric)) issues.push(`${t.seoView.shortContent} (${i.wordCount})`)
+        if (i.readabilityScore > 0 && i.readabilityScore < limits.fleschScoreWarn) issues.push(t.seoView.lowReadabilityIssue)
         if (!i.hasOgImage) issues.push(t.seoView.missingOgImage)
         if (i.internalLinkCount === 0) issues.push(t.seoView.noInternalLinks)
         if (issues.length === 0) issues.push(t.seoView.lowOverallScore)
@@ -1172,15 +1175,15 @@ export function SeoView() {
       .map((i) => {
         const issues: string[] = []
         if (!i.metaTitle) issues.push(t.seoView.missingMetaTitle)
-        else if (i.metaTitle.length < 30) issues.push(`${t.seoView.shortMetaTitle} (${i.metaTitle.length})`)
-        else if (i.metaTitle.length > 60) issues.push(`${t.seoView.longMetaTitle} (${i.metaTitle.length})`)
+        else if (i.metaTitle.length < limits.titleLengthMin) issues.push(`${t.seoView.shortMetaTitle} (${i.metaTitle.length})`)
+        else if (i.metaTitle.length > limits.titleLengthMax) issues.push(`${t.seoView.longMetaTitle} (${i.metaTitle.length})`)
         if (!i.metaDescription) issues.push(t.seoView.missingMetaDescription)
-        else if (i.metaDescription.length < 120) issues.push(`${t.seoView.shortMetaDesc} (${i.metaDescription.length})`)
-        else if (i.metaDescription.length > 160) issues.push(`${t.seoView.longMetaDesc} (${i.metaDescription.length})`)
+        else if (i.metaDescription.length < limits.metaDescLengthMin) issues.push(`${t.seoView.shortMetaDesc} (${i.metaDescription.length})`)
+        else if (i.metaDescription.length > limits.metaDescLengthMax) issues.push(`${t.seoView.longMetaDesc} (${i.metaDescription.length})`)
         if (!i.focusKeyword) issues.push(t.seoView.missingKeyword)
         if (i.h1Count !== 1) issues.push(i.h1Count === 0 ? t.seoView.missingH1 : `${i.h1Count} H1`)
-        if (i.wordCount < 300) issues.push(`${t.seoView.shortContent} (${i.wordCount})`)
-        if (i.readabilityScore > 0 && i.readabilityScore < 40) issues.push(`${t.seoView.lowReadabilityIssue} (${i.readabilityScore})`)
+        if (i.wordCount < (i.collection === 'posts' ? limits.minWordsPost : limits.minWordsGeneric)) issues.push(`${t.seoView.shortContent} (${i.wordCount})`)
+        if (i.readabilityScore > 0 && i.readabilityScore < limits.fleschScoreWarn) issues.push(`${t.seoView.lowReadabilityIssue} (${i.readabilityScore})`)
         if (!i.hasOgImage) issues.push(t.seoView.missingOgImage)
         if (i.internalLinkCount === 0) issues.push(t.seoView.noInternalLinks)
 
@@ -1348,7 +1351,7 @@ export function SeoView() {
       printWindow.document.write(html)
       printWindow.document.close()
     }
-  }, [filteredItems, stats, siteName, t])
+  }, [filteredItems, stats, siteName, t, limits])
 
   // Loading state
   if (loading) {

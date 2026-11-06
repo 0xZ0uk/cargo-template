@@ -531,9 +531,9 @@ export interface DashboardTranslations {
     improvementSuggestions: string
     adjustTitle: string
     currently: string
-    titleCharactersIdeal: string
-    writeMetaDesc: string
-    enrichContent: string
+    titleCharactersIdeal: (min: number, max: number) => string
+    writeMetaDesc: (min: number, max: number) => string
+    enrichContent: (minWords: number) => string
     includeKeywordInTitle: string
     includeKeywordInDesc: string
     addAltText: string
@@ -1186,9 +1186,9 @@ const en: DashboardTranslations = {
     improvementSuggestions: 'Improvement suggestions',
     adjustTitle: 'Adjust your SEO title',
     currently: 'currently',
-    titleCharactersIdeal: 'characters, ideal: 50-60',
-    writeMetaDesc: 'Write a meta description of 120-160 characters',
-    enrichContent: 'Enrich your content (minimum 300 words recommended)',
+    titleCharactersIdeal: (min, max) => `characters, ideal: ${min}-${max}`,
+    writeMetaDesc: (min, max) => `Write a meta description of ${min}-${max} characters`,
+    enrichContent: (minWords) => `Enrich your content (minimum ${minWords} words recommended)`,
     includeKeywordInTitle: 'Include your main keyword in the title',
     includeKeywordInDesc: 'Include your keyword in the meta description',
     addAltText: 'Add alt text to your images',

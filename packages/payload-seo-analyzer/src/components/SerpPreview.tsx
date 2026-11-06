@@ -11,6 +11,7 @@ import {
 } from '../constants.js'
 import { highlightKeyphrases, truncateAtWord } from '../helpers/serpPreviewText.js'
 import { useDashboardT } from '../hooks/useSeoLocale.js'
+import { useResolvedThresholds } from '../hooks/useSeoThresholds.js'
 import { withSeoErrorBoundary } from './withSeoErrorBoundary.js'
 import './SerpPreview.css'
 
@@ -69,6 +70,7 @@ function SerpPreviewInner({
   keyphrases,
 }: SerpPreviewProps) {
   const t = useDashboardT()
+  const limits = useResolvedThresholds()
   const [device, setDevice] = useState<DeviceMode>('desktop')
 
   const title = metaTitle || ''
@@ -89,13 +91,13 @@ function SerpPreviewInner({
   const counters: Array<{ label: string; text: string; tone: Tone }> = [
     {
       label: t.serpPreview.previewTitle,
-      text: `${title.length} / 60 ${t.common.characters}`,
-      tone: rangeTone(title.length, 30, 60),
+      text: `${title.length} / ${limits.titleLengthMax} ${t.common.characters}`,
+      tone: rangeTone(title.length, limits.titleLengthMin, limits.titleLengthMax),
     },
     {
       label: t.serpPreview.previewDescription,
-      text: `${desc.length} / 160 ${t.common.characters}`,
-      tone: rangeTone(desc.length, 120, 160),
+      text: `${desc.length} / ${limits.metaDescLengthMax} ${t.common.characters}`,
+      tone: rangeTone(desc.length, limits.metaDescLengthMin, limits.metaDescLengthMax),
     },
     {
       label: t.serpPreview.url,

@@ -3,8 +3,9 @@
  */
 import type { SeoCheck, SeoInput, AnalysisContext } from '../types.js'
 import { slugifyKeyword, isStopWordInCompoundExpression } from '../helpers.js'
-import { SLUG_MAX_LENGTH, getUtilitySlugs, getStopWords, getStopWordCompounds } from '../constants.js'
+import { getUtilitySlugs, getStopWords, getStopWordCompounds } from '../constants.js'
 import { getTranslations } from '../i18n.js'
+import { resolveThresholds } from '../helpers/thresholds.js'
 
 export function checkUrl(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
   const checks: SeoCheck[] = []
@@ -40,13 +41,14 @@ export function checkUrl(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
     return checks
   }
 
-  // 11. Length <= SLUG_MAX_LENGTH characters
-  if (slug.length > SLUG_MAX_LENGTH) {
+  // 11. Length <= slugMaxLength characters
+  const { slugMaxLength } = resolveThresholds(ctx.config.thresholds)
+  if (slug.length > slugMaxLength) {
     checks.push({
       id: 'slug-length',
       label: r.lengthLabel,
       status: 'warning',
-      message: r.lengthFail(slug.length),
+      message: r.lengthFail(slug.length, slugMaxLength),
       category: 'important',
       weight: 2,
       group: 'url',

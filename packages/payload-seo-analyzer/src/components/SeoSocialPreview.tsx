@@ -4,6 +4,8 @@ import React, { useState, useId } from 'react'
 import { Collapsible } from '@payloadcms/ui'
 import { useDashboardT } from '../hooks/useSeoLocale.js'
 import { cx, rangeTone, TonePill } from '../ui/index.js'
+import { useResolvedThresholds } from '../hooks/useSeoThresholds.js'
+import type { ResolvedThresholds } from '../helpers/thresholds.js'
 import './SeoSocialPreview.css'
 
 // ---------------------------------------------------------------------------
@@ -26,6 +28,7 @@ export function SeoSocialPreview({
   hostname,
 }: SeoSocialPreviewProps) {
   const t = useDashboardT()
+  const limits = useResolvedThresholds()
   const [activeTab, setActiveTab] = useState<'facebook' | 'twitter'>('facebook')
   // This component is rendered inside the document editor, once per locale tab
   // on a localized document: literal ids would collide.
@@ -108,7 +111,7 @@ export function SeoSocialPreview({
             </div>
 
             {/* Character counters */}
-            <CharCounters titleLen={title.length} descLen={desc.length} titleLabel={t.socialPreview.previewTitle} descLabel={t.socialPreview.previewDescription} charsLabel={t.common.characters} />
+            <CharCounters limits={limits} titleLen={title.length} descLen={desc.length} titleLabel={t.socialPreview.previewTitle} descLabel={t.socialPreview.previewDescription} charsLabel={t.common.characters} />
           </div>
         )}
 
@@ -130,7 +133,7 @@ export function SeoSocialPreview({
             </div>
 
             {/* Character counters */}
-            <CharCounters titleLen={title.length} descLen={desc.length} titleLabel={t.socialPreview.previewTitle} descLabel={t.socialPreview.previewDescription} charsLabel={t.common.characters} />
+            <CharCounters limits={limits} titleLen={title.length} descLen={desc.length} titleLabel={t.socialPreview.previewTitle} descLabel={t.socialPreview.previewDescription} charsLabel={t.common.characters} />
           </div>
         )}
       </div>
@@ -191,19 +194,19 @@ function ImagePlaceholder({
   )
 }
 
-function CharCounters({ titleLen, descLen, titleLabel, descLabel, charsLabel }: { titleLen: number; descLen: number; titleLabel: string; descLabel: string; charsLabel: string }) {
+function CharCounters({ limits, titleLen, descLen, titleLabel, descLabel, charsLabel }: { limits: ResolvedThresholds; titleLen: number; descLen: number; titleLabel: string; descLabel: string; charsLabel: string }) {
   return (
     <div className="seo-stack seo-stack--tight">
       <div className="seo-row seo-row--between seo-row--nowrap">
         <span className="seo-text seo-text--small seo-text--secondary">{titleLabel}</span>
-        <TonePill tone={rangeTone(titleLen, 30, 60)}>
-          {titleLen} / 60 {charsLabel}
+        <TonePill tone={rangeTone(titleLen, limits.titleLengthMin, limits.titleLengthMax)}>
+          {titleLen} / {limits.titleLengthMax} {charsLabel}
         </TonePill>
       </div>
       <div className="seo-row seo-row--between seo-row--nowrap">
         <span className="seo-text seo-text--small seo-text--secondary">{descLabel}</span>
-        <TonePill tone={rangeTone(descLen, 120, 160)}>
-          {descLen} / 160 {charsLabel}
+        <TonePill tone={rangeTone(descLen, limits.metaDescLengthMin, limits.metaDescLengthMax)}>
+          {descLen} / {limits.metaDescLengthMax} {charsLabel}
         </TonePill>
       </div>
     </div>

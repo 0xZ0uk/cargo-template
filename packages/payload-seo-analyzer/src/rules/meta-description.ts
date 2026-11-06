@@ -3,8 +3,9 @@
  */
 import type { SeoCheck, SeoInput, AnalysisContext } from '../types.js'
 import { normalizeForComparison, keywordMatchesText } from '../helpers.js'
-import { META_DESC_LENGTH_MIN, META_DESC_LENGTH_MAX, getActionVerbs } from '../constants.js'
+import { getActionVerbs } from '../constants.js'
 import { getTranslations } from '../i18n.js'
+import { resolveThresholds } from '../helpers/thresholds.js'
 
 export function checkMetaDescription(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
   const checks: SeoCheck[] = []
@@ -12,6 +13,7 @@ export function checkMetaDescription(input: SeoInput, ctx: AnalysisContext): Seo
   const desc = input.metaDescription || ''
   const descLen = desc.length
   const kw = ctx.normalizedKeyword
+  const { metaDescLengthMin, metaDescLengthMax } = resolveThresholds(ctx.config.thresholds)
 
   // 6. Meta description present
   if (!desc) {
@@ -23,33 +25,33 @@ export function checkMetaDescription(input: SeoInput, ctx: AnalysisContext): Seo
       category: 'critical',
       weight: 3,
       group: 'meta-description',
-      tip: r.missingTip,
+      tip: r.missingTip(metaDescLengthMin, metaDescLengthMax),
     })
     return checks
   }
 
-  // 7. Length META_DESC_LENGTH_MIN-META_DESC_LENGTH_MAX characters
-  if (descLen < META_DESC_LENGTH_MIN) {
+  // 7. Length metaDescLengthMin-metaDescLengthMax characters
+  if (descLen < metaDescLengthMin) {
     checks.push({
       id: 'meta-desc-length',
       label: r.lengthLabel,
       status: 'warning',
-      message: r.lengthShort(descLen),
+      message: r.lengthShort(descLen, metaDescLengthMin, metaDescLengthMax),
       category: 'critical',
       weight: 3,
       group: 'meta-description',
-      tip: r.lengthShortTip,
+      tip: r.lengthShortTip(metaDescLengthMin),
     })
-  } else if (descLen > META_DESC_LENGTH_MAX) {
+  } else if (descLen > metaDescLengthMax) {
     checks.push({
       id: 'meta-desc-length',
       label: r.lengthLabel,
       status: 'warning',
-      message: r.lengthLong(descLen),
+      message: r.lengthLong(descLen, metaDescLengthMax),
       category: 'critical',
       weight: 3,
       group: 'meta-description',
-      tip: r.lengthLongTip,
+      tip: r.lengthLongTip(metaDescLengthMax),
     })
   } else {
     checks.push({

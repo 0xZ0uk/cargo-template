@@ -136,6 +136,8 @@ export interface SeoThresholds {
   fleschScorePass?: number
   slugMaxLength?: number
 }
+// `keywordDensityMin` is accepted (and saved by /admin/seo-config) but no rule reads it:
+// a density floor is deprecated, the check only flags over-optimisation (see constants.ts).
 
 /**
  * Configuration for the SEO analyzer.

@@ -12,7 +12,6 @@ import {
   extractTextFromLexical,
 } from '../helpers.js'
 import {
-  FLESCH_THRESHOLDS,
   READABILITY_THRESHOLDS,
   LONG_SENTENCE_MAX_RATIO,
   LONG_PARAGRAPH_WORDS,
@@ -20,12 +19,13 @@ import {
   LONG_SECTION_THRESHOLD,
 } from '../constants.js'
 import { getTranslations } from '../i18n.js'
+import { resolveThresholds } from '../helpers/thresholds.js'
 import { blockContentOf } from '../helpers/blockContent.js'
 
 export function checkReadability(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
   const checks: SeoCheck[] = []
   const r = getTranslations().rules.readability
-  const ft = FLESCH_THRESHOLDS
+  const { fleschScorePass, fleschScoreWarn } = resolveThresholds(ctx.config.thresholds)
   const rt = READABILITY_THRESHOLDS
   const { fullText, readabilityText, sentences, wordCount } = ctx
 
@@ -37,7 +37,7 @@ export function checkReadability(input: SeoInput, ctx: AnalysisContext): SeoChec
   // sentences (otherwise scannable content is unfairly scored as unreadable).
   const fleschScore = calculateFlesch(readabilityText || fullText)
 
-  if (fleschScore >= ft.pass) {
+  if (fleschScore >= fleschScorePass) {
     checks.push({
       id: 'readability-flesch',
       label: r.fleschLabel,
@@ -47,12 +47,12 @@ export function checkReadability(input: SeoInput, ctx: AnalysisContext): SeoChec
       weight: 2,
       group: 'readability',
     })
-  } else if (fleschScore >= ft.warn) {
+  } else if (fleschScore >= fleschScoreWarn) {
     checks.push({
       id: 'readability-flesch',
       label: r.fleschLabel,
       status: 'warning',
-      message: r.fleschWarn(fleschScore, ft.pass),
+      message: r.fleschWarn(fleschScore, fleschScorePass),
       category: 'important',
       weight: 2,
       group: 'readability',
@@ -62,7 +62,7 @@ export function checkReadability(input: SeoInput, ctx: AnalysisContext): SeoChec
       id: 'readability-flesch',
       label: r.fleschLabel,
       status: 'fail',
-      message: r.fleschFail(fleschScore, ft.pass),
+      message: r.fleschFail(fleschScore, fleschScorePass),
       category: 'important',
       weight: 2,
       group: 'readability',

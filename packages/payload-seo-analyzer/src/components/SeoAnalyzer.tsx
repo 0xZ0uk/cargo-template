@@ -32,6 +32,8 @@ import { withSeoErrorBoundary } from './withSeoErrorBoundary.js'
 import { buildSidebarContentInput, sidebarContentText } from '../helpers/sidebarContent.js'
 import { Card, Checklist, cx, ScoreRing, statusTone, TonePill, type Tone } from '../ui/index.js'
 import { useAdminRoute, useSeoApi } from '../hooks/useSeoApi.js'
+import { useSeoThresholds } from '../hooks/useSeoThresholds.js'
+import { resolveThresholds } from '../helpers/thresholds.js'
 import './SeoAnalyzer.css'
 
 // ---------------------------------------------------------------------------
@@ -546,6 +548,10 @@ const SeoAnalyzerInner: React.FC = () => {
   // Check if the primary keyword is already used by another document
   const keywordUsage = useKeywordDuplicateCheck(focusKeyword, documentId)
 
+  // Custom thresholds (plugin option + saved /admin/seo-config values)
+  const thresholds = useSeoThresholds()
+  const limits = useMemo(() => resolveThresholds(thresholds), [thresholds])
+
   // Extract secondary keywords from form state (array field: focusKeywords.N.keyword)
   const focusKeywords: string[] = useMemo(() => {
     if (!formFields) return []
@@ -587,6 +593,7 @@ const SeoAnalyzerInner: React.FC = () => {
         updatedAt: updatedAt || undefined,
         contentLastReviewed: contentLastReviewed || undefined,
       },
+      thresholds ? { thresholds } : undefined,
     )
 
     // Compute word count from the content check (reuse the check message or compute separately)
@@ -598,7 +605,7 @@ const SeoAnalyzerInner: React.FC = () => {
     }
 
     return { analysis: result, wordCount: wc }
-  }, [formFields, focusKeyword, focusKeywords, isCornerstone, updatedAt, contentLastReviewed, getFieldValue])
+  }, [formFields, focusKeyword, focusKeywords, isCornerstone, updatedAt, contentLastReviewed, getFieldValue, thresholds])
 
   // The page host for the social preview. Read after mount: during SSR there is no
   // window, and reading it in render made the server and client markup disagree
@@ -693,11 +700,11 @@ const SeoAnalyzerInner: React.FC = () => {
       if (check.id.startsWith('title-length') || check.id.startsWith('title-')) {
         const match = check.message.match(/(\d+)\s*caract|\b(\d+)\s*char/)
         const charCount = match ? (match[1] || match[2]) : '?'
-        text = `${t.seoAnalyzer.adjustTitle} (${t.seoAnalyzer.currently} ${charCount} ${t.seoAnalyzer.titleCharactersIdeal})`
+        text = `${t.seoAnalyzer.adjustTitle} (${t.seoAnalyzer.currently} ${charCount} ${t.seoAnalyzer.titleCharactersIdeal(limits.titleLengthMin, limits.titleLengthMax)})`
       } else if (check.id.startsWith('meta-desc')) {
-        text = t.seoAnalyzer.writeMetaDesc
+        text = t.seoAnalyzer.writeMetaDesc(limits.metaDescLengthMin, limits.metaDescLengthMax)
       } else if (check.id === 'content-wordcount') {
-        text = t.seoAnalyzer.enrichContent
+        text = t.seoAnalyzer.enrichContent(collectionSlug === 'posts' ? limits.minWordsPost : limits.minWordsGeneric)
       } else if (check.id === 'keyword-in-title') {
         text = t.seoAnalyzer.includeKeywordInTitle
       } else if (check.id === 'keyword-in-meta') {
@@ -717,7 +724,7 @@ const SeoAnalyzerInner: React.FC = () => {
     }
 
     return items
-  }, [analysis.checks, t])
+  }, [analysis.checks, t, limits])
 
   const handleAiGenerate = async () => {
     setAiGenerating(true)
