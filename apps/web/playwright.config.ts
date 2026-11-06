@@ -53,7 +53,7 @@ export default defineConfig({
         timeout: 180_000,
         url: baseURL,
         // The admin assistant answers with its scripted test model (localhost only, never with
-        // APP_ENV=production), so the assistant spec needs no OpenRouter key.
+        // APP_ENV=production or staging), so the assistant spec needs no OpenRouter key.
         env: { ASSISTANT_TEST_MODEL: '1' },
       },
 })
