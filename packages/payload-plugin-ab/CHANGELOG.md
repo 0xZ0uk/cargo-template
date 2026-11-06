@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** `payloadGlobalAdapter` (`/adapters/payload-global`) is replaced by `payloadCollectionAdapter` (`/adapters/payload-collection`). The manifest moves from the `_abManifest` global to the hidden `ab-manifest` collection, one row per key (`key` unique and indexed, `variants` JSON). A write updates or creates only its key's row and a clear deletes it, so concurrent publishes of different pages no longer drop each other's entries. A create race on a new key re-finds the row and updates it. No data migration: the plugin wasn't registered in an app yet.
+- **Breaking:** the manifest and `ab-experiments` are no longer publicly readable: REST reads need a signed-in user, and nobody writes the manifest over the API. The adapter's REST fallback sends the new `authorization` option and returns `null` without it.
+- `StorageAdapter.createCollection?(debug)` lets an adapter add a collection, like `createGlobal`.
+- The unchanged-entry check moved from the recompute into the adapter's `write`, so a cached read can't wrongly skip a write.
+
+### Added
+
+- Optional read cache: `ManifestCache` (`get`/`set`/`delete` with a TTL), the adapter's `cache` and `cacheTtl` (default 30 s) options, `withManifestCache` for any adapter, and `createMemoryManifestCache` as a reference implementation. Reads are cache-first with negative entries for keys without an experiment; writes and clears update the cache.
+
 ## [3.0.0-beta.0] - 2026-11-05
 
 Cargo's fork (`@cargo/payload-plugin-ab`) of upstream 2.10.1 (`e40c7a0`), ported to Payload 4 and to hosts without Next.js (TanStack Start on Cloudflare Workers). See the README for the full list.

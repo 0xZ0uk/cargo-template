@@ -79,10 +79,8 @@ export async function recomputeManifestForParent<TVariantData extends object>(
       } as unknown as TVariantData;
     });
 
-    // Unpublished drafts can recompute on every autosave; don't rewrite an unchanged entry.
-    const current = await pluginConfig.storage.read(manifestKey, payload).catch(() => null);
-    if (current && JSON.stringify(current) === JSON.stringify(variantData)) continue;
-
+    // The adapter skips an unchanged entry (autosaves recompute too). Not compared here: a
+    // cached read could be stale and wrongly skip the write.
     await pluginConfig.storage.write(manifestKey, variantData, payload);
   }
 }

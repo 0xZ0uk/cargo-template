@@ -1,11 +1,11 @@
-import type { CollectionSlug, GlobalSlug, Payload, SanitizedConfig } from "payload";
+import type { CollectionSlug, Payload, SanitizedConfig } from "payload";
 
 import { sqliteAdapter } from "@payloadcms/db-sqlite";
 import { buildConfig, getPayload, handleEndpoints } from "payload";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { abTestingPlugin } from "../../src";
-import { payloadGlobalAdapter } from "../../src/adapters/payloadGlobal";
+import { payloadCollectionAdapter } from "../../src/adapters/payloadCollection";
 import { createResolveAbRewrite } from "../../src/middleware";
 
 /**
@@ -18,9 +18,9 @@ interface Variant {
   passPercentage: number;
 }
 
-const storage = payloadGlobalAdapter<Variant>();
+const storage = payloadCollectionAdapter<Variant>();
 const PAGES = "pages" as CollectionSlug;
-const MANIFEST = "_abManifest" as GlobalSlug;
+const MANIFEST = "ab-manifest" as CollectionSlug;
 
 let payload: Payload;
 let config: SanitizedConfig;
@@ -39,9 +39,12 @@ async function api(path: string, init: RequestInit & { auth?: boolean } = {}) {
   return { status: res.status, body: (await res.json().catch(() => null)) as Record<string, any> };
 }
 
-const manifest = async () =>
-  ((await payload.findGlobal({ slug: MANIFEST, overrideAccess: true })) as { manifest?: any })
-    .manifest ?? {};
+const manifestRows = async () =>
+  (await payload.find({ collection: MANIFEST, pagination: false, overrideAccess: true }))
+    .docs as unknown as { id: Doc["id"]; key: string; variants: any; updatedAt: string }[];
+
+const manifest = async (): Promise<Record<string, any>> =>
+  Object.fromEntries((await manifestRows()).map((row) => [row.key, row.variants]));
 
 const findPage = (id: Doc["id"], opts: { draft?: boolean; locale?: string } = {}) =>
   payload.findByID({
@@ -130,10 +133,9 @@ afterAll(async () => {
 });
 
 describe("Payload 4 boot", () => {
-  it("adds the manifest global and the experiments collection without version history", () => {
-    const global = payload.config.globals.find((g) => g.slug === "_abManifest");
-    expect(global).toBeDefined();
-    expect(global?.versions).toBeFalsy();
+  it("adds the manifest and experiments collections without version history", () => {
+    expect(payload.config.globals).toHaveLength(0);
+    expect(payload.collections[MANIFEST]?.config.versions).toBeFalsy();
     expect(payload.collections["ab-experiments" as CollectionSlug]?.config.versions).toBeFalsy();
   });
 
@@ -507,5 +509,121 @@ describe("deleting an original", () => {
       overrideAccess: true,
     });
     expect(experiments.docs).toHaveLength(0);
+  });
+});
+
+describe("manifest storage", () => {
+  const v = (bucket: string): Variant[] => [{ bucket, rewritePath: `/${bucket}`, passPercentage: 10 }];
+  const rowsFor = async (key: string) => (await manifestRows()).filter((row) => row.key === key);
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("keeps concurrent writes for different keys", async () => {
+    await Promise.all([
+      storage.write("/store/a", v("a"), payload),
+      storage.write("/store/b", v("b"), payload),
+    ]);
+    expect(await storage.read("/store/a", payload)).toEqual(v("a"));
+    expect(await storage.read("/store/b", payload)).toEqual(v("b"));
+
+    await Promise.all([
+      storage.write("/store/a", v("a2"), payload),
+      storage.write("/store/b", v("b2"), payload),
+    ]);
+    expect(await storage.read("/store/a", payload)).toEqual(v("a2"));
+    expect(await storage.read("/store/b", payload)).toEqual(v("b2"));
+  });
+
+  it("clearing one key leaves the others", async () => {
+    await storage.write("/store/c", v("c"), payload);
+    await storage.write("/store/d", v("d"), payload);
+    await storage.clear("/store/c", payload);
+    expect(await storage.read("/store/c", payload)).toBeNull();
+    expect(await storage.read("/store/d", payload)).toEqual(v("d"));
+    await expect(storage.clear("/store/never-written", payload)).resolves.toBeUndefined();
+  });
+
+  it("a create race on a new key ends with one row", async () => {
+    // Hold both writers' lookups until both have run, so both see no row and both create.
+    const find = payload.find.bind(payload);
+    const create = vi.spyOn(payload, "create");
+    let arrived = 0;
+    let open!: () => void;
+    const barrier = new Promise<void>((resolve) => (open = resolve));
+    vi.spyOn(payload, "find").mockImplementation((async (args: any) => {
+      const result = await find(args);
+      if (args.collection === MANIFEST && arrived < 2) {
+        if (++arrived === 2) open();
+        await barrier;
+      }
+      return result;
+    }) as never);
+
+    await Promise.all([
+      storage.write("/store/race", v("first"), payload),
+      storage.write("/store/race", v("second"), payload),
+    ]);
+    const rows = await rowsFor("/store/race");
+    expect(rows).toHaveLength(1);
+    expect([v("first"), v("second")]).toContainEqual(rows[0]!.variants);
+    // Both creates ran; the loser re-found the row and updated it.
+    expect(create.mock.calls.filter(([args]) => args.collection === MANIFEST)).toHaveLength(2);
+    expect(create.mock.settledResults.map((r) => r.type).sort()).toEqual(["fulfilled", "rejected"]);
+  });
+
+  it("doesn't rewrite a row that hasn't changed", async () => {
+    await storage.write("/store/same", v("same"), payload);
+    const [before] = await rowsFor("/store/same");
+    await new Promise((r) => setTimeout(r, 5));
+    await storage.write("/store/same", v("same"), payload);
+    const [after] = await rowsFor("/store/same");
+    expect(after!.updatedAt).toBe(before!.updatedAt);
+  });
+
+  it("isn't readable over REST without a session, nor are the experiments", async () => {
+    await storage.write("/store/private", v("p"), payload);
+
+    expect((await api("/ab-manifest", { auth: false })).status).toBe(403);
+    expect((await api("/ab-experiments", { auth: false })).status).toBe(403);
+    expect((await api("/ab-manifest", { auth: false, method: "POST", body: "{}" })).status).toBe(403);
+
+    // Signed in, it can be read (debug view), but still not written over the API.
+    expect((await api("/ab-manifest")).status).toBe(200);
+    const create = await api("/ab-manifest", {
+      method: "POST",
+      body: JSON.stringify({ key: "/store/forged", variants: [] }),
+    });
+    expect(create.status).toBe(403);
+
+    // The Local API, as the plugin and the resolver use it, still reads.
+    expect(await storage.read("/store/private", payload)).toEqual(v("p"));
+  });
+
+  it("the REST fallback reads only with credentials", async () => {
+    await storage.write("/store/rest", v("r"), payload);
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
+      handleEndpoints({ config, request: new Request(input, init) })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const anonymous = payloadCollectionAdapter<Variant>({ serverURL: "http://localhost:3000" });
+    expect(await anonymous.read("/store/rest")).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    const authed = payloadCollectionAdapter<Variant>({
+      serverURL: "http://localhost:3000",
+      authorization: `JWT ${token}`,
+    });
+    expect(await authed.read("/store/rest")).toEqual(v("r"));
+    expect(await authed.read("/store/missing")).toBeNull();
+
+    const wrong = payloadCollectionAdapter<Variant>({
+      serverURL: "http://localhost:3000",
+      authorization: "JWT not-a-token",
+    });
+    await expect(wrong.read("/store/rest")).rejects.toThrow();
   });
 });

@@ -24,7 +24,7 @@ export default defineConfig([
   // Server: the plugin (fields, hooks, endpoint, experiments collection).
   { ...shared, entry: { index: 'src/index.ts' }, clean: false },
   // Storage adapter, imported by both the Payload config and the request resolver.
-  { ...shared, entry: { 'adapters/payloadGlobal/index': 'src/adapters/payloadGlobal/index.ts' }, clean: false },
+  { ...shared, entry: { 'adapters/payloadCollection/index': 'src/adapters/payloadCollection/index.ts' }, clean: false },
   // Request resolver: Web Request in, routing decision and cookies out. No Payload import.
   { ...shared, entry: { 'middleware/index': 'src/middleware/index.ts' }, clean: false },
   // Client components.

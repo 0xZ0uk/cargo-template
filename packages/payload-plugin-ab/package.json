@@ -28,9 +28,9 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
-    "./adapters/payload-global": {
-      "types": "./dist/adapters/payloadGlobal/index.d.ts",
-      "default": "./dist/adapters/payloadGlobal/index.js"
+    "./adapters/payload-collection": {
+      "types": "./dist/adapters/payloadCollection/index.d.ts",
+      "default": "./dist/adapters/payloadCollection/index.js"
     },
     "./middleware": {
       "types": "./dist/middleware/index.d.ts",

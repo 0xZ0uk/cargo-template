@@ -19,7 +19,7 @@ export const abTestingPlugin =
 
     if ((storage as typeof storage | undefined) == null) {
       console.warn(
-        `${PREFIX} Disabled: required option "storage" is missing (provide a storage adapter, e.g. payloadGlobalAdapter()). Plugin not registered.`
+        `${PREFIX} Disabled: required option "storage" is missing (provide a storage adapter, e.g. payloadCollectionAdapter()). Plugin not registered.`
       );
       return incomingConfig;
     }
@@ -32,6 +32,7 @@ export const abTestingPlugin =
     }
 
     const extraGlobals = storage.createGlobal ? [storage.createGlobal(debug)] : [];
+    const extraCollections = storage.createCollection ? [storage.createCollection(debug)] : [];
 
     const patchedCollections = (incomingConfig.collections ?? []).map(
       (collection): CollectionConfig => {
@@ -68,7 +69,7 @@ export const abTestingPlugin =
 
     return {
       ...incomingConfig,
-      collections: [...patchedCollections, experimentsCollection],
+      collections: [...patchedCollections, ...extraCollections, experimentsCollection],
       globals: [...(incomingConfig.globals ?? []), ...extraGlobals],
       endpoints: [
         ...(incomingConfig.endpoints ?? []),

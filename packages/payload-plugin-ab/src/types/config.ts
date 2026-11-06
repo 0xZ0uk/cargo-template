@@ -1,6 +1,11 @@
-import type { GlobalConfig, Payload } from "payload";
+import type { CollectionConfig, GlobalConfig, Payload } from "payload";
 
 export interface StorageAdapter<TVariantData extends object = object> {
+  /**
+   * Stores the variants for one manifest key, without touching other keys. Called on every
+   * recompute, including draft autosaves with nothing new: skip the write when the stored
+   * value is already `variants`.
+   */
   write(path: string, variants: TVariantData[], payload: Payload): Promise<void>;
   /**
    * Reads the variants for one manifest key. Called on every routed request, so it must be
@@ -10,7 +15,10 @@ export interface StorageAdapter<TVariantData extends object = object> {
    */
   read(path: string, payload?: Payload): Promise<TVariantData[] | null>;
   clear(path: string, payload: Payload): Promise<void>;
+  /** A global the adapter stores into, added to the config by the plugin. */
   createGlobal?(debug: boolean): GlobalConfig;
+  /** A collection the adapter stores into, added to the config by the plugin. */
+  createCollection?(debug: boolean): CollectionConfig;
 }
 
 export interface CollectionABConfig<TVariantData extends object = object> {
@@ -54,7 +62,7 @@ export interface CollectionABConfig<TVariantData extends object = object> {
 export interface AbTestingPluginConfig<TVariantData extends object = object> {
   /** Default: true */
   enabled?: boolean;
-  /** If true, the manifest global is visible in the Payload admin panel. Default: false */
+  /** If true, the adapter's manifest storage and the experiments collection show in the admin panel. Default: false */
   debug?: boolean;
   /** Map of parent collection slug => A/B config for that collection. */
   collections: Record<string, CollectionABConfig<TVariantData>>;
