@@ -231,6 +231,9 @@ export default buildConfig({
         pages: {
           generatePath: ({ doc }) =>
             typeof doc.slug === 'string' && doc.slug ? pagePath(doc.slug) : null,
+          // Promoting a variant ("Promote" in the Variants panel) copies its content onto the
+          // original's draft; the original keeps its own publish date.
+          promoteSkipFields: ['publishedAt'],
         },
       },
       // Measurement (src/plugins/abMeasurement.ts): `loadPage` counts impressions and CTA
