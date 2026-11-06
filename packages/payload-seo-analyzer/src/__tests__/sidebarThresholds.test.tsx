@@ -29,9 +29,11 @@ vi.mock('@payloadcms/ui', async () => {
 })
 
 import SeoAnalyzer from '../components/SeoAnalyzer.js'
+import { invalidateSeoThresholds } from '../hooks/useSeoThresholds.js'
 
 let saved: Record<string, unknown> | undefined
 beforeEach(() => {
+  invalidateSeoThresholds() // the /settings response is shared across mounts
   pluginThresholds = undefined
   saved = undefined
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

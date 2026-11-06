@@ -33,6 +33,7 @@ import { buildSidebarContentInput, sidebarContentText } from '../helpers/sidebar
 import { Card, Checklist, cx, ScoreRing, statusTone, TonePill, type Tone } from '../ui/index.js'
 import { useAdminRoute, useSeoApi } from '../hooks/useSeoApi.js'
 import { useSeoThresholds } from '../hooks/useSeoThresholds.js'
+import { resolveThresholds } from '../helpers/thresholds.js'
 import './SeoAnalyzer.css'
 
 // ---------------------------------------------------------------------------
@@ -549,6 +550,7 @@ const SeoAnalyzerInner: React.FC = () => {
 
   // Custom thresholds (plugin option + saved /admin/seo-config values)
   const thresholds = useSeoThresholds()
+  const limits = useMemo(() => resolveThresholds(thresholds), [thresholds])
 
   // Extract secondary keywords from form state (array field: focusKeywords.N.keyword)
   const focusKeywords: string[] = useMemo(() => {
@@ -700,7 +702,7 @@ const SeoAnalyzerInner: React.FC = () => {
         const charCount = match ? (match[1] || match[2]) : '?'
         text = `${t.seoAnalyzer.adjustTitle} (${t.seoAnalyzer.currently} ${charCount} ${t.seoAnalyzer.titleCharactersIdeal})`
       } else if (check.id.startsWith('meta-desc')) {
-        text = t.seoAnalyzer.writeMetaDesc
+        text = t.seoAnalyzer.writeMetaDesc(limits.metaDescLengthMin, limits.metaDescLengthMax)
       } else if (check.id === 'content-wordcount') {
         text = t.seoAnalyzer.enrichContent
       } else if (check.id === 'keyword-in-title') {
@@ -722,7 +724,7 @@ const SeoAnalyzerInner: React.FC = () => {
     }
 
     return items
-  }, [analysis.checks, t])
+  }, [analysis.checks, t, limits])
 
   const handleAiGenerate = async () => {
     setAiGenerating(true)

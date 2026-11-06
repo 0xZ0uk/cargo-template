@@ -1,7 +1,7 @@
 /**
  * MetaTitleField — Custom Payload CMS field component for meta title.
  *
- * Adds a character counter (30-60 optimal range) with color indicator,
+ * Adds a character counter (optimal range from the thresholds, 30-60 by default) with color indicator,
  * a progress bar, and an optional "Generate" button that calls the
  * plugin's generate endpoint to auto-fill the title via user-provided
  * generate functions.
@@ -19,6 +19,7 @@ import { useDashboardT } from '../hooks/useSeoLocale.js'
 import { withSeoErrorBoundary } from './withSeoErrorBoundary.js'
 import { resolveMetaFieldOptions, type MetaFieldOptionProps } from './metaFieldOptions.js'
 import { useSeoApi } from '../hooks/useSeoApi.js'
+import { useResolvedThresholds } from '../hooks/useSeoThresholds.js'
 import './MetaField.css'
 
 // ---------------------------------------------------------------------------
@@ -30,13 +31,6 @@ interface MetaTitleFieldProps extends MetaFieldOptionProps {
 }
 
 // ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const TITLE_MIN = 30
-const TITLE_MAX = 60
-
-// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
@@ -46,6 +40,8 @@ function MetaTitleFieldInner(props: MetaTitleFieldProps) {
   const seoApi = useSeoApi()
   const generateUrl = basePath ? `${basePath}/generate` : seoApi('/generate')
   const t = useDashboardT()
+  // The same limits the title rule checks against (custom range or defaults).
+  const { titleLengthMin: TITLE_MIN, titleLengthMax: TITLE_MAX } = useResolvedThresholds()
   // One instance per locale tab on a localized document: a literal id would
   // point every tab's label at the first tab's input.
   const fieldId = useId()

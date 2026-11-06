@@ -532,7 +532,7 @@ export interface DashboardTranslations {
     adjustTitle: string
     currently: string
     titleCharactersIdeal: string
-    writeMetaDesc: string
+    writeMetaDesc: (min: number, max: number) => string
     enrichContent: string
     includeKeywordInTitle: string
     includeKeywordInDesc: string
@@ -1187,7 +1187,7 @@ const en: DashboardTranslations = {
     adjustTitle: 'Adjust your SEO title',
     currently: 'currently',
     titleCharactersIdeal: 'characters, ideal: 50-60',
-    writeMetaDesc: 'Write a meta description of 120-160 characters',
+    writeMetaDesc: (min, max) => `Write a meta description of ${min}-${max} characters`,
     enrichContent: 'Enrich your content (minimum 300 words recommended)',
     includeKeywordInTitle: 'Include your main keyword in the title',
     includeKeywordInDesc: 'Include your keyword in the meta description',
