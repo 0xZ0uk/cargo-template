@@ -134,7 +134,17 @@ const mcp = createMcpHandler(({ requestInfo }) => {
         args.slug === "users"
           ? // Like plugin-mcp's text: a header, then each document as fenced JSON.
             { content: [{ type: "text", text: `Collection: "users"\n\n\`\`\`json\n${JSON.stringify(USER)}\n\`\`\`` }] }
-          : { content: [{ type: "text", text: JSON.stringify({ docs: [...titles].map(([id, title]) => ({ id, title })) }) }] }
+          : args.slug === "authored"
+            ? // A page read with depth 1: its author and Payload 4's createdBy populated with the user.
+              {
+                content: [
+                  {
+                    type: "text",
+                    text: `Document from collection "authored":\n${JSON.stringify({ id: 7, title: "Authored", author: USER, createdBy: { relationTo: "users", value: USER } })}`,
+                  },
+                ],
+              }
+            : { content: [{ type: "text", text: JSON.stringify({ docs: [...titles].map(([id, title]) => ({ id, title })) }) }] }
     );
     server.registerTool(
       "updateDocument",

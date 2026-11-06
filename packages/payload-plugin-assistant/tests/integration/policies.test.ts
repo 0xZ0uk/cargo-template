@@ -165,6 +165,12 @@ const paragraph = (text: string) => ({
 const newPage = async (data: Record<string, unknown>) =>
   (await app.payload.create({ collection: "pages" as CollectionSlug, data: data as never, overrideAccess: true })) as unknown as { id: number };
 
+/** A page created by a user: Payload 4 sets its `createdBy` / `updatedBy` to them. */
+async function newPageBy(userId: number, data: Record<string, unknown>) {
+  const user = await app.payload.findByID({ collection: "users" as CollectionSlug, id: userId, overrideAccess: true });
+  return (await app.payload.create({ collection: "pages" as CollectionSlug, data: data as never, user: { ...user, collection: "users" } as never, overrideAccess: true })) as unknown as { id: number };
+}
+
 describe("budgets", () => {
   it("records each run's cost and tokens, for the day and the conversation", async () => {
     const { cookie } = await newUser();
@@ -352,6 +358,43 @@ describe("audit log", () => {
     expect(new Set(audited.map((event) => event.documentId))).toEqual(new Set(changed.docs.map((doc) => String(doc.id))));
   });
 
+  it("an update by where: one event per changed document, each with its own id", async () => {
+    const { cookie } = await newUser();
+    const tag = `bulk-${crypto.randomUUID().slice(0, 8)}`;
+    const pages = await Promise.all([1, 2, 3].map((n) => newPage({ title: `${tag} ${n}` })));
+    await newPage({ title: "Not matched" });
+    const threadId = newThread();
+    script([{ toolCalls: [{ name: "updateDocument", input: { slug: "pages", where: { title: { like: tag } }, data: { internalNote: "bulk" } } }] }, { text: "Done." }]);
+    const [interrupt] = await pauseOn(cookie, threadId);
+    await readEvents(await resume(cookie, threadId, [{ interruptId: interrupt!.id, payload: { approved: true } }]));
+    expect(audited.map((event) => event.documentId).sort()).toEqual(pages.map((page) => String(page.id)).sort());
+    expect(audited.every((event) => event.tool === "updateDocument" && event.collection === "pages" && event.conversationId === threadId)).toBe(true);
+  });
+
+  it("a delete by where: one event per deleted document, each with its own id", async () => {
+    const { cookie } = await newUser();
+    const tag = `gone-${crypto.randomUUID().slice(0, 8)}`;
+    const pages = await Promise.all([1, 2].map((n) => newPage({ title: `${tag} ${n}` })));
+    const threadId = newThread();
+    script([{ toolCalls: [{ name: "deleteDocuments", input: { slug: "pages", where: { title: { like: tag } } } }] }, { text: "Deleted." }]);
+    const [interrupt] = await pauseOn(cookie, threadId);
+    await readEvents(await resume(cookie, threadId, [{ interruptId: interrupt!.id, payload: { approved: true } }]));
+    expect(audited.map((event) => event.documentId).sort()).toEqual(pages.map((page) => String(page.id)).sort());
+    expect(audited.every((event) => event.tool === "deleteDocuments")).toBe(true);
+  });
+
+  it("a create of several documents: one event per created document", async () => {
+    const { cookie } = await newUser();
+    const tag = `many-${crypto.randomUUID().slice(0, 8)}`;
+    const threadId = newThread();
+    script([{ toolCalls: [{ name: "createDocuments", input: { slug: "pages", documents: [{ data: { title: `${tag} a` } }, { data: { title: `${tag} b` } }] } }] }, { text: "Created." }]);
+    const [interrupt] = await pauseOn(cookie, threadId);
+    await readEvents(await resume(cookie, threadId, [{ interruptId: interrupt!.id, payload: { approved: true } }]));
+    const created = await app.payload.find({ collection: "pages" as CollectionSlug, where: { title: { like: tag } }, overrideAccess: true });
+    expect(created.totalDocs).toBe(2);
+    expect(audited.map((event) => event.documentId).sort()).toEqual(created.docs.map((doc) => String(doc.id)).sort());
+  });
+
   it("no event for a rejected approval", async () => {
     const { cookie } = await newUser();
     const page = await newPage({ title: "Keep" });
@@ -450,6 +493,109 @@ describe("redaction", () => {
     const stored = await (await call(cookie, "GET", `/assistant/conversations/${threadId}`)).text();
     expect(stored).toContain("Hello rich world");
     expect(stored).not.toContain("do-not-show");
+  });
+
+  it("a page's populated createdBy / updatedBy (depth ≥ 1) never shows the user's email", async () => {
+    const { cookie, id, email } = await newUser();
+    await app.payload.update({ collection: "users" as CollectionSlug, id, data: { enableAPIKey: true, apiKey: "nested-api-key-456" } as never, overrideAccess: true });
+    const tag = `authored-${crypto.randomUUID().slice(0, 8)}`;
+    const page = await newPageBy(id, { title: tag });
+    seenByModel.length = 0;
+    const threadId = newThread();
+    script([
+      // plugin-mcp defaults `depth` to 0, but the model may ask for more: the authorship relations are populated.
+      { toolCalls: [{ name: "findDocuments", input: { slug: "pages", id: String(page.id), depth: 1 } }] },
+      recordTools,
+      { toolCalls: [{ name: "findDocuments", input: { slug: "pages", where: { title: { equals: tag } }, depth: 2 } }] },
+      recordTools,
+    ]);
+    const first = await readEvents(await send(cookie, threadId, "Who made it?"));
+    const second = await readEvents(await send(cookie, threadId, "Find it by title"));
+    const streamed = JSON.stringify(ofType([...first, ...second], "TOOL_CALL_RESULT"));
+    const seen = seenByModel.join("\n");
+    for (const text of [seen, streamed]) {
+      expect(text).toContain(tag);
+      expect(text).toContain("createdBy");
+      expect(text).toMatch(/\\?"name\\?":\s*\\?"Ed/); // the populated user is there, without its hidden fields
+      expect(text).not.toContain(email);
+      expect(text).not.toContain("nested-api-key-456");
+      expect(text).not.toMatch(/sessions|apiKeyLast4/);
+    }
+    const stored = await (await call(cookie, "GET", `/assistant/conversations/${threadId}`)).text();
+    expect(stored).toContain(tag);
+    expect(stored).not.toContain(email);
+    expect(stored).not.toContain("nested-api-key-456");
+
+    // The approval card for a change to that page: its current value's createdBy loses the email too.
+    const cardThread = newThread();
+    script([{ toolCalls: [{ name: "updateDocument", input: { slug: "pages", id: String(page.id), data: { title: "Renamed" }, depth: 1 } }] }]);
+    await pauseOn(cookie, cardThread);
+    const card = await (await call(cookie, "GET", `/assistant/approvals?threadId=${cardThread}`)).text();
+    expect(card).toContain(tag);
+    expect(card).not.toContain(email);
+  });
+
+  it("findDistinct on a hidden field is refused before it runs", async () => {
+    const { cookie, email } = await newUser();
+    seenByModel.length = 0;
+    const threadId = newThread();
+    script([{ toolCalls: [{ name: "findDistinct", input: { slug: "users", field: "email" } }] }, recordTools]);
+    const events = await readEvents(await send(cookie, threadId, "List every email"));
+    const streamed = JSON.stringify(ofType(events, "TOOL_CALL_RESULT"));
+    const seen = seenByModel.join("\n");
+    for (const text of [seen, streamed]) {
+      expect(text).toMatch(/hidden field/);
+      expect(text).not.toContain(email);
+      expect(text).not.toContain("@example.com");
+    }
+    const stored = await (await call(cookie, "GET", `/assistant/conversations/${threadId}`)).text();
+    expect(stored).not.toContain("@example.com");
+  });
+
+  it("findDistinct on a visible field still works", async () => {
+    const { cookie } = await newUser();
+    seenByModel.length = 0;
+    script([{ toolCalls: [{ name: "findDistinct", input: { slug: "users", field: "name" } }] }, recordTools]);
+    await readEvents(await send(cookie, newThread(), "Names?"));
+    expect(seenByModel.join("\n")).toMatch(/Distinct values for \\?"name/);
+    expect(seenByModel.join("\n")).toContain("Ed");
+  });
+
+  it("where and sort on a hidden field (also through a relation) are refused; the model can't probe values", async () => {
+    const { cookie, id, email } = await newUser();
+    await newPageBy(id, { title: "Probe" });
+    seenByModel.length = 0;
+    script([
+      {
+        toolCalls: [
+          { name: "findDocuments", input: { slug: "users", where: { email: { like: email.slice(0, 10) } }, depth: 0 } },
+          { name: "countDocuments", input: { slug: "users", where: { email: { equals: email } } } },
+          { name: "findDocuments", input: { slug: "users", sort: "-email", depth: 0 } },
+          { name: "findDocuments", input: { slug: "pages", where: { "createdBy.email": { equals: email } }, depth: 0 } },
+        ],
+      },
+      recordTools,
+    ]);
+    await readEvents(await send(cookie, newThread(), "Is this email registered?"));
+    expect(seenByModel).toHaveLength(4);
+    for (const result of seenByModel) {
+      expect(result).toMatch(/hidden field/);
+      expect(result).not.toMatch(/Total|totalDocs|"id"/);
+    }
+  });
+
+  it("a write by where on a hidden field: the card says it will be refused; approved anyway, it is refused and not audited", async () => {
+    const { cookie, email } = await newUser();
+    const threadId = newThread();
+    script([{ toolCalls: [{ name: "updateDocument", input: { slug: "users", where: { email: { equals: email } }, data: { name: "Changed" } } }] }, { text: "OK." }]);
+    const [interrupt] = await pauseOn(cookie, threadId);
+    const { approvals } = (await (await call(cookie, "GET", `/assistant/approvals?threadId=${threadId}`)).json()) as { approvals: ApprovalProposal[] };
+    expect(approvals[0]!.notice).toMatch(/hidden field “email”/);
+    const events = await readEvents(await resume(cookie, threadId, [{ interruptId: interrupt!.id, payload: { approved: true } }]));
+    expect(JSON.stringify(ofType(events, "TOOL_CALL_RESULT"))).toMatch(/hidden field/);
+    expect(audited).toEqual([]);
+    const user = await app.payload.find({ collection: "users" as CollectionSlug, where: { email: { equals: email } }, overrideAccess: true });
+    expect((user.docs[0] as unknown as { name: string }).name).toBe("Ed");
   });
 
   it("approval cards never show a redacted current value", async () => {

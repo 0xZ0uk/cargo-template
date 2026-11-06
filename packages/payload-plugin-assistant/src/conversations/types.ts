@@ -1,5 +1,6 @@
 import type { ModelMessage, RunAgentResumeItem, RunRecord, StreamChunk } from "@tanstack/ai";
 import type { AssistantAuditSink } from "../audit";
+import type { RedactionMap, RelationMap } from "../redaction";
 import type { UsageAmount, UsageSnapshot } from "../usage";
 import type {
   ChatWithInterruptsPersistence,
@@ -55,7 +56,13 @@ export interface TurnSettings {
    * endpoint (the auth defaults plus the app's `redact`). Applied to every tool result before the
    * model, the stream and the stored transcript see it.
    */
-  redact?: Record<string, string[]>;
+  redact?: RedactionMap;
+  /**
+   * Where documents of one collection appear inside another's (relationship, upload and join
+   * fields that lead to redacted fields, `relationMapOf`): populated documents are redacted with
+   * their own collection's paths (#68).
+   */
+  relations?: RelationMap;
 }
 
 /** The body of a turn, as the endpoint validated it. `TurnInput.body` carries this. */

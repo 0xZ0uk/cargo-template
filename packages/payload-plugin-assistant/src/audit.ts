@@ -1,5 +1,7 @@
+import { jsonValuesIn } from "./redaction";
+
 /**
- * The audit log (#68): one event per applied write, no content. Pure (no runtime imports): the
+ * The audit log (#68): one event per document an applied write changed, no content. Pure (no runtime imports): the
  * turn runner emits events, the app supplies the sink.
  */
 
@@ -13,7 +15,11 @@ export interface AssistantAuditEvent {
   tool: string;
   /** Collection or global slug (the call's `slug` argument), `""` when it had none. */
   collection: string;
-  /** The document id: the call's `id`, or the created document's id from the result; `""` when unknown (a write by `where`). */
+  /**
+   * The document changed: one event per document. The call's `id`, or the ids plugin-mcp lists in
+   * its result (created documents, update or delete by `where`, the copy of a duplicate); `""`
+   * when it can't be told (a global, a custom tool without ids in its result).
+   */
   documentId: string;
   /** The conversation (thread id). */
   conversationId: string;
@@ -26,7 +32,7 @@ export interface AssistantAuditEvent {
 }
 
 /**
- * Where audit events go. Called once per successful write, never for reads, rejected approvals or
+ * Where audit events go. Called once per document a successful write changed, never for reads, rejected approvals or
  * failed calls. Errors are logged and swallowed: auditing never fails a run.
  */
 export type AssistantAuditSink = (event: AssistantAuditEvent) => void | Promise<void>;
@@ -64,25 +70,69 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const idText = (value: unknown): string =>
   typeof value === "string" || typeof value === "number" ? String(value) : "";
 
+/** A tool result as text: plugin-mcp's string, or its text content parts. */
+function resultText(result: unknown): string | undefined {
+  if (typeof result === "string") return result;
+  if (Array.isArray(result)) {
+    return result.map((part) => (isRecord(part) && typeof part.content === "string" ? part.content : isRecord(part) && typeof part.text === "string" ? part.text : "")).join("\n");
+  }
+  return undefined;
+}
+
 /**
- * The id a write targeted: the call's `id` argument; for a create, the created document's id in
- * the result (plugin-mcp prints it as JSON in the text). `""` when there is none.
+ * The ids in one of plugin-mcp's result values, or `undefined` when it doesn't look like one: a
+ * list of documents (`[{ id }, …]`, update and delete by `where`), a batch (`{ docs: [{ id } |
+ * { doc: { id } }], errors }`, `createDocuments`; `errors` are documents that were not written),
+ * `{ doc }`, or one document (`{ id }`).
  */
-export function auditDocumentId(input: unknown, result: unknown): string {
-  if (isRecord(input) && idText(input.id)) return idText(input.id);
-  const text =
-    typeof result === "string"
-      ? result
-      : Array.isArray(result)
-        ? result.map((part) => (isRecord(part) && typeof part.content === "string" ? part.content : "")).join("\n")
-        : undefined;
-  if (text) {
-    const match = /"id"\s*:\s*("([^"\\]{1,128})"|(\d{1,20}))/.exec(text);
-    if (match) return match[2] ?? match[3] ?? "";
+function idsOf(value: unknown): string[] | undefined {
+  const idOfItem = (item: unknown) => (isRecord(item) ? idText(item.id) || (isRecord(item.doc) ? idText(item.doc.id) : "") : "");
+  if (Array.isArray(value)) {
+    const ids = value.map(idOfItem);
+    return ids.every(Boolean) ? ids : undefined;
   }
-  if (isRecord(result)) {
-    if (idText(result.id)) return idText(result.id);
-    if (isRecord(result.doc) && idText(result.doc.id)) return idText(result.doc.id);
-  }
-  return "";
+  if (!isRecord(value)) return undefined;
+  if (Array.isArray(value.docs)) return idsOf(value.docs);
+  if (isRecord(value.doc)) return idsOf(value.doc);
+  return idText(value.id) ? [idText(value.id)] : undefined;
+}
+
+/**
+ * The documents a successful write changed, one id each (`""` when it can't be told, e.g. a
+ * global, or a result without ids). Never a wrong id:
+ *
+ * - `duplicateDocument` / `restoreVersion`: the result's document (the copy, the restored
+ *   document), not the `id` argument (the source, the version).
+ * - Otherwise the call's `id` argument when it has one.
+ * - Otherwise (create, update or delete by `where`) the ids plugin-mcp lists in its result:
+ *   `Updated documents:` / `Deleted documents:` (an array), `Results:` (`{ docs, errors }`); the
+ *   `Errors:` section and the schema after it are documents that were not changed, and ignored.
+ *   No changed documents ("Updated: 0 documents") gives no ids.
+ * - Globals: `[""]` (one global, no document id).
+ */
+export function auditDocumentIds(toolName: string, input: unknown, result: unknown): string[] {
+  const args = isRecord(input) ? input : {};
+  if (/global/i.test(toolName)) return [""];
+  const fromResult = (): string[] | undefined => {
+    const text = resultText(result);
+    if (text !== undefined) {
+      // "Updated: 0 documents" / "Deleted: 0 documents" / "Created 0 of 2 documents": nothing changed.
+      if (/^(?:Updated|Deleted): 0 documents$/m.test(text) || /\bCreated 0 of \d+ documents\b/.test(text)) return [];
+      const main = text.split(/\n\s*(?:Errors|Use this schema for data):\s*\n/)[0] ?? "";
+      for (const value of jsonValuesIn(main)) {
+        const ids = idsOf(value);
+        if (ids) return ids;
+      }
+      return undefined;
+    }
+    return idsOf(result);
+  };
+  if (/duplicate|restore/i.test(toolName)) return (fromResult() ?? [""]).slice(0, 1);
+  if (idText(args.id)) return [idText(args.id)];
+  return fromResult() ?? [""];
+}
+
+/** The first document id of {@link auditDocumentIds} (`""` when none). */
+export function auditDocumentId(input: unknown, result: unknown, toolName = ""): string {
+  return auditDocumentIds(toolName, input, result)[0] ?? "";
 }

@@ -11,6 +11,8 @@ import { buildSystemPrompt, siteUrls } from "./instructions";
 import { createTurnRunner, type CreateAdapter } from "./turn";
 import { isId, validateChatBody } from "./validate";
 import { budgetExceeded, formatUsd, usageResponse, utcDay } from "../usage";
+import type { RedactionPolicy } from "../redaction";
+import { redactionPolicyOf, type ConfigLike } from "../redactionSchema";
 
 /**
  * The assistant's endpoints, behind the checks in `endpoints/index.ts` (signed in, `access`…).
@@ -85,6 +87,20 @@ const isRejection = (item: { status: string; payload?: unknown }): boolean =>
   (typeof item.payload === "object" && item.payload !== null && (item.payload as { approved?: unknown }).approved === false);
 
 /** `POST /api/assistant/chat`: a new turn, or a resume with approval decisions. Answers the run's SSE. */
+/** The redaction policy of this Payload (#68): paths, auth defaults, relations to them. */
+function policyOf(req: PayloadRequest, options: NormalizedAssistantOptions): RedactionPolicy {
+  return redactionPolicyOf(req.payload.config as unknown as ConfigLike, options.redact);
+}
+
+/** The policy as turn settings: plain JSON, it travels to the conversation's Durable Object. */
+function redactionSettings(req: PayloadRequest, options: NormalizedAssistantOptions): Pick<TurnSettings, "redact" | "relations"> {
+  const { paths, relations } = policyOf(req, options);
+  return {
+    ...(Object.keys(paths).length ? { redact: paths } : {}),
+    ...(relations && Object.keys(relations).length ? { relations } : {}),
+  };
+}
+
 export async function handleChat(req: PayloadRequest, options: NormalizedAssistantOptions, deps: ChatDeps = {}): Promise<Response> {
   let raw: unknown;
   try {
@@ -160,7 +176,7 @@ export async function handleChat(req: PayloadRequest, options: NormalizedAssista
     httpReferer: site || origin,
     appTitle: options.appTitle,
     ...(testModel ? { testModel: true } : {}),
-    ...(Object.keys(options.redact).length ? { redact: options.redact } : {}),
+    ...redactionSettings(req, options),
   };
   const body: ChatTurnBody = { messages, ...(resume ? { resume } : {}), settings };
   const runId = parsed.value.runId ?? crypto.randomUUID();
@@ -205,7 +221,7 @@ export async function handleApprovals(req: PayloadRequest, options: NormalizedAs
   if (!isId(threadId)) return jsonError(400, "invalid_query", '"threadId" is required');
   const transcript = await backendFor(req, options, deps).transcript(userOf(req), threadId);
   if (!transcript) return jsonError(404, "not_found", "Not found");
-  return Response.json({ approvals: await buildProposals(req, transcript.pendingInterrupts, options.redact) });
+  return Response.json({ approvals: await buildProposals(req, transcript.pendingInterrupts, policyOf(req, options)) });
 }
 
 /** `POST /api/assistant/chat/stop` `{ threadId, runId }`: abort a live run. */

@@ -144,11 +144,13 @@ export interface AssistantPluginOptions {
    * (`{ customers: ['phone', 'address.street'] }`). Arrays and blocks rows are walked. Added to the
    * defaults: every auth collection hides `DEFAULT_AUTH_REDACTIONS` (email, API key, sessions,
    * hash, salt, reset and verification tokens, lockout state). Applied to tool results before the
-   * model sees them, to the stored transcript and to the approval cards' current values.
+   * model sees them (populated relations with their own collection's paths), to the stored
+   * transcript and to the approval cards' current values; a `where`, `sort`, `select` or
+   * `findDistinct` field naming one is refused.
    */
   redact?: RedactionMap;
   /**
-   * Where applied writes are reported (#68), one event per write, no content. Used where the turn
+   * Where applied writes are reported (#68), one event per changed document, no content. Used where the turn
    * runs in this process (the in-memory backend); the conversation Durable Object takes its sink
    * from `auditSink()`, which the app overrides (see the README, "Audit log"). Typically
    * `analyticsEngineAuditSink(env.ASSISTANT_AUDIT)` in both places.

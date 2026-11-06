@@ -21,6 +21,13 @@ const settings: TurnSettings = {
   httpReferer: ADMIN_ORIGIN,
   appTitle: "test",
   redact: { users: ["email", "sessions"] },
+  // As the endpoint resolves them from the config (`relationMapOf`).
+  relations: {
+    authored: [
+      { path: "author", relationTo: "users" },
+      { path: "createdBy", relationTo: ["users"] },
+    ],
+  },
 };
 
 const chatBody = (script: FakeResponseStep[], extra: { message?: string; resume?: unknown[]; tokensPerSecond?: number } = {}) => {
@@ -155,5 +162,34 @@ describe("audit and redaction in the object", () => {
       await conversations.join(user, threadId, new Request(`https://admin.example/api/assistant/chat?runId=${start.runId}`, { headers: { "Last-Event-ID": "-1" } }))
     );
     expect(JSON.stringify(replay.map((e) => e.data))).not.toContain(USER.email);
+  });
+
+  it("populated relations (author, createdBy) lose the related collection's fields, in the stream and the transcript", async () => {
+    const conversations = backend();
+    const [user, threadId] = [newId("users"), newId("thread")];
+    const events = await readEvents(
+      await conversations.startTurn(turn(user, threadId, chatBody([{ toolCalls: [{ name: "findDocuments", input: { slug: "authored" } }] }, { text: "Seen." }])))
+    );
+    const streamed = JSON.stringify(ofType(events, "TOOL_CALL_RESULT"));
+    const transcript = JSON.stringify(await conversations.transcript(user, threadId));
+    for (const text of [streamed, transcript]) {
+      expect(text).toContain("Authored");
+      expect(text).toContain("Ann");
+      expect(text).not.toContain(USER.email);
+      expect(text).not.toContain("session-secret");
+    }
+  });
+
+  it("a query on a hidden field is refused before the tool runs", async () => {
+    const conversations = backend();
+    const [user, threadId] = [newId("users"), newId("thread")];
+    const events = await readEvents(
+      await conversations.startTurn(
+        turn(user, threadId, chatBody([{ toolCalls: [{ name: "findDocuments", input: { slug: "users", where: { email: { like: "ann" } } } }] }, { text: "Refused." }]))
+      )
+    );
+    const streamed = JSON.stringify(ofType(events, "TOOL_CALL_RESULT"));
+    expect(streamed).toMatch(/hidden field/);
+    expect(streamed).not.toContain("Ann");
   });
 });
