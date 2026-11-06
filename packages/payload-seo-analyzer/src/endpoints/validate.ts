@@ -14,20 +14,25 @@ import { loadMergedConfig } from '../helpers/loadMergedConfig.js'
 import { parseJsonBody } from '../helpers/parseBody.js'
 import type { SeoInput, SeoConfig } from '../types.js'
 import { isSeoPanelUser } from '../helpers/isAdmin.js'
+import type { ContentExtractorSource } from '../helpers/contentExtractor.js'
+import { contentInputFromDoc } from '../helpers/docContentInput.js'
 
 /**
  * Build a SeoInput object from a Payload document (page or post).
  * Exported for reuse in other endpoints or custom integrations.
+ *
+ * The content fields come from `contentInputFromDoc`, the mapping the sidebar shares, and
+ * a collection's `extractContent` extractor (pass `extractors`: the map, or `req.payload`)
+ * replaces the `layout` walk.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function buildSeoInputFromDoc(
   doc: any,
   collection: string,
-  options?: { isGlobal?: boolean },
+  options?: { isGlobal?: boolean; extractors?: ContentExtractorSource },
 ): SeoInput {
   const meta = doc.meta || {}
-  const hero = doc.hero || {}
-  const isPost = collection === 'posts'
+  const contentInput = contentInputFromDoc(doc, collection, { extractors: options?.extractors })
 
   // Canonical & robots — best-effort read from common field locations. Many sites
   // control indexation at the framework level (e.g. Next.js metadata), in which case
@@ -36,20 +41,6 @@ export function buildSeoInputFromDoc(
     (typeof meta.canonicalUrl === 'string' && meta.canonicalUrl) ||
     (typeof doc.canonicalUrl === 'string' && doc.canonicalUrl) ||
     undefined
-
-  let robotsMeta: string | undefined
-  const rawRobots =
-    (typeof meta.robots === 'string' && meta.robots) ||
-    (typeof doc.robots === 'string' && doc.robots) ||
-    ''
-  if (rawRobots) {
-    robotsMeta = rawRobots
-  } else {
-    const directives: string[] = []
-    if (doc.noindex === true || meta.noindex === true) directives.push('noindex')
-    if (doc.nofollow === true || meta.nofollow === true) directives.push('nofollow')
-    if (directives.length > 0) robotsMeta = directives.join(', ')
-  }
 
   // E-E-A-T signals — best-effort author + dates from common Payload shapes.
   let author: string | undefined
@@ -98,7 +89,6 @@ export function buildSeoInputFromDoc(
   return {
     metaTitle: (meta.title as string) || '',
     metaDescription: (meta.description as string) || '',
-    metaImage: meta.image || undefined,
     slug: (doc.slug as string) || '',
     focusKeyword: (doc.focusKeyword as string) || '',
     focusKeywords: Array.isArray(doc.focusKeywords)
@@ -107,13 +97,7 @@ export function buildSeoInputFromDoc(
           .map((k) => k.keyword || '')
           .filter(Boolean)
       : undefined,
-    heroTitle: isPost ? (doc.title as string) || '' : undefined,
-    heroRichText: hero.richText || undefined,
-    heroLinks: hero.links || undefined,
-    heroMedia: hero.media || undefined,
-    blocks: (doc.layout as unknown[]) || undefined,
-    content: isPost ? (doc.content as unknown) : undefined,
-    isPost,
+    ...contentInput,
     isCornerstone: !!doc.isCornerstone,
     updatedAt: (doc.updatedAt as string) || undefined,
     publishedAt,
@@ -123,7 +107,6 @@ export function buildSeoInputFromDoc(
     authorUrl,
     localeAlternates,
     canonicalUrl,
-    robotsMeta,
     isGlobal: options?.isGlobal ?? false,
   }
 }
@@ -190,7 +173,7 @@ export function createValidateHandler(
           ...readAccessOpts(req),
         })
 
-        const seoInput = buildSeoInputFromDoc(doc, collection)
+        const seoInput = buildSeoInputFromDoc(doc, collection, { extractors: req.payload })
         const analysis = analyzeSeo(seoInput, mergedConfig)
 
         return Response.json({
@@ -247,7 +230,7 @@ export function createValidateHandler(
           depth: 1,
           ...readAccessOpts(req),
         })
-        seoInput = buildSeoInputFromDoc(doc, collection)
+        seoInput = buildSeoInputFromDoc(doc, collection, { extractors: req.payload })
         if (overrides) seoInput = { ...seoInput, ...overrides }
       } else {
         return Response.json(

@@ -22,12 +22,13 @@ import { auditMaxDocs } from '../helpers/auditLimits.js'
 import { docExclusion, isExcludedDoc } from '../helpers/excludeDocs.js'
 import { loadMergedConfig } from '../helpers/loadMergedConfig.js'
 import { extractDocContent } from '../helpers/extractDocContent.js'
+import type { ContentExtractorSource } from '../helpers/contentExtractor.js'
 import { isSeoAdminRequest, isSeoPanelUser } from '../helpers/isAdmin.js'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function analyzeDoc(doc: any, collection: string, seoConfig?: SeoConfig) {
+function analyzeDoc(doc: any, collection: string, seoConfig?: SeoConfig, extractors?: ContentExtractorSource) {
   // Build SeoInput and run the real engine
-  let seoInput = buildSeoInputFromDoc(doc, collection)
+  let seoInput = buildSeoInputFromDoc(doc, collection, { extractors })
   // Mark as global if collection starts with 'global:'
   seoInput.isGlobal = collection.startsWith('global:')
   if (seoInput.isGlobal) {
@@ -44,7 +45,7 @@ function analyzeDoc(doc: any, collection: string, seoConfig?: SeoConfig) {
 
   // Extract enriched data for the dashboard using the shared helper
   // (single extraction pass instead of duplicating logic from analyzeSeo's buildContext)
-  const extracted = extractDocContent(doc)
+  const extracted = extractDocContent(doc, undefined, { collection, extractors })
   const fullText = extracted.text
   const allLinks = extracted.links
   const allHeadings = extracted.headings
@@ -211,12 +212,11 @@ async function scanAuditDocs(
   // site remains responsive regardless of content size. DOC_DELAY_MS is the floor; capped per doc.
   const THROTTLE_RATIO = Math.min(10, Math.max(0, parseFloat(process.env.SEO_AUDIT_THROTTLE_RATIO || (fast ? '0' : '2')) || 0))
   const MAX_DOC_PAUSE_MS = 750
-  // depth:1 populates uploads/relations (heavier). Default 1 keeps scores identical to the
-  // sidebar; set SEO_AUDIT_DEPTH=0 on the tiniest hosts to cut memory/CPU (image-dimension
-  // sub-checks then see IDs instead of populated media — a minor, acceptable score difference).
-  // Default depth 0 — the dashboard audit is a coarse overview; populating relations (media) for
-  // every doc is the heaviest part on constrained hosts. depth:0 cuts CPU+memory a lot. Set
-  // SEO_AUDIT_DEPTH=1 to restore exact parity with the sidebar on image-dimension sub-checks.
+  // Default depth 0: the dashboard audit is a coarse overview, and populating relations for
+  // every doc is the heaviest part on constrained hosts. At depth 0 uploads, `reference` links
+  // and reusable sections stay IDs, so the audit sees FEWER images, internal links and section
+  // text than `/validate` and the sidebar, which both read at depth 1. Set SEO_AUDIT_DEPTH=1 for
+  // the same content as the sidebar (more CPU and memory per doc).
   const rawDepth = parseInt(process.env.SEO_AUDIT_DEPTH ?? '0', 10)
   const DEPTH = Number.isNaN(rawDepth) ? 0 : Math.min(2, Math.max(0, rawDepth))
 
@@ -258,7 +258,7 @@ async function scanAuditDocs(
           }
           const t0 = Date.now()
           try {
-            progress.results.push(analyzeDoc(doc, collectionSlug, mergedConfig))
+            progress.results.push(analyzeDoc(doc, collectionSlug, mergedConfig, payload))
           } catch (e) {
             payload.logger.warn(
               `[seo] audit: skipped ${collectionSlug}/${(doc as { id?: unknown }).id}: ${e instanceof Error ? e.message : 'error'}`,

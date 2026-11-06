@@ -77,6 +77,11 @@ export interface SeoInput {
   heroLinks?: unknown[] // Hero CTA links (linkGroup items)
   heroMedia?: unknown // Hero background/media image (populated media object)
   blocks?: unknown[] // layout blocks array
+  /**
+   * The body content, already extracted (the collection's `extractContent` extractor, or
+   * the block walker over a populated document). When set, `blocks` is not walked.
+   */
+  blockContent?: BlocksContent
   /** For posts — the Lexical content field */
   content?: unknown
   /** Whether the content is a post (for word count thresholds) */
@@ -185,6 +190,12 @@ export interface SeoConfig {
   excludeDocs?: SeoExcludeDocs
   /** Dotted field paths `excludeDocs` reads (e.g. `['_abVariantOf']`). */
   excludeDocsFields?: string[]
+  /**
+   * @internal The source of the plugin's `extractContent` extractors, set by the plugin so
+   * the persisted cache keys (which hash this config) change with them. Not read by the
+   * analyzer; the extractors themselves live in the server-only `config.custom`.
+   */
+  extractContentFingerprint?: string
 }
 
 /** See `SeoConfig.excludeDocs`. */

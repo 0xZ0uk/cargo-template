@@ -18,7 +18,7 @@
 
 import type { PayloadHandler } from 'payload'
 import { defaultSeoSharedCache, type SeoSharedCache } from '../cache.js'
-import { extractBlocksContent } from '../helpers/blockContent.js'
+import { type ContentExtractorSource, extractDocBlocks } from '../helpers/contentExtractor.js'
 import { fetchAllDocs } from '../helpers/fetchAllDocs.js'
 import { checkLinks, type LinkCheckResult, type LinkCheckerOptions } from '../helpers/linkChecker.js'
 import { classifyLink, countLinkStates, LINK_STATES } from '../helpers/linkStatus.js'
@@ -123,6 +123,7 @@ export function extractDocExternalLinks(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   doc: any,
   siteUrl?: string,
+  options: { collection?: string; extractors?: ContentExtractorSource } = {},
 ): string[] {
   const allLinks: string[] = []
 
@@ -132,7 +133,8 @@ export function extractDocExternalLinks(
   }
 
   // Layout blocks: every Lexical value, `link` / `links` field and plain-URL link, by shape
-  for (const link of extractBlocksContent(doc.layout).links) {
+  // (or the collection's `extractContent`)
+  for (const link of extractDocBlocks(doc, options).links) {
     const url = link.url.trim()
     if (url.startsWith('http://') || url.startsWith('https://')) allLinks.push(url)
   }
@@ -226,7 +228,10 @@ export function createExternalLinksHandler(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const d = doc as any
         const collectionLabel = sourceType === 'global' ? `global:${sourceSlug}` : sourceSlug
-        const links = extractDocExternalLinks(d, siteUrl)
+        const links = extractDocExternalLinks(d, siteUrl, {
+          collection: sourceType === 'global' ? undefined : sourceSlug,
+          extractors: req.payload,
+        })
 
         for (const rawLink of links) {
           const link = normalizeLink(rawLink)

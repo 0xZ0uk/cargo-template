@@ -12,6 +12,7 @@ import {
   NewTabIcon,
   useAllFormFields,
   useDocumentInfo,
+  useLocale,
   WarningIcon,
   XIcon,
 } from '@payloadcms/ui'
@@ -29,7 +30,8 @@ import { SerpPreview } from './SerpPreview.js'
 import { useDashboardT, useSeoFeature } from '../hooks/useSeoAdmin.js'
 import { type DashboardTranslations } from '../dashboard-i18n.js'
 import { withSeoErrorBoundary } from './withSeoErrorBoundary.js'
-import { buildSidebarContentInput, sidebarContentText } from '../helpers/sidebarContent.js'
+import { sidebarContentText } from '../helpers/sidebarContent.js'
+import { useSidebarContent } from '../hooks/useSidebarContent.js'
 import { Card, Checklist, cx, ScoreRing, statusTone, TonePill, type Tone } from '../ui/index.js'
 import { useAdminRoute, useSeoApi } from '../hooks/useSeoApi.js'
 import { useSeoThresholds } from '../hooks/useSeoThresholds.js'
@@ -545,6 +547,16 @@ const SeoAnalyzerInner: React.FC = () => {
   const updatedAt = getFieldValue('updatedAt') as string | undefined
   const contentLastReviewed = getFieldValue('contentLastReviewed') as string | undefined
 
+  // The page's content, populated and extracted on the server like /validate reads it
+  // (uploads, reference links and reusable sections are IDs in the form).
+  const locale = useLocale()?.code
+  const { content: contentInput, resolved: contentResolved } = useSidebarContent(
+    formFields,
+    collectionSlug,
+    seoApi('/sidebar-content'),
+    locale,
+  )
+
   // Check if the primary keyword is already used by another document
   const keywordUsage = useKeywordDuplicateCheck(focusKeyword, documentId)
 
@@ -573,18 +585,14 @@ const SeoAnalyzerInner: React.FC = () => {
 
     const metaTitle = getFieldValue('meta.title') as string | undefined
     const metaDescription = getFieldValue('meta.description') as string | undefined
-    const metaImage = getFieldValue('meta.image')
     const slug = getFieldValue('slug') as string | undefined
 
-    // Content (hero, layout blocks, post content): form state reduced to a document and
-    // read by the same walker as /validate, so every block type counts.
-    const contentInput = buildSidebarContentInput(formFields)
-
+    // Content (hero, layout blocks, post content, the meta image): the form reduced to a
+    // document, populated on the server and mapped like /validate maps a saved document.
     const result = analyzeSeo(
       {
         metaTitle,
         metaDescription,
-        metaImage,
         slug,
         focusKeyword,
         focusKeywords: focusKeywords.length > 0 ? focusKeywords : undefined,
@@ -605,7 +613,7 @@ const SeoAnalyzerInner: React.FC = () => {
     }
 
     return { analysis: result, wordCount: wc }
-  }, [formFields, focusKeyword, focusKeywords, isCornerstone, updatedAt, contentLastReviewed, getFieldValue, thresholds])
+  }, [formFields, contentInput, focusKeyword, focusKeywords, isCornerstone, updatedAt, contentLastReviewed, getFieldValue, thresholds])
 
   // The page host for the social preview. Read after mount: during SSR there is no
   // window, and reading it in render made the server and client markup disagree
@@ -619,7 +627,8 @@ const SeoAnalyzerInner: React.FC = () => {
   const socialPreviewData = useMemo(() => {
     const metaTitle = getFieldValue('meta.title') as string | undefined
     const metaDescription = getFieldValue('meta.description') as string | undefined
-    const metaImage = getFieldValue('meta.image')
+    // Populated by the server read (an ID in the form).
+    const metaImage = contentInput.metaImage ?? getFieldValue('meta.image')
     const slug = getFieldValue('slug') as string | undefined
 
     // Try to build image URL from meta image
@@ -629,13 +638,13 @@ const SeoAnalyzerInner: React.FC = () => {
     }
 
     return { metaTitle, metaDescription, imageUrl, hostname, slug }
-  }, [formFields, getFieldValue, hostname])
+  }, [contentInput, getFieldValue, hostname])
 
   // Internal linking — extract text content for suggestions
   const textContentForLinks = useMemo(() => {
     if (!formFields) return ''
-    return sidebarContentText(buildSidebarContentInput(formFields))
-  }, [formFields])
+    return sidebarContentText(contentInput)
+  }, [formFields, contentInput])
 
   // Detect collection from current URL
   const currentCollection = useMemo(() => {
@@ -651,12 +660,13 @@ const SeoAnalyzerInner: React.FC = () => {
   // Reading time: ~200 words per minute, minimum 1 minute
   const readingTime = Math.max(1, Math.round(wordCount / 200))
 
-  // Feature 1: Capture initial score on first valid analysis
+  // Feature 1: Capture initial score on first valid analysis, once the server has read the
+  // content (the first, local reading counts no uploads, so the delta would start skewed).
   useEffect(() => {
-    if (initialScoreRef.current === null && analysis.checks.length > 0) {
+    if (initialScoreRef.current === null && analysis.checks.length > 0 && (contentResolved || !collectionSlug)) {
       initialScoreRef.current = analysis.score
     }
-  }, [analysis.score, analysis.checks.length])
+  }, [analysis.score, analysis.checks.length, contentResolved, collectionSlug])
 
   const scoreDelta = initialScoreRef.current !== null ? analysis.score - initialScoreRef.current : null
 
@@ -733,7 +743,7 @@ const SeoAnalyzerInner: React.FC = () => {
       const title = getFieldValue('title') as string || ''
       const slug = getFieldValue('slug') as string || ''
       // Extract text from the page content (hero, layout blocks, post content) for the AI endpoint
-      const textContent = sidebarContentText(buildSidebarContentInput(formFields))
+      const textContent = sidebarContentText(contentInput)
 
       const res = await fetch(seoApi('/ai-generate'), {
         method: 'POST',

@@ -13,6 +13,7 @@ import { seoCache } from '../cache.js'
 import { normalizeForComparison, countWords } from '../helpers.js'
 import { getStopWords as getBaseStopWords } from '../constants.js'
 import { extractDocContent } from '../helpers/extractDocContent.js'
+import type { ContentExtractorSource } from '../helpers/contentExtractor.js'
 import { docExclusion } from '../helpers/excludeDocs.js'
 import { fetchAllDocs } from '../helpers/fetchAllDocs.js'
 import type { SeoConfig } from '../types.js'
@@ -137,8 +138,8 @@ function simpleStem(word: string): string {
 // ---------------------------------------------------------------------------
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function extractDocText(doc: any): string {
-  return extractDocContent(doc).text
+function extractDocText(doc: any, collection: string, extractors: ContentExtractorSource): string {
+  return extractDocContent(doc, undefined, { collection, extractors }).text
 }
 
 // ---------------------------------------------------------------------------
@@ -186,7 +187,7 @@ export function createKeywordResearchHandler(
         kProcessed++
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const d = doc as any
-        const fullText = extractDocText(d)
+        const fullText = extractDocText(d, sourceType === 'global' ? '' : sourceSlug, req.payload)
         allDocs.push({
           id: sourceType === 'global' ? sourceSlug : d.id,
           title: d.title || '(untitled)',

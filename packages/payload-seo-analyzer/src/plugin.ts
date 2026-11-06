@@ -26,6 +26,8 @@ import type { SeoConfig, SeoExcludeDocs, SeoFeatures, RuleGroup, SeoThresholds }
 import { seoFields } from './fields.js'
 import { metaFields } from './metaFields.js'
 import { createValidateHandler } from './endpoints/validate.js'
+import { createSidebarContentHandler } from './endpoints/sidebarContent.js'
+import { fingerprintContentExtractors, type SeoContentExtractors } from './helpers/contentExtractor.js'
 import { createCheckKeywordHandler } from './endpoints/checkKeyword.js'
 import { createAuditHandler } from './endpoints/audit.js'
 import { createIndexationAuditHandler } from './endpoints/indexationAudit.js'
@@ -205,6 +207,21 @@ export interface SeoPluginConfig {
    * only a few fields add these; without them, those scans read whole documents.
    */
   excludeDocsFields?: string[]
+  /**
+   * Your own content extractor per collection, in place of the built-in block walker
+   * (which reads `layout` blocks by shape). Returns the walker's shape (`BlocksContent`:
+   * text, headings, links, images, FAQ…); missing fields count as empty, and
+   * `defaultExtract(value)` runs the walker on part of the document. Used by the score
+   * (`/validate`, audit, score history), the sidebar (run on the server by
+   * `/sidebar-content`), the link graph, the external-links scan and the FAQPage builder.
+   * The document is populated (`depth: 1`) where the score is computed. Collections
+   * without an entry keep the walker.
+   *
+   *   extractContent: {
+   *     docs: ({ doc, defaultExtract }) => defaultExtract(doc.sections),
+   *   }
+   */
+  extractContent?: SeoContentExtractors
   /** Collection slug for uploads/media (used for meta.image relationTo). Default: 'media' */
   uploadsCollection?: string
   /** Auto-create meta fields (title, description, image) on target collections. Default: true */
@@ -313,7 +330,10 @@ export interface SeoPluginConfig {
 }
 
 /** Build a resolved SeoConfig from plugin config for use by analyzeSeo() */
-function buildSeoConfig(pluginConfig: SeoPluginConfig): SeoConfig {
+export function buildSeoConfig(pluginConfig: SeoPluginConfig): SeoConfig {
+  // The extractors shape what the audits compute, so they belong in the hashed config like
+  // `excludeDocs`; a fingerprint of their source keeps the functions out of `SeoConfig`.
+  const extractContentFingerprint = fingerprintContentExtractors(pluginConfig.extractContent)
   return {
     ...(pluginConfig.localSeoSlugs && { localSeoSlugs: pluginConfig.localSeoSlugs }),
     ...(pluginConfig.siteName && { siteName: pluginConfig.siteName }),
@@ -324,6 +344,7 @@ function buildSeoConfig(pluginConfig: SeoPluginConfig): SeoConfig {
     ...(pluginConfig.collectionRoutes && { collectionRoutes: pluginConfig.collectionRoutes }),
     ...(pluginConfig.excludeDocs && { excludeDocs: pluginConfig.excludeDocs }),
     ...(pluginConfig.excludeDocsFields && { excludeDocsFields: pluginConfig.excludeDocsFields }),
+    ...(extractContentFingerprint && { extractContentFingerprint }),
   }
 }
 
@@ -737,6 +758,13 @@ export const seoAnalyzerPlugin =
         path: `${basePath}/validate`,
         method: 'get',
         handler: createValidateHandler(targetCollections, targetGlobals, seoConfig),
+      },
+      // The sidebar's content, populated and extracted on the server (IDs → documents,
+      // `extractContent`), so the live score reads what /validate reads.
+      {
+        path: `${basePath}/sidebar-content`,
+        method: 'post',
+        handler: createSidebarContentHandler(targetCollections),
       },
       {
         path: `${basePath}/check-keyword`,
@@ -1153,7 +1181,12 @@ export const seoAnalyzerPlugin =
     const custom = (config.custom ?? {}) as Record<string, unknown>
     config.custom = {
       ...custom,
-      seoAnalyzer: { ...((custom.seoAnalyzer as Record<string, unknown> | undefined) ?? {}), store: storeRuntime },
+      seoAnalyzer: {
+        ...((custom.seoAnalyzer as Record<string, unknown> | undefined) ?? {}),
+        store: storeRuntime,
+        // Read by `contentExtractorsOf(payload)` wherever a document's content is extracted.
+        ...(pluginConfig.extractContent && { extractContent: pluginConfig.extractContent }),
+      },
     }
 
     // 5. Background work as Payload jobs (`jobs` option)

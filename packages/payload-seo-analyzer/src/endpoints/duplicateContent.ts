@@ -10,6 +10,7 @@
 import type { PayloadHandler } from 'payload'
 import { seoCache } from '../cache.js'
 import { extractDocContent } from '../helpers/extractDocContent.js'
+import type { ContentExtractorSource } from '../helpers/contentExtractor.js'
 import { isSeoAdminRequest, isSeoPanelUser } from '../helpers/isAdmin.js'
 import { safeCacheLocale } from '../helpers/safeCacheLocale.js'
 import { docExclusion, isExcludedDoc } from '../helpers/excludeDocs.js'
@@ -66,8 +67,12 @@ function jaccardSimilarity(setA: Set<string>, setB: Set<string>): number {
 // Text extraction from a Payload document (delegates to shared helper)
 // ---------------------------------------------------------------------------
 
-function extractDocText(doc: Record<string, unknown>): string {
-  return extractDocContent(doc).text
+function extractDocText(
+  doc: Record<string, unknown>,
+  collection: string,
+  extractors: ContentExtractorSource,
+): string {
+  return extractDocContent(doc, undefined, { collection, extractors }).text
 }
 
 // ---------------------------------------------------------------------------
@@ -123,7 +128,7 @@ export function createDuplicateContentHandler(collections: string[], seoConfig?:
             if (isExcludedDoc(exclusion, doc, collectionSlug)) continue
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const d = doc as any
-            const text = extractDocText(d)
+            const text = extractDocText(d, collectionSlug, req.payload)
 
             // Skip docs with very little text (< 50 words)
             const wordCount = text.split(/\s+/).filter((w: string) => w.length > 0).length

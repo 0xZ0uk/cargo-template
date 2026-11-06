@@ -164,7 +164,7 @@ export function createSitemapAuditHandler(
         slugMap.set(slug, docInfo)
 
         // Extract all internal links from this document
-        const internalLinks = extractAllInternalLinks(d)
+        const internalLinks = extractAllInternalLinks(d, { collection: collectionSlug, extractors: req.payload })
         outgoingMap.set(slug, internalLinks)
       }
 

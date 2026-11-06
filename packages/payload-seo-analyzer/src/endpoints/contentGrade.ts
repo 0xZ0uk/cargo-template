@@ -510,7 +510,7 @@ export function createContentGradeHandler(
         return Response.json({ error: 'Document not found' }, { status: 404 })
       }
 
-      const extracted = extractDocContent(doc)
+      const extracted = extractDocContent(doc, undefined, { collection, extractors: req.payload })
       const slug = typeof doc.slug === 'string' ? doc.slug : ''
 
       // --- GSC connection — clean 200 + gscConnected:false when unavailable (never raw 404/500) ---

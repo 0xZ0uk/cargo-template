@@ -184,7 +184,7 @@ export function createAiContentBriefHandler(
         try {
           const doc = (await req.payload.findByID({ collection, id, depth: 1, overrideAccess: true })) as Record<string, unknown>
           pageTitle = (doc.title as string) || undefined
-          existingContent = extractDocContent(doc).text || undefined
+          existingContent = extractDocContent(doc, undefined, { collection, extractors: req.payload }).text || undefined
         } catch {
           // ignore — brief without page context
         }
