@@ -5,6 +5,9 @@
  */
 
 import type { ApprovalProposal, ApprovalsResponse } from "../approvals/types";
+import type { UsageResponse } from "../usage";
+
+export type { UsageResponse };
 
 export interface AssistantModelOption {
   id: string;
@@ -23,6 +26,9 @@ export interface ConversationSummary {
   title: string;
   createdAt?: string;
   updatedAt?: string;
+  /** What the conversation has cost so far, USD (#68). Absent until its first model call. */
+  costUsd?: number;
+  tokens?: number;
 }
 
 /** An endpoint's JSON error (`{ error, code }`) with its HTTP status. */
@@ -102,6 +108,12 @@ export async function listConversations(apiRoute: string): Promise<ConversationS
     `${assistantUrl(apiRoute, "/conversations")}?limit=100`
   );
   return Array.isArray(body.conversations) ? body.conversations : [];
+}
+
+/** The caller's usage today, the budget and, with `threadId`, the conversation's total (#68). */
+export function fetchUsage(apiRoute: string, threadId?: string): Promise<UsageResponse> {
+  const query = threadId ? `?threadId=${encodeURIComponent(threadId)}` : "";
+  return request(`${assistantUrl(apiRoute, "/usage")}${query}`);
 }
 
 export function renameConversation(apiRoute: string, threadId: string, title: string) {

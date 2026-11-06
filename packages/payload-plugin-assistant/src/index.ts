@@ -25,3 +25,10 @@ export type {
   TurnInput,
   TurnRunner,
 } from "./conversations/types";
+// Budgets, audit log and redaction (#68): pure helpers, no runtime dependencies.
+export { analyticsEngineAuditSink } from "./audit";
+export type { AnalyticsEngineDatasetLike, AssistantAuditEvent, AssistantAuditSink } from "./audit";
+export { DEFAULT_AUTH_REDACTIONS } from "./redaction";
+export type { RedactionMap } from "./redaction";
+export { DEFAULT_BUDGET } from "./usage";
+export type { AssistantBudget, UsageAmount, UsageResponse, UsageSnapshot } from "./usage";

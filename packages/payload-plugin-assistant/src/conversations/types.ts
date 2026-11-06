@@ -1,4 +1,6 @@
 import type { ModelMessage, RunAgentResumeItem, RunRecord, StreamChunk } from "@tanstack/ai";
+import type { AssistantAuditSink } from "../audit";
+import type { UsageAmount, UsageSnapshot } from "../usage";
 import type {
   ChatWithInterruptsPersistence,
   InterruptRecord,
@@ -46,6 +48,12 @@ export interface TurnSettings {
    * turned `testModel` on and the request was made to a loopback host (`usesTestModel`).
    */
   testModel?: boolean;
+  /**
+   * Fields the model never sees (#68): collection or global slug → dotted paths, resolved by the
+   * endpoint (the auth defaults plus the app's `redact`). Applied to every tool result before the
+   * model, the stream and the stored transcript see it.
+   */
+  redact?: Record<string, string[]>;
 }
 
 /** The body of a turn, as the endpoint validated it. `TurnInput.body` carries this. */
@@ -87,6 +95,14 @@ export interface TurnContext {
   mcpFetch: typeof fetch;
   /** Aborted only by an explicit stop, never by a client disconnect. */
   signal: AbortSignal;
+  /**
+   * Adds one model call's usage to the user's UTC day and to the conversation (#68): the index
+   * object on Workers, process memory otherwise. Called from inside the run, so it is recorded
+   * even after the viewer disconnected. Absent: usage isn't recorded.
+   */
+  recordUsage?: (amount: UsageAmount) => Promise<void>;
+  /** Where the run reports each applied write (#68). Absent: no audit. */
+  audit?: AssistantAuditSink;
 }
 
 /**
@@ -148,6 +164,11 @@ export interface ConversationBackend {
   rename(userKey: string, threadId: string, title: string): Promise<boolean>;
   /** Delete the transcript, runs, approvals, stream logs and index entry. `false` when not owned. */
   remove(userKey: string, threadId: string): Promise<boolean>;
+  /**
+   * The user's usage on the UTC day `day` (#68), and the conversation's running total when
+   * `threadId` is given (`null` when it isn't the caller's or has no usage yet).
+   */
+  usage(userKey: string, day: string, threadId?: string): Promise<UsageSnapshot>;
 }
 
 

@@ -40,6 +40,17 @@
   white-space: nowrap;
 }
 
+/* The budget line (#68): pushed to the end of the header, never wraps the title away. */
+.assistant-usage {
+  flex-shrink: 0;
+  margin: 0 0 0 auto;
+  white-space: nowrap;
+}
+
+.assistant-usage--exceeded {
+  color: var(--color-text-danger);
+}
+
 .assistant-view__toggle {
   display: none;
 }
@@ -292,6 +303,22 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   cursor: pointer;
+}
+
+.assistant-sidebar__select {
+  display: flex;
+  flex-direction: column;
+}
+
+.assistant-sidebar__title,
+.assistant-sidebar__cost {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.assistant-sidebar__cost {
+  font-weight: normal;
 }
 
 .assistant-sidebar__item--active .assistant-sidebar__select {
@@ -819,6 +846,17 @@
 /* Narrow: model picker and Send share the first row, the hint goes under them (at 390px the
    hint's min-width used to push Send onto a line of its own). */
 @media (max-width: 600px) {
+  /* The budget line takes its own row under the toggle and the title. */
+  .assistant-view__header {
+    flex-wrap: wrap;
+  }
+
+  .assistant-usage {
+    flex-basis: 100%;
+    margin: 0;
+    white-space: normal;
+  }
+
   .assistant-composer {
     padding: var(--spacer-2);
   }

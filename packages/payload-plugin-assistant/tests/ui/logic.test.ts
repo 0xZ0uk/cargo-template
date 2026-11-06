@@ -49,6 +49,7 @@ describe("error mapping", () => {
     [403, "forbidden", "forbidden"],
     [404, "not_found", "not_found"],
     [502, "tools_unavailable", "tools_unavailable"],
+    [402, "budget_exceeded", "budget_exceeded"],
   ])("HTTP %i %s → %s", (status, code, kind) => {
     expect(noticeForHttpError(status, code).kind).toBe(kind);
   });

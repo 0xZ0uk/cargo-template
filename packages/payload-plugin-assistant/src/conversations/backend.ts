@@ -25,5 +25,11 @@ export function conversationBackend(
       caps: storage.caps,
     });
   }
-  return memoryConversations({ ...memory, retentionMs: storage.retentionMs, caps: storage.caps, state: memoryState });
+  return memoryConversations({
+    ...memory,
+    retentionMs: storage.retentionMs,
+    caps: storage.caps,
+    state: memoryState,
+    ...(options.audit ? { audit: options.audit } : {}),
+  });
 }

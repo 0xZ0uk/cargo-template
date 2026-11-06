@@ -12,6 +12,7 @@ import type { TurnSettings } from "../conversations/types";
  * - After a tool result, it answers `Tool <name> finished: <result, cut>`, or, when the user
  *   rejected the change, `The change was rejected. Nothing was written.`
  * - Anything else gets `Test model: you said "<message>".`
+ * - Each call reports a cost of $1 per million (estimated) tokens, like OpenRouter's `usage.cost`.
  *
  * Stateless (it reads the request's messages), so it survives a restarted object.
  */
@@ -19,7 +20,27 @@ export function testModelAdapter(settings: TurnSettings): AnyTextAdapter {
   const model = fakeText({ model: settings.model });
   // One answer per model call; a run makes at most `maxSteps` of them.
   model.setResponses(Array.from({ length: settings.maxSteps + 1 }, () => ({ request }) => answer(request.messages)));
-  return model as unknown as AnyTextAdapter;
+  return withFakeCost(model as unknown as AnyTextAdapter);
+}
+
+/** What the test model "charges": $1 per million tokens (#68), so budgets and costs show in end-to-end tests. */
+export const TEST_MODEL_USD_PER_TOKEN = 0.000001;
+
+/**
+ * A fake adapter that reports a cost, as OpenRouter does (`usage.cost` on each call's
+ * `RUN_FINISHED`): `fakeText()` estimates tokens but has no price. Mutates and returns `adapter`.
+ */
+export function withFakeCost<T extends AnyTextAdapter>(adapter: T, usdPerToken: number = TEST_MODEL_USD_PER_TOKEN): T {
+  const inner = adapter.chatStream.bind(adapter);
+  (adapter as { chatStream: AnyTextAdapter["chatStream"] }).chatStream = async function* (options) {
+    for await (const chunk of inner(options)) {
+      const event = chunk as { type?: string; usage?: { totalTokens?: number; cost?: number } };
+      if (event.type === "RUN_FINISHED" && event.usage && typeof event.usage.totalTokens === "number" && event.usage.cost === undefined) {
+        yield { ...chunk, usage: { ...event.usage, cost: event.usage.totalTokens * usdPerToken } } as typeof chunk;
+      } else yield chunk;
+    }
+  } as AnyTextAdapter["chatStream"];
+  return adapter;
 }
 
 const TOOL_COMMAND = /^\/tool\s+([A-Za-z0-9_-]+)\s*([\s\S]*)$/;

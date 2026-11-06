@@ -6,6 +6,7 @@ import { OPENROUTER_PROVIDER } from "../utils/provider";
 import type { ChatTurnBody, TurnContext, TurnRunner, TurnSettings } from "../conversations/types";
 import { createPayloadToolSource, payloadToolsMcpOptions } from "../tools/payloadToolSource";
 import { withAssistantErrors } from "./errors";
+import { redactedMessageStore, turnPolicyMiddleware } from "./policy";
 import { testModelAdapter } from "./testModel";
 
 /** Builds the model adapter for a turn. Default: OpenRouter. Tests pass `fakeText()`. */
@@ -53,11 +54,14 @@ export const defaultAdapter: CreateAdapter = (settings) =>
  *   user message, or `resume` decisions for pending approvals.
  * - Limits: `maxIterations(maxSteps)`, compaction past `maxContextTokens`, the stop signal.
  * - Provider routing is fixed: `{ requireParameters: true, dataCollection: 'deny' }`, camelCase.
+ * - Policies (#68, `turnPolicyMiddleware`): each model call's usage goes to `recordUsage`, tool
+ *   results lose the redacted fields (`settings.redact`) before the model sees them, and each
+ *   applied write goes to `audit`.
  */
 export function createTurnRunner(options: TurnRunnerOptions = {}): TurnRunner {
   const createAdapter = options.createAdapter ?? defaultAdapter;
   return (context: TurnContext): AsyncIterable<StreamChunk> => {
-    const { input, persistence, mcpFetch, signal } = context;
+    const { input, mcpFetch, signal } = context;
     const { threadId, runId } = input;
     const body = input.body as unknown as ChatTurnBody;
     const { settings } = body;
@@ -74,6 +78,12 @@ export function createTurnRunner(options: TurnRunnerOptions = {}): TurnRunner {
     const abortController = new AbortController();
     if (signal.aborted) abortController.abort(signal.reason);
     else signal.addEventListener("abort", () => abortController.abort(signal.reason), { once: true });
+
+    // Redacted fields never reach the stored transcript, whatever put them there (#68).
+    const persistence = {
+      ...context.persistence,
+      stores: { ...context.persistence.stores, messages: redactedMessageStore(context.persistence.stores.messages, settings.redact) },
+    };
 
     const stream = chat({
       adapter: createAdapter(settings),
@@ -95,6 +105,13 @@ export function createTurnRunner(options: TurnRunnerOptions = {}): TurnRunner {
           maxTokens: settings.maxContextTokens,
           // Old tool results (whole documents) go first; whole old turns only if that isn't enough.
           strategy: composeStrategies(clearToolResults(), evictOldest()),
+        }),
+        // Usage (budget, conversation cost), redaction of tool results, the audit log (#68).
+        turnPolicyMiddleware({
+          input,
+          settings,
+          ...(context.recordUsage ? { recordUsage: context.recordUsage } : {}),
+          ...(context.audit ? { audit: context.audit } : {}),
         }),
       ],
     }) as AsyncIterable<StreamChunk>;

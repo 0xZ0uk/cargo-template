@@ -1,6 +1,8 @@
 import { DurableObject } from "cloudflare:workers";
 import { resumeServerSentEventsResponse, toServerSentEventsResponse, type StreamDurability } from "@tanstack/ai";
 import { reconstructChat, type SessionIndexEntry } from "@tanstack/ai-persistence";
+import type { AssistantAuditSink } from "../audit";
+import { utcDay, type UsageAmount } from "../usage";
 import { DEFAULT_CONVERSATION_CAPS, withConversationCaps, type ConversationCaps } from "../conversations/caps";
 import { missingSelfBinding, serviceBindingMcpFetch } from "../conversations/mcpTransport";
 import { RunControl } from "../conversations/runControl";
@@ -124,6 +126,15 @@ export class AssistantConversation<Env extends AssistantConversationEnv = Assist
     return createTurnRunner();
   }
 
+  /**
+   * Where applied writes are reported (#68). Default: nowhere. The plugin never reads `env` for
+   * it: the app overrides this in a subclass it exports from its Worker entry, e.g.
+   * `return analyticsEngineAuditSink(this.env.ASSISTANT_AUDIT)` (see the README, "Audit log").
+   */
+  protected auditSink(): AssistantAuditSink | undefined {
+    return undefined;
+  }
+
   // --- ownership & conversation lifecycle ---------------------------------------------------
 
   /** Open the conversation for `userKey`: the first caller becomes the owner. */
@@ -242,6 +253,7 @@ export class AssistantConversation<Env extends AssistantConversationEnv = Assist
       auth: { cookie: request.headers.get("Cookie") ?? "", origin: request.headers.get("Origin") ?? "" },
     };
     const caps = this.caps();
+    const audit = this.auditSink();
     pruneStreamLogs(this.storage, STREAM_LOG_TTL_MS);
 
     const control = new RunControl();
@@ -255,6 +267,10 @@ export class AssistantConversation<Env extends AssistantConversationEnv = Assist
         ? serviceBindingMcpFetch({ fetcher: this.env.ASSISTANT_SELF, ...input.auth })
         : missingSelfBinding,
       signal: control.signal,
+      // Inside the run, so a closed tab doesn't lose it. Not fenced by the epoch: a deleted
+      // conversation's spend still counts towards the user's day (only its entry is gone).
+      recordUsage: (amount) => this.recordUsage(userKey, meta.thread_id, amount, live),
+      ...(audit ? { audit } : {}),
     });
     await this.touch();
     if (live()) await this.armAlarm();
@@ -320,6 +336,16 @@ export class AssistantConversation<Env extends AssistantConversationEnv = Assist
         if (live()) await this.armAlarm();
       },
     };
+  }
+
+  /** One model call's usage → the owner's index object (their UTC day and this conversation's total). */
+  private async recordUsage(userKey: string, threadId: string, amount: UsageAmount, live: () => boolean): Promise<void> {
+    const index = this.index(userKey);
+    if (!index) {
+      console.error("[payload-plugin-assistant] no ASSISTANT_INDEX binding: usage is not recorded, so budgets can't apply");
+      return;
+    }
+    await index.addUsage(userKey, live() ? threadId : undefined, utcDay(), amount);
   }
 
   // --- retention -----------------------------------------------------------------------------

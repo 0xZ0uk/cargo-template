@@ -2,6 +2,7 @@ import type { CollectionSlug, GlobalSlug, PayloadRequest } from "payload";
 import { diffDocument, labelText, type BlockLike, type DiffMode, type FieldLike } from "../approvals/diff";
 import type { ApprovalAction, ApprovalProposal, ProposalDocument, ProposalItem } from "../approvals/types";
 import { lexicalToText } from "../approvals/lexical";
+import { redactDocument, type RedactionMap } from "../redaction";
 import { blocksBySlugOf, collectionOf as richTextCollectionOf, markdownLosses, resolveRichText, RichTextPathError, SET_RICH_TEXT_TOOL_NAME, toMarkdown, unsupportedMarkdown } from "../richText/fields";
 
 /**
@@ -203,11 +204,15 @@ const changedAfter = (doc: Doc | null | undefined, requestedAt: number) => {
 };
 
 /** Build the proposal of one pending approval. Never throws: problems become a `notice`. */
-export async function buildProposal(req: PayloadRequest, record: PendingInterruptLike): Promise<ApprovalProposal> {
+export async function buildProposal(req: PayloadRequest, record: PendingInterruptLike, redact: RedactionMap = {}): Promise<ApprovalProposal> {
   const call = interruptCall(record);
   const { toolName, input } = call;
   const action = actionOf(toolName);
   const slug = typeof input.slug === "string" ? input.slug : undefined;
+  // Current values of redacted fields (#68) never reach the card: documents read for the diff
+  // lose them first. What the model proposes to write is shown as is (it authored it).
+  const hidden = slug ? redact[slug] : undefined;
+  const hide = <T>(doc: T): T => redactDocument(doc, hidden);
   const global = isGlobalTool(toolName);
   const collectionConfig = slug && !global ? collectionOf(req, slug) : undefined;
   const globalConfig = slug && global ? globalOf(req, slug) : undefined;
@@ -260,7 +265,8 @@ export async function buildProposal(req: PayloadRequest, record: PendingInterrup
     case "delete":
     case "duplicate":
     case "restore": {
-      const target = await currentTarget(req, call);
+      const found = await currentTarget(req, call);
+      const target = found && { doc: found.doc && hide(found.doc), ...(found.version ? { version: hide(found.version) } : {}) };
       if (target) {
         const { doc } = target;
         if (action === "restore") {
@@ -289,7 +295,8 @@ export async function buildProposal(req: PayloadRequest, record: PendingInterrup
       }
       // By `where` (update or delete many).
       if (slug && (action === "update" || action === "delete") && input.where !== undefined) {
-        const found = await findWhere(req, slug, input.where, input);
+        const matched = await findWhere(req, slug, input.where, input);
+        const found = matched && { ...matched, docs: matched.docs.map(hide) };
         if (!found) return { ...base, notice: "The matching documents could not be read.", items: action === "update" ? [diff("create", undefined, data)] : [] };
         const items = found.docs.map((doc) => ({ document: asDocument(doc), ...(action === "delete" ? diff("delete", doc, undefined) : diff("update", doc, data)) }));
         return { ...base, items, matchedDocs: found.total };
@@ -372,8 +379,8 @@ async function richTextProposal(
 }
 
 /** Proposals for every pending approval of a conversation, oldest first. */
-export function buildProposals(req: PayloadRequest, pending: ReadonlyArray<PendingInterruptLike>): Promise<ApprovalProposal[]> {
-  return Promise.all(pending.map((record) => buildProposal(req, record)));
+export function buildProposals(req: PayloadRequest, pending: ReadonlyArray<PendingInterruptLike>, redact: RedactionMap = {}): Promise<ApprovalProposal[]> {
+  return Promise.all(pending.map((record) => buildProposal(req, record, redact)));
 }
 
 /**

@@ -9,6 +9,7 @@ import { ApprovalControl, type PendingApproval } from "../../src/ui/ApprovalCont
 import { AssistantNavLinkClient } from "../../src/ui/AssistantNavLinkClient";
 import { Composer, type ComposerProps } from "../../src/ui/Composer";
 import { ConversationList } from "../../src/ui/ConversationList";
+import { UsageSummary } from "../../src/ui/UsageSummary";
 import { collectToolResults, MessageView, type MessageLike } from "../../src/ui/MessageView";
 
 afterEach(cleanup);
@@ -303,6 +304,50 @@ describe("conversation list", () => {
     expect(within(dialog).getByText(/“Pricing page” and its history will be deleted/)).toBeTruthy();
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
     expect(onDelete).toHaveBeenCalledWith("t1");
+  });
+});
+
+describe("usage (#68)", () => {
+  const usage = (over: Record<string, unknown> = {}) => ({
+    day: "2031-03-04",
+    costUsd: 1.25,
+    tokens: 1000,
+    conversation: { costUsd: 0.0042, tokens: 300 },
+    budget: { dailyCostUsd: 5 },
+    remaining: { costUsd: 3.75, tokens: null },
+    exceeded: false,
+    resetsAt: "2031-03-05T00:00:00.000Z",
+    ...over,
+  });
+
+  it("the header line: what is left today and this conversation's cost", () => {
+    render(<UsageSummary usage={usage()} />);
+    expect(screen.getByText("$3.75 of $5.00 left today · this conversation $0.0042")).toBeTruthy();
+  });
+
+  it("over budget: nothing left, marked; budgets off: only the spend", () => {
+    const { container } = render(<UsageSummary usage={usage({ costUsd: 5.1, remaining: { costUsd: 0, tokens: null }, exceeded: true, conversation: null })} />);
+    expect(screen.getByText("$0.00 of $5.00 left today")).toBeTruthy();
+    expect(container.querySelector(".assistant-usage--exceeded")).toBeTruthy();
+    cleanup();
+    render(<UsageSummary usage={usage({ budget: null, remaining: { costUsd: null, tokens: null }, conversation: null })} />);
+    expect(screen.getByText("$1.25 today")).toBeTruthy();
+  });
+
+  it("the list shows each conversation's cost", () => {
+    render(
+      <ConversationList
+        activeThreadId="t1"
+        conversations={[{ threadId: "t1", title: "Pricing", costUsd: 0.31 }, { threadId: "t2", title: "New" }]}
+        loading={false}
+        onDelete={vi.fn(async () => {})}
+        onNew={vi.fn()}
+        onRename={vi.fn(async () => {})}
+        onSelect={vi.fn()}
+      />
+    );
+    expect(screen.getByRole("button", { name: "Pricing $0.31" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "New" })).toBeTruthy();
   });
 });
 

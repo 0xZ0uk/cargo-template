@@ -2,6 +2,8 @@ import { memoryStream, resumeServerSentEventsResponse, toServerSentEventsRespons
 import { memoryPersistence, reconstructChat } from "@tanstack/ai-persistence";
 import { RunControl } from "./runControl";
 import { DEFAULT_CONVERSATION_CAPS, withConversationCaps, type ConversationCaps } from "./caps";
+import type { AssistantAuditSink } from "../audit";
+import { utcDay, type UsageAmount } from "../usage";
 import { DO_HEADERS, EMPTY_HYDRATION, type ConversationBackend, type TurnInput, type TurnRunner } from "./types";
 
 export interface MemoryConversationsOptions {
@@ -14,8 +16,10 @@ export interface MemoryConversationsOptions {
   mcpFetch?: (auth: TurnInput["auth"]) => typeof fetch;
   retentionMs?: number;
   caps?: Partial<ConversationCaps>;
-  /** Clock, for tests. */
+  /** Clock, for tests (retention and the usage day). */
   now?: () => number;
+  /** Where turns report applied writes (#68): the plugin's `audit` option. */
+  audit?: AssistantAuditSink;
   /**
    * The conversations themselves. Pass the same state to several backends (built with different
    * options) to share the data: `conversationBackend` keeps one per process. Default: a new one.
@@ -27,11 +31,15 @@ export interface MemoryConversationsOptions {
 export interface MemoryConversationState {
   conversations: Map<string, Conversation>;
   sessions: ReturnType<typeof memoryPersistence>["stores"]["sessions"];
+  /** Daily usage per user (#68), keyed `<userKey> <day>`. */
+  usage: Map<string, UsageAmount>;
 }
 
 export function createMemoryConversationState(): MemoryConversationState {
-  return { conversations: new Map(), sessions: memoryPersistence().stores.sessions };
+  return { conversations: new Map(), sessions: memoryPersistence().stores.sessions, usage: new Map() };
 }
+
+const usageKey = (userKey: string, day: string) => `${userKey} ${day}`;
 
 type Conversation = {
   owner: string;
@@ -57,7 +65,21 @@ export function memoryConversations(options: MemoryConversationsOptions = {}): C
   const now = options.now ?? Date.now;
   const retentionMs = options.retentionMs ?? 30 * DAY;
   const caps = { ...DEFAULT_CONVERSATION_CAPS, ...options.caps };
-  const { conversations, sessions } = options.state ?? createMemoryConversationState();
+  const { conversations, sessions, usage } = options.state ?? createMemoryConversationState();
+
+  /** One model call's usage: the user's day, then the conversation's running total on its entry. */
+  const recordUsage = async (userKey: string, threadId: string, amount: UsageAmount) => {
+    const key = usageKey(userKey, utcDay(now()));
+    const day = usage.get(key) ?? { costUsd: 0, tokens: 0 };
+    usage.set(key, { costUsd: day.costUsd + amount.costUsd, tokens: day.tokens + amount.tokens });
+    const entry = await sessions.get({ tenantId: userKey, threadId });
+    if (!entry) return;
+    const metadata = (entry.metadata ?? {}) as { costUsd?: number; tokens?: number };
+    await sessions.upsert({
+      ...entry,
+      metadata: { ...entry.metadata, costUsd: (metadata.costUsd ?? 0) + amount.costUsd, tokens: (metadata.tokens ?? 0) + amount.tokens },
+    });
+  };
 
   const sweep = () => {
     for (const [threadId, conversation] of conversations) {
@@ -130,6 +152,8 @@ export function memoryConversations(options: MemoryConversationsOptions = {}): C
         persistence: withConversationCaps(conversation.persistence, caps),
         mcpFetch: options.mcpFetch?.(input.auth) ?? missingMcpFetch,
         signal: control.signal,
+        recordUsage: (amount) => recordUsage(input.userKey, input.threadId, amount),
+        ...(options.audit ? { audit: options.audit } : {}),
       });
       const inner = memoryStream({ runId: input.runId });
       const adapter = {
@@ -183,6 +207,19 @@ export function memoryConversations(options: MemoryConversationsOptions = {}): C
       conversations.delete(threadId);
       await sessions.delete({ tenantId: userKey, threadId });
       return true;
+    },
+    async usage(userKey, day, threadId) {
+      const total = usage.get(usageKey(userKey, day)) ?? { costUsd: 0, tokens: 0 };
+      const snapshot = { day, ...total };
+      if (threadId === undefined) return snapshot;
+      const metadata = (await sessions.get({ tenantId: userKey, threadId }))?.metadata as { costUsd?: unknown; tokens?: unknown } | undefined;
+      const has = metadata && (metadata.costUsd !== undefined || metadata.tokens !== undefined);
+      return {
+        ...snapshot,
+        conversation: has
+          ? { costUsd: typeof metadata.costUsd === "number" ? metadata.costUsd : 0, tokens: typeof metadata.tokens === "number" ? metadata.tokens : 0 }
+          : null,
+      };
     },
   };
   return backend;
