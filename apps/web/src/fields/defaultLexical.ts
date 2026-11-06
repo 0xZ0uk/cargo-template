@@ -3,15 +3,24 @@ import {
   BoldFeature,
   ItalicFeature,
   LinkFeature,
+  OrderedListFeature,
   ParagraphFeature,
+  UnorderedListFeature,
   lexicalEditor,
   UnderlineFeature,
   type LinkFields,
 } from '@payloadcms/richtext-lexical'
 
+/**
+ * The root editor, and the base of every other one (`blockRichText` and the Media caption build
+ * on its features). Bulleted and numbered lists are on; checklists are not: the frontend would
+ * show read-only checkboxes and the on-page editor has no checklist control.
+ */
 export const defaultLexical = lexicalEditor({
   features: [
     ParagraphFeature(),
+    UnorderedListFeature(),
+    OrderedListFeature(),
     UnderlineFeature(),
     BoldFeature(),
     ItalicFeature(),

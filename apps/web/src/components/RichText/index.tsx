@@ -22,6 +22,11 @@ const jsxConverters: JSXConvertersFunction = ({ defaultConverters }) => ({
   ...LinkJSXConverter({ internalDocToHref }),
 })
 
+// List markers (bullets, numbers) follow the theme tokens: prose's default grey is nearly invisible
+// on white, and the tokens already flip inside a `dark` section.
+const listMarkerClass =
+  '[--tw-prose-bullets:var(--color-muted-foreground)] [--tw-prose-counters:var(--color-muted-foreground)] dark:[--tw-prose-bullets:var(--color-muted-foreground)] dark:[--tw-prose-counters:var(--color-muted-foreground)]'
+
 type Props = {
   data: SerializedEditorState
   enableGutter?: boolean
@@ -40,6 +45,7 @@ export default function RichText(props: Props) {
           'max-w-none': !enableGutter,
           'mx-auto prose md:prose-md dark:prose-invert': enableProse,
         },
+        enableProse && listMarkerClass,
         className,
       )}
       {...rest}

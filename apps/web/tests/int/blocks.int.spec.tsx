@@ -85,6 +85,19 @@ describe('block rendering', () => {
     expect(html.replace(/<[^>]+>/g, '').trim().length).toBeGreaterThan(0)
   })
 
+  it('renders list examples as real lists: bulleted, numbered and nested', () => {
+    const html = render({
+      ...blockMetas.richText.example,
+      blockType: 'richText',
+      id: 'lists',
+    } as LayoutBlock)
+    expect(html).toContain('<ul class="list-bullet">')
+    expect(html).toContain('<ol class="list-number">')
+    // The nested list sits inside a list item of the outer one.
+    expect(html).toMatch(/<li[^>]*><ul class="list-bullet">/)
+    expect(html).toContain('Narrow for reading')
+  })
+
   // What the admin's block drawer creates: defaults only, every optional field empty.
   it.each(cases)('%s (%s) renders with every optional field empty', (slug, variant) => {
     expect(() =>
