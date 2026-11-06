@@ -1,9 +1,11 @@
 import type { Payload, Where } from 'payload'
 
 /**
- * Finished `social-posts`: the statuses a row never leaves (the plugin only moves rows
- * through `draft`, `queued`, `scheduled`, `publishing`, `unknown` and `failed`, which stay
- * because they can still be retried, swept or need an operator to resolve them).
+ * Finished `social-posts`. Not strictly terminal: publishing the same content again reclaims
+ * a `cancelled` or `deleted` row (the plugin's `reservePublication`) and moves it back to
+ * `publishing`, so the delete re-checks status and age. `draft`, `queued`, `scheduled`,
+ * `publishing`, `unknown` and `failed` stay: they can still be retried, swept or need an
+ * operator to resolve them.
  */
 export const FINAL_SOCIAL_POST_STATUSES = ['published', 'cancelled', 'deleted'] as const
 
@@ -57,12 +59,13 @@ export const pruneSocialPosts = async (
     })
     if (docs.length === 0) break
 
-    await payload.delete({
+    // Re-check the filter: a row reclaimed since the find (back to `publishing`) must stay.
+    const result = await payload.delete({
       collection: 'social-posts',
       overrideAccess: true,
-      where: { id: { in: docs.map((doc) => doc.id) } },
+      where: { and: [{ id: { in: docs.map((doc) => doc.id) } }, where] },
     })
-    deleted += docs.length
+    deleted += result.docs.length
     if (docs.length < batchSize) break
   }
 

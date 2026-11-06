@@ -35,13 +35,17 @@ describe('finishedSocialPostsBefore', () => {
 })
 
 describe('pruneSocialPosts', () => {
-  const fakePayload = (batches: number[][]) => {
+  const fakePayload = (batches: number[][], reclaimed: number[] = []) => {
     const find = vi.fn(async () => ({ docs: (batches.shift() ?? []).map((id) => ({ id })) }))
-    const del = vi.fn(async () => ({ docs: [], errors: [] }))
+    // Deletes the requested ids, except the ones in `reclaimed` (left a final status).
+    const del = vi.fn(async ({ where }: { where: { and: [{ id: { in: number[] } }, unknown] } }) => ({
+      docs: where.and[0].id.in.filter((id) => !reclaimed.includes(id)).map((id) => ({ id })),
+      errors: [],
+    }))
     return { del, find, payload: { delete: del, find } as unknown as Payload }
   }
 
-  it('deletes the selected rows by id, as the system', async () => {
+  it('deletes the selected rows by id and the same filter, as the system', async () => {
     const { del, find, payload } = fakePayload([[1, 2, 3]])
 
     expect(await pruneSocialPosts(payload, { batchSize: 10, now: NOW })).toBe(3)
@@ -58,8 +62,14 @@ describe('pruneSocialPosts', () => {
     expect(del).toHaveBeenCalledWith({
       collection: 'social-posts',
       overrideAccess: true,
-      where: { id: { in: [1, 2, 3] } },
+      where: { and: [{ id: { in: [1, 2, 3] } }, finishedSocialPostsBefore(NOW)] },
     })
+  })
+
+  it("keeps a row reclaimed between the find and the delete, and doesn't count it", async () => {
+    const { payload } = fakePayload([[1, 2, 3]], [2])
+
+    expect(await pruneSocialPosts(payload, { batchSize: 10, now: NOW })).toBe(2)
   })
 
   it('does nothing when no row is old enough', async () => {
