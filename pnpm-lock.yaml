@@ -271,6 +271,9 @@ importers:
       '@cargo/onpage-tanstack-start':
         specifier: workspace:*
         version: link:../../packages/onpage/tanstack-start
+      '@cargo/payload-plugin-socials':
+        specifier: workspace:*
+        version: link:../../packages/payload-plugin-socials
       '@cargo/payload-seo-analyzer':
         specifier: workspace:*
         version: link:../../packages/payload-seo-analyzer

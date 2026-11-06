@@ -213,13 +213,51 @@ export type CoercedEnvSchema = {
    */
   SEO_ALERT_WINDOW_HOURS?: number;
   
+  /**
+   * **SOCIALS_ENCRYPTION_KEY** 🔐 _sensitive_  
+   * Socials plugin (`@cargo/payload-plugin-socials`, Pinterest only for now). It stays disabled  
+   * (no admin, endpoints or jobs; the schema is unchanged) until the encryption key is set. 32 bytes  
+   * as hex (`openssl rand -hex 32`) or base64. It seals the platform tokens stored in D1 with  
+   * AES-256-GCM, so it must stay the same across deploys: a key that can't read the stored tokens  
+   * means every platform has to be reconnected. To rotate, set the new key here and move the old one  
+   * to SOCIALS_PREVIOUS_ENCRYPTION_KEYS; tokens are re-sealed with the new key as they are read, and  
+   * once they have been, the old key can go. The key must also be set when the admin import map is  
+   * generated (`pnpm web generate:importmap`, `payload build`): without it the plugin registers no  
+   * admin components, and they'd be missing from the map once the plugin is enabled.  
+   * ![icon](data:image/svg+xml;utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2220%22%20height%3D%2220%22%20viewBox%3D%220%200%2032%2032%22%3E%3Cpath%20fill%3D%22%23808080%22%20d%3D%22M29%2022h-5a2.003%202.003%200%200%201-2-2v-6a2%202%200%200%201%202-2h5v2h-5v6h5ZM18%2012h-4V8h-2v14h6a2.003%202.003%200%200%200%202-2v-6a2%202%200%200%200-2-2m-4%208v-6h4v6Zm-6-8H3v2h5v2H4a2%202%200%200%200-2%202v2a2%202%200%200%200%202%202h6v-8a2%202%200%200%200-2-2m0%208H4v-2h4Z%22%2F%3E%3C%2Fsvg%3E)   
+   */
+  SOCIALS_ENCRYPTION_KEY?: string;
+  
+  /**
+   * **SOCIALS_PREVIOUS_ENCRYPTION_KEYS** 🔐 _sensitive_  
+   * Comma-separated old keys (same format) that can still read stored tokens during a rotation.  
+   * ![icon](data:image/svg+xml;utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2220%22%20height%3D%2220%22%20viewBox%3D%220%200%2032%2032%22%3E%3Cpath%20fill%3D%22%23808080%22%20d%3D%22M29%2022h-5a2.003%202.003%200%200%201-2-2v-6a2%202%200%200%201%202-2h5v2h-5v6h5ZM18%2012h-4V8h-2v14h6a2.003%202.003%200%200%200%202-2v-6a2%202%200%200%200-2-2m-4%208v-6h4v6Zm-6-8H3v2h5v2H4a2%202%200%200%200-2%202v2a2%202%200%200%200%202%202h6v-8a2%202%200%200%200-2-2m0%208H4v-2h4Z%22%2F%3E%3C%2Fsvg%3E)   
+   */
+  SOCIALS_PREVIOUS_ENCRYPTION_KEYS?: string;
+  
+  /**
+   * **PINTEREST_APP_ID**  
+   * Pinterest app credentials (https://developers.pinterest.com/apps/). Pinterest is enabled once  
+   * both are set, together with SOCIALS_ENCRYPTION_KEY and SITE_URL. Register this OAuth redirect  
+   * URI on the Pinterest app: `<SITE_URL>/api/socials/pinterest/oauth/callback`. Then connect the  
+   * account in /admin/socials.  
+   * ![icon](data:image/svg+xml;utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2220%22%20height%3D%2220%22%20viewBox%3D%220%200%2032%2032%22%3E%3Cpath%20fill%3D%22%23808080%22%20d%3D%22M29%2022h-5a2.003%202.003%200%200%201-2-2v-6a2%202%200%200%201%202-2h5v2h-5v6h5ZM18%2012h-4V8h-2v14h6a2.003%202.003%200%200%200%202-2v-6a2%202%200%200%200-2-2m-4%208v-6h4v6Zm-6-8H3v2h5v2H4a2%202%200%200%200-2%202v2a2%202%200%200%200%202%202h6v-8a2%202%200%200%200-2-2m0%208H4v-2h4Z%22%2F%3E%3C%2Fsvg%3E)   
+   */
+  PINTEREST_APP_ID?: string;
+  
+  /**
+   * **PINTEREST_APP_SECRET** 🔐 _sensitive_  
+   * ![icon](data:image/svg+xml;utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2220%22%20height%3D%2220%22%20viewBox%3D%220%200%2032%2032%22%3E%3Cpath%20fill%3D%22%23808080%22%20d%3D%22M29%2022h-5a2.003%202.003%200%200%201-2-2v-6a2%202%200%200%201%202-2h5v2h-5v6h5ZM18%2012h-4V8h-2v14h6a2.003%202.003%200%200%200%202-2v-6a2%202%200%200%200-2-2m-4%208v-6h4v6Zm-6-8H3v2h5v2H4a2%202%200%200%200-2%202v2a2%202%200%200%200%202%202h6v-8a2%202%200%200%200-2-2m0%208H4v-2h4Z%22%2F%3E%3C%2Fsvg%3E)   
+   */
+  PINTEREST_APP_SECRET?: string;
+  
 };
 
-type _CoercedEnvSchema_c0d88985 = CoercedEnvSchema;
+type _CoercedEnvSchema_b4a8d829 = CoercedEnvSchema;
 
 declare module 'varlock/env' {
-  export interface TypedEnvSchema extends Readonly<_CoercedEnvSchema_c0d88985> {}
-  export interface PublicTypedEnvSchema extends Readonly<Pick<_CoercedEnvSchema_c0d88985, 'APP_ENV' | 'PAYLOAD_LOG_LEVEL' | 'SITE_URL' | 'SEO_LLMS_TXT' | 'SEO_AUDIT_MAX_DOCS' | 'SEO_AUDIT_STEP_DOCS' | 'SEO_FETCH_MAX_DOCS' | 'GSC_OAUTH_CLIENT_ID' | 'SEO_AI_MODEL' | 'SEO_AI_BASE_URL' | 'SEO_AI_REASONING' | 'SEO_AI_DATA_COLLECTION' | 'SEO_EXTERNAL_LINKS_MAX' | 'SEO_EXTERNAL_LINKS_MAX_SUBREQUESTS' | 'SEO_ALERT_WEBHOOK_FORMAT' | 'SEO_ALERT_SCORE_DROP' | 'SEO_ALERT_POSITION_DROP' | 'SEO_ALERT_WINDOW_HOURS'>> {}
+  export interface TypedEnvSchema extends Readonly<_CoercedEnvSchema_b4a8d829> {}
+  export interface PublicTypedEnvSchema extends Readonly<Pick<_CoercedEnvSchema_b4a8d829, 'APP_ENV' | 'PAYLOAD_LOG_LEVEL' | 'SITE_URL' | 'SEO_LLMS_TXT' | 'SEO_AUDIT_MAX_DOCS' | 'SEO_AUDIT_STEP_DOCS' | 'SEO_FETCH_MAX_DOCS' | 'GSC_OAUTH_CLIENT_ID' | 'SEO_AI_MODEL' | 'SEO_AI_BASE_URL' | 'SEO_AI_REASONING' | 'SEO_AI_DATA_COLLECTION' | 'SEO_EXTERNAL_LINKS_MAX' | 'SEO_EXTERNAL_LINKS_MAX_SUBREQUESTS' | 'SEO_ALERT_WEBHOOK_FORMAT' | 'SEO_ALERT_SCORE_DROP' | 'SEO_ALERT_POSITION_DROP' | 'SEO_ALERT_WINDOW_HOURS' | 'PINTEREST_APP_ID'>> {}
 }
 
 
@@ -229,11 +267,11 @@ export type EnvSchemaAsStrings = {
       : (NonNullable<CoercedEnvSchema[Property]> extends boolean ? ('true' | 'false') : string)
 };
 
-type _EnvSchemaAsStrings_c0d88985 = EnvSchemaAsStrings;
+type _EnvSchemaAsStrings_b4a8d829 = EnvSchemaAsStrings;
 declare global {
 
   // add types for global import.meta.env
-  interface ImportMetaEnv extends _EnvSchemaAsStrings_c0d88985 {}
+  interface ImportMetaEnv extends _EnvSchemaAsStrings_b4a8d829 {}
   interface ImportMeta {
     readonly env: ImportMetaEnv;
   }
