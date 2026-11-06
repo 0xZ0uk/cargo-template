@@ -15,8 +15,24 @@ import { extractBlocksContent } from './blockContent.js'
 
 export type SidebarContentInput = Pick<
   SeoInput,
-  'heroTitle' | 'heroRichText' | 'heroLinks' | 'heroMedia' | 'blocks' | 'content' | 'isPost'
+  'heroTitle' | 'heroRichText' | 'heroLinks' | 'heroMedia' | 'blocks' | 'content' | 'isPost' | 'robotsMeta'
 >
+
+/**
+ * Robots directives from the same field locations `/validate` reads: a raw `robots`
+ * string wins, else the `noindex` / `nofollow` checkboxes (top level or in `meta`).
+ * Lets the sidebar show `robots-noindex` as soon as "Hide from search engines" is ticked.
+ */
+export function robotsMetaFromDoc(doc: Record<string, unknown>): string | undefined {
+  const meta = asRecord(doc.meta)
+  const rawRobots =
+    (typeof meta.robots === 'string' && meta.robots) || (typeof doc.robots === 'string' && doc.robots) || ''
+  if (rawRobots) return rawRobots
+  const directives: string[] = []
+  if (doc.noindex === true || meta.noindex === true) directives.push('noindex')
+  if (doc.nofollow === true || meta.nofollow === true) directives.push('nofollow')
+  return directives.length > 0 ? directives.join(', ') : undefined
+}
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -52,6 +68,7 @@ export function buildSidebarContentInput(formFields: unknown): SidebarContentInp
     blocks,
     content,
     isPost,
+    robotsMeta: robotsMetaFromDoc(doc),
   }
 }
 

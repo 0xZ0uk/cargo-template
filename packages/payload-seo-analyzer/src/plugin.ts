@@ -381,6 +381,36 @@ export const seoAnalyzerPlugin =
       })
     }
 
+    /**
+     * Names of the data fields at the document's top level: direct fields plus those inside
+     * unnamed tabs, rows and collapsibles (Payload checks duplicate names across all of them).
+     */
+    function topLevelFieldNames(fields: unknown[], names = new Set<string>()): Set<string> {
+      for (const field of fields) {
+        const f = field as Record<string, unknown>
+        if (typeof f.name === 'string' && f.type !== 'tabs') names.add(f.name)
+        if ((f.type === 'row' || f.type === 'collapsible') && Array.isArray(f.fields)) {
+          topLevelFieldNames(f.fields, names)
+        }
+        if (f.type === 'tabs' && Array.isArray(f.tabs)) {
+          for (const tab of f.tabs as Array<Record<string, unknown>>) {
+            if (!tab.name && Array.isArray(tab.fields)) topLevelFieldNames(tab.fields, names)
+          }
+        }
+      }
+      return names
+    }
+
+    /**
+     * The plugin's always-on fields, minus any the host already defines at the top level
+     * (e.g. its own `noindex`): the plugin reads the host's field instead of adding a second
+     * one, which Payload would reject at boot as a duplicate name.
+     */
+    function seoFieldsFor(existingFields: unknown[]): Field[] {
+      const existing = topLevelFieldNames(existingFields)
+      return seoFields().filter((field) => !('name' in field && existing.has(field.name)))
+    }
+
     // Build meta fields config
     const metaFieldsConfig = {
       uploadsCollection: pluginConfig.uploadsCollection ?? 'media',
@@ -469,7 +499,7 @@ export const seoAnalyzerPlugin =
           const hasSeoMeta = hasExistingSeoMeta(existingFields)
 
           // Determine which fields to add
-          const fieldsToAdd = [...seoFields()]
+          const fieldsToAdd = seoFieldsFor(existingFields)
 
           // Auto-create meta fields if:
           // - @payloadcms/plugin-seo is NOT detected
@@ -555,7 +585,7 @@ export const seoAnalyzerPlugin =
         const existingFields = global.fields || []
         const hasSeoMeta = hasExistingSeoMeta(existingFields)
 
-        const fieldsToAdd = [...seoFields()]
+        const fieldsToAdd = seoFieldsFor(existingFields)
         if (!hasSeoMeta && pluginConfig.autoCreateMetaFields !== false) {
           fieldsToAdd.push(...buildMetaFields())
         }

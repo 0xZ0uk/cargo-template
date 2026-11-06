@@ -4,8 +4,8 @@
  *
  * The editor polls this while typing, so the corpus it matches against is built
  * once and cached (`suggest-links-index:<locale>`, invalidated on every save via
- * CACHE_BASES) and read with a field projection — only title, slug and
- * focusKeyword are needed, not the whole Lexical tree of every document.
+ * CACHE_BASES) and read with a field projection — only title, slug,
+ * focusKeyword and the noindex flag are needed, not the whole Lexical tree of every document.
  * The endpoint itself is registered behind the shared rate limiter.
  */
 
@@ -15,9 +15,13 @@ import {
 } from '../helpers.js'
 import { parseJsonBody } from '../helpers/parseBody.js'
 import { fetchAllDocs } from '../helpers/fetchAllDocs.js'
+import { buildSelect } from '../helpers/buildSelect.js'
 import { seoCache } from '../cache.js'
 import { isSeoPanelUser } from '../helpers/isAdmin.js'
 import { safeCacheLocale } from '../helpers/safeCacheLocale.js'
+
+/** The fields the corpus reads: noindex pages are left out of the suggestions. */
+export const SUGGEST_LINKS_SELECT_PATHS = ['title', 'slug', 'focusKeyword', 'noindex', 'meta.noindex']
 
 interface LinkSuggestion {
   title: string
@@ -75,12 +79,12 @@ export function createSuggestLinksHandler(collections: string[], globals: string
 
       let index = seoCache.get<IndexEntry[]>(cacheKey)
       if (!index) {
-        // Only these three fields are ever read below — never load the bodies.
+        // Only these fields are ever read below — never load the bodies.
         const allFetched = await fetchAllDocs(req.payload, {
           collections,
           globals,
           depth: 0,
-          select: { title: true, slug: true, focusKeyword: true },
+          select: buildSelect(req.payload, collections, SUGGEST_LINKS_SELECT_PATHS),
         })
 
         index = []
@@ -88,6 +92,8 @@ export function createSuggestLinksHandler(collections: string[], globals: string
           const docTitle = (doc.title as string) || (sourceType === 'global' ? sourceSlug : '')
           const docSlug = (doc.slug as string) || ''
           if (!docTitle && !docSlug) continue
+          // A noindex page is hidden from search engines on purpose: don't suggest linking to it.
+          if (doc.noindex === true || (doc.meta as Record<string, unknown> | undefined)?.noindex === true) continue
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const docKeyword = ((doc as any).focusKeyword as string) || ''
 

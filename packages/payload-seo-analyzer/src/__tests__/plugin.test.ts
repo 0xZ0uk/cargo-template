@@ -52,6 +52,8 @@ describe('seoAnalyzerPlugin — integration (config transform)', () => {
     // SEO fields were injected (focusKeyword is part of seoFields) — wrapping in a tabs field
     // is an implementation detail that depends on the collection's existing fields.
     expect(JSON.stringify(pages.fields)).toContain('focusKeyword')
+    // The "Hide from search engines" checkbox, read as `doc.noindex` by every consumer.
+    expect(JSON.stringify(pages.fields)).toMatch(/"name":"noindex","type":"checkbox","defaultValue":false/)
     // Non-target collection untouched
     expect(users.fields.length).toBe(0)
   })
@@ -120,6 +122,22 @@ describe('seoAnalyzerPlugin — integration (config transform)', () => {
   it('forwards the analyzed collections that exist to admin.custom (schema builder picker)', () => {
     const out = run({ collections: ['pages', 'posts', 'missing'] })
     expect(out.admin.custom.seoAnalyzer.collections).toEqual(['pages', 'posts'])
+  })
+
+  it('reuses a host-defined noindex instead of adding a duplicate (top level or unnamed tab)', () => {
+    for (const hostField of [
+      { name: 'noindex', type: 'checkbox' },
+      { type: 'tabs', tabs: [{ label: 'SEO', fields: [{ name: 'noindex', type: 'checkbox' }] }] },
+    ]) {
+      const config = baseConfig()
+      config.collections[0].fields = [hostField]
+      const out = seoAnalyzerPlugin({ collections: ['pages'] })(config)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const pages = out.collections.find((c: any) => c.slug === 'pages')
+      const count = (JSON.stringify(pages.fields).match(/"name":"noindex"/g) || []).length
+      expect(count).toBe(1)
+      expect(JSON.stringify(pages.fields)).toContain('focusKeyword')
+    }
   })
 
   it('sets an onInit function (composes with existing)', () => {
