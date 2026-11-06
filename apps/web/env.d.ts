@@ -269,13 +269,25 @@ export type CoercedEnvSchema = {
    */
   AB_ANALYTICS_API_TOKEN?: string;
   
+  /**
+   * **GA_MEASUREMENT_ID**  
+   * Optional: GA4 measurement ID (`G-XXXXXXXXXX`, Admin > Data streams in Google Analytics).  
+   * Set, public pages load gtag.js and pages that run an A/B experiment tag their events with  
+   * the experiment, bucket and visitor id (custom dimensions to create: see the README, "GA4").  
+   * Unset, nothing GA-related renders or loads. It's public by design (it ships in the page), so  
+   * it isn't sensitive. The admin, live preview, preview links and on-page editing never load it.  
+   * Runs next to the Analytics Engine measurement above, not instead of it.  
+   * ![icon](data:image/svg+xml;utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2220%22%20height%3D%2220%22%20viewBox%3D%220%200%2032%2032%22%3E%3Cpath%20fill%3D%22%23808080%22%20d%3D%22M29%2022h-5a2.003%202.003%200%200%201-2-2v-6a2%202%200%200%201%202-2h5v2h-5v6h5ZM18%2012h-4V8h-2v14h6a2.003%202.003%200%200%200%202-2v-6a2%202%200%200%200-2-2m-4%208v-6h4v6Zm-6-8H3v2h5v2H4a2%202%200%200%200-2%202v2a2%202%200%200%200%202%202h6v-8a2%202%200%200%200-2-2m0%208H4v-2h4Z%22%2F%3E%3C%2Fsvg%3E)   
+   */
+  GA_MEASUREMENT_ID?: string;
+  
 };
 
-type _CoercedEnvSchema_2f6ef54e = CoercedEnvSchema;
+type _CoercedEnvSchema_b7c1c605 = CoercedEnvSchema;
 
 declare module 'varlock/env' {
-  export interface TypedEnvSchema extends Readonly<_CoercedEnvSchema_2f6ef54e> {}
-  export interface PublicTypedEnvSchema extends Readonly<Pick<_CoercedEnvSchema_2f6ef54e, 'APP_ENV' | 'PAYLOAD_LOG_LEVEL' | 'SITE_URL' | 'SEO_LLMS_TXT' | 'SEO_AUDIT_MAX_DOCS' | 'SEO_AUDIT_STEP_DOCS' | 'SEO_FETCH_MAX_DOCS' | 'GSC_OAUTH_CLIENT_ID' | 'SEO_AI_MODEL' | 'SEO_AI_BASE_URL' | 'SEO_AI_REASONING' | 'SEO_AI_DATA_COLLECTION' | 'SEO_EXTERNAL_LINKS_MAX' | 'SEO_EXTERNAL_LINKS_MAX_SUBREQUESTS' | 'SEO_ALERT_WEBHOOK_FORMAT' | 'SEO_ALERT_SCORE_DROP' | 'SEO_ALERT_POSITION_DROP' | 'SEO_ALERT_WINDOW_HOURS' | 'PINTEREST_APP_ID' | 'AB_ANALYTICS_ACCOUNT_ID'>> {}
+  export interface TypedEnvSchema extends Readonly<_CoercedEnvSchema_b7c1c605> {}
+  export interface PublicTypedEnvSchema extends Readonly<Pick<_CoercedEnvSchema_b7c1c605, 'APP_ENV' | 'PAYLOAD_LOG_LEVEL' | 'SITE_URL' | 'SEO_LLMS_TXT' | 'SEO_AUDIT_MAX_DOCS' | 'SEO_AUDIT_STEP_DOCS' | 'SEO_FETCH_MAX_DOCS' | 'GSC_OAUTH_CLIENT_ID' | 'SEO_AI_MODEL' | 'SEO_AI_BASE_URL' | 'SEO_AI_REASONING' | 'SEO_AI_DATA_COLLECTION' | 'SEO_EXTERNAL_LINKS_MAX' | 'SEO_EXTERNAL_LINKS_MAX_SUBREQUESTS' | 'SEO_ALERT_WEBHOOK_FORMAT' | 'SEO_ALERT_SCORE_DROP' | 'SEO_ALERT_POSITION_DROP' | 'SEO_ALERT_WINDOW_HOURS' | 'PINTEREST_APP_ID' | 'AB_ANALYTICS_ACCOUNT_ID' | 'GA_MEASUREMENT_ID'>> {}
 }
 
 
@@ -285,11 +297,11 @@ export type EnvSchemaAsStrings = {
       : (NonNullable<CoercedEnvSchema[Property]> extends boolean ? ('true' | 'false') : string)
 };
 
-type _EnvSchemaAsStrings_2f6ef54e = EnvSchemaAsStrings;
+type _EnvSchemaAsStrings_b7c1c605 = EnvSchemaAsStrings;
 declare global {
 
   // add types for global import.meta.env
-  interface ImportMetaEnv extends _EnvSchemaAsStrings_2f6ef54e {}
+  interface ImportMetaEnv extends _EnvSchemaAsStrings_b7c1c605 {}
   interface ImportMeta {
     readonly env: ImportMetaEnv;
   }

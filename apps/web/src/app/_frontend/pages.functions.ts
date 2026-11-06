@@ -3,6 +3,7 @@ import type { Payload, RequiredDataFromCollectionSlug, Where } from 'payload'
 import { createServerFn } from '@tanstack/react-start'
 
 import { homeStatic } from '@/collections/Pages/homeStatic'
+import { gaMeasurementIdFor } from '@/utilities/googleAnalytics'
 import { pagePath } from '@/utilities/pagePath'
 
 type LoadPageInput = {
@@ -38,6 +39,12 @@ export type LoadPageResult = {
    * page then reports CTA clicks as conversions; the bucket stays in the visitor's cookies.
    */
   experiment?: string | null
+  /**
+   * The GA4 measurement ID (`GA_MEASUREMENT_ID`) when this view may load Google Analytics: set,
+   * and not a draft (live preview, on-page editing, preview links). Null otherwise, and then
+   * nothing GA-related renders. A public id, not a secret.
+   */
+  gaMeasurementId?: string | null
 }
 
 // Lexical's recursive node types defeat TanStack's serializability check, so it's turned off
@@ -134,6 +141,10 @@ export const loadPage = createServerFn({ method: 'GET', strict: { output: false 
     const { cloudflareEnv } = await import('#cloudflare-runtime')
     // The configured public origin wins; the request origin is the fallback (dev, previews).
     const siteUrl = (process.env.SITE_URL || cloudflareEnv.SITE_URL || origin).replace(/\/+$/, '')
+    const gaMeasurementId = gaMeasurementIdFor(
+      process.env.GA_MEASUREMENT_ID || cloudflareEnv.GA_MEASUREMENT_ID,
+      draft,
+    )
 
     // A variant asked for by its own slug (`/<slug>--<hash>`): visitors reach variants only
     // through the original's URL, so they're sent there (302: an experiment URL is temporary,
@@ -174,6 +185,7 @@ export const loadPage = createServerFn({ method: 'GET', strict: { output: false 
       canonicalSlug,
       draft,
       experiment: page ? experiment : null,
+      gaMeasurementId: page ? gaMeasurementId : null,
       jsonLd,
       livePreview: Boolean(user) && Boolean(data.draft),
       origin,
