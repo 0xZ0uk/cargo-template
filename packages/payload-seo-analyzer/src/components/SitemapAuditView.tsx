@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useMemo, useCallback, useId } from 'react'
 import { Button, Banner, CheckIcon, EditIcon, EyeIcon, Pill, RefreshIcon, Tabs, TrashIcon, useConfig } from '@payloadcms/ui'
 import { formatAdminURL } from 'payload/shared'
-import { useDashboardT, useSeoFeature } from '../hooks/useSeoLocale.js'
+import { useDashboardT, useSeoFeature } from '../hooks/useSeoAdmin.js'
 import { type DashboardTranslations } from '../dashboard-i18n.js'
 import { LiveRegion } from './LiveRegion.js'
 import { toCsv } from '../helpers/csv.js'

@@ -10,7 +10,7 @@ import {
   SERP_TITLE_MAX_CHARS_MOBILE,
 } from '../constants.js'
 import { highlightKeyphrases, truncateAtWord } from '../helpers/serpPreviewText.js'
-import { useDashboardT } from '../hooks/useSeoLocale.js'
+import { useDashboardT } from '../hooks/useSeoAdmin.js'
 import { useResolvedThresholds } from '../hooks/useSeoThresholds.js'
 import { withSeoErrorBoundary } from './withSeoErrorBoundary.js'
 import './SerpPreview.css'

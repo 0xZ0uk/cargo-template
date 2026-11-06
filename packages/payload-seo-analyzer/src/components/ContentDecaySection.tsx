@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from 'react'
 import { Button, Collapsible } from '@payloadcms/ui'
-import { useDashboardT } from '../hooks/useSeoLocale.js'
+import { useDashboardT } from '../hooks/useSeoAdmin.js'
 import { DataTable, Dot, EmptyState, TonePill, cx, type Tone } from '../ui/index.js'
 import { usePayloadApi } from '../hooks/useSeoApi.js'
 import './ContentDecaySection.css'

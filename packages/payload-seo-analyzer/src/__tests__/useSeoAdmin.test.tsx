@@ -12,7 +12,7 @@ vi.mock('@payloadcms/ui', async () => ({
   useConfig: () => configContext,
 }))
 
-import { useDashboardT, useSeoFeature } from '../hooks/useSeoLocale.js'
+import { useDashboardT, useSeoFeature } from '../hooks/useSeoAdmin.js'
 import { getDashboardT } from '../dashboard-i18n.js'
 import { getTranslations, t } from '../i18n.js'
 

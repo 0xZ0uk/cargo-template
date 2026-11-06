@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react'
 import { Banner, Button, NewTabIcon, RefreshIcon } from '@payloadcms/ui'
-import { useSeoFeature } from '../hooks/useSeoLocale.js'
+import { useSeoFeature } from '../hooks/useSeoAdmin.js'
 import { Card, DataTable, EmptyState, LoadingState, TonePill } from '../ui/index.js'
 import { usePayloadApi, useSeoApi } from '../hooks/useSeoApi.js'
 import './CtrOpportunitiesPanel.css'

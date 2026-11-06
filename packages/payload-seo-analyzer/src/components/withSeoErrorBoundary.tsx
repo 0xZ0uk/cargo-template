@@ -10,7 +10,7 @@
 
 import React from 'react'
 import { SeoErrorBoundary, type SeoErrorBoundaryProps } from './ErrorBoundary.js'
-import { useDashboardT } from '../hooks/useSeoLocale.js'
+import { useDashboardT } from '../hooks/useSeoAdmin.js'
 
 export type LocalizedSeoErrorBoundaryProps = Omit<SeoErrorBoundaryProps, 'labels'>
 

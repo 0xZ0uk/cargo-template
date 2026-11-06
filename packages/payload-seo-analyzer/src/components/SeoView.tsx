@@ -22,7 +22,7 @@ import {
 } from '@payloadcms/ui'
 import { formatAdminURL } from 'payload/shared'
 import { ContentDecaySection } from './ContentDecaySection.js'
-import { useDashboardT, useSeoFeature } from '../hooks/useSeoLocale.js'
+import { useDashboardT, useSeoFeature } from '../hooks/useSeoAdmin.js'
 import { escapeHtml } from '../helpers/escapeHtml.js'
 import type { DashboardTranslations } from '../dashboard-i18n.js'
 import { toCsv } from '../helpers/csv.js'

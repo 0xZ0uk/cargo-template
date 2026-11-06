@@ -14,7 +14,7 @@ import {
   FLESCH_SCORE_PASS,
   SLUG_MAX_LENGTH,
 } from '../constants.js'
-import { useDashboardT } from '../hooks/useSeoLocale.js'
+import { useDashboardT } from '../hooks/useSeoAdmin.js'
 import { type DashboardTranslations } from '../dashboard-i18n.js'
 import { Card, cx, DataTable, Field, Grid, LoadingState, ViewBody, ViewHeader } from '../ui/index.js'
 import { useSeoApi } from '../hooks/useSeoApi.js'

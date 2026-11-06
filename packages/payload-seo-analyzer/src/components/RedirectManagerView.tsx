@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useMemo, useCallback, useRef, useId } from 'react'
 import { Banner, Button, CheckIcon, ChevronIcon, EditIcon, RefreshIcon, TrashIcon, XIcon } from '@payloadcms/ui'
-import { useDashboardT } from '../hooks/useSeoLocale.js'
+import { useDashboardT } from '../hooks/useSeoAdmin.js'
 import { toCsv } from '../helpers/csv.js'
 import { Card, DataTable, EmptyState, Field, Grid, LoadingState, StatTile, TonePill, ViewBody, ViewHeader, type Tone } from '../ui/index.js'
 import { useSeoApi } from '../hooks/useSeoApi.js'

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useMemo, useId } from 'react'
 import { Banner } from '@payloadcms/ui'
-import { useDashboardT } from '../hooks/useSeoLocale.js'
+import { useDashboardT } from '../hooks/useSeoAdmin.js'
 import {
   Card,
   EmptyState,
