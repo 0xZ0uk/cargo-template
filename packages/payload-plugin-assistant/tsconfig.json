@@ -16,7 +16,10 @@
     "jsx": "react-jsx",
     "noEmit": true,
     "types": ["node"],
-    "ignoreDeprecations": "6.0"
+    "ignoreDeprecations": "6.0",
+    // The admin server components import the client entry by package path (a client boundary
+    // for the bundler); typecheck and tests resolve it to the source.
+    "paths": { "@cargo/payload-plugin-assistant/client": ["./src/client.ts"] }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
   "exclude": ["node_modules", "dist", "src/do"]

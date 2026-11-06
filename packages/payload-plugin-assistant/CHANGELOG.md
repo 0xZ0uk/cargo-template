@@ -4,6 +4,15 @@
 
 ### Added
 
+- The chat view at `/admin/assistant` (#64), from a new client entry `./client` (`"use client"` added after the build, as in `payload-plugin-ab`; no server or workerd code). `useChat` (`@tanstack/ai-react` 1.0.2) over SSE with `persistence: true`: opening a conversation hydrates it, restores pending approvals and rejoins a run still going (a reload mid-reply picks the stream back up); Stop calls `POST /api/assistant/chat/stop`. The open conversation is in the URL (`?thread=`).
+- Messages: Markdown through `@tanstack/ai-react/ui`'s `TextPart` (`@tanstack/markdown`, already a dependency of `ai-react`: raw HTML escaped, executable URLs dropped, no new package); the user's own text stays plain; reasoning collapsed; each tool call a compact row (tool, collection, status) with its result collapsed and bounded, and links to the documents it returned or touched (only in collections/globals the admin knows, never from free text). Model-written links to admin pages navigate in place; other links open in a new tab without an opener.
+- Composer: multi-line, Enter sends, Shift+Enter adds a line (IME-safe), Stop while streaming, model picker from `GET /api/assistant/config` (remembered per browser). Disabled with a reason while not configured or while an approval waits.
+- Conversation list: new, switch, inline rename, delete after Payload's `ConfirmationModal` (deleting the open one starts a new one). Narrow screens toggle the list above the chat.
+- Errors inline as Payload `Banner`s, from `RUN_ERROR` codes and HTTP `{ code }` bodies (`fetch` wrapped to keep the body `@tanstack/ai-client` drops): not configured, invalid key, out of credits, rate limited, model unavailable, context overflow, signed out, forbidden, tools unavailable, not found, stopped. A refused send puts the text back in the composer.
+- Approvals: a minimal approve/reject control (`ApprovalControl`) per pending interrupt, swappable through `AssistantChat`'s `ApprovalComponent` prop and `PendingApproval` (#65's diff card goes there). The browser has no tool definitions, so `@tanstack/ai-client` binds approvals as `generic` interrupts; they are answered with `{ approved }`.
+- The nav link, `admin.components.afterNavLinks` → `./admin/AssistantNavLink`: a server component that asks the same `access` as the view and renders nothing for anyone it refuses (or if it throws).
+- Tests: jsdom component tests (Markdown safety, tool rows, composer keys, approvals, conversation list) and the error/link/result helpers; the nav link's access gate against real Payload next to the view's redirects.
+
 - The chat turn (#63), `createTurnRunner()` in `src/server/turn.ts`: `chat()` on OpenRouter (`createOpenRouterText(model, apiKey, { appTitle, httpReferer })`, SDK retries off) with plugin-mcp's tools as the admin, the conversation's stores (`withPersistence`), compaction past `maxContextTokens` (old tool results first, then the oldest turns), `maxIterations(maxSteps)`, prompt caching (`session_id` = thread, Anthropic cache markers) and the camelCase provider routing. Tests assert the serialised request body (`provider: { require_parameters, data_collection: "deny" }`).
 - `AssistantConversation` runs that turn by default (the 501 stub is gone). The Worker endpoint authenticates, validates, resolves the turn's settings (model, key, system prompt, limits, `toolFilter` names) and hands the turn to the object, proxying its SSE. A closed tab doesn't stop a run.
 - Stop: `POST /api/assistant/chat/stop` / `ConversationBackend.stop()`. The run's `chat()` is aborted, the stream ends with `RUN_ERROR { code: "stopped" }` (in the log too, so a rejoin sees it) and the run is `aborted`. Deleting a conversation still cuts its run at once (`RunControl`).
@@ -12,6 +21,10 @@
 - OpenRouter errors mapped to `RUN_ERROR` codes with user-facing messages: `openrouter_invalid_key` (401), `openrouter_out_of_credits` (402), `openrouter_rate_limited` (429), `model_unavailable` (404/502/503, "no endpoints"), plus `context_overflow`, `not_signed_in`, `tools_unavailable`, `stopped`, `run_failed`.
 - The transcript is server-authoritative: only the request's newest user message is used (text only, 32,000 characters at most, given a stable id); earlier or non-user messages from the client are ignored. A new conversation is titled from its first message. Hydration includes `runs` (`completed` / `aborted` / `failed`).
 - Options: `maxContextTokens` (default 64,000) and `appTitle` (OpenRouter attribution).
+
+### Fixed
+
+- OpenRouter's 400 "… is not a valid model ID" (a retired or misspelled id in the allowlist) maps to `model_unavailable`, not `run_failed`.
 
 ### Changed
 

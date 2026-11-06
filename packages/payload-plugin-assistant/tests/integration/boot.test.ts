@@ -1,3 +1,4 @@
+import type React from "react";
 import type { CollectionSlug, Payload, SanitizedConfig } from "payload";
 
 import { mkdtempSync, rmSync } from "node:fs";
@@ -12,8 +13,16 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 // The admin UI packages import CSS, which Node can't load; the view's access gate runs before any of it renders.
 vi.mock("@payloadcms/ui", () => ({ Banner: () => null }));
 vi.mock("@payloadcms/ui/rsc", () => ({ DefaultTemplate: () => null }));
+// The chat UI (client entry) is a leaf here: the tests are about the server-side gate around it.
+vi.mock("@cargo/payload-plugin-assistant/client", () => ({
+  AssistantChat: () => null,
+  AssistantNavLinkClient: function AssistantNavLinkClient() {
+    return null;
+  },
+}));
 
 import { assistantPlugin } from "../../src";
+import { AssistantNavLink } from "../../src/admin/AssistantNavLink";
 import { AssistantView } from "../../src/admin/AssistantView";
 import type { AssistantPluginOptions } from "../../src/types/options";
 
@@ -199,6 +208,43 @@ describe("the admin view", () => {
 
   it("renders for an admin user the access admits", async () => {
     expect(await renderView(app, "editor")).toBeTruthy();
+  });
+});
+
+/** Renders the nav link as Payload's DefaultNav does: `payload`, `user`, `i18n`, `locale`, no request. */
+const renderNavLink = async (target: Booted, as: "editor" | "customer" | null, access?: AssistantPluginOptions["access"]) => {
+  const navLinks = target.config.admin.components.afterNavLinks as unknown as Array<{ path: string; serverProps: any }>;
+  const entry = navLinks.find((c) => c.path.includes("AssistantNavLink"))!;
+  const { req } = await viewResult(target, as);
+  return AssistantNavLink({ ...entry.serverProps, ...(access ? { access } : {}), payload: target.payload, user: req.user } as never);
+};
+
+describe("the nav link", () => {
+  it("is registered after the existing nav links, with the plugin's access", () => {
+    const navLinks = payload.config.admin.components.afterNavLinks as unknown as Array<{ path: string; serverProps: any }>;
+    expect(navLinks.at(-1)).toEqual({
+      path: "@cargo/payload-plugin-assistant/admin/AssistantNavLink#AssistantNavLink",
+      serverProps: { access: expect.any(Function) },
+    });
+  });
+
+  it("shows for an admin user the access admits", async () => {
+    const link = (await renderNavLink(app, "editor")) as React.ReactElement | null;
+    expect(link).not.toBeNull();
+    expect((link!.type as { name?: string }).name).toBe("AssistantNavLinkClient");
+  });
+
+  it("is hidden from a visitor, a user of another auth collection, and a user access denies", async () => {
+    expect(await renderNavLink(app, null)).toBeNull();
+    expect(await renderNavLink(app, "customer")).toBeNull();
+    expect(await renderNavLink(denying, "editor")).toBeNull();
+  });
+
+  it("fails closed when access throws (it has no request headers to read)", async () => {
+    const throwing = () => {
+      throw new Error("needs headers");
+    };
+    expect(await renderNavLink(app, "editor", throwing)).toBeNull();
   });
 });
 
