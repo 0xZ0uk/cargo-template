@@ -20,6 +20,11 @@ export const Route = createFileRoute('/_frontend/$slug')({
   loader: async ({ deps, location, params }) => {
     const data = await loadPage({ data: { draft: deps.draft, slug: params.slug } })
 
+    // A published A/B variant asked for by its own URL: send the visitor to the original's.
+    if (data.redirectTo) {
+      throw redirect({ href: `${data.redirectTo}${location.searchStr}`, statusCode: 302 })
+    }
+
     if (!data.page) {
       // Only a miss pays for the redirect lookup, so existing pages never touch it.
       const target = await resolveRedirect({
