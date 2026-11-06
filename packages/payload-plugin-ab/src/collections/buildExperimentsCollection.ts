@@ -9,8 +9,10 @@ export function buildExperimentsCollection(debug: boolean, slug: string): Collec
       useAsTitle: "manifestKey",
       defaultColumns: ["manifestKey", "parentCollection", "locale", "startedAt"],
     },
+    // Experiment keys and start dates are for editors and the analytics plugin (Local API),
+    // not visitors.
     access: {
-      read: () => true,
+      read: ({ req }) => Boolean(req.user),
     },
     // Payload 4 versions collections by default; these rows are written once per experiment.
     versions: false,

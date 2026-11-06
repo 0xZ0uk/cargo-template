@@ -83,10 +83,11 @@ describe("recomputeManifestForParent", () => {
     expect(find).not.toHaveBeenCalled();
   });
 
-  it("doesn't rewrite an entry that hasn't changed", async () => {
+  it("leaves the unchanged-entry check to the adapter, never a possibly cached read", async () => {
     storage.read.mockResolvedValue(entry);
     const { req } = makeReq(true);
     await recomputeManifestForParent("p1", "pages", abConfig, pluginConfig, req);
-    expect(storage.write).not.toHaveBeenCalled();
+    expect(storage.read).not.toHaveBeenCalled();
+    expect(storage.write).toHaveBeenCalledWith("/about", entry, req.payload);
   });
 });

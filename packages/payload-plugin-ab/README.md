@@ -6,7 +6,8 @@ Cargo's fork of [`@focus-reactive/payload-plugin-ab`](https://github.com/focusre
 
 - **Requires Payload 4** (`>=4.0.0-beta.6 <5`, from the workspace catalog) and has **no Next.js dependency**. The upstream Next.js middleware (`NextRequest` in, `NextResponse.rewrite` out) is now a framework-agnostic resolver: a Web `Request` (or its `Cookie` header) in, `{ bucket, pathname, variant, cookies, setCookieHeaders }` out. The host renders that path and sets the cookies. See [Routing](#routing).
 - **Reads the manifest through the Local API** when the resolver runs next to Payload (pass `{ payload }`). Upstream always fetched `GET /api/globals/_abManifest`, which on a Worker is a subrequest to itself.
-- **Opts out of Payload 4's default versioning** on the `_abManifest` global and the `ab-experiments` collection. Both are rewritten by the plugin; their history would only add D1 rows.
+- **Stores the manifest one row per key, not publicly readable.** Upstream kept it in one JSON field on a public global and rewrote the whole value on every publish, so two publishes at once could drop one's update, and anyone could list every experiment. `payloadCollectionAdapter` writes only the published page's row, and the manifest and `ab-experiments` need a signed-in user over REST. An optional read cache keeps the per-page-view read off D1.
+- **Opts out of Payload 4's default versioning** on the `ab-manifest` and `ab-experiments` collections. Both are rewritten by the plugin; their history would only add D1 rows.
 - **Hides variants with `admin.baseFilter`**, Payload 4's name for `baseListFilter` (a host's own filter, under either name, is kept and combined). It also keeps variants out of Lexical's internal-link pickers.
 - **Locks down `POST /api/_ab/duplicate`.** Upstream created the variant with `overrideAccess: true` after checking only *read* access, so any visitor could clone a published page. It now requires a signed-in user, only accepts collections the plugin is configured on, takes the slug field from the plugin config (not the request body), and creates the clone with the user's own access. It also refuses to make a variant of a variant.
 - **Creates variants as drafts** (when the collection has drafts), in every locale. Upstream duplicated a published original into an already-published variant, which took traffic and started the experiment the moment you clicked "Add variant". Payload 4 keeps `_status` per locale on localized collections, and a draft duplicate only drafts the request's locale, so the endpoint follows it with `unpublishAllLocales`. Experiment start dates likewise only count published variants.
@@ -26,7 +27,7 @@ pages collection
 └── variant B  slug: "about--x2k1zz" _abVariantOf: <original id>
 ```
 
-On every publish, unpublish or delete, hooks recompute the **variant manifest**, a JSON object keyed by URL path, and write it to the storage adapter. The request resolver reads the entry for the requested path, assigns the visitor a bucket (sticky, by cookie), and tells the host which page to render.
+On every publish, unpublish or delete, hooks recompute the **variant manifest** entries of that page, keyed by URL path, and write them to the storage adapter. The request resolver reads the entry for the requested path, assigns the visitor a bucket (sticky, by cookie), and tells the host which page to render.
 
 ```
 Payload admin → afterChange / afterDelete hooks → storage adapter
@@ -46,7 +47,7 @@ In this monorepo, add it to an app as a workspace dependency:
 "dependencies": { "@cargo/payload-plugin-ab": "workspace:*" }
 ```
 
-Then run `pnpm web generate:importmap` (the Variants panel is an admin component), and `pnpm web migrate:create` (the plugin adds fields, a global and a collection).
+Then run `pnpm web generate:importmap` (the Variants panel is an admin component), and `pnpm web migrate:create` (the plugin adds fields and two collections).
 
 ## Register the plugin
 
@@ -54,11 +55,11 @@ Share one adapter between the Payload config and the resolver:
 
 ```ts
 // src/plugins/abTesting.ts
-import { payloadGlobalAdapter } from '@cargo/payload-plugin-ab/adapters/payload-global'
+import { payloadCollectionAdapter } from '@cargo/payload-plugin-ab/adapters/payload-collection'
 
 export type AbVariant = { bucket: string; rewritePath: string; passPercentage: number }
 
-export const abStorage = payloadGlobalAdapter<AbVariant>()
+export const abStorage = payloadCollectionAdapter<AbVariant>()
 ```
 
 ```ts
@@ -93,7 +94,7 @@ The plugin injects into each configured collection:
 - `admin.baseFilter`, so variants don't show in the list view or link pickers
 - `beforeChange` / `afterChange` / `afterDelete` hooks
 
-and adds the `_abManifest` global, the `ab-experiments` collection (both hidden unless `debug: true`) and `POST /api/_ab/duplicate`.
+and adds the `ab-manifest` and `ab-experiments` collections (both hidden unless `debug: true`) and `POST /api/_ab/duplicate`.
 
 ### Traffic percentages
 
@@ -188,7 +189,7 @@ interface AbTestingPluginConfig<TVariantData extends object> {
   storage: StorageAdapter<TVariantData>
   collections: Record<string, CollectionABConfig<TVariantData>>
   enabled?: boolean                    // default true
-  debug?: boolean                      // show the manifest global and experiments collection. default false
+  debug?: boolean                      // show the manifest and experiments collections. default false
   experimentsCollectionSlug?: string   // default 'ab-experiments'
 }
 
@@ -205,22 +206,59 @@ interface StorageAdapter<TVariantData extends object> {
   write(path: string, variants: TVariantData[], payload: Payload): Promise<void>
   read(path: string, payload?: Payload): Promise<TVariantData[] | null> // called per request
   clear(path: string, payload: Payload): Promise<void>
-  createGlobal?(debug: boolean): GlobalConfig
+  createGlobal?(debug: boolean): GlobalConfig         // storage the plugin adds to the config
+  createCollection?(debug: boolean): CollectionConfig
 }
 ```
 
+`write` touches only its key and runs on every recompute, draft autosaves included: skip it when the stored value is already `variants`.
+
 With localization on, `generatePath` is called once per locale and each locale gets its own manifest entry (`locale` is `undefined` without localization).
 
-### payloadGlobalAdapter
+### payloadCollectionAdapter
 
-Stores the manifest as one JSON field on a hidden global (`_abManifest` by default). `read` uses the Local API when given `payload`; otherwise it fetches `{serverURL}{apiRoute}/globals/{slug}` (both options, default `''` and `/api`), so the global is publicly readable, as upstream. Writes are read-modify-write of that one value, without a transaction (D1 has none): two variant publishes at the same instant can drop one's update, which the next publish of that page repairs.
+```ts
+payloadCollectionAdapter<TVariantData>({
+  collectionSlug?: string // default 'ab-manifest'
+  serverURL?: string      // REST fallback, when read gets no payload. default ''
+  apiRoute?: string       // default '/api'
+  authorization?: string  // Authorization header for the REST fallback, e.g. 'users API-Key <key>'
+  cache?: ManifestCache<TVariantData>
+  cacheTtl?: number       // seconds. default 30
+})
+```
+
+Stores the manifest in a hidden collection, one row per manifest key: `key` (unique, indexed) and `variants` (JSON). A write finds its key's row and updates it (skipped when unchanged), or creates it; if another write created the same new key first, it re-finds the row and updates it once. A clear deletes the row. `read` is one indexed lookup (`pagination: false`, so no count query) through the Local API when given `payload`.
+
+Signed-in users can read the collection (the `debug` view, an authenticated REST read); nobody can write it over the API, and visitors can't read it. The plugin uses the Local API with `overrideAccess: true`. Without `payload`, `read` fetches `{serverURL}{apiRoute}/{collectionSlug}?where[key][equals]=…` with `authorization`; with no `authorization` it returns `null` (no experiment) without fetching.
+
+#### Read cache
+
+Every routed page view calls `read`. Pass a `cache` to serve it from memory or a platform cache instead of D1:
+
+```ts
+interface ManifestCache<TVariantData> {
+  get(key: string): TVariantData[] | null | undefined | Promise<…> // undefined: miss; null: no experiment
+  set(key: string, value: TVariantData[] | null, ttlSeconds: number): void | Promise<void>
+  delete(key: string): void | Promise<void>
+}
+```
+
+Reads are cache-first, and a key with no experiment is cached as `null`, so pages without experiments skip D1 too once warm. Writes and clears update the cache after storage succeeds (a failed write drops the entry), and a cache error falls back to storage. Store values only: on Workers a promise belongs to the request that created it, so a cache must never hold an in-flight read.
+
+`createMemoryManifestCache({ maxEntries? })` is a reference implementation in a `Map`, per process (per isolate on Workers). For another adapter, `withManifestCache(adapter, { cache, ttl })` adds the same behaviour.
+
+#### Known limits
+
+- **Same-key writes are last-write-wins.** Writes for different pages never collide, but two recomputes of the same page at the same instant (D1 has no transactions) keep whichever lands last. Both are computed from the same variant documents, and the next publish of that page rewrites the entry.
+- **Cache staleness is bounded by `cacheTtl`.** Only the cache in the isolate (or, for a per-colo cache such as the Workers Cache API, the colo) that made a change sees it at once. Elsewhere, a cached entry keeps routing to the old variants, including an unpublished or deleted one, until it expires: 30 seconds by default. A globally replicated cache with its own propagation delay (such as KV) adds that delay.
 
 ## Exports
 
 | Import path | Exports |
 | --- | --- |
-| `@cargo/payload-plugin-ab` | `abTestingPlugin`, `resolveAbCookieNames`, `AB_EXPERIMENTS_SLUG`, `AB_DIMENSION_PARAMS`, types |
-| `@cargo/payload-plugin-ab/adapters/payload-global` | `payloadGlobalAdapter` |
+| `@cargo/payload-plugin-ab` | `abTestingPlugin`, `resolveAbCookieNames`, `AB_EXPERIMENTS_SLUG`, `AB_DIMENSION_PARAMS`, types (including `ManifestCache`) |
+| `@cargo/payload-plugin-ab/adapters/payload-collection` | `payloadCollectionAdapter`, `withManifestCache`, `createMemoryManifestCache`, types |
 | `@cargo/payload-plugin-ab/middleware` | `createResolveAbRewrite`, `parseCookieHeader`, `serializeAbCookie`, `resolveAbCookieNames`, types |
 | `@cargo/payload-plugin-ab/analytics` (also `/analytics/client`) | `ExperimentTracker`, `resolveAbCookieNames`, types |
 | `@cargo/payload-plugin-ab/admin/VariantsField` | the Variants panel (import-map path) |
@@ -233,7 +271,7 @@ pnpm --filter @cargo/payload-plugin-ab typecheck
 pnpm --filter @cargo/payload-plugin-ab build
 ```
 
-`tests/integration/boot.test.ts` boots Payload 4 with drafts and two locales and drives the endpoint and REST calls through Payload's own handler: duplicate auth, variant drafts, per-locale manifest entries, staged and published percentages (with an unpublished variant edit that must stay unpublished), unpublishing a variant or the original, deletes. `tests/payload4Tokens.test.ts` keeps v3 admin tokens out of the styles.
+`tests/integration/boot.test.ts` boots Payload 4 with drafts and two locales and drives the endpoint and REST calls through Payload's own handler: duplicate auth, variant drafts, per-locale manifest entries, staged and published percentages (with an unpublished variant edit that must stay unpublished), unpublishing a variant or the original, deletes, and the manifest storage (concurrent writes to different keys, a create race on one key, REST access with and without a session or credentials). `tests/cache/` covers the read cache. `tests/payload4Tokens.test.ts` keeps v3 admin tokens out of the styles.
 
 ## License
 
