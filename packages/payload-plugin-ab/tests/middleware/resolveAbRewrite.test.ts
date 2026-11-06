@@ -96,8 +96,29 @@ describe("resolveAbRewrite", () => {
     expect(res?.setCookieHeaders).toEqual([]);
   });
 
-  it("returns null for a visitor already assigned to the original", async () => {
-    expect(await resolve([variantB], `ab_visitor_id=v1; ${BUCKET_COOKIE}=original`)).toBeNull();
+  it("answers for a visitor already assigned to the original, with nothing to set", async () => {
+    // The host counts this view too: a null here would under-count the original bucket.
+    const res = await resolve([variantB], `ab_visitor_id=v1; ${BUCKET_COOKIE}=original`);
+    expect(res).toEqual({
+      bucket: "original",
+      pathname: PAGE,
+      variant: null,
+      visitorId: "v1",
+      cookies: [],
+      setCookieHeaders: [],
+    });
+  });
+
+  it("reports the visitor id, the new one for a first visit", async () => {
+    const res = await resolve([variantB], "");
+    expect(res?.visitorId).toMatch(/^[0-9a-f-]{36}$/u);
+    expect(cookie(res, "ab_visitor_id")?.value).toBe(res?.visitorId);
+  });
+
+  it("serializes HttpOnly only when asked", () => {
+    const base = { name: "n", value: "v", options: { path: "/" as const, sameSite: "lax" as const, maxAge: 60 } };
+    expect(serializeAbCookie(base)).not.toContain("HttpOnly");
+    expect(serializeAbCookie({ ...base, options: { ...base.options, httpOnly: true } })).toMatch(/; HttpOnly$/u);
   });
 
   it("issues a visitor id and serializes Set-Cookie headers for a new visitor", async () => {

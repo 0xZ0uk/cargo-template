@@ -51,6 +51,8 @@ export interface AbCookie {
     sameSite: "lax";
     /** Seconds. */
     maxAge: number;
+    /** Hide it from page scripts. The resolver's own cookies leave it off (`ExperimentTracker` reads them). */
+    httpOnly?: boolean;
   };
 }
 
@@ -61,7 +63,15 @@ export interface AbRewrite<TVariantData extends object = object> {
   pathname: string;
   /** The manifest entry served, or null for the original. */
   variant: TVariantData | null;
-  /** Cookies to set on the response (assignment, visitor id, analytics experiment cookie). */
+  /**
+   * The visitor's id: from the visitor-id cookie, or a new one (then also in `cookies`).
+   * Pseudonymous but persistent; keep it out of analytics stores that must hold no PII.
+   */
+  visitorId: string;
+  /**
+   * Cookies to set on the response (assignment, visitor id, analytics experiment cookie).
+   * Empty for a returning visitor whose cookies already say everything.
+   */
   cookies: AbCookie[];
   /** `cookies` serialized as `Set-Cookie` header values. */
   setCookieHeaders: string[];
