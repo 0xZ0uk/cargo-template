@@ -41,13 +41,15 @@ export const heading = (tag: 'h1' | 'h2' | 'h3' | 'h4', value: string) =>
 export type ListItem = string | { text: string; list: SerializedLexicalNode }
 
 const list = (listType: 'bullet' | 'number', items: ListItem[]) => {
-  // Lexical numbers every `listitem`, nested-list wrappers included.
+  // Like Lexical (`updateChildrenListItemValue`): a `listitem` that only wraps a nested list has
+  // no number of its own, so it shares the next item's value instead of advancing the count.
   const children: SerializedLexicalNode[] = []
+  let value = 1
   for (const item of items) {
     const { text: label, list: nested } = typeof item === 'string' ? { text: item } : item
-    children.push(element('listitem', [text(label)], { value: children.length + 1 }))
+    children.push(element('listitem', [text(label)], { value: value++ }))
     // A nested list sits in a `listitem` of its own, right after the item it belongs to.
-    if (nested) children.push(element('listitem', [nested], { value: children.length + 1 }))
+    if (nested) children.push(element('listitem', [nested], { value }))
   }
   return element('list', children, {
     listType,
