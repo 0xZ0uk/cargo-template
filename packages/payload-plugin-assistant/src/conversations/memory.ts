@@ -1,7 +1,8 @@
 import { memoryStream, resumeServerSentEventsResponse, toServerSentEventsResponse } from "@tanstack/ai";
-import { memoryPersistence } from "@tanstack/ai-persistence";
+import { memoryPersistence, reconstructChat } from "@tanstack/ai-persistence";
+import { RunControl } from "./runControl";
 import { DEFAULT_CONVERSATION_CAPS, withConversationCaps, type ConversationCaps } from "./caps";
-import { DO_HEADERS, type ConversationBackend, type TurnInput, type TurnRunner } from "./types";
+import { DO_HEADERS, EMPTY_HYDRATION, type ConversationBackend, type TurnInput, type TurnRunner } from "./types";
 
 export interface MemoryConversationsOptions {
   /** The chat turn (#63). Without it `startTurn` answers 501. */
@@ -36,12 +37,12 @@ type Conversation = {
   owner: string;
   persistence: ReturnType<typeof memoryPersistence>;
   lastActive: number;
-  controllers: Map<string, AbortController>;
+  controllers: Map<string, RunControl>;
   runIds: Set<string>;
 };
 
 const DAY = 24 * 60 * 60 * 1000;
-const notFound = () => Response.json({ error: "Not found" }, { status: 404 });
+const notFound = () => Response.json({ error: "Not found", code: "not_found" }, { status: 404 });
 
 /**
  * The in-memory fallback for Node dev and tests: the same `ConversationBackend` as the Durable
@@ -74,7 +75,7 @@ export function memoryConversations(options: MemoryConversationsOptions = {}): C
 
   const backend: ConversationBackend & { sweep(): void } = {
     sweep,
-    async claim(userKey, threadId) {
+    async claim(userKey, threadId, title) {
       sweep();
       if (!userKey) return { ok: false };
       const existing = conversations.get(threadId);
@@ -98,6 +99,7 @@ export function memoryConversations(options: MemoryConversationsOptions = {}): C
         harness: "payload-assistant",
         createdAt: at,
         updatedAt: at,
+        ...(title ? { title } : {}),
       });
       return { ok: true, created: true };
     },
@@ -113,32 +115,33 @@ export function memoryConversations(options: MemoryConversationsOptions = {}): C
       };
     },
     async startTurn(input) {
-      const claimed = await backend.claim(input.userKey, input.threadId);
+      const claimed = await backend.claim(input.userKey, input.threadId, input.title);
       if (!claimed.ok) return notFound();
-      if (!options.turnRunner) return Response.json({ error: "not implemented" }, { status: 501 });
+      if (!options.turnRunner) return Response.json({ error: "not implemented", code: "not_implemented" }, { status: 501 });
       const conversation = conversations.get(input.threadId)!;
       if (conversation.runIds.has(input.runId)) {
-        return Response.json({ error: "run id already used; rejoin it instead" }, { status: 409 });
+        return Response.json({ error: "run id already used; rejoin it instead", code: "run_id_used" }, { status: 409 });
       }
       conversation.runIds.add(input.runId);
-      const controller = new AbortController();
-      conversation.controllers.set(input.runId, controller);
+      const control = new RunControl();
+      conversation.controllers.set(input.runId, control);
       const stream = options.turnRunner({
         input,
         persistence: withConversationCaps(conversation.persistence, caps),
         mcpFetch: options.mcpFetch?.(input.auth) ?? missingMcpFetch,
-        signal: controller.signal,
+        signal: control.signal,
       });
       const inner = memoryStream({ runId: input.runId });
       const adapter = {
         ...inner,
         close: async () => {
           await inner.close();
+          control.done();
           conversation.controllers.delete(input.runId);
           conversation.lastActive = now();
         },
       };
-      return toServerSentEventsResponse(stream, { durability: { adapter }, abortController: controller });
+      return toServerSentEventsResponse(stream, { durability: { adapter }, abortController: control.pipe });
     },
     async join(userKey, threadId, request) {
       const conversation = owned(userKey, threadId);
@@ -146,9 +149,21 @@ export function memoryConversations(options: MemoryConversationsOptions = {}): C
       const url = new URL(request.url);
       const offset = request.headers.get("Last-Event-ID") ?? url.searchParams.get("offset");
       const runId = request.headers.get(DO_HEADERS.runId) ?? url.searchParams.get("runId");
-      if (!offset || !runId) return Response.json({ error: "Last-Event-ID and X-Run-Id required" }, { status: 400 });
+      if (!offset || !runId) return Response.json({ error: "Last-Event-ID and X-Run-Id required", code: "invalid_query" }, { status: 400 });
       if (!conversation.runIds.has(runId)) return notFound();
       return resumeServerSentEventsResponse({ adapter: memoryStream({ runId, offset }) });
+    },
+    async stop(userKey, threadId, runId) {
+      const control = owned(userKey, threadId)?.controllers.get(runId);
+      control?.stop();
+      return Boolean(control);
+    },
+    async hydrate(userKey, threadId, request) {
+      const conversation = owned(userKey, threadId);
+      if (!conversation) return Response.json(EMPTY_HYDRATION);
+      const url = new URL(request.url);
+      url.searchParams.set("threadId", threadId);
+      return reconstructChat(conversation.persistence, new Request(url, { headers: request.headers }), { includeRuns: true });
     },
     async list(userKey, listOptions = {}) {
       sweep();
@@ -164,7 +179,7 @@ export function memoryConversations(options: MemoryConversationsOptions = {}): C
     async remove(userKey, threadId) {
       const conversation = owned(userKey, threadId);
       if (!conversation) return false;
-      for (const controller of conversation.controllers.values()) controller.abort();
+      for (const control of conversation.controllers.values()) control.kill();
       conversations.delete(threadId);
       await sessions.delete({ tenantId: userKey, threadId });
       return true;

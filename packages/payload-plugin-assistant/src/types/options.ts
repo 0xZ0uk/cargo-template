@@ -31,6 +31,7 @@ export interface ConversationStub {
   claim(input: any): Promise<any>;
   transcript(userKey: string): Promise<any>;
   destroy(userKey: string): Promise<any>;
+  stop(userKey: string, runId: string): Promise<any>;
   store(name: any, method: string, args: unknown[]): Promise<any>;
 }
 
@@ -97,12 +98,20 @@ export interface AssistantPluginOptions {
   apiKey: string | undefined;
   /** System prompt, or a function building it per request. */
   instructions?: string | ((context: AssistantContext) => string | Promise<string>);
-  /** Most model/tool round trips in one run. Default 10. */
+  /** Most model calls in one run (each tool round trip is one). Default 10. */
   maxSteps?: number;
+  /**
+   * Compaction budget: when the transcript sent to the model passes this many estimated tokens,
+   * old tool results are cleared, then the oldest turns dropped. Default 64,000. The stored
+   * transcript is not changed.
+   */
+  maxContextTokens?: number;
+  /** OpenRouter attribution title (`X-OpenRouter-Title`). Default "Payload admin assistant". */
+  appTitle?: string;
   /** Which MCP tools the model may see. Default: all of them. */
   toolFilter?: (tool: AssistantToolInfo) => boolean;
   /** Where conversations live. Default: in memory. */
   conversations?: AssistantConversationsOptions;
-  /** Return `false` to answer 429. Checked after `access`, before any model call. */
+  /** Return `false` to answer 429. Called per chat turn (send or resume), after `access`, before any model call. */
   rateLimit?: (req: PayloadRequest) => boolean | Promise<boolean>;
 }

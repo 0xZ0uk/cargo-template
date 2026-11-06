@@ -1,9 +1,10 @@
 import { DurableObject } from "cloudflare:workers";
 import { resumeServerSentEventsResponse, toServerSentEventsResponse, type StreamDurability } from "@tanstack/ai";
-import type { SessionIndexEntry } from "@tanstack/ai-persistence";
+import { reconstructChat, type SessionIndexEntry } from "@tanstack/ai-persistence";
 import { DEFAULT_CONVERSATION_CAPS, withConversationCaps, type ConversationCaps } from "../conversations/caps";
 import { missingSelfBinding, serviceBindingMcpFetch } from "../conversations/mcpTransport";
-import { DO_HEADERS, type ClaimResult, type ConversationTranscript, type TurnInput, type TurnRunner } from "../conversations/types";
+import { RunControl } from "../conversations/runControl";
+import { DO_HEADERS, EMPTY_HYDRATION, type ClaimResult, type ConversationTranscript, type TurnInput, type TurnRunner } from "../conversations/types";
 import type { AssistantConversationIndex } from "./AssistantConversationIndex";
 import { fenceDurability, fencePersistence } from "./fence";
 import { first, run, type SqlStorageLike } from "./sql";
@@ -69,7 +70,7 @@ export const STREAM_LOG_TTL_MS = 60 * 60 * 1000;
 /** While a run is live, an alarm fires this often so the object always has an event in flight. */
 export const RUN_HEARTBEAT_MS = 30 * 1000;
 
-const notFound = () => Response.json({ error: "Not found" }, { status: 404 });
+const notFound = () => Response.json({ error: "Not found", code: "not_found" }, { status: 404 });
 
 /**
  * One conversation: its transcript, runs, pending approvals and stream log, in this object's
@@ -88,7 +89,7 @@ export class AssistantConversation<Env extends AssistantConversationEnv = Assist
   protected readonly storage: SqlStorageLike;
   protected readonly persistence: ConversationPersistence;
   private hub = new StreamHub();
-  private readonly controllers = new Map<string, AbortController>();
+  private readonly controllers = new Map<string, RunControl>();
   private schemaReady = false;
   /**
    * Bumped by every purge. A run remembers the epoch it started in; its writes (stores, log,
@@ -113,11 +114,14 @@ export class AssistantConversation<Env extends AssistantConversationEnv = Assist
   }
 
   /**
-   * The chat turn. Override in #63 (or a test) to return `chat(...)`; `null` answers 501.
-   * Load the AI runtime lazily here so the object's cold start stays small.
+   * The chat turn: `createTurnRunner()` (OpenRouter, the Payload tools through `ASSISTANT_SELF`,
+   * the settings the endpoint sent with the turn). A dynamic import in source; the `./do` bundle
+   * inlines it (the Worker bundles the AI runtime for the endpoint anyway). Override it to swap
+   * the adapter (the tests pass `fakeText()`); returning `null` answers 501.
    */
   protected async turnRunner(): Promise<TurnRunner | null> {
-    return null;
+    const { createTurnRunner } = await import("../server/turn");
+    return createTurnRunner();
   }
 
   // --- ownership & conversation lifecycle ---------------------------------------------------
@@ -207,7 +211,11 @@ export class AssistantConversation<Env extends AssistantConversationEnv = Assist
     const url = new URL(request.url);
     const userKey = request.headers.get(DO_HEADERS.user) ?? "";
     // The owner check runs again here, so a join can never skip it.
-    if (!this.owns(userKey)) return notFound();
+    if (!this.owns(userKey)) {
+      // Hydration of a conversation that isn't (yet) the caller's looks like a new one.
+      return url.pathname === "/hydrate" && request.method === "GET" ? Response.json(EMPTY_HYDRATION) : notFound();
+    }
+    if (url.pathname === "/hydrate" && request.method === "GET") return this.hydrate(url);
     if (url.pathname === "/turn" && request.method === "POST") return this.startTurn(request, userKey, this.epoch);
     if (url.pathname === "/join" && request.method === "GET") return this.join(request);
     return notFound();
@@ -216,14 +224,14 @@ export class AssistantConversation<Env extends AssistantConversationEnv = Assist
   private async startTurn(request: Request, userKey: string, epoch: number): Promise<Response> {
     const live = () => this.epoch === epoch;
     const runner = await this.turnRunner();
-    if (!runner) return Response.json({ error: "not implemented" }, { status: 501 });
+    if (!runner) return Response.json({ error: "not implemented", code: "not_implemented" }, { status: 501 });
     const runId = request.headers.get(DO_HEADERS.runId) ?? "";
-    if (!runId || /[\r\n]/.test(runId)) return Response.json({ error: "X-Run-Id required" }, { status: 400 });
+    if (!runId || /[\r\n]/.test(runId)) return Response.json({ error: "X-Run-Id required", code: "invalid_query" }, { status: 400 });
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
     // Deleted while we read the request: answer like any missing conversation.
     if (!live()) return notFound();
     if (!this.reserveRunId(runId)) {
-      return Response.json({ error: "run id already used; rejoin it instead" }, { status: 409 });
+      return Response.json({ error: "run id already used; rejoin it instead", code: "run_id_used" }, { status: 409 });
     }
     const meta = this.meta()!;
     const input: TurnInput = {
@@ -236,8 +244,8 @@ export class AssistantConversation<Env extends AssistantConversationEnv = Assist
     const caps = this.caps();
     pruneStreamLogs(this.storage, STREAM_LOG_TTL_MS);
 
-    const controller = new AbortController();
-    this.controllers.set(runId, controller);
+    const control = new RunControl();
+    this.controllers.set(runId, control);
     this.hub.producers.add(runId);
     const durability = this.producerLog(runId, caps.maxStreamChunkBytes, live);
     const stream = runner({
@@ -246,28 +254,39 @@ export class AssistantConversation<Env extends AssistantConversationEnv = Assist
       mcpFetch: this.env.ASSISTANT_SELF
         ? serviceBindingMcpFetch({ fetcher: this.env.ASSISTANT_SELF, ...input.auth })
         : missingSelfBinding,
-      signal: controller.signal,
+      signal: control.signal,
     });
     await this.touch();
     if (live()) await this.armAlarm();
     // Fresh run + durability: TanStack drains the stream into the log under its own controller.
     // The response is only a viewer; cancelling it (closed tab) detaches, the run goes on here.
-    return toServerSentEventsResponse(stream, { durability: { adapter: durability }, abortController: controller });
+    return toServerSentEventsResponse(stream, { durability: { adapter: durability }, abortController: control.pipe });
   }
 
   /** Stop a live run (the user pressed Stop). `false` when it isn't running here. */
   async stop(userKey: string, runId: string): Promise<boolean> {
     if (!this.owns(userKey)) return false;
-    const controller = this.controllers.get(runId);
-    controller?.abort();
-    return Boolean(controller);
+    const control = this.controllers.get(runId);
+    control?.stop();
+    return Boolean(control);
+  }
+
+  /** `reconstructChat` over this conversation's stores: what `useChat`'s `hydrate()` reads. */
+  private hydrate(url: URL): Promise<Response> {
+    const target = new URL("https://assistant.internal/hydrate");
+    target.searchParams.set("threadId", this.meta()!.thread_id);
+    for (const key of ["limit", "before"]) {
+      const value = url.searchParams.get(key);
+      if (value !== null) target.searchParams.set(key, value);
+    }
+    return reconstructChat(this.persistence, new Request(target), { includeRuns: true });
   }
 
   private join(request: Request): Response {
     const url = new URL(request.url);
     const offset = request.headers.get("Last-Event-ID") ?? url.searchParams.get("offset");
     const runId = request.headers.get(DO_HEADERS.runId) ?? url.searchParams.get("runId") ?? runIdOfOffset(offset);
-    if (!offset) return Response.json({ error: "Last-Event-ID or ?offset required" }, { status: 400 });
+    if (!offset) return Response.json({ error: "Last-Event-ID or ?offset required", code: "invalid_query" }, { status: 400 });
     if (!runId || (!this.logExists(runId) && !this.hub.producers.has(runId))) return notFound();
     const adapter = sqlStreamDurability(this.storage, this.hub, {
       runId,
@@ -292,6 +311,7 @@ export class AssistantConversation<Env extends AssistantConversationEnv = Assist
           // Even when the close failed, so no phantom producer keeps readers or the heartbeat alive.
           if (live()) {
             this.hub.producers.delete(runId);
+            this.controllers.get(runId)?.done();
             this.controllers.delete(runId);
           }
         }
@@ -343,7 +363,7 @@ export class AssistantConversation<Env extends AssistantConversationEnv = Assist
   private async purge(): Promise<void> {
     const meta = this.meta();
     this.epoch += 1;
-    for (const controller of this.controllers.values()) controller.abort();
+    for (const control of this.controllers.values()) control.kill();
     this.controllers.clear();
     const hub = this.hub;
     this.hub = new StreamHub();

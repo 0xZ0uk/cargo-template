@@ -1,8 +1,10 @@
 import { createMCPClient } from "@tanstack/ai-mcp";
 import type { StreamChunk } from "@tanstack/ai";
-import { createMcpHandler, McpServer } from "@modelcontextprotocol/server";
+import { fakeText, type FakeResponseStep } from "@tanstack/ai/testing";
+import { createMcpHandler, fromJsonSchema, McpServer } from "@modelcontextprotocol/server";
 import { AssistantConversation, AssistantConversationIndex } from "../../src/do";
 import type { TurnContext, TurnRunner } from "../../src/conversations/types";
+import { createTurnRunner } from "../../src/server/turn";
 
 export { AssistantConversationIndex };
 
@@ -63,12 +65,33 @@ async function* mcpTurn({ input, mcpFetch }: TurnContext): AsyncIterable<StreamC
   yield chunk({ type: "RUN_FINISHED", threadId, runId });
 }
 
-/** The conversation class with a stand-in turn runner (#63 overrides `turnRunner` for real). */
+/**
+ * The real turn runner (`createTurnRunner`, the one `AssistantConversation` uses) with a scripted
+ * `fakeText()` model instead of OpenRouter: the script travels in the test's turn body.
+ */
+const chatTurn: TurnRunner = (context) => {
+  const { script, tokensPerSecond } = context.input.body as { script: FakeResponseStep[]; tokensPerSecond?: number };
+  return createTurnRunner({
+    createAdapter: () => {
+      const model = fakeText(tokensPerSecond ? { tokensPerSecond } : {});
+      model.setResponses(script);
+      return model;
+    },
+  })(context);
+};
+
+/** The conversation class with the model swapped: `mode: "chat"` is the real turn, the others are stand-ins. */
 export class TestConversation extends AssistantConversation<Env> {
   protected override async turnRunner(): Promise<TurnRunner> {
-    return (context) => (context.input.body.mode === "mcp" ? mcpTurn(context) : slowTurn(context));
+    return (context) => {
+      const { mode } = context.input.body;
+      return mode === "chat" ? chatTurn(context) : mode === "mcp" ? mcpTurn(context) : slowTurn(context);
+    };
   }
 }
+
+/** What the stand-in `updateDocument` wrote, per document id (read back through `GET /test/titles`). */
+const titles = new Map<string, string>([["1", "Home"]]);
 
 /**
  * Stand-in for Payload's `POST /api/mcp`: a real MCP server (`@modelcontextprotocol/server`,
@@ -83,6 +106,28 @@ const mcp = createMcpHandler(({ requestInfo }) => {
     server.registerTool("whoami", { description: "Echo the identity this request carried." }, async () => ({
       content: [{ type: "text", text: JSON.stringify({ cookie, origin }) }],
     }));
+    // Like plugin-mcp's: a read tool (runs without asking) and a write tool (needs approval).
+    server.registerTool(
+      "findDocuments",
+      { description: "Find documents.", annotations: { readOnlyHint: true } },
+      async () => ({ content: [{ type: "text", text: JSON.stringify({ docs: [...titles].map(([id, title]) => ({ id, title })) }) }] })
+    );
+    server.registerTool(
+      "updateDocument",
+      {
+        description: "Update a document.",
+        inputSchema: fromJsonSchema<{ id: string; title: string }>({
+          type: "object",
+          properties: { id: { type: "string" }, title: { type: "string" } },
+          required: ["id", "title"],
+        }),
+        annotations: { readOnlyHint: false },
+      },
+      async (args) => {
+        titles.set(args.id, args.title);
+        return { content: [{ type: "text", text: "Document updated successfully" }] };
+      }
+    );
   }
   return server;
 });
@@ -91,6 +136,7 @@ export default {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/api/mcp") return mcp.fetch(request);
+    if (url.pathname === "/test/titles") return Response.json(Object.fromEntries(titles));
     return new Response("Not found", { status: 404 });
   },
 } satisfies ExportedHandler<Env>;

@@ -1,17 +1,221 @@
 import type { PayloadRequest } from "payload";
+import { conversationBackend } from "../conversations/backend";
+import { userKeyOf, type ChatTurnBody, type ConversationBackend, type TurnSettings } from "../conversations/types";
+import { PLUGIN_NAME } from "../constants";
+import { inProcessDispatch, payloadToolSourceForRequest } from "../tools/inProcess";
+import type { McpDispatch } from "../tools/payloadToolSource";
 import type { NormalizedAssistantOptions } from "../utils/normalizeOptions";
+import { buildSystemPrompt, siteUrls } from "./instructions";
+import { createTurnRunner, type CreateAdapter } from "./turn";
+import { isId, validateChatBody } from "./validate";
 
 /**
- * The chat turn. Loaded with `await import("./server/chat")` from the endpoint, so the AI runtime
- * (`@tanstack/ai`, `@tanstack/ai-mcp`, the OpenRouter adapter…) stays out of the import graph of
- * `payload.config` and of the admin bundle. Import it from here only, never statically.
- *
- * Stub: the real turn (MCP tools, `chat()` in the conversation's Durable Object, SSE) lands
- * with #61–#63.
+ * The assistant's endpoints, behind the checks in `endpoints/index.ts` (signed in, `access`…).
+ * Loaded with `await import("./server/chat")`, so the AI runtime (`@tanstack/ai`, the MCP client,
+ * the OpenRouter adapter) stays out of the import graph of `payload.config` and the admin bundle.
+ * Import it from there only, never statically.
  */
-export async function handleChat(
-  _req: PayloadRequest,
-  _options: NormalizedAssistantOptions
-): Promise<Response> {
-  return Response.json({ error: "not implemented" }, { status: 501 });
+
+/** Seams for tests and Node: the model adapter and the MCP dispatcher of the in-memory backend. */
+export interface ChatDeps {
+  /** Model adapter for turns run by the in-memory backend (the Durable Object has its own `turnRunner`). */
+  createAdapter?: CreateAdapter;
+  /** How the Worker reaches `/api/mcp` in process. Default: `handleEndpoints` on the request's config. */
+  dispatch?: McpDispatch;
+}
+
+export const jsonError = (status: number, code: string, error: string, extra: Record<string, unknown> = {}) =>
+  Response.json({ error, code, ...extra }, { status });
+
+const MAX_TITLE_CHARS = 200;
+
+function userOf(req: PayloadRequest) {
+  return userKeyOf(req.user as { collection?: string; id: string | number });
+}
+
+function dispatchFor(req: PayloadRequest, deps: ChatDeps): McpDispatch {
+  return deps.dispatch ?? inProcessDispatch(req.payload.config);
+}
+
+function backendFor(req: PayloadRequest, options: NormalizedAssistantOptions, deps: ChatDeps): ConversationBackend {
+  const dispatch = dispatchFor(req, deps);
+  return conversationBackend(options, {
+    turnRunner: createTurnRunner(deps.createAdapter ? { createAdapter: deps.createAdapter } : {}),
+    // Node / in-memory only: the turn runs in this process, so MCP goes through Payload's router here.
+    mcpFetch: () => ((input: RequestInfo | URL, init?: RequestInit) =>
+      dispatch(input instanceof Request && !init ? input : new Request(input, init))) as typeof fetch,
+  });
+}
+
+/** The URL of `req` (Payload's `PayloadRequest.url` is optional in its types). */
+const requestUrl = (req: PayloadRequest) => new URL(req.url ?? "http://localhost/");
+
+/** A plain `Request` view of the Payload request, for `join` / `hydrate` (query string + headers). */
+const asRequest = (req: PayloadRequest) =>
+  new Request(requestUrl(req), { headers: req.headers, ...(req.signal ? { signal: req.signal } : {}) });
+
+/**
+ * The tool names the app's `toolFilter` admits, evaluated here where the function lives (the
+ * turn may run in a Durable Object, which only gets data). One extra in-process tool discovery
+ * per turn, and only when a `toolFilter` is set.
+ */
+async function allowedToolNames(req: PayloadRequest, options: NormalizedAssistantOptions, deps: ChatDeps) {
+  if (!options.toolFilter) return undefined;
+  const source = payloadToolSourceForRequest(req, { toolFilter: options.toolFilter, dispatch: dispatchFor(req, deps) });
+  try {
+    return (await source.tools()).map((tool) => tool.name);
+  } finally {
+    await source.close();
+  }
+}
+
+/** Copy a response with extra headers (a Durable Object's response has immutable headers). */
+function withHeaders(response: Response, headers: Record<string, string>): Response {
+  const copy = new Response(response.body, response);
+  for (const [name, value] of Object.entries(headers)) copy.headers.set(name, value);
+  return copy;
+}
+
+/** `POST /api/assistant/chat`: a new turn, or a resume with approval decisions. Answers the run's SSE. */
+export async function handleChat(req: PayloadRequest, options: NormalizedAssistantOptions, deps: ChatDeps = {}): Promise<Response> {
+  let raw: unknown;
+  try {
+    raw = await (req as unknown as Request).json();
+  } catch {
+    return jsonError(400, "invalid_body", "the body must be JSON");
+  }
+  const parsed = validateChatBody(raw, req.headers.get("X-Run-Id"));
+  if (!parsed.ok) return jsonError(400, "invalid_body", parsed.error);
+  const { threadId, messages, resume } = parsed.value;
+
+  const model = parsed.value.model ?? options.defaultModel;
+  if (!options.models.some((allowed) => allowed.id === model)) {
+    return jsonError(400, "model_not_allowed", `model "${model}" is not in the assistant's allowlist`, {
+      models: options.models.map((allowed) => allowed.id),
+    });
+  }
+
+  const { site, api } = siteUrls(req);
+  const origin = req.headers.get("origin") || requestUrl(req).origin;
+  let toolNames: string[] | undefined;
+  try {
+    toolNames = await allowedToolNames(req, options, deps);
+  } catch (error) {
+    req.payload.logger.error({ err: error, msg: `[${PLUGIN_NAME}] tool discovery for toolFilter failed` });
+    return jsonError(502, "tools_unavailable", "the assistant could not list Payload's tools");
+  }
+  const settings: TurnSettings = {
+    model,
+    apiKey: options.apiKey,
+    systemPrompt: await buildSystemPrompt(req, options),
+    maxSteps: options.maxSteps,
+    maxContextTokens: options.maxContextTokens,
+    mcpEndpoint: `${api}/mcp`,
+    ...(toolNames ? { toolNames } : {}),
+    httpReferer: site || origin,
+    appTitle: options.appTitle,
+  };
+  const body: ChatTurnBody = { messages, ...(resume ? { resume } : {}), settings };
+  const runId = parsed.value.runId ?? crypto.randomUUID();
+  const first = messages[0]?.content;
+
+  const response = await backendFor(req, options, deps).startTurn({
+    userKey: userOf(req),
+    threadId,
+    runId,
+    body: body as unknown as Record<string, unknown>,
+    auth: { cookie: req.headers.get("cookie") ?? "", origin },
+    ...(typeof first === "string" ? { title: first.trim().slice(0, MAX_TITLE_CHARS) } : {}),
+  });
+  return response.ok ? withHeaders(response, { "X-Run-Id": runId, "X-Thread-Id": threadId }) : response;
+}
+
+/**
+ * `GET /api/assistant/chat?threadId=…`: with a run (`?runId=` or `X-Run-Id`) and an offset
+ * (`Last-Event-ID` or `?offset=`, `-1` for the start), rejoin the run's stream from its log;
+ * without, the conversation as `useChat`'s `hydrate()` expects it.
+ */
+export async function handleChatGet(req: PayloadRequest, options: NormalizedAssistantOptions, deps: ChatDeps = {}): Promise<Response> {
+  const url = requestUrl(req);
+  const threadId = url.searchParams.get("threadId");
+  if (!isId(threadId)) return jsonError(400, "invalid_query", '"threadId" is required');
+  const backend = backendFor(req, options, deps);
+  const runId = req.headers.get("X-Run-Id") ?? url.searchParams.get("runId");
+  const offset = req.headers.get("Last-Event-ID") ?? url.searchParams.get("offset");
+  if (runId || offset) {
+    if (!isId(runId) || !offset) return jsonError(400, "invalid_query", "a rejoin needs a run id and an offset (Last-Event-ID or ?offset=-1)");
+    return backend.join(userOf(req), threadId, asRequest(req));
+  }
+  return backend.hydrate(userOf(req), threadId, asRequest(req));
+}
+
+/** `POST /api/assistant/chat/stop` `{ threadId, runId }`: abort a live run. */
+export async function handleStop(req: PayloadRequest, options: NormalizedAssistantOptions, deps: ChatDeps = {}): Promise<Response> {
+  const body = (await (req as unknown as Request).json().catch(() => null)) as { threadId?: unknown; runId?: unknown } | null;
+  if (!isId(body?.threadId) || !isId(body?.runId)) return jsonError(400, "invalid_body", '"threadId" and "runId" are required');
+  const stopped = await backendFor(req, options, deps).stop(userOf(req), body.threadId, body.runId);
+  return Response.json({ stopped });
+}
+
+/** What the conversation list shows, per conversation. */
+export interface ConversationSummary {
+  threadId: string;
+  title: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** `GET /api/assistant/conversations?limit=&cursor=&search=`: the caller's conversations, newest first. */
+export async function handleListConversations(req: PayloadRequest, options: NormalizedAssistantOptions, deps: ChatDeps = {}): Promise<Response> {
+  const url = requestUrl(req);
+  const limitParam = Number(url.searchParams.get("limit") ?? 50);
+  const limit = Number.isInteger(limitParam) && limitParam > 0 ? Math.min(limitParam, 100) : 50;
+  const cursor = url.searchParams.get("cursor") ?? undefined;
+  const search = url.searchParams.get("search")?.slice(0, 200) || undefined;
+  const page = await backendFor(req, options, deps).list(userOf(req), {
+    limit,
+    ...(cursor ? { cursor } : {}),
+    ...(search ? { search } : {}),
+  });
+  const conversations: ConversationSummary[] = page.entries.map((entry) => ({
+    threadId: entry.threadId,
+    title: entry.title ?? null,
+    createdAt: entry.createdAt,
+    updatedAt: entry.updatedAt,
+  }));
+  return Response.json({ conversations, nextCursor: page.cursor ?? null });
+}
+
+const threadParam = (req: PayloadRequest): string | undefined => {
+  const value = (req.routeParams as Record<string, unknown> | undefined)?.threadId;
+  return isId(value) ? value : undefined;
+};
+
+/** `GET /api/assistant/conversations/:threadId`: the transcript (the `hydrate` body), 404 when not the caller's. */
+export async function handleGetConversation(req: PayloadRequest, options: NormalizedAssistantOptions, deps: ChatDeps = {}): Promise<Response> {
+  const threadId = threadParam(req);
+  if (!threadId) return jsonError(404, "not_found", "Not found");
+  const backend = backendFor(req, options, deps);
+  // `transcript` is the ownership check (null for missing or someone else's); `hydrate` is the body.
+  if (!(await backend.transcript(userOf(req), threadId))) return jsonError(404, "not_found", "Not found");
+  return backend.hydrate(userOf(req), threadId, asRequest(req));
+}
+
+/** `PATCH /api/assistant/conversations/:threadId` `{ title }`. */
+export async function handleRenameConversation(req: PayloadRequest, options: NormalizedAssistantOptions, deps: ChatDeps = {}): Promise<Response> {
+  const threadId = threadParam(req);
+  if (!threadId) return jsonError(404, "not_found", "Not found");
+  const body = (await (req as unknown as Request).json().catch(() => null)) as { title?: unknown } | null;
+  const title = typeof body?.title === "string" ? body.title.trim() : "";
+  if (!title || title.length > MAX_TITLE_CHARS) return jsonError(400, "invalid_body", `"title" must be 1 to ${MAX_TITLE_CHARS} characters`);
+  const renamed = await backendFor(req, options, deps).rename(userOf(req), threadId, title);
+  return renamed ? Response.json({ threadId, title }) : jsonError(404, "not_found", "Not found");
+}
+
+/** `DELETE /api/assistant/conversations/:threadId`: everything, a live run included. */
+export async function handleDeleteConversation(req: PayloadRequest, options: NormalizedAssistantOptions, deps: ChatDeps = {}): Promise<Response> {
+  const threadId = threadParam(req);
+  if (!threadId) return jsonError(404, "not_found", "Not found");
+  const removed = await backendFor(req, options, deps).remove(userOf(req), threadId);
+  return removed ? Response.json({ deleted: true }) : jsonError(404, "not_found", "Not found");
 }
