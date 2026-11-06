@@ -124,6 +124,22 @@ describe('seoAnalyzerPlugin — integration (config transform)', () => {
     expect(out.admin.custom.seoAnalyzer.collections).toEqual(['pages', 'posts'])
   })
 
+  it('reuses a host-defined noindex instead of adding a duplicate (top level or unnamed tab)', () => {
+    for (const hostField of [
+      { name: 'noindex', type: 'checkbox' },
+      { type: 'tabs', tabs: [{ label: 'SEO', fields: [{ name: 'noindex', type: 'checkbox' }] }] },
+    ]) {
+      const config = baseConfig()
+      config.collections[0].fields = [hostField]
+      const out = seoAnalyzerPlugin({ collections: ['pages'] })(config)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const pages = out.collections.find((c: any) => c.slug === 'pages')
+      const count = (JSON.stringify(pages.fields).match(/"name":"noindex"/g) || []).length
+      expect(count).toBe(1)
+      expect(JSON.stringify(pages.fields)).toContain('focusKeyword')
+    }
+  })
+
   it('sets an onInit function (composes with existing)', () => {
     const out = run({ collections: ['pages', 'posts'] })
     expect(typeof out.onInit).toBe('function')
