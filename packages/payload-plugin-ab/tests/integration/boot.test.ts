@@ -1362,4 +1362,32 @@ describe("POST /api/_ab/promote", () => {
     expect((await findPage(original.id, { draft: true })).title).toBe("Original");
     expect((await findPage(variant.id, { draft: true })).title).toBe("Winner (en)");
   });
+
+  it("promotes the variant's published version, not edits saved after it", async () => {
+    const { original, variant } = await experiment("promote-published");
+    // An edit the editor saved but never published: visitors were never tested on it.
+    await payload.update({
+      collection: PAGES,
+      id: variant.id,
+      data: { title: "Unpublished edit" } as never,
+      draft: true,
+      locale: "en" as never,
+      overrideAccess: true,
+    });
+    expect((await findPage(variant.id, { draft: true, locale: "en" })).title).toBe("Unpublished edit");
+
+    const res = await promote({ collectionSlug: "pages", docId: original.id, variantId: variant.id });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect((await findPage(original.id, { draft: true, locale: "en" })).title).toBe("Winner (en)");
+  });
+
+  it("refuses a variant that was never published", async () => {
+    const original = await createPublishedPage("promote-unpublished", "Original");
+    const variant = await addVariant(original);
+
+    const res = await promote({ collectionSlug: "pages", docId: original.id, variantId: variant.id });
+    expect(res.status).toBe(400);
+    expect((await findPage(original.id, { draft: true })).title).toBe("Original");
+    expect((await findPage(variant.id, { draft: true })).id).toBe(variant.id);
+  });
 });

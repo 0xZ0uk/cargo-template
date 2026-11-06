@@ -43,7 +43,8 @@ const messageOf = (err: unknown, fallback: string) => (err instanceof Error ? er
  * `POST /api/_ab/promote`, body `{ collectionSlug, docId, variantId }`: promotes a variant to
  * its original (`docId`) and ends the experiment.
  *
- * 1. Copies the variant's content (its latest draft, depth 0) onto the original as a **draft**,
+ * 1. Copies the variant's content (its **published** version, depth 0: what visitors were tested
+ *    on, not later unpublished edits) onto the original as a **draft**,
  *    once per locale, with the user's own access: nothing goes live until an editor publishes
  *    the original. The slug, the A/B fields, ids, timestamps, `_status` and the collection's
  *    `promoteSkipFields` are not copied, so the original keeps its own values for them.
@@ -112,6 +113,17 @@ export function buildPromoteVariantHandler<TVariantData extends object>(
       return json({ error: "That document isn't a variant of this original" }, 400);
     }
 
+    // Visitors were tested on the variant's published version, so that's what is promoted. A
+    // variant that was never published took no traffic and has nothing to promote.
+    if (variant._status !== "published") {
+      const published = (await req.payload
+        .findByID({ collection: slug, id: variant.id as Id, depth: 0, draft: false, overrideAccess: false, req })
+        .catch(() => null)) as Record<string, unknown> | null;
+      if (published?._status !== "published") {
+        return json({ error: "This variant was never published, so it has no tested content to promote" }, 400);
+      }
+    }
+
     const originalId = original.id as Id;
     const promotedId = variant.id as Id;
     const skip = [
@@ -138,7 +150,8 @@ export function buildPromoteVariantHandler<TVariantData extends object>(
           collection: slug,
           id: promotedId,
           depth: 0,
-          draft: true,
+          // The published version, not the latest draft (see above).
+          draft: false,
           ...localeArgs,
           overrideAccess: false,
           req,
