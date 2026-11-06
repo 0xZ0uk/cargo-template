@@ -252,7 +252,7 @@ export async function buildProposal(req: PayloadRequest, record: PendingInterrup
   }
 
   // The policy refuses calls that query a hidden field (#68) when they are applied: say so now.
-  const hiddenField = redactedReference(redact, input);
+  const hiddenField = redactedReference(redact, input, toolName);
   if (hiddenField) {
     return {
       ...base,

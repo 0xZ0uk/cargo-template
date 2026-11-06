@@ -1,6 +1,6 @@
 import type { ChatMiddleware, ModelMessage } from "@tanstack/ai";
 import type { MessageStore } from "@tanstack/ai-persistence";
-import { auditDocumentIds, type AssistantAuditSink } from "../audit";
+import { auditDocumentIds, auditEventsFor, type AssistantAuditSink } from "../audit";
 import type { TurnInput, TurnSettings } from "../conversations/types";
 import { PLUGIN_NAME } from "../constants";
 import { isEmptyPolicy, redactResultFor, redactTranscript, redactedReference, toolSlug, type RedactionPolicy } from "../redaction";
@@ -47,7 +47,8 @@ function argumentsOf(raw: unknown): Record<string, unknown> {
  *   the model gets an error saying why. For writes this happens when the approved call is applied
  *   (`chat()` asks no hook before the approval card, which shows a notice instead).
  * - **Audit** (`onAfterToolCall`): one event per document a successful call of a tool that needs
- *   approval (a write) changed. Reads don't need approval; a rejected approval never runs the tool
+ *   approval (a write) changed, up to `AUDIT_DOCUMENT_EVENT_LIMIT` per run (Analytics Engine drops
+ *   data points past 250 per invocation); past it one summary event per call. Reads don't need approval; a rejected approval never runs the tool
  *   (`chat()` calls no hook for it); a failed call has `ok: false`; a refused call is skipped.
  */
 export function turnPolicyMiddleware(options: TurnPolicyOptions): ChatMiddleware {
@@ -57,6 +58,8 @@ export function turnPolicyMiddleware(options: TurnPolicyOptions): ChatMiddleware
   const redacting = !isEmptyPolicy(policy);
   /** Calls `onBeforeToolCall` refused: `chat()` still reports them to `onAfterToolCall` as `ok`. */
   const refused = new Set<string>();
+  /** Per-document audit events this run already sent (the cap is per run, see `AUDIT_DOCUMENT_EVENT_LIMIT`). */
+  let auditEmitted = 0;
   const [userCollection, ...rest] = input.userKey.split(":");
   const userId = rest.length ? rest.join(":") : (userCollection ?? "");
 
@@ -75,7 +78,7 @@ export function turnPolicyMiddleware(options: TurnPolicyOptions): ChatMiddleware
     onBeforeToolCall(_ctx, hook) {
       if (!redacting) return undefined;
       const args = isRecord(hook.args) ? hook.args : argumentsOf(hook.toolCall.function.arguments);
-      const field = redactedReference(policy, args);
+      const field = redactedReference(policy, args, hook.toolName);
       if (!field) return undefined;
       refused.add(hook.toolCallId);
       return {
@@ -90,20 +93,24 @@ export function turnPolicyMiddleware(options: TurnPolicyOptions): ChatMiddleware
       const redacted = redacting ? redactResultFor(info.result, slug, policy) : info.result;
 
       if (audit && info.ok && info.tool?.needsApproval && !refused.has(info.toolCallId)) {
-        const timestamp = Date.now();
-        for (const documentId of auditDocumentIds(info.toolName, args, info.result)) {
+        const { events, emitted } = auditEventsFor(
+          {
+            userKey: input.userKey,
+            userId,
+            tool: info.toolName,
+            collection: slug ?? "",
+            conversationId: input.threadId,
+            runId: input.runId,
+            model: settings.model,
+            timestamp: Date.now(),
+          },
+          auditDocumentIds(info.toolName, args, info.result),
+          auditEmitted
+        );
+        auditEmitted = emitted;
+        for (const event of events) {
           try {
-            await audit({
-              userKey: input.userKey,
-              userId,
-              tool: info.toolName,
-              collection: slug ?? "",
-              documentId,
-              conversationId: input.threadId,
-              runId: input.runId,
-              model: settings.model,
-              timestamp,
-            });
+            await audit(event);
           } catch (error) {
             logError("the audit sink failed", error);
           }

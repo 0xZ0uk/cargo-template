@@ -942,7 +942,11 @@ conversation's Durable Object (or the Node process with the in-memory backend).
   than answered with empty values, so the model doesn't conclude there are none (and its rows are
   keyed by the literal dotted path, which the document walker wouldn't match). A write is checked
   when it is applied, since `chat()` asks no hook before the approval: its card shows a notice
-  that it will be refused, and if approved anyway it is refused (and not audited).
+  that it will be refused, and if approved anyway it is refused (and not audited). The versions
+  tools (`findVersions`, `countVersions`, the globals' versions tools: any tool whose name says
+  "version") hold the document's fields under `version.` and the collection document under
+  `parent`, so for them `version.createdBy.email`, `version.email` and `parent.email` are
+  refused like `createdBy.email` and `email`. On other tools a field called `version` is just a field.
 - **Tool results → model.** `onAfterToolCall` returns `replaceResult` with the redacted result, so
   the model, the stream (and its log) and the stored transcript all get the same redacted value.
   plugin-mcp answers in text, so every JSON object in the text (fenced or not; `findDocuments`
@@ -975,13 +979,24 @@ conversation's Durable Object (or the Node process with the in-memory backend).
   `docs` of `createDocuments`), ignoring its `Errors:` section (documents not changed). A write by
   `where` that changed nothing ("Updated: 0 documents") gives no event. `""` for a global, or a
   custom tool whose result has no ids.
+- **Large writes** (`AUDIT_DOCUMENT_EVENT_LIMIT` = 200). Analytics Engine takes at most 250 data
+  points per Worker invocation and silently drops the rest, so a `where` update or delete that
+  changes hundreds of documents would under-report. A turn emits one event per document until
+  it has sent 200 (the count is kept across the turn's tool calls); every document past that is
+  covered by one **summary event** per tool call: same user, tool, collection, conversation, run
+  and model, `documentId` `"*"` and `documents` = how many documents it stands for. The 50 data
+  points left are for the summaries (a run makes at most 25 tool calls). Nothing is lost
+  silently: per-document events plus the `documents` of the summaries add up to the documents
+  changed. Writes of up to 200 documents are unchanged. A turn is one invocation: a resume after
+  an approval starts a new count.
 - **Where.** The sink is the app's: the plugin never reads `env`. With the Durable Objects, turns
   run in the conversation object, which has no plugin options, so the object asks its own
   `auditSink()` (default: none), and the app exports a subclass that returns one (see
   [App wiring](#app-wiring-66), step 5). With the in-memory backend the plugin's `audit` option is
   used. A failing sink is logged and never fails the run.
 - **Analytics Engine.** `analyticsEngineAuditSink(dataset)` writes `indexes: [userKey]`, `blobs:
-  [userKey, tool, collection, documentId, conversationId, model, runId]`, `doubles: [1]`; query
+  [userKey, tool, collection, documentId, conversationId, model, runId]`, `doubles: [1]` (a
+  summary event: `[documents]`, so `SUM(double1 * _sample_interval)` counts documents); query
   with the SQL API (`SELECT blob1 AS user, blob2 AS tool … FROM cargo_assistant_audit`). Analytics
   Engine keeps 3 months.
 

@@ -1,7 +1,15 @@
 import type { ModelMessage } from "@tanstack/ai";
 import { memoryPersistence } from "@tanstack/ai-persistence";
 import { describe, expect, it } from "vitest";
-import { analyticsEngineAuditSink, auditDocumentId, auditDocumentIds } from "../src/audit";
+import {
+  AUDIT_DOCUMENT_EVENT_LIMIT,
+  AUDIT_SUMMARY_DOCUMENT_ID,
+  analyticsEngineAuditSink,
+  auditDocumentId,
+  auditDocumentIds,
+  auditEventsFor,
+  type AssistantAuditEvent,
+} from "../src/audit";
 import {
   DEFAULT_AUTH_REDACTIONS,
   redactDocument,
@@ -15,7 +23,7 @@ import {
   type RedactionPolicy,
 } from "../src/redaction";
 import { redactionPolicyOf, relationMapOf } from "../src/redactionSchema";
-import { redactedMessageStore } from "../src/server/policy";
+import { redactedMessageStore, turnPolicyMiddleware } from "../src/server/policy";
 import { budgetExceeded, dayBefore, nextUtcMidnight, usageAmountOf, usageResponse, utcDay } from "../src/usage";
 import { normalizeOptions } from "../src/utils/normalizeOptions";
 
@@ -271,6 +279,47 @@ describe("redactedReference: queries on hidden fields", () => {
     expect(redactedReference(policy, { slug: "pages", where: { "meta.secret": { exists: true } } })).toBe("meta.secret");
     expect(redactedReference(policy, { slug: "pages", where: { "hero.createdBy.email": { exists: true } } })).toBe("hero.createdBy.email");
   });
+  it("the versions tools: a leading version. is the document's root", () => {
+    for (const tool of ["findVersions", "countVersions", "findGlobalVersions"]) {
+      // where, directly and through a relation, on a versioned collection and an auth collection
+      expect(redactedReference(policy, { slug: "pages", where: { "version.createdBy.email": { equals: "x" } } }, tool), tool).toBe("version.createdBy.email");
+      expect(redactedReference(policy, { slug: "users", where: { "version.email": { like: "a" } } }, tool), tool).toBe("version.email");
+      expect(redactedReference(policy, { slug: "pages", where: { and: [{ or: [{ "version.meta.secret": { exists: true } }] }] } }, tool), tool).toBe("version.meta.secret");
+      expect(redactedReference(policy, { slug: "pages", where: { "version.createdBy.value.email": { equals: "x" } } }, tool), tool).toBe("version.createdBy.value.email");
+      // sort, select, and the version's parent (the collection document)
+      expect(redactedReference(policy, { slug: "pages", sort: "-version.createdBy.email" }, tool), tool).toBe("version.createdBy.email");
+      expect(redactedReference(policy, { slug: "users", sort: ["version.name", "version.email"] }, tool), tool).toBe("version.email");
+      expect(redactedReference(policy, { slug: "users", select: { version: { email: true } } }, tool), tool).toBe("version.email");
+      expect(redactedReference(policy, { slug: "users", where: { "parent.email": { equals: "x" } } }, tool), tool).toBe("parent.email");
+      // what stays allowed
+      expect(redactedReference(policy, { slug: "pages", where: { "version.title": { equals: "x" }, parent: { equals: 1 } }, sort: "-updatedAt" }, tool), tool).toBeUndefined();
+      expect(redactedReference(policy, { slug: "users", where: { "version.name": { equals: "x" } }, sort: "-version.name" }, tool), tool).toBeUndefined();
+    }
+    // the same paths without the tool name (or on another tool) are plain fields called "version"
+    expect(redactedReference(policy, { slug: "users", where: { "version.email": { like: "a" } } })).toBeUndefined();
+    expect(redactedReference(policy, { slug: "users", where: { "version.email": { like: "a" } } }, "findDocuments")).toBeUndefined();
+    expect(redactedReference(policy, { slug: "users", where: { email: { like: "a" } } }, "findVersions")).toBe("email");
+  });
+  it("the policy refuses findVersions and countVersions on a hidden field, and answers the model why", async () => {
+    const middleware = turnPolicyMiddleware({ input: { threadId: "t", runId: "r", userKey: "users:1" }, settings: { model: "m", redact: policy.paths, ...(policy.relations ? { relations: policy.relations } : {}) } });
+    const before = middleware.onBeforeToolCall as (ctx: unknown, hook: unknown) => unknown;
+    const hook = (toolName: string, args: Record<string, unknown>) => ({ toolCallId: `${toolName}-${JSON.stringify(args)}`, toolName, args, toolCall: { id: "x", type: "function", function: { name: toolName, arguments: "{}" } } });
+    for (const toolName of ["findVersions", "countVersions"]) {
+      for (const args of [
+        { slug: "pages", where: { "version.createdBy.email": { equals: "x" } } },
+        { slug: "users", where: { "version.email": { like: "a" } } },
+        { slug: "pages", sort: "version.createdBy.email" },
+        { slug: "users", sort: "-version.email" },
+      ]) {
+        expect(await before({}, hook(toolName, args)), `${toolName} ${JSON.stringify(args)}`).toMatchObject({ type: "skip", result: expect.stringContaining("hidden field") });
+      }
+      expect(await before({}, hook(toolName, { slug: "pages", where: { "version.title": { equals: "x" } }, sort: "-version.updatedAt" }))).toBeUndefined();
+    }
+  });
+  it("results of the versions tools lose version.* and parent's hidden fields", () => {
+    const out = redactResultFor({ docs: [{ id: "v1", parent: { id: 1, name: "Ann", email: "ann@example.com" }, version: { name: "Ann", email: "ann@example.com", createdBy: { relationTo: "users", value: { id: 1, email: "ann@example.com" } } } }] }, "users", policy);
+    expect(JSON.stringify(out)).not.toContain("ann@example.com");
+  });
   it("lets everything else through", () => {
     expect(redactedReference(policy, { slug: "users", where: { name: { equals: "email" } }, sort: "name", select: { email: false } })).toBeUndefined();
     expect(redactedReference(policy, { slug: "pages", where: { createdBy: { equals: 1 } }, field: "title" })).toBeUndefined();
@@ -376,5 +425,91 @@ describe("audit helpers", () => {
     void sink({ userKey: "users:1", userId: "1", tool: "updateDocument", collection: "pages", documentId: "7", conversationId: "t", runId: "r", model: "m", timestamp: 1 });
     expect(points).toEqual([{ indexes: ["users:1"], blobs: ["users:1", "updateDocument", "pages", "7", "t", "m", "r"], doubles: [1] }]);
     expect(analyticsEngineAuditSink(undefined)).toBeUndefined();
+  });
+
+  it("the sink writes a summary event's document count as its double", () => {
+    const points: { blobs?: string[]; doubles?: number[] }[] = [];
+    const sink = analyticsEngineAuditSink({ writeDataPoint: (point) => points.push(point) })!;
+    void sink({ userKey: "users:1", userId: "1", tool: "deleteDocuments", collection: "pages", documentId: AUDIT_SUMMARY_DOCUMENT_ID, documents: 120, conversationId: "t", runId: "r", model: "m", timestamp: 1 });
+    expect(points[0]?.doubles).toEqual([120]);
+    expect(points[0]?.blobs?.[3]).toBe("*");
+  });
+});
+
+describe("audit cap: Analytics Engine takes 250 data points per invocation", () => {
+  const base = { userKey: "users:1", userId: "1", tool: "updateDocument", collection: "pages", conversationId: "t", runId: "r", model: "m", timestamp: 1 };
+  const ids = (n: number, from = 0) => Array.from({ length: n }, (_, i) => String(from + i));
+
+  it("auditEventsFor: one event per document up to the limit, then one summary for the rest", () => {
+    const small = auditEventsFor(base, ids(3));
+    expect(small.events.map((event) => event.documentId)).toEqual(["0", "1", "2"]);
+    expect(small.emitted).toBe(3);
+    const exact = auditEventsFor(base, ids(AUDIT_DOCUMENT_EVENT_LIMIT));
+    expect(exact.events).toHaveLength(AUDIT_DOCUMENT_EVENT_LIMIT);
+    expect(exact.events.some((event) => event.documents !== undefined)).toBe(false);
+    const big = auditEventsFor(base, ids(500));
+    expect(big.events).toHaveLength(AUDIT_DOCUMENT_EVENT_LIMIT + 1);
+    expect(big.emitted).toBe(AUDIT_DOCUMENT_EVENT_LIMIT);
+    expect(big.events.at(-1)).toEqual({ ...base, documentId: AUDIT_SUMMARY_DOCUMENT_ID, documents: 300 });
+    // the run's earlier events count; nothing left: only the summary
+    expect(auditEventsFor(base, ids(10), AUDIT_DOCUMENT_EVENT_LIMIT).events).toEqual([{ ...base, documentId: AUDIT_SUMMARY_DOCUMENT_ID, documents: 10 }]);
+    expect(auditEventsFor(base, ids(10), AUDIT_DOCUMENT_EVENT_LIMIT - 4).events).toHaveLength(5);
+    expect(auditEventsFor(base, []).events).toEqual([]);
+  });
+
+  // The middleware, with a fake Analytics Engine sink: every event is one data point.
+  const run = async (calls: number[]) => {
+    const events: AssistantAuditEvent[] = [];
+    const middleware = turnPolicyMiddleware({
+      input: { threadId: "t", runId: "r", userKey: "users:1" },
+      settings: { model: "m" },
+      audit: (event) => void events.push(event),
+    });
+    let n = 0;
+    for (const count of calls) {
+      const rows = ids(count, n * 1000).map((id) => ({ id }));
+      const text = `Updated documents:\n\`\`\`json\n${JSON.stringify(rows)}\n\`\`\``;
+      await (middleware.onAfterToolCall as (ctx: unknown, info: unknown) => Promise<unknown>)(
+        {},
+        {
+          toolCallId: `call-${n++}`,
+          toolName: "updateDocument",
+          toolCall: { id: "x", type: "function", function: { name: "updateDocument", arguments: JSON.stringify({ slug: "pages", where: { title: { like: "x" } } }) } },
+          tool: { needsApproval: true },
+          ok: true,
+          result: text,
+          duration: 1,
+        }
+      );
+    }
+    return events;
+  };
+  const summaries = (events: AssistantAuditEvent[]) => events.filter((event) => event.documentId === AUDIT_SUMMARY_DOCUMENT_ID);
+
+  it("250+ documents in one call: capped per-document events plus one summary, never past the limit", async () => {
+    const events = await run([300]);
+    expect(events).toHaveLength(AUDIT_DOCUMENT_EVENT_LIMIT + 1);
+    expect(events.length).toBeLessThanOrEqual(250);
+    expect(summaries(events)).toEqual([
+      { userKey: "users:1", userId: "1", tool: "updateDocument", collection: "pages", documentId: "*", documents: 100, conversationId: "t", runId: "r", model: "m", timestamp: expect.any(Number) },
+    ]);
+    // the listed documents are the first 200, each once
+    expect(new Set(events.slice(0, -1).map((event) => event.documentId)).size).toBe(AUDIT_DOCUMENT_EVENT_LIMIT);
+    // nothing is lost: listed + summarized = changed
+    expect(events.reduce((sum, event) => sum + (event.documents ?? 1), 0)).toBe(300);
+  });
+
+  it("the cap is per run: several calls share it, later ones only get summaries", async () => {
+    const events = await run([150, 150, 5]);
+    expect(events.filter((event) => event.documentId !== "*")).toHaveLength(AUDIT_DOCUMENT_EVENT_LIMIT);
+    expect(summaries(events).map((event) => event.documents)).toEqual([100, 5]);
+    expect(events).toHaveLength(AUDIT_DOCUMENT_EVENT_LIMIT + 2);
+    expect(events.reduce((sum, event) => sum + (event.documents ?? 1), 0)).toBe(305);
+  });
+
+  it("a call under the limit is unchanged: one event per document, no summary", async () => {
+    const events = await run([3]);
+    expect(events.map((event) => event.documentId)).toEqual(["0", "1", "2"]);
+    expect(summaries(events)).toEqual([]);
   });
 });

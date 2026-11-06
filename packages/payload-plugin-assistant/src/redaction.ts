@@ -518,26 +518,43 @@ const sortPaths = (sort: unknown): string[] =>
     .map((item) => item.trim().replace(/^[-+]/, ""));
 
 /**
+ * Document paths the way the versions tools (`findVersions`, `countVersions`, `findVersionByID`
+ * and the globals' equivalents) take them: the document's fields sit under `version.`, and
+ * `parent` is the collection document the version belongs to, so `version.createdBy.email` and
+ * `parent.email` are the document's `createdBy.email` and `email`. Only for tools whose name says
+ * "version": elsewhere a field may well be called `version`.
+ */
+const VERSION_ROOTS = new Set(["version", "parent"]);
+const isVersionsTool = (toolName: string | undefined) => toolName !== undefined && /version/i.test(toolName);
+
+/**
  * The first redacted field a tool call's arguments query, or `undefined`: a `where` (filtering by
  * a hidden field would let the model guess its values), a `sort` (ordering reveals them too), a
  * `select` that asks for one, or `findDistinct`'s `field`. Paths through relations count
- * (`createdBy.email`). Array indexes in paths (`layout.0.secret`) are ignored.
+ * (`createdBy.email`). Array indexes in paths (`layout.0.secret`) are ignored. For the versions
+ * tools (`toolName` names a version) a leading `version.` (or `parent.`) is the document's root, so
+ * `version.email` is refused like `email`; the returned path is the one the call used.
  */
-export function redactedReference(policy: RedactionPolicy | undefined, args: unknown): string | undefined {
+export function redactedReference(policy: RedactionPolicy | undefined, args: unknown, toolName?: string): string | undefined {
   if (!policy || isEmptyPolicy(policy) || !isRecord(args)) return undefined;
   const slug = typeof args.slug === "string" ? args.slug : undefined;
   if (!slug) return undefined;
+  const versions = isVersionsTool(toolName);
   const candidates = [
     ...wherePaths(args.where),
     ...sortPaths(args.sort),
     ...selectPaths(args.select),
     ...(typeof args.field === "string" ? [args.field] : []),
   ];
-  return candidates.find((path) =>
-    reachesRedacted(
-      policy,
-      slug,
-      splitPath(path).filter((segment) => !/^\d+$/.test(segment))
-    )
-  );
+  return candidates.find((path) => {
+    const segments = splitPath(path).filter((segment) => !/^\d+$/.test(segment));
+    if (reachesRedacted(policy, slug, segments)) return true;
+    // A versions tool: the same path with its leading `version` / `parent` dropped.
+    let rest = segments;
+    while (versions && rest.length > 0 && VERSION_ROOTS.has(rest[0]!)) {
+      rest = rest.slice(1);
+      if (reachesRedacted(policy, slug, rest)) return true;
+    }
+    return false;
+  });
 }
