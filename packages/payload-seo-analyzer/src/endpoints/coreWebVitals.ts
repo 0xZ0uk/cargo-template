@@ -182,8 +182,7 @@ export function createCoreWebVitalsHandler(
         note: 'Informational only — Core Web Vitals are a ranking tie-breaker, not part of the on-page SEO score.',
       }
 
-      const builtAt = Date.now()
-      await cache.set('core-web-vitals', CACHE_KEY, responseData, lookup.gen)
+      const builtAt = await cache.set('core-web-vitals', CACHE_KEY, responseData, lookup.gen)
       return Response.json({ ...responseData, builtAt }, { headers: { 'Cache-Control': 'no-store' } })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Internal server error'

@@ -45,6 +45,18 @@ import { HINT_COOKIE } from '../hint.ts'
 const SECRET = 'test-secret-not-for-prod'
 const sealMode = modeSealer(SECRET)
 
+/**
+ * Corrupt a sealed (base64url) grant deterministically: swap one character in the
+ * middle for a different one. The last characters of a base64url string can carry
+ * unused bits, so rewriting them may decode to the same bytes and the grant would
+ * still validate; a middle character is always fully significant.
+ */
+const tamper = (token: string): string => {
+  const i = Math.floor(token.length / 2)
+  const swap = token[i] === 'A' ? 'B' : 'A'
+  return `${token.slice(0, i)}${swap}${token.slice(i + 1)}`
+}
+
 beforeEach(() => {
   state.cookies.clear()
   state.set = []
@@ -216,7 +228,7 @@ describe('shared preview grants', () => {
     expect(await isSharedPreview()).toBe(false)
 
     const good = await grant()
-    state.cookies.set(COOKIE.preview, `${good.slice(0, -2)}xx`)
+    state.cookies.set(COOKIE.preview, tamper(good))
     expect(await isSharedPreview()).toBe(false)
 
     state.cookies.set(
@@ -245,7 +257,7 @@ describe('shared preview grants', () => {
     state.cookies.set(COOKIE.preview, await grant({ exp: Math.floor(Date.now() / 1000) - 1 }))
     expect(await previewGrantFor('/a')).toBeNull()
     const good = await grant()
-    state.cookies.set(COOKIE.preview, `${good.slice(0, -2)}xx`)
+    state.cookies.set(COOKIE.preview, tamper(good))
     expect(await previewGrantFor('/a')).toBeNull()
     state.cookies.set(COOKIE.preview, await grant({ ref: 'not-a-ref' }))
     expect(await previewGrantFor('/a')).toBeNull()

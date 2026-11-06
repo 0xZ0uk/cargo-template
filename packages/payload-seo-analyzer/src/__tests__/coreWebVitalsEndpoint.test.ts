@@ -55,6 +55,7 @@ const urlQuery = (target: string, extra = '') => `url=${encodeURIComponent(targe
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
   vi.useRealTimers()
 })
 
@@ -76,6 +77,21 @@ describe('core-web-vitals — shared cache', () => {
     expect(body2.builtAt).toBe(body1.builtAt)
     expect(body2.metrics).toBeDefined()
     expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('reports the builtAt it stored, even if the clock ticks between reads', async () => {
+    stubFetch()
+    const store = fakeStore()
+    // Every clock read returns a later time, so two separate `Date.now()` calls can never agree.
+    let now = 1_700_000_000_000
+    vi.spyOn(Date, 'now').mockImplementation(() => ++now)
+
+    const res = await createCoreWebVitalsHandler(config, isolate(store))(makeReq(urlQuery(`${SITE}/page`)))
+    const body = (await res.json()) as { builtAt?: number }
+
+    const [entry] = [...store.data].filter(([k]) => k.startsWith('entry/')).map(([, v]) => JSON.parse(v) as { builtAt: number })
+    expect(typeof body.builtAt).toBe('number')
+    expect(body.builtAt).toBe(entry!.builtAt)
   })
 
   it('keeps strategies apart', async () => {

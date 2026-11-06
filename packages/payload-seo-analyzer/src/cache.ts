@@ -410,37 +410,40 @@ export class SeoSharedCache {
 
   /**
    * Store a value. `gen` should be the generation read before computing it (from
-   * `lookup()`/`generation()`); omitted, the current generation is used.
+   * `lookup()`/`generation()`); omitted, the current generation is used. Resolves to the
+   * `builtAt` timestamp stamped on the entry, so a caller can report the same value later lookups return.
    */
-  async set<T>(base: string, key: string, data: T, gen?: string): Promise<void> {
+  async set<T>(base: string, key: string, data: T, gen?: string): Promise<number> {
+    const builtAt = Date.now()
     const store = this.storeFor(base)
     if (!store) {
       if (!this.isStaleServable(base)) {
         this.memory.set(key, data)
-        return
+        return builtAt
       }
       const current = this.localGeneration(base)
       const stamped = gen ?? current
       // A value computed across an invalidation is kept as last-good (served stale), not fresh.
       if (stamped === current) this.memory.set(key, data)
       this.lastGood.delete(key)
-      this.lastGood.set(key, { gen: stamped, builtAt: Date.now(), data })
+      this.lastGood.set(key, { gen: stamped, builtAt, data })
       while (this.lastGood.size > MAX_LAST_GOOD) {
         const oldest = this.lastGood.keys().next().value
         if (oldest === undefined) break
         this.lastGood.delete(oldest)
       }
-      return
+      return builtAt
     }
     // With a store, the entry is overwritten even when `gen` is already out of date: it is
     // then served stale (by `allowStale` readers) until the next build replaces it.
     const entry: StoredEntry<T> = {
       v: STORE_FORMAT,
       gen: gen ?? (await this.generation(base)),
-      builtAt: Date.now(),
+      builtAt,
       data,
     }
     await store.put(`entry/${key}`, JSON.stringify(entry))
+    return builtAt
   }
 
   /** Invalidate every key of each base (all locales/variants), in every isolate for persistent bases. */
