@@ -106,7 +106,14 @@ export function createCoreWebVitalsHandler(
       const cachedCwv = noCache ? null : lookup.data
       if (cachedCwv) {
         return Response.json(
-          { ...cachedCwv, cached: true, ...(lookup.builtAt !== undefined ? { builtAt: lookup.builtAt } : {}) },
+          {
+            ...cachedCwv,
+            cached: true,
+            // Whether the key is set NOW: a result measured before the key was added must not
+            // keep telling the admin to set it for the rest of its 24 h.
+            keyConfigured: !!process.env.PAGESPEED_API_KEY,
+            ...(lookup.builtAt !== undefined ? { builtAt: lookup.builtAt } : {}),
+          },
           { headers: { 'Cache-Control': 'no-store' } },
         )
       }

@@ -193,6 +193,20 @@ describe('core-web-vitals — PSI key', () => {
     expect(((await res.json()) as { keyConfigured: boolean }).keyConfigured).toBe(false)
   })
 
+  it('reports the current key state on a cache hit, not the one stored with the result', async () => {
+    vi.stubEnv('PAGESPEED_API_KEY', '')
+    stubFetch()
+    const store = fakeStore()
+    await createCoreWebVitalsHandler(config, isolate(store))(makeReq(urlQuery(`${SITE}/page`)))
+    vi.stubEnv('PAGESPEED_API_KEY', 'k-123')
+    const fetchMock = stubFetch()
+    const res = await createCoreWebVitalsHandler(config, isolate(store))(makeReq(urlQuery(`${SITE}/page`)))
+    const body = (await res.json()) as { cached?: boolean; keyConfigured: boolean }
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(body.cached).toBe(true)
+    expect(body.keyConfigured).toBe(true)
+  })
+
   it('answers a PSI 429 with a 502 that names PAGESPEED_API_KEY', async () => {
     vi.stubEnv('PAGESPEED_API_KEY', '')
     vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 429 })))
