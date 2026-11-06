@@ -22,7 +22,7 @@ assistantPlugin({
 | | |
 | --- | --- |
 | `POST /api/assistant/chat` | Signed in (401), `access` (403), configured (503), `rateLimit` (429), then the turn (stub: 501). |
-| `/admin/assistant` | Placeholder view, registered through `admin.components.views`. |
+| `/admin/assistant` | Placeholder view, registered through `admin.components.views`. Anonymous visitors go to login, users `access` refuses to `admin.routes.unauthorized`. |
 
 No collections, globals or injected fields. With `enabled: false` the config is returned untouched.
 
@@ -31,7 +31,7 @@ No collections, globals or injected fields. With `enabled: false` the config is 
 | Option | |
 | --- | --- |
 | `enabled` | `false` disables the plugin silently. Default `true`. |
-| `access(user)` | Who may chat. Default: any signed-in user. Payload's own access applies to every tool call, as that user. |
+| `access({ user, req })` | Who may use the assistant: the chat endpoint (403) and the admin view (redirect to `admin.routes.unauthorized`) both ask it. Default: users of the admin auth collection (`user.collection === config.admin.user`, Payload's own admin gate), so a session on another auth collection can neither chat nor see the admin shell. Payload's own access applies to every tool call, as that user. |
 | `models` | Allowlist of `{ id, label }`. At least one, unique ids; throws otherwise. |
 | `defaultModel` | One of `models`. Default: the first. Throws if unknown. |
 | `apiKey` | OpenRouter key. A missing key **warns and leaves the assistant unconfigured**: the endpoint (503 `not configured`) and the view (a notice) are still registered, so the schema, import map and admin shape never depend on a secret. |

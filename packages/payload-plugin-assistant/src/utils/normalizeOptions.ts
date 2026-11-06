@@ -1,6 +1,7 @@
 import type { PayloadRequest } from "payload";
 import { DEFAULT_MAX_STEPS, PLUGIN_NAME } from "../constants";
 import type {
+  AssistantAccess,
   AssistantContext,
   AssistantModel,
   AssistantPluginOptions,
@@ -30,7 +31,7 @@ export type ConversationStorage =
 export interface NormalizedAssistantOptions {
   /** `false` when `apiKey` is missing: schema and admin shape stay the same, the assistant says "not configured". */
   configured: boolean;
-  access: (user: PayloadRequest["user"]) => boolean | Promise<boolean>;
+  access: AssistantAccess;
   models: AssistantModel[];
   defaultModel: string;
   apiKey: string;
@@ -42,7 +43,15 @@ export interface NormalizedAssistantOptions {
   openRouter: { provider: typeof OPENROUTER_PROVIDER };
 }
 
-const defaultAccess = (user: PayloadRequest["user"]) => Boolean(user);
+/**
+ * Only users of the admin auth collection, matching Payload's own admin gate. `Boolean(user)`
+ * would admit a session on any other auth collection (front-office customers, members), which
+ * could then spend the OpenRouter credit.
+ */
+export const defaultAccess: AssistantAccess = ({ user, req }) => {
+  const adminCollection = req?.payload?.config?.admin?.user;
+  return Boolean(user) && typeof adminCollection === "string" && user.collection === adminCollection;
+};
 
 /**
  * Validates and fills in defaults. Throws on programmer errors (a bad allowlist, a bad

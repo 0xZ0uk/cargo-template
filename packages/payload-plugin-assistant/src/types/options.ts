@@ -44,14 +44,25 @@ export interface AssistantConversationsOptions {
   namespace: ConversationNamespace;
 }
 
+/** What `access` gets to decide with. `user` is always set: anonymous requests never reach it. */
+export interface AssistantAccessArgs {
+  req: PayloadRequest;
+  user: NonNullable<PayloadRequest["user"]>;
+}
+
+export type AssistantAccess = (args: AssistantAccessArgs) => boolean | Promise<boolean>;
+
 export interface AssistantPluginOptions {
   /** `false` returns the config untouched. Default `true`. */
   enabled?: boolean;
   /**
-   * Who may use the assistant. Default: any signed-in user (`Boolean(user)`). Payload's own
-   * access still applies to every tool call, as the same user.
+   * Who may use the assistant, for the chat endpoint (403) and the admin view (redirect to
+   * `admin.routes.unauthorized`). Default: users of the admin auth collection
+   * (`user.collection === config.admin.user`), the same gate as Payload's admin panel; a
+   * session on another auth collection is refused. Payload's own access still applies to every
+   * tool call, as the same user.
    */
-  access?: (user: PayloadRequest["user"]) => boolean | Promise<boolean>;
+  access?: AssistantAccess;
   /** The model allowlist. At least one entry, unique ids. */
   models: AssistantModel[];
   /** Id of the model preselected in the picker. Default: the first of `models`. */

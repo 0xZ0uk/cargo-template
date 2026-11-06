@@ -16,7 +16,9 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-const reqFor = (user: unknown) => ({ user }) as unknown as PayloadRequest;
+const reqFor = (user: unknown) =>
+  ({ user, payload: { config: { admin: { user: "users" } } } }) as unknown as PayloadRequest;
+const admin = { id: 1, collection: "users" };
 
 describe("assistantPlugin", () => {
   it("returns the config untouched and silent when enabled is false", () => {
@@ -50,8 +52,8 @@ describe("assistantPlugin", () => {
     const view = (config: Config) => (config.admin?.components?.views as any).assistant;
     expect(view(unkeyed).Component.path).toBe(view(keyed).Component.path);
     expect(view(unkeyed).path).toBe(view(keyed).path);
-    expect(view(unkeyed).Component.serverProps).toEqual({ configured: false });
-    expect(view(keyed).Component.serverProps).toEqual({ configured: true });
+    expect(view(unkeyed).Component.serverProps).toEqual({ configured: false, access: expect.any(Function) });
+    expect(view(keyed).Component.serverProps).toEqual({ configured: true, access: expect.any(Function) });
   });
 
   it("throws on programmer errors", () => {
@@ -75,8 +77,14 @@ describe("normalizeOptions", () => {
       maxSteps: 10,
       conversations: { kind: "memory" },
     });
-    expect(n.access({ id: 1 } as never)).toBe(true);
-    expect(n.access(null as never)).toBe(false);
+  });
+
+  it("defaults access to users of the admin auth collection only", async () => {
+    const { access } = normalizeOptions(valid);
+    const req = { payload: { config: { admin: { user: "users" } } } } as unknown as PayloadRequest;
+    expect(await access({ user: { id: 1, collection: "users" } as never, req })).toBe(true);
+    expect(await access({ user: { id: 1, collection: "customers" } as never, req })).toBe(false);
+    expect(await access({ user: { id: 1 } as never, req })).toBe(false);
   });
 
   it("uses the Durable Object namespace when given", () => {
@@ -104,20 +112,31 @@ describe("chat endpoint access", () => {
   });
 
   it("denies a signed-in user the access function refuses", async () => {
-    const res = await handler({ access: () => false })(reqFor({ id: 1 }));
+    const res = await handler({ access: () => false })(reqFor(admin));
     expect(res.status).toBe(403);
+  });
+
+  it("denies a user of another auth collection by default", async () => {
+    expect((await handler()(reqFor({ id: 2, collection: "customers" }))).status).toBe(403);
+  });
+
+  it("hands access the user and the request", async () => {
+    const access = vi.fn(() => true);
+    const req = reqFor(admin);
+    await handler({ access })(req);
+    expect(access).toHaveBeenCalledWith({ user: admin, req });
   });
 
   it("reports not configured without an API key", async () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
-    const res = await handler({ apiKey: "" })(reqFor({ id: 1 }));
+    const res = await handler({ apiKey: "" })(reqFor(admin));
     expect(res.status).toBe(503);
     expect(await res.json()).toMatchObject({ error: "not configured" });
   });
 
   it("answers 429 when rateLimit refuses, and 501 from the stub otherwise", async () => {
-    expect((await handler({ rateLimit: () => false })(reqFor({ id: 1 }))).status).toBe(429);
-    const ok = await handler({ rateLimit: async () => true })(reqFor({ id: 1 }));
+    expect((await handler({ rateLimit: () => false })(reqFor(admin))).status).toBe(429);
+    const ok = await handler({ rateLimit: async () => true })(reqFor(admin));
     expect(ok.status).toBe(501);
     expect(await ok.json()).toEqual({ error: "not implemented" });
   });

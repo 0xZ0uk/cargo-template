@@ -1,10 +1,14 @@
 import type { AdminViewServerProps } from "payload";
 import { Banner } from "@payloadcms/ui";
 import { DefaultTemplate } from "@payloadcms/ui/rsc";
+import type { AssistantAccess } from "../types/options";
+import { assistantViewRedirectTarget } from "../utils/viewAccess";
 
 interface AssistantViewProps extends AdminViewServerProps {
   /** From the plugin: `false` when no API key is set. */
   configured?: boolean;
+  /** From the plugin, server-side: the same `access` the chat endpoint enforces. */
+  access?: AssistantAccess;
 }
 
 /**
@@ -13,22 +17,22 @@ interface AssistantViewProps extends AdminViewServerProps {
  * (a client component) arrives with #64. Styling rules: see
  * `packages/payload-seo-analyzer/src/ui/README.md`.
  */
-export const AssistantView = ({
+export const AssistantView = async ({
   initPageResult,
   params,
   searchParams,
   server,
   user,
   configured = true,
+  access,
 }: AssistantViewProps) => {
   const { req, visibleEntities, permissions, locale } = initPageResult;
 
-  // A session on another auth collection also fills `req.user`, and a declared custom view skips
-  // Payload's own canAccessAdmin redirect; the chat endpoint enforces `access` either way.
-  if (!req.user) {
-    const adminRoute = req.payload.config.routes.admin.replace(/\/+$/, "");
-    server.redirect(`${adminRoute}${req.payload.config.admin.routes.login}`);
-  }
+  // Not just `!req.user`: a session on another auth collection also fills it, and a declared
+  // custom view skips Payload's own canAccessAdmin redirect, so the admin shell (with the whole
+  // client config) would reach it. Same `access` as the chat endpoint.
+  const denied = await assistantViewRedirectTarget(initPageResult, access);
+  if (denied) server.redirect(denied);
 
   return (
     <DefaultTemplate

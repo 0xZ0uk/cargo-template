@@ -10,7 +10,7 @@ export const buildChatHandler =
   (options: NormalizedAssistantOptions): PayloadHandler =>
   async (req) => {
     if (!req.user) return Response.json({ error: "Unauthorized" }, { status: 401 });
-    if (!(await options.access(req.user))) {
+    if (!(await options.access({ user: req.user, req }))) {
       return Response.json({ error: "Forbidden" }, { status: 403 });
     }
     if (!options.configured) {

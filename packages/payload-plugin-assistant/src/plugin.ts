@@ -37,7 +37,8 @@ export const assistantPlugin =
             [VIEW_KEY]: {
               Component: {
                 path: VIEW_COMPONENT_PATH,
-                serverProps: { configured: options.configured },
+                // Server-side only (a function is fine here): never reaches the client config.
+                serverProps: { configured: options.configured, access: options.access },
               },
               path: VIEW_PATH,
             },
