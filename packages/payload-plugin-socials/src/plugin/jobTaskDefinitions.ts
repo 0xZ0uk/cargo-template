@@ -24,10 +24,11 @@ import { getPlatformAdapter } from '../server/platforms/registry.js'
 import { queuePublicationReconciliation } from '../server/services/publicationReconciliation.js'
 import { markPublicationOutcomeUnknown } from '../server/services/publicationReservation.js'
 import { resolveSourceContext } from '../server/sources/registry.js'
+import { getRetryRefusal } from '../server/services/retryGuard.js'
 import {
   getUnknownPublicationRef,
   hasUnknownPublicationOutcome,
-  PlatformApiError,
+  isAutoRetrySafe,
 } from '../server/utilities/errors.js'
 import { createPluginLogger, redactSecretString } from '../server/utilities/logger.js'
 
@@ -46,7 +47,8 @@ import { createPluginLogger, redactSecretString } from '../server/utilities/logg
  *     result and logs anything returned as succeeded; only a thrown error
  *     marks the job failed. Which error decides whether Payload retries:
  *       - a plain `Error` for transient failures that are safe to re-run
- *         (Payload applies the task's `retries`);
+ *         (Payload applies the task's `retries`, with `SOCIALS_RETRY_BACKOFF`);
+ *         for a publish, only when `isAutoRetrySafe` says so;
  *       - `SocialsTaskFailure` for failures the `social-posts` row already
  *         records and that must not be re-run blindly (unknown publish
  *         outcome, terminal states, non-retryable provider rejections).
@@ -74,14 +76,12 @@ export class SocialsTaskFailure extends JobCancelledError {
 }
 
 /**
- * A publish error Payload may retry: the provider transport reports that the
- * request was not accepted (`outcome: 'failed'`) and that trying again can
- * succeed (`retryable`: throttling, 5xx on a safe request, a timed-out
- * Instagram container). Anything else may have reached the platform, or will
- * fail the same way again.
+ * Payload's backoff between a task's retries: `2^n × delay` after the n-th
+ * failed attempt (1, 2, then 4 minutes). Payload sets the job's `waitUntil`,
+ * so a drain before then skips it: a throttled publish is not retried inside
+ * the platform's throttle window, however often the queue runs.
  */
-const isRetrySafePublishError = (error: unknown): boolean =>
-  error instanceof PlatformApiError && error.outcome === 'failed' && error.retryable
+export const SOCIALS_RETRY_BACKOFF = { type: 'exponential', delay: 60_000 } as const
 
 const pluginOptionsByPayload = new WeakMap<Payload, NormalizedPluginOptions>()
 
@@ -361,9 +361,9 @@ const buildPublishTaskConfig = () =>
         }
         await markPostFailed(req.payload, post.id, error)
         const message = safeErrorMessage(error)
-        if (isRetrySafePublishError(error)) {
-          // The provider did not accept it: Payload's retry re-claims the
-          // `failed` row and publishes once more.
+        if (isAutoRetrySafe(error)) {
+          // The platform provably created nothing and asks to try again later:
+          // Payload's retry (after the backoff) re-claims the `failed` row.
           log.error('publish failed; retryable', { error: message })
           throw new Error(message)
         }
@@ -374,7 +374,7 @@ const buildPublishTaskConfig = () =>
     inputSchema: [],
     interfaceName: 'SocialsPublishTaskInput',
     outputSchema: [],
-    retries: 3,
+    retries: { attempts: 3, backoff: SOCIALS_RETRY_BACKOFF },
   }) as const
 
 // ---------------------------------------------------------------------------
@@ -382,6 +382,11 @@ const buildPublishTaskConfig = () =>
 // ---------------------------------------------------------------------------
 
 type RetryTaskInput = {
+  /**
+   * The operator checked the platform and the post is not there. Required to
+   * retry a post that may already be live (see `getRetryRefusal`).
+   */
+  confirmNotPublished?: boolean
   postId: number | string
 }
 
@@ -401,6 +406,19 @@ const buildRetryTaskConfig = () =>
       }
       if (post.status === 'published') {
         return { output: { alreadyPublished: true, postId: post.id } }
+      }
+      const refusal = getRetryRefusal(post, {
+        basePath: getPluginOptions(req.payload).api.basePath,
+        confirmNotPublished: input.confirmNotPublished,
+      })
+      if (refusal) {
+        // Re-publishing could post twice; the row is left as it is.
+        throw new SocialsTaskFailure(refusal)
+      }
+      if (input.confirmNotPublished === true) {
+        log.warn('retrying a post the operator confirmed is not published', {
+          status: post.status,
+        })
       }
       try {
         await req.payload.update({
@@ -424,7 +442,7 @@ const buildRetryTaskConfig = () =>
     inputSchema: [],
     interfaceName: 'SocialsRetryTaskInput',
     outputSchema: [],
-    retries: 1,
+    retries: { attempts: 1, backoff: SOCIALS_RETRY_BACKOFF },
   }) as const
 
 // ---------------------------------------------------------------------------
@@ -600,7 +618,7 @@ const buildInsightsRefreshTaskConfig = () =>
     inputSchema: [],
     interfaceName: 'SocialsInsightsRefreshTaskInput',
     outputSchema: [],
-    retries: 1,
+    retries: { attempts: 1, backoff: SOCIALS_RETRY_BACKOFF },
   }) as const
 
 // ---------------------------------------------------------------------------
@@ -690,7 +708,7 @@ const buildConnectionRefreshTaskConfig = () =>
     inputSchema: [],
     interfaceName: 'SocialsConnectionRefreshTaskInput',
     outputSchema: [],
-    retries: 1,
+    retries: { attempts: 1, backoff: SOCIALS_RETRY_BACKOFF },
   }) as const
 
 // ---------------------------------------------------------------------------

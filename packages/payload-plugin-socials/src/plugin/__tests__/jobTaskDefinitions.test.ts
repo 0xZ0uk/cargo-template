@@ -4,7 +4,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { NormalizedPluginOptions } from '../../types/index.js'
 
-import { PlatformApiError, PublicationPersistenceError } from '../../server/utilities/errors.js'
+import {
+  classifyRequestFailure,
+  PlatformApiError,
+  PublicationPersistenceError,
+} from '../../server/utilities/errors.js'
 
 vi.mock('../../server/platforms/registry.js', () => ({ getPlatformAdapter: vi.fn() }))
 vi.mock('../../server/sources/registry.js', () => ({ resolveSourceContext: vi.fn() }))
@@ -29,6 +33,7 @@ import {
 } from '../jobTaskDefinitions.js'
 
 const options = {
+  api: { basePath: '/socials' },
   platforms: {
     facebook: { enabled: true },
     gbp: { enabled: true },
@@ -205,7 +210,12 @@ describe('socialPostPublish handler', () => {
     vi.mocked(resolveSourceContext).mockResolvedValue({ images: [] } as never)
     vi.mocked(getPlatformAdapter).mockReturnValue({
       publish: vi.fn().mockRejectedValue(
-        new PlatformApiError({ message: 'throttled', platform: 'pinterest', retryable: true }),
+        new PlatformApiError({
+          message: 'throttled',
+          platform: 'pinterest',
+          retryable: true,
+          safeToRepeat: true,
+        }),
       ),
     } as never)
     const update = vi.fn().mockResolvedValue({ docs: [{ id: 1 }], errors: [] })
@@ -227,6 +237,35 @@ describe('socialPostPublish handler', () => {
     expect(update).toHaveBeenLastCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ status: 'failed' }) }),
     )
+  })
+
+  it.each([
+    ['a retryable error that does not prove nothing was created', { retryable: true }],
+    ['a 5xx on the creating request', classifyRequestFailure({ effect: 'create', status: 503 })],
+    ['a timeout on the creating request', classifyRequestFailure({ effect: 'create' })],
+  ])('never lets Payload retry %s', async (_label, flags) => {
+    vi.mocked(resolveSourceContext).mockResolvedValue({ images: [] } as never)
+    vi.mocked(getPlatformAdapter).mockReturnValue({
+      publish: vi
+        .fn()
+        .mockRejectedValue(
+          new PlatformApiError({ message: 'upstream', platform: 'pinterest', ...flags }),
+        ),
+    } as never)
+    const update = vi.fn().mockResolvedValue({ docs: [{ id: 1 }], errors: [] })
+    const req = mkReq({
+      findByID: vi.fn().mockResolvedValue({
+        id: 1,
+        meta: { queuedInput: { boardId: 'b' } },
+        platform: 'pinterest',
+        sourceId: 's',
+        sourceKind: 'product',
+        status: 'queued',
+      }),
+      update,
+    })
+    const error = await publish({ input: { postId: 1 }, req }).catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(SocialsTaskFailure)
   })
 
   it('records an unknown provider outcome and suppresses automatic task retry', async () => {
@@ -369,6 +408,50 @@ describe('socialPostRetry handler', () => {
     expect(await retry({ input: { postId: 1 }, req })).toEqual({
       output: { alreadyPublished: true, postId: 1 },
     })
+  })
+
+  it.each([
+    [
+      'unknown',
+      { id: 4, platform: 'facebook', status: 'unknown' },
+      'its publish outcome is unknown',
+    ],
+    [
+      'publishing',
+      { id: 4, platform: 'facebook', status: 'publishing' },
+      'a publish attempt is in progress or was interrupted',
+    ],
+    [
+      'failed with a platform post id',
+      { externalId: 'p1_9', id: 4, platform: 'facebook', status: 'failed' },
+      'facebook returned a post id for it (p1_9)',
+    ],
+  ])('refuses to re-publish a %s post without confirmation', async (_label, post, reason) => {
+    const update = vi.fn()
+    const req = mkReq({ findByID: vi.fn().mockResolvedValue(post), update })
+    const error = await retry({ input: { postId: 4 }, req }).catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(SocialsTaskFailure)
+    expect((error as Error).message).toContain(
+      `social-posts/4 may already be on facebook: ${reason}.`,
+    )
+    expect((error as Error).message).toContain('POST /socials/posts/4/resolve')
+    expect((error as Error).message).toContain('"confirmNotPublished": true')
+    expect(update).not.toHaveBeenCalled()
+    expect(queueSocialPostPublish).not.toHaveBeenCalled()
+  })
+
+  it('re-queues an unknown post the operator confirmed is not published', async () => {
+    const update = vi.fn().mockResolvedValue({})
+    const req = mkReq({
+      findByID: vi.fn().mockResolvedValue({ id: 4, platform: 'facebook', status: 'unknown' }),
+      update,
+    })
+    const result = await retry({ input: { confirmNotPublished: true, postId: 4 }, req })
+    expect(result).toEqual({ output: { postId: 4, requeued: true } })
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'queued' }) }),
+    )
+    expect(queueSocialPostPublish).toHaveBeenCalled()
   })
 
   it('re-queues a failed post', async () => {

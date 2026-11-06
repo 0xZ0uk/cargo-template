@@ -147,14 +147,57 @@ describe('queue-task endpoint', () => {
 })
 
 describe('retry, insights, and connections endpoints', () => {
+  const withPost = (post: Record<string, unknown> | null, over: Record<string, unknown> = {}) =>
+    mkReq({
+      payload: {
+        findByID: post
+          ? vi.fn().mockResolvedValue(post)
+          : vi.fn().mockRejectedValue(new Error('nf')),
+      },
+      routeParams: { postId: '7' },
+      ...over,
+    })
+
   it('retry-post queues a retry for the path post id', async () => {
     // Route params arrive as strings (URL path segments).
     const res = await byPath('/posts/:postId/retry').handler(
-      mkReq({ routeParams: { postId: '7' } }),
+      withPost({ id: 7, platform: 'pinterest', status: 'failed' }),
     )
     expect(res.status).toBe(200)
     expect(await res.json()).toMatchObject({ jobId: 'job_rt', ok: true, postId: '7' })
-    expect(queueSocialPostRetry).toHaveBeenCalledWith(expect.objectContaining({ postId: '7' }))
+    expect(queueSocialPostRetry).toHaveBeenCalledWith(
+      expect.objectContaining({ confirmNotPublished: false, postId: '7' }),
+    )
+  })
+
+  it('retry-post refuses an unknown post with 409 and queues nothing', async () => {
+    const res = await byPath('/posts/:postId/retry').handler(
+      withPost({ id: 7, platform: 'instagram', status: 'unknown' }),
+    )
+    expect(res.status).toBe(409)
+    expect(JSON.stringify(await res.json())).toContain(
+      'social-posts/7 may already be on instagram: its publish outcome is unknown.',
+    )
+    expect(queueSocialPostRetry).not.toHaveBeenCalled()
+  })
+
+  it('retry-post queues an unknown post with confirmNotPublished: true', async () => {
+    const res = await byPath('/posts/:postId/retry').handler(
+      withPost(
+        { id: 7, platform: 'instagram', status: 'unknown' },
+        { data: { confirmNotPublished: true } },
+      ),
+    )
+    expect(res.status).toBe(200)
+    expect(queueSocialPostRetry).toHaveBeenCalledWith(
+      expect.objectContaining({ confirmNotPublished: true, postId: '7' }),
+    )
+  })
+
+  it('retry-post answers 404 for a missing post', async () => {
+    const res = await byPath('/posts/:postId/retry').handler(withPost(null))
+    expect(res.status).toBe(404)
+    expect(queueSocialPostRetry).not.toHaveBeenCalled()
   })
 
   it('insights refresh queues and drains', async () => {

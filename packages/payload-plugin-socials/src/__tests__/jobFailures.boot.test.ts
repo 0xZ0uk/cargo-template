@@ -2,7 +2,12 @@ import type { Config, Payload } from 'payload'
 
 import { sqliteAdapter } from '@payloadcms/db-sqlite'
 import { lexicalEditor } from '@payloadcms/richtext-lexical'
-import { buildConfig, getPayload } from 'payload'
+import {
+  _internal_jobSystemGlobals,
+  _internal_resetJobSystemGlobals,
+  buildConfig,
+  getPayload,
+} from 'payload'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 /**
@@ -80,6 +85,7 @@ afterAll(async () => {
 })
 
 afterEach(() => {
+  _internal_resetJobSystemGlobals()
   // Back to the real implementations the mocks were created with.
   vi.mocked(getPlatformAdapter).mockReset()
   vi.mocked(resolveSourceContext).mockReset()
@@ -88,6 +94,7 @@ afterEach(() => {
 })
 
 type JobRow = {
+  waitUntil?: null | string
   error?: { cancelled?: boolean; message?: string } | null
   hasError?: boolean | null
   log?: Array<{ error?: { message?: string }; state: string; taskSlug: string }> | null
@@ -138,6 +145,11 @@ const drain = async (): Promise<void> => {
   for (let i = 0; i < 6; i++) {
     await runQueuedSocialsJobs(payload, normalizedOptions)
   }
+}
+
+/** Move Payload's job clock (it decides which jobs are due), not the process clock. */
+const setJobClock = (date: Date): void => {
+  _internal_jobSystemGlobals.getCurrentDate = () => new Date(date)
 }
 
 const mockAdapterPublish = (publish: ReturnType<typeof vi.fn>) => {
@@ -208,19 +220,47 @@ describe('socials jobs through Payload’s job runner', () => {
     expect((await findPost(postId)).status).toBe('unknown')
   })
 
-  it('retries a publish the provider rejected retryably, up to the task’s retries', async () => {
-    const publish = vi
-      .fn()
-      .mockRejectedValue(
-        new PlatformApiError({ message: 'throttled', platform: 'pinterest', retryable: true }),
-      )
+  it('retries a throttled publish after an exponential backoff, up to the task’s retries', async () => {
+    const publish = vi.fn().mockRejectedValue(
+      new PlatformApiError({
+        message: 'throttled',
+        platform: 'pinterest',
+        retryable: true,
+        safeToRepeat: true,
+        statusCode: 429,
+      }),
+    )
     mockAdapterPublish(publish)
     const postId = await createQueuedPost()
     const jobId = await queueSocialPostPublish({ payload, postId })
 
+    let now = new Date()
+    setJobClock(now)
     await drain()
+    expect(publish).toHaveBeenCalledTimes(1)
 
-    // `retries: 3`: the first attempt and three retries, each re-claiming the `failed` row.
+    // `retries: { attempts: 3, backoff: exponential 60s }`: each retry waits
+    // 1, 2, then 4 minutes, and no drain before then runs it.
+    for (const [attempt, delayMs] of [
+      [2, 60_000],
+      [3, 120_000],
+      [4, 240_000],
+    ] as const) {
+      const pending = await findJob(jobId)
+      expect(pending.hasError).toBeFalsy()
+      expect(Date.parse(pending.waitUntil ?? '') - now.getTime()).toBe(delayMs)
+
+      setJobClock(new Date(now.getTime() + delayMs - 1_000))
+      await drain()
+      expect(publish).toHaveBeenCalledTimes(attempt - 1)
+
+      now = new Date(now.getTime() + delayMs + 1)
+      setJobClock(now)
+      await runQueuedSocialsJobs(payload, normalizedOptions)
+      expect(publish).toHaveBeenCalledTimes(attempt)
+    }
+
+    await drain()
     const job = await findJob(jobId)
     expect(job.hasError).toBe(true)
     expect(job.error?.cancelled).toBeFalsy()
@@ -228,6 +268,28 @@ describe('socials jobs through Payload’s job runner', () => {
     expect(job.log?.map((entry) => entry.state)).toEqual(['failed', 'failed', 'failed', 'failed'])
     expect(publish).toHaveBeenCalledTimes(4)
     expect((await findPost(postId)).status).toBe('failed')
+  })
+
+  it('does not retry a retryable error that does not prove nothing was created', async () => {
+    // `retryable` alone is not enough: without `safeToRepeat` (set only by the
+    // shared classifier), Payload must not re-run a publish.
+    const publish = vi
+      .fn()
+      .mockRejectedValue(
+        new PlatformApiError({ message: 'upstream 503', platform: 'pinterest', retryable: true }),
+      )
+    mockAdapterPublish(publish)
+    const postId = await createQueuedPost()
+    const jobId = await queueSocialPostPublish({ payload, postId })
+
+    await drain()
+    setJobClock(new Date(Date.now() + 24 * 60 * 60_000))
+    await drain()
+
+    const job = await findJob(jobId)
+    expect(job.hasError).toBe(true)
+    expect(job.error).toMatchObject({ cancelled: true })
+    expect(publish).toHaveBeenCalledTimes(1)
   })
 
   it('retries a transient token-refresh failure and succeeds', async () => {
@@ -240,6 +302,11 @@ describe('socials jobs through Payload’s job runner', () => {
     vi.mocked(getPlatformAdapter).mockReturnValue({ refreshToken } as never)
     const jobId = await queueSocialConnectionRefresh({ payload, platform: 'pinterest' })
 
+    await drain()
+    // The retry waits for the backoff.
+    expect(refreshToken).toHaveBeenCalledTimes(1)
+    expect(Date.parse((await findJob(jobId)).waitUntil ?? '')).toBeGreaterThan(Date.now())
+    setJobClock(new Date(Date.now() + 61_000))
     await drain()
 
     const job = await findJob(jobId)

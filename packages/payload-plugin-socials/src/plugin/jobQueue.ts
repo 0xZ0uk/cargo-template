@@ -218,13 +218,24 @@ export const queueSocialPostPublish = async (
   })
 }
 
-export type QueueRetryArgs = { postId: number | string } & QueueArgs
+export type QueueRetryArgs = {
+  /**
+   * The operator checked the platform and the post is not there. Without it the
+   * retry task refuses a post that may already be live (`unknown`, `publishing`,
+   * or with an `externalId`).
+   */
+  confirmNotPublished?: boolean
+  postId: number | string
+} & QueueArgs
 
 export const queueSocialPostRetry = async (
   args: QueueRetryArgs,
 ): Promise<number | string | undefined> =>
   queueOnSocialsQueue({
-    input: { postId: args.postId },
+    input: {
+      postId: args.postId,
+      ...(args.confirmNotPublished === true ? { confirmNotPublished: true } : {}),
+    },
     payload: args.payload,
     req: args.req,
     task: SOCIAL_POST_RETRY_TASK_SLUG,
