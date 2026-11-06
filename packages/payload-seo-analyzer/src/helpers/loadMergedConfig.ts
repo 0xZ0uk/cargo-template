@@ -4,6 +4,7 @@
  */
 
 import type { SeoConfig } from '../types.js'
+import { mergeThresholds } from './thresholds.js'
 
 export interface MergedConfigResult {
   config: SeoConfig
@@ -48,21 +49,9 @@ export async function loadMergedConfig(
         mergedConfig = { ...mergedConfig, siteName: settings.siteName }
       }
 
-      // Merge thresholds
-      if (settings.thresholds && typeof settings.thresholds === 'object') {
-        const thresholds: Record<string, number> = {}
-        for (const [key, val] of Object.entries(settings.thresholds)) {
-          if (val != null && typeof val === 'number') {
-            thresholds[key] = val
-          }
-        }
-        if (Object.keys(thresholds).length > 0) {
-          mergedConfig = {
-            ...mergedConfig,
-            thresholds: { ...(mergedConfig.thresholds || {}), ...thresholds },
-          }
-        }
-      }
+      // Merge thresholds (a saved value wins over the plugin option)
+      const thresholds = mergeThresholds(mergedConfig.thresholds, settings.thresholds)
+      if (thresholds) mergedConfig = { ...mergedConfig, thresholds }
     }
   } catch {
     // SeoSettings collection might not exist yet — use plugin config as-is

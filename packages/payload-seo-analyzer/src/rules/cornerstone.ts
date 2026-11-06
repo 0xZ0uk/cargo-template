@@ -3,8 +3,9 @@
  * These checks only run when `isCornerstone` is true on the document.
  */
 import type { SeoCheck, SeoInput, AnalysisContext } from '../types.js'
-import { CORNERSTONE_MIN_WORDS, CORNERSTONE_MIN_INTERNAL_LINKS, META_DESC_LENGTH_MIN, META_DESC_LENGTH_MAX } from '../constants.js'
+import { CORNERSTONE_MIN_WORDS, CORNERSTONE_MIN_INTERNAL_LINKS } from '../constants.js'
 import { getTranslations } from '../i18n.js'
+import { resolveThresholds } from '../helpers/thresholds.js'
 
 export function checkCornerstone(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
   // Skip entirely if the content is not marked as cornerstone
@@ -88,7 +89,8 @@ export function checkCornerstone(input: SeoInput, ctx: AnalysisContext): SeoChec
 
   // 4. Meta description present and optimized
   const metaDesc = input.metaDescription || ''
-  if (metaDesc.length >= META_DESC_LENGTH_MIN && metaDesc.length <= META_DESC_LENGTH_MAX) {
+  const { metaDescLengthMin, metaDescLengthMax } = resolveThresholds(ctx.config.thresholds)
+  if (metaDesc.length >= metaDescLengthMin && metaDesc.length <= metaDescLengthMax) {
     checks.push({
       id: 'cornerstone-meta-description',
       label: r.metaDescLabel,
@@ -103,7 +105,7 @@ export function checkCornerstone(input: SeoInput, ctx: AnalysisContext): SeoChec
       id: 'cornerstone-meta-description',
       label: r.metaDescLabel,
       status: 'warning',
-      message: r.metaDescWarn(metaDesc.length),
+      message: r.metaDescWarn(metaDesc.length, metaDescLengthMin, metaDescLengthMax),
       category: 'critical',
       weight: 5,
       group: 'cornerstone',

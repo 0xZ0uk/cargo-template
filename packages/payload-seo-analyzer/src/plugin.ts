@@ -1092,6 +1092,9 @@ export const seoAnalyzerPlugin =
         endpointBasePath: basePath,
         // The analyzed collections that exist in this config (the schema builder's page picker).
         collections: targetCollections.filter((slug) => config.collections?.some((c) => c.slug === slug)),
+        // The `thresholds` option, so the sidebar scores with the same limits as the audit
+        // (saved settings are layered over it by hooks/useSeoThresholds.ts).
+        ...(pluginConfig.thresholds && { thresholds: pluginConfig.thresholds }),
       },
     }
 

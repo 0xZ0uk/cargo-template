@@ -31,6 +31,7 @@ import { withSeoErrorBoundary } from './withSeoErrorBoundary.js'
 import { buildSidebarContentInput, sidebarContentText } from '../helpers/sidebarContent.js'
 import { Card, Checklist, cx, ScoreRing, statusTone, TonePill, type Tone } from '../ui/index.js'
 import { useAdminRoute, useSeoApi } from '../hooks/useSeoApi.js'
+import { useSeoThresholds } from '../hooks/useSeoThresholds.js'
 import './SeoAnalyzer.css'
 
 // ---------------------------------------------------------------------------
@@ -545,6 +546,9 @@ const SeoAnalyzerInner: React.FC = () => {
   // Check if the primary keyword is already used by another document
   const keywordUsage = useKeywordDuplicateCheck(focusKeyword, documentId)
 
+  // Custom thresholds (plugin option + saved /admin/seo-config values)
+  const thresholds = useSeoThresholds()
+
   // Extract secondary keywords from form state (array field: focusKeywords.N.keyword)
   const focusKeywords: string[] = useMemo(() => {
     if (!formFields) return []
@@ -586,6 +590,7 @@ const SeoAnalyzerInner: React.FC = () => {
         updatedAt: updatedAt || undefined,
         contentLastReviewed: contentLastReviewed || undefined,
       },
+      thresholds ? { thresholds } : undefined,
     )
 
     // Compute word count from the content check (reuse the check message or compute separately)
@@ -597,7 +602,7 @@ const SeoAnalyzerInner: React.FC = () => {
     }
 
     return { analysis: result, wordCount: wc }
-  }, [formFields, focusKeyword, focusKeywords, isCornerstone, updatedAt, contentLastReviewed, getFieldValue])
+  }, [formFields, focusKeyword, focusKeywords, isCornerstone, updatedAt, contentLastReviewed, getFieldValue, thresholds])
 
   // The page host for the social preview. Read after mount: during SSR there is no
   // window, and reading it in render made the server and client markup disagree

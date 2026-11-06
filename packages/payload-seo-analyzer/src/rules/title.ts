@@ -3,8 +3,9 @@
  */
 import type { SeoCheck, SeoInput, AnalysisContext } from '../types.js'
 import { normalizeForComparison, keywordMatchesText } from '../helpers.js'
-import { TITLE_LENGTH_MIN, TITLE_LENGTH_MAX, getPowerWords } from '../constants.js'
+import { getPowerWords } from '../constants.js'
 import { getTranslations } from '../i18n.js'
+import { resolveThresholds } from '../helpers/thresholds.js'
 
 // Google truncates SERP titles by PIXEL width (~580-600px), not character count.
 const TITLE_PIXEL_MAX = 600
@@ -34,6 +35,7 @@ export function checkTitle(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
   const title = input.metaTitle || ''
   const titleLen = title.length
   const kw = ctx.normalizedKeyword
+  const { titleLengthMin, titleLengthMax } = resolveThresholds(ctx.config.thresholds)
 
   // 1. Title present and non-empty
   if (!title) {
@@ -45,35 +47,35 @@ export function checkTitle(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
       category: 'critical',
       weight: 3,
       group: 'title',
-      tip: r.missingTip,
+      tip: r.missingTip(titleLengthMin, titleLengthMax),
     })
     return checks // no point checking further
   }
 
-  // 2. Length TITLE_LENGTH_MIN-TITLE_LENGTH_MAX characters
-  if (titleLen < TITLE_LENGTH_MIN) {
+  // 2. Length titleLengthMin-titleLengthMax characters
+  if (titleLen < titleLengthMin) {
     checks.push({
       id: 'title-length',
       label: r.lengthLabel,
       status: 'warning',
-      message: r.lengthShort(titleLen),
+      message: r.lengthShort(titleLen, titleLengthMin, titleLengthMax),
       // SEO desintox: title length is a SERP-display hint, NOT a ranking factor
       // (Google rewrites 60%+ of titles). Informational weight, never critical.
       category: 'bonus',
       weight: 1,
       group: 'title',
-      tip: r.lengthShortTip,
+      tip: r.lengthShortTip(titleLengthMin),
     })
-  } else if (titleLen > TITLE_LENGTH_MAX) {
+  } else if (titleLen > titleLengthMax) {
     checks.push({
       id: 'title-length',
       label: r.lengthLabel,
       status: 'warning',
-      message: r.lengthLong(titleLen),
+      message: r.lengthLong(titleLen, titleLengthMax),
       category: 'bonus',
       weight: 1,
       group: 'title',
-      tip: r.lengthLongTip,
+      tip: r.lengthLongTip(titleLengthMax),
     })
   } else {
     checks.push({

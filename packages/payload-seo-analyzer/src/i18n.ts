@@ -12,12 +12,12 @@ export interface RuleTranslations {
   title: {
     missingLabel: string
     missingMessage: string
-    missingTip: string
+    missingTip: (min: number, max: number) => string
     lengthLabel: string
-    lengthShort: (len: number) => string
-    lengthShortTip: string
-    lengthLong: (len: number) => string
-    lengthLongTip: string
+    lengthShort: (len: number, min: number, max: number) => string
+    lengthShortTip: (min: number) => string
+    lengthLong: (len: number, max: number) => string
+    lengthLongTip: (max: number) => string
     lengthPass: (len: number) => string
     keywordLabel: string
     keywordPass: (kw: string) => string
@@ -52,12 +52,12 @@ export interface RuleTranslations {
   metaDescription: {
     missingLabel: string
     missingMessage: string
-    missingTip: string
+    missingTip: (min: number, max: number) => string
     lengthLabel: string
-    lengthShort: (len: number) => string
-    lengthShortTip: string
-    lengthLong: (len: number) => string
-    lengthLongTip: string
+    lengthShort: (len: number, min: number, max: number) => string
+    lengthShortTip: (min: number) => string
+    lengthLong: (len: number, max: number) => string
+    lengthLongTip: (max: number) => string
     lengthPass: (len: number) => string
     keywordLabel: string
     keywordPass: (kw: string) => string
@@ -96,7 +96,7 @@ export interface RuleTranslations {
     missingLabel: string
     missingMessage: string
     lengthLabel: string
-    lengthFail: (len: number) => string
+    lengthFail: (len: number, max: number) => string
     lengthPass: (len: number) => string
     formatLabel: string
     formatFail: string
@@ -129,7 +129,7 @@ export interface RuleTranslations {
     keywordIntroPass: string
     keywordIntroFail: (kw: string) => string
     densityLabel: string
-    densityOverstuffed: (density: string) => string
+    densityOverstuffed: (density: string, max: number) => string
     densityHigh: (density: string) => string
     densityPass: (density: string) => string
     densityPassWordLevel: (density: string) => string
@@ -157,10 +157,10 @@ export interface RuleTranslations {
     listsFail: string
     listsTip: string
     // Min word labels by page type
-    minWordsPost: string
+    minWordsPost: (min: number) => string
     minWordsForm: string
     minWordsLegal: string
-    minWordsGeneric: string
+    minWordsGeneric: (min: number) => string
   }
   secondaryKeywords: {
     titleLabel: (suffix: string) => string
@@ -235,7 +235,7 @@ export interface RuleTranslations {
     focusKeywordFail: string
     metaDescLabel: string
     metaDescPass: (len: number) => string
-    metaDescWarn: (len: number) => string
+    metaDescWarn: (len: number, min: number, max: number) => string
     metaDescFail: string
   }
   readability: {
@@ -545,12 +545,12 @@ const rulesEn: RuleTranslations = {
   title: {
     missingLabel: 'Meta title',
     missingMessage: 'Meta title is missing — Add a title for search engine optimization.',
-    missingTip: 'Write a 30-60 character title containing the focus keyword and brand name.',
+    missingTip: (min, max) => `Write a ${min}-${max} character title containing the focus keyword and brand name.`,
     lengthLabel: 'Title length',
-    lengthShort: (len) => `Meta title (${len} chars) — Too short. Aim for 30 to 60 characters.`,
-    lengthShortTip: 'Add descriptive words or the brand name to reach at least 30 characters.',
-    lengthLong: (len) => `Meta title (${len} chars) — Too long, will be truncated in Google. Reduce to 60 max.`,
-    lengthLongTip: 'Google truncates beyond ~60 characters. Remove unnecessary words and keep the essentials.',
+    lengthShort: (len, min, max) => `Meta title (${len} chars) — Too short. Aim for ${min} to ${max} characters.`,
+    lengthShortTip: (min) => `Add descriptive words or the brand name to reach at least ${min} characters.`,
+    lengthLong: (len, max) => `Meta title (${len} chars) — Too long, will be truncated in Google. Reduce to ${max} max.`,
+    lengthLongTip: (max) => `Google truncates beyond ~${max} characters. Remove unnecessary words and keep the essentials.`,
     lengthPass: (len) => `Meta title (${len} chars) — Ideal length.`,
     keywordLabel: 'Keyword in title',
     keywordPass: (kw) => `The keyword "${kw}" is present in the meta title.`,
@@ -585,12 +585,12 @@ const rulesEn: RuleTranslations = {
   metaDescription: {
     missingLabel: 'Meta description',
     missingMessage: 'Meta description is missing — Add a description for search engine optimization.',
-    missingTip: 'Write a 120-160 character sentence that summarizes the page and encourages clicks. Include the focus keyword.',
+    missingTip: (min, max) => `Write a ${min}-${max} character sentence that summarizes the page and encourages clicks. Include the focus keyword.`,
     lengthLabel: 'Description length',
-    lengthShort: (len) => `Meta description (${len} chars) — Too short. Aim for 120 to 160 characters.`,
-    lengthShortTip: 'Complete with page benefits or a call to action (e.g. "Free quote within 24h").',
-    lengthLong: (len) => `Meta description (${len} chars) — Too long, will be truncated. Reduce to 160 max.`,
-    lengthLongTip: 'Google truncates beyond ~160 characters. Remove secondary details and keep the essentials.',
+    lengthShort: (len, min, max) => `Meta description (${len} chars) — Too short. Aim for ${min} to ${max} characters.`,
+    lengthShortTip: () => 'Complete with page benefits or a call to action (e.g. "Free quote within 24h").',
+    lengthLong: (len, max) => `Meta description (${len} chars) — Too long, will be truncated. Reduce to ${max} max.`,
+    lengthLongTip: (max) => `Google truncates beyond ~${max} characters. Remove secondary details and keep the essentials.`,
     lengthPass: (len) => `Meta description (${len} chars) — Ideal length.`,
     keywordLabel: 'Keyword in description',
     keywordPass: (kw) => `The keyword "${kw}" is present in the meta description.`,
@@ -629,7 +629,7 @@ const rulesEn: RuleTranslations = {
     missingLabel: 'Slug (URL)',
     missingMessage: 'Slug is missing — Define a URL for this page.',
     lengthLabel: 'Slug length',
-    lengthFail: (len) => `Slug too long (${len} chars) — Keep it under 75 characters.`,
+    lengthFail: (len, max) => `Slug too long (${len} chars) — Keep it under ${max} characters.`,
     lengthPass: (len) => `Valid slug (${len} chars).`,
     formatLabel: 'Slug format',
     formatFail: 'Slug contains special characters or uppercase — Use only lowercase, numbers and hyphens.',
@@ -662,7 +662,7 @@ const rulesEn: RuleTranslations = {
     keywordIntroPass: 'The keyword appears in the first paragraph — Good practice.',
     keywordIntroFail: (kw) => `Add the keyword "${kw}" in the first sentences of the content.`,
     densityLabel: 'Keyword density',
-    densityOverstuffed: (density) => `Keyword density: ${density}% — Too high (>3%), risk of keyword stuffing.`,
+    densityOverstuffed: (density, max) => `Keyword density: ${density}% — Too high (>${max}%), risk of keyword stuffing.`,
     densityHigh: (density) => `Keyword density: ${density}% — Slightly high; keep it natural to avoid over-optimisation.`,
     densityPass: (density) => `Keyword density: ${density}% — Natural usage, no stuffing detected.`,
     densityPassWordLevel: (density) => `Keyword components are present in the content (estimated density: ${density}%).`,
@@ -689,10 +689,10 @@ const rulesEn: RuleTranslations = {
     listsPass: (count) => `${count} list(s) detected — Lists improve readability and featured snippet chances.`,
     listsFail: 'No list detected — Add bullet or numbered lists to structure the content.',
     listsTip: 'Use lists to enumerate steps, benefits or features. Google often uses them for featured snippets.',
-    minWordsPost: '800 words (article)',
+    minWordsPost: (min) => `${min} words (article)`,
     minWordsForm: '150 words (form page)',
     minWordsLegal: '200 words (legal page)',
-    minWordsGeneric: '300 words (page)',
+    minWordsGeneric: (min) => `${min} words (page)`,
   },
   secondaryKeywords: {
     titleLabel: (suffix) => `Secondary keyword in title${suffix}`,
@@ -768,7 +768,7 @@ const rulesEn: RuleTranslations = {
     focusKeywordFail: 'Pillar content MUST have a focus keyword — Define it in the sidebar.',
     metaDescLabel: 'Pillar content meta description',
     metaDescPass: (len) => `Meta description of ${len} characters — Optimal for pillar content.`,
-    metaDescWarn: (len) => `Meta description of ${len} characters — Aim for 120 to 160 characters for pillar content.`,
+    metaDescWarn: (len, min, max) => `Meta description of ${len} characters — Aim for ${min} to ${max} characters for pillar content.`,
     metaDescFail: 'Pillar content MUST have a meta description — Essential for CTR in SERPs.',
   },
   readability: {

@@ -4,16 +4,13 @@
 import type { SeoCheck, SeoInput, AnalysisContext } from '../types.js'
 import { normalizeForComparison, keywordMatchesText, countKeywordOccurrences, extractListsFromLexical } from '../helpers.js'
 import {
-  MIN_WORDS_POST,
   MIN_WORDS_FORM,
   MIN_WORDS_LEGAL,
-  MIN_WORDS_GENERIC,
   MIN_WORDS_THIN,
-  KEYWORD_DENSITY_MAX,
-  KEYWORD_DENSITY_WARN,
   PLACEHOLDER_PATTERNS,
 } from '../constants.js'
 import { getTranslations } from '../i18n.js'
+import { resolveThresholds } from '../helpers/thresholds.js'
 import { blockContentOf } from '../helpers/blockContent.js'
 
 export function checkContent(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
@@ -24,17 +21,19 @@ export function checkContent(input: SeoInput, ctx: AnalysisContext): SeoCheck[] 
   // Adapted min words by page type
   const isFormPage = pageType === 'form' || pageType === 'contact'
   const isLegalPage = pageType === 'legal'
-  const minWords = isPost ? MIN_WORDS_POST : isFormPage ? MIN_WORDS_FORM : isLegalPage ? MIN_WORDS_LEGAL : MIN_WORDS_GENERIC
+  const { minWordsPost, minWordsGeneric, keywordDensityMax, keywordDensityWarn } = resolveThresholds(ctx.config.thresholds)
+  const minWords = isPost ? minWordsPost : isFormPage ? MIN_WORDS_FORM : isLegalPage ? MIN_WORDS_LEGAL : minWordsGeneric
   const minLabel = isPost
-    ? r.minWordsPost
+    ? r.minWordsPost(minWordsPost)
     : isFormPage
       ? r.minWordsForm
       : isLegalPage
         ? r.minWordsLegal
-        : r.minWordsGeneric
+        : r.minWordsGeneric(minWordsGeneric)
 
   // 20. Minimum word count
-  if (wordCount < MIN_WORDS_THIN) {
+  // A custom minimum below the hard-fail floor lowers the floor with it.
+  if (wordCount < Math.min(MIN_WORDS_THIN, minWords)) {
     checks.push({
       id: 'content-wordcount',
       label: r.wordcountLabel,
@@ -102,17 +101,17 @@ export function checkContent(input: SeoInput, ctx: AnalysisContext): SeoCheck[] 
 
     const density = effectiveDensity
 
-    if (density > KEYWORD_DENSITY_MAX) {
+    if (density > keywordDensityMax) {
       checks.push({
         id: 'content-keyword-density',
         label: r.densityLabel,
         status: 'fail',
-        message: r.densityOverstuffed(density.toFixed(1)),
+        message: r.densityOverstuffed(density.toFixed(1), keywordDensityMax),
         category: 'critical',
         weight: 3,
         group: 'content',
       })
-    } else if (density > KEYWORD_DENSITY_WARN) {
+    } else if (density > keywordDensityWarn) {
       checks.push({
         id: 'content-keyword-density',
         label: r.densityLabel,
