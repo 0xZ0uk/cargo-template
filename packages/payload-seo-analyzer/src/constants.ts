@@ -13,6 +13,14 @@ export const TITLE_LENGTH_MAX = 60
 export const META_DESC_LENGTH_MIN = 120
 export const META_DESC_LENGTH_MAX = 160
 
+// Characters shown in the SERP preview before it cuts the text at a word boundary and appends
+// " …". Google truncates by pixel width (roughly 600 px for the title, ~920 px desktop / ~680 px
+// mobile for the description), not by character count, so these are widely cited approximations.
+export const SERP_TITLE_MAX_CHARS_DESKTOP = 60
+export const SERP_TITLE_MAX_CHARS_MOBILE = 60
+export const SERP_DESCRIPTION_MAX_CHARS_DESKTOP = 160
+export const SERP_DESCRIPTION_MAX_CHARS_MOBILE = 120
+
 // ---------------------------------------------------------------------------
 // Content word-count thresholds (by page type)
 // ---------------------------------------------------------------------------

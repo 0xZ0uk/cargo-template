@@ -115,16 +115,6 @@ export function metaFields(config: MetaFieldsConfig = {}): Field[] {
             },
           },
         },
-        // SERP Preview UI field
-        {
-          name: '_preview',
-          type: 'ui',
-          admin: {
-            components: {
-              Field: '@cargo/payload-seo-analyzer/client#SerpPreviewField',
-            },
-          },
-        },
       ],
     },
   ]
