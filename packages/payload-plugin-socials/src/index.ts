@@ -7,7 +7,7 @@ import { applyCollectionEnhancements } from './plugin/applyCollectionEnhancement
 import { applyEndpointEnhancements } from './plugin/applyEndpointEnhancements.js'
 import { applyGlobalEnhancements } from './plugin/applyGlobalEnhancements.js'
 import { applyScheduledSync } from './plugin/applyScheduledSync.js'
-import { applyJobEnhancements } from './plugin/jobTasks.js'
+import { applyDisabledJobEnhancements, applyJobEnhancements } from './plugin/jobTasks.js'
 import { normalizePluginOptions } from './plugin/normalizeOptions.js'
 import { initPlatformRegistry } from './server/platforms/registry.js'
 import { validateSourceResolvers } from './server/sources/registry.js'
@@ -46,9 +46,10 @@ const markApplied = (config: Config): Config => {
  *   6. admin enhancements (nav link, dashboard widget, custom config)
  *   7. scheduled-sync wiring (task schedules + operator startup notice)
  *
- * When `disabled`, only the steps that shape the schema and the admin component
- * paths run (2 collections + 3 global + 6 admin) so host migrations and the import
- * map stay the same; all runtime wiring is skipped and the components show a notice.
+ * When `disabled`, only the steps that shape the schema, the admin component paths
+ * and the job task definitions run (2 collections + 3 global + 6 admin + inert
+ * tasks) so host migrations, the import map and `payload-types.ts` stay the same;
+ * all runtime wiring is skipped and the components show a notice.
  */
 export const payloadPluginSocials =
   (incomingOptions: PayloadPluginSocialsConfig) =>
@@ -63,11 +64,14 @@ export const payloadPluginSocials =
       // migration that DROPs social-posts / social-templates / socials-connections
       // and destroys audit history + encrypted tokens. The admin components stay
       // registered so Payload's import map is the same with and without the key; they
-      // render a notice (`admin.custom.socials.disabled`). Endpoints, jobs, hooks and
+      // render a notice (`admin.custom.socials.disabled`). The job tasks are registered
+      // with the same slugs and schemas (so Payload's generated types do not depend on
+      // the key) but unscheduled and with a handler that fails fast. Endpoints, hooks and
       // scheduling are skipped, and the plugin collections are not readable.
       let config = applyCollectionEnhancements(incomingConfig, options, { schemaOnly: true })
       config = applyGlobalEnhancements(config, options, { schemaOnly: true })
       config = applyAdminEnhancements(config, options)
+      config = applyDisabledJobEnhancements(config)
       return markApplied(config)
     }
 

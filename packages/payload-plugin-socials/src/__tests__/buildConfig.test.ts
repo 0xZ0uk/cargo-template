@@ -131,13 +131,23 @@ describe('buildConfig sanitization', () => {
     const posts = disabledConfig.collections.find((entry) => entry.slug === 'social-posts')
     const templates = disabledConfig.collections.find((entry) => entry.slug === 'social-templates')
     const connections = disabledConfig.globals.find((entry) => entry.slug === 'socials-connections')
-    expect(posts?.admin.hidden).toBe(true)
-    expect(templates?.admin.hidden).toBe(true)
+    expect(typeof posts?.admin.hidden).toBe('function')
+    expect((posts?.admin.hidden as () => boolean)()).toBe(true)
+    expect(typeof templates?.admin.hidden).toBe('function')
+    expect((templates?.admin.hidden as () => boolean)()).toBe(true)
     expect(templates?.hooks?.beforeChange ?? []).toHaveLength(0)
     expect(connections?.admin.hidden).toBe(true)
     expect(disabledConfig.endpoints.some((endpoint) => endpoint.path.includes('/socials/'))).toBe(
       false,
     )
-    expect(disabledConfig.jobs?.tasks ?? []).toHaveLength(0)
+    // Tasks are registered (so generated types match the enabled build) but inert.
+    const enabledTasks = (config.jobs?.tasks ?? []) as Array<{ slug: string }>
+    const disabledTasks = (disabledConfig.jobs?.tasks ?? []) as Array<{
+      schedule?: unknown
+      slug: string
+    }>
+    expect(disabledTasks.map((task) => task.slug)).toEqual(enabledTasks.map((task) => task.slug))
+    expect(disabledTasks.every((task) => task.schedule === undefined)).toBe(true)
+    expect(disabledConfig.jobs?.autoRun ?? []).toHaveLength(0)
   })
 })

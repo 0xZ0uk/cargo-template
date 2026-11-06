@@ -71,15 +71,17 @@ describe('payloadPluginSocials curried factory', () => {
     )
     expect(slugsOf(result.globals ?? [])).toContain(SOCIALS_CONNECTIONS_GLOBAL_SLUG)
     expect(result.endpoints).toHaveLength(0)
-    expect(result.jobs?.tasks ?? []).toHaveLength(0)
 
     const posts = result.collections?.find((entry) => entry.slug === SOCIAL_POSTS_SLUG)
     const templates = result.collections?.find((entry) => entry.slug === SOCIAL_TEMPLATES_SLUG)
     const connections = result.globals?.find(
       (entry) => entry.slug === SOCIALS_CONNECTIONS_GLOBAL_SLUG,
     )
-    expect(posts?.admin?.hidden).toBe(true)
-    expect(templates?.admin?.hidden).toBe(true)
+    // A function (not `true`) so Payload's dashboard widget options match the enabled build.
+    expect(typeof posts?.admin?.hidden).toBe('function')
+    expect((posts?.admin?.hidden as () => boolean)()).toBe(true)
+    expect(typeof templates?.admin?.hidden).toBe('function')
+    expect((templates?.admin?.hidden as () => boolean)()).toBe(true)
     expect(templates?.hooks?.beforeChange).toBeUndefined()
     expect(connections?.admin?.hidden).toBe(true)
     expect(await posts?.access?.read?.({ req: { user: { id: 1 } } } as never)).toBe(false)
@@ -131,7 +133,53 @@ describe('payloadPluginSocials curried factory', () => {
     expect(socials(disabled).disabled).toBe(true)
     // Runtime stays off.
     expect(disabled.endpoints).toHaveLength(0)
-    expect(disabled.jobs?.tasks ?? []).toHaveLength(0)
+  })
+
+  describe('job tasks when disabled', () => {
+    type TaskLike = {
+      handler: (args: never) => Promise<unknown>
+      schedule?: unknown
+      slug: string
+    }
+    const tasksOf = (config: Config): TaskLike[] =>
+      (config.jobs?.tasks ?? []) as unknown as TaskLike[]
+    // Everything Payload derives types and schema from: the task minus handler/schedule.
+    const definition = ({ handler: _handler, schedule: _schedule, ...rest }: TaskLike) => rest
+
+    const enabled = tasksOf(
+      payloadPluginSocials(
+        validOptions({ scheduling: { autoRun: { cron: '*/5 * * * *' } } }),
+      )(baseConfig()),
+    )
+    const disabledConfig = payloadPluginSocials(validOptions({ disabled: true }))(baseConfig())
+    const disabled = tasksOf(disabledConfig)
+
+    it('registers the same task slugs, schemas, retries and interface names as enabled', () => {
+      expect(enabled.length).toBeGreaterThan(0)
+      expect(disabled.map((t) => t.slug)).toEqual(enabled.map((t) => t.slug))
+      expect(disabled.map(definition)).toEqual(enabled.map(definition))
+      // The enabled config really carries a schedule, so the comparison above is not vacuous.
+      expect(enabled.some((t) => t.schedule !== undefined)).toBe(true)
+    })
+
+    it('schedules nothing', () => {
+      expect(disabled.every((t) => t.schedule === undefined)).toBe(true)
+      expect((disabledConfig.jobs as { autoRun?: unknown }).autoRun).toBeUndefined()
+    })
+
+    it('fails fast without options, a key or a payload', async () => {
+      for (const task of disabled) {
+        // No registered plugin options and no `req`: the handler must not need either.
+        await expect(task.handler({ input: {} } as never)).resolves.toEqual({
+          errorMessage: expect.stringContaining('socials is disabled'),
+          state: 'failed',
+        })
+      }
+    })
+
+    it('registers no onInit that stashes plugin options', () => {
+      expect(disabledConfig.onInit).toBeUndefined()
+    })
   })
 
   it('rejects a second plugin instance instead of sharing process-level registries', () => {

@@ -98,6 +98,50 @@ export const applyJobEnhancements = (config: Config, options: NormalizedPluginOp
     }
   }
 
+  registerTasks(config, (taskConfig) => {
+    // Attach the Payload-native task `schedule` for periodic tasks when the
+    // host opted into native scheduling via `scheduling.autoRun` crons.
+    const schedule = scheduleForTaskSlug(taskConfig.slug, options)
+    if (schedule) {
+      taskConfig.schedule = schedule
+    }
+  })
+
+  return config
+}
+
+/** The error a disabled task returns. Payload marks the job failed and does not retry it. */
+export const DISABLED_TASK_ERROR_MESSAGE =
+  'payload-plugin-socials: socials is disabled (no encryption key), so this task did not run'
+
+/**
+ * Register the same task definitions as `applyJobEnhancements` (slugs, input and
+ * output schemas, retries, interface names) for a disabled plugin, so everything
+ * Payload derives from them (`payload-types.ts`, the `payload-jobs` task-slug
+ * options) is the same with and without the encryption key.
+ *
+ * The tasks have no `schedule` and a handler that needs neither plugin options nor
+ * the key and touches no platform: it returns a failed state. A failure rather than
+ * a silent no-op, because nothing queues these tasks while the plugin is disabled
+ * (no endpoints, hooks or scheduling), so a job that does exist was queued by hand
+ * or left over from an enabled deploy, and "succeeded" would hide that its post was
+ * never published. `failed` is final: Payload does not retry a returned failure.
+ */
+export const applyDisabledJobEnhancements = (config: Config): Config => {
+  registerTasks(config, (taskConfig) => {
+    taskConfig.handler = disabledTaskHandler
+  })
+  return config
+}
+
+export const disabledTaskHandler = async (): Promise<{
+  errorMessage: string
+  state: 'failed'
+}> => ({ errorMessage: DISABLED_TASK_ERROR_MESSAGE, state: 'failed' })
+
+type MutableTaskConfig = { handler?: unknown; schedule?: unknown; slug: string }
+
+const registerTasks = (config: Config, customize: (taskConfig: MutableTaskConfig) => void): void => {
   const jobs = ensureJobsConfig(config)
   // `ensureJobsConfig` guarantees `tasks` is an array, but TS narrowing
   // doesn't propagate through the optional chain. Treat the array as
@@ -109,19 +153,12 @@ export const applyJobEnhancements = (config: Config, options: NormalizedPluginOp
   }
 
   for (const builder of ALL_TASK_BUILDERS) {
-    const taskConfig = builder() as { schedule?: unknown; slug: string }
-    // Attach the Payload-native task `schedule` for periodic tasks when the
-    // host opted into native scheduling via `scheduling.autoRun` crons.
-    const schedule = scheduleForTaskSlug(taskConfig.slug, options)
-    if (schedule) {
-      taskConfig.schedule = schedule
-    }
+    const taskConfig = builder() as MutableTaskConfig
+    customize(taskConfig)
     if (!findTaskBySlug(config, taskConfig.slug)) {
       tasks.push(taskConfig as never)
     }
   }
-
-  return config
 }
 
 export { TASK_SLUGS_OWNED_BY_PLUGIN }

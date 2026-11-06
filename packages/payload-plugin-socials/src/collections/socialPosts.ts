@@ -58,7 +58,10 @@ export const buildSocialPostsCollection = (
       'lastError',
     ],
     group: 'Socials',
-    hidden: schemaOnly ? true : ({ user }) => !user,
+    // A function even when schema-only: Payload's dashboard `collection-query` widget lists
+    // collections whose `hidden` is not the literal `true`, and `payload-types.ts` carries
+    // that list, so a boolean here would make the generated types depend on `disabled`.
+    hidden: schemaOnly ? () => true : ({ user }) => !user,
     useAsTitle: 'title',
   },
   // Payload 4 versions collections by default. Rows are an audit trail the
