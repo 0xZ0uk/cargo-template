@@ -5,6 +5,7 @@ import { PLUGIN_NAME } from "../constants";
 import { inProcessDispatch, payloadToolSourceForRequest } from "../tools/inProcess";
 import type { McpDispatch } from "../tools/payloadToolSource";
 import type { NormalizedAssistantOptions } from "../utils/normalizeOptions";
+import { buildProposals, findStaleApprovals } from "./approvals";
 import { buildSystemPrompt, siteUrls } from "./instructions";
 import { createTurnRunner, type CreateAdapter } from "./turn";
 import { isId, validateChatBody } from "./validate";
@@ -86,13 +87,26 @@ export async function handleChat(req: PayloadRequest, options: NormalizedAssista
   }
   const parsed = validateChatBody(raw, req.headers.get("X-Run-Id"));
   if (!parsed.ok) return jsonError(400, "invalid_body", parsed.error);
-  const { threadId, messages, resume } = parsed.value;
+  const { threadId, messages, resume, seen } = parsed.value;
 
   const model = parsed.value.model ?? options.defaultModel;
   if (!options.models.some((allowed) => allowed.id === model)) {
     return jsonError(400, "model_not_allowed", `model "${model}" is not in the assistant's allowlist`, {
       models: options.models.map((allowed) => allowed.id),
     });
+  }
+
+  const backend = backendFor(req, options, deps);
+  // Approvals sent with the `updatedAt` their card showed: refuse the whole batch (TanStack
+  // resumes a batch all or nothing) when one of those documents changed since, so the user
+  // reviews the new diff first. Ownership first: another user's conversation is a 404.
+  if (seen.length) {
+    const transcript = await backend.transcript(userOf(req), threadId);
+    if (!transcript) return jsonError(404, "not_found", "Not found");
+    const stale = await findStaleApprovals(req, transcript.pendingInterrupts, seen);
+    if (stale.length) {
+      return jsonError(409, "stale", "A document changed after you reviewed the change. Review it again.", { interruptIds: stale });
+    }
   }
 
   const { site, api } = siteUrls(req);
@@ -119,7 +133,7 @@ export async function handleChat(req: PayloadRequest, options: NormalizedAssista
   const runId = parsed.value.runId ?? crypto.randomUUID();
   const first = messages[0]?.content;
 
-  const response = await backendFor(req, options, deps).startTurn({
+  const response = await backend.startTurn({
     userKey: userOf(req),
     threadId,
     runId,
@@ -147,6 +161,18 @@ export async function handleChatGet(req: PayloadRequest, options: NormalizedAssi
     return backend.join(userOf(req), threadId, asRequest(req));
   }
   return backend.hydrate(userOf(req), threadId, asRequest(req));
+}
+
+/**
+ * `GET /api/assistant/approvals?threadId=…`: what each pending approval of the conversation
+ * would change (`ApprovalsResponse`), read as the caller. 404 when the conversation isn't theirs.
+ */
+export async function handleApprovals(req: PayloadRequest, options: NormalizedAssistantOptions, deps: ChatDeps = {}): Promise<Response> {
+  const threadId = requestUrl(req).searchParams.get("threadId");
+  if (!isId(threadId)) return jsonError(400, "invalid_query", '"threadId" is required');
+  const transcript = await backendFor(req, options, deps).transcript(userOf(req), threadId);
+  if (!transcript) return jsonError(404, "not_found", "Not found");
+  return Response.json({ approvals: await buildProposals(req, transcript.pendingInterrupts) });
 }
 
 /** `POST /api/assistant/chat/stop` `{ threadId, runId }`: abort a live run. */

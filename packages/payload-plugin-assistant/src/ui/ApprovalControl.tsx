@@ -2,7 +2,23 @@
 
 import { Banner, Button, Collapsible } from "@payloadcms/ui";
 import React from "react";
+import type { ApprovalProposal } from "../approvals/types";
 import { formatToolResult, toolTarget } from "./tools";
+
+/** The user's answer to one approval, before the batch is sent. */
+export interface ApprovalDecision {
+  approved: boolean;
+  /** Rejections only: sent to the model with the rejection. */
+  reason?: string;
+  /** Approvals only: the document's `updatedAt` the diff showed (the server's stale check). */
+  seenUpdatedAt?: string;
+}
+
+/**
+ * Where a card is: waiting for an answer, answered (the batch waits for the others), being sent,
+ * then the outcome from the tool result (`unknown` when the run ended without one).
+ */
+export type ApprovalCardStatus = "pending" | "decided" | "submitting" | "applied" | "rejected" | "failed" | "unknown";
 
 /**
  * A pending approval as the chat hands it to the renderer: what the tool would do and the two
@@ -21,7 +37,25 @@ export interface PendingApproval {
   /** False while the answer is being submitted, or when the client can't resolve it. */
   canAnswer: boolean;
   approve: () => void;
-  reject: () => void;
+  /** Reject; the reason (optional) goes back to the model with the rejection. */
+  reject: (reason?: string) => void;
+
+  // Set by the chat for the diff card (#65); a custom renderer may ignore them.
+  /** What the write would change. `undefined` while loading, `null` when it couldn't be loaded. */
+  proposal?: ApprovalProposal | null;
+  status?: ApprovalCardStatus;
+  /** The answer given (status `decided`, `submitting` and after). */
+  decision?: ApprovalDecision;
+  /** A failed write's error, or a rejection's reason. */
+  outcomeMessage?: string;
+  /** The server refused the answer: the document changed after the card showed it. */
+  staleReview?: boolean;
+  /** Other approvals of the batch still without an answer (answers are sent together). */
+  waitingFor?: number;
+  /** Take the answer back while the batch hasn't been sent. */
+  undo?: () => void;
+  /** The edit view of a document of the target collection, when it is in the admin config. */
+  documentHref?: (id: string) => string | undefined;
 }
 
 export interface ApprovalRendererProps {
@@ -60,8 +94,7 @@ export function pendingApprovalFrom(interrupt: unknown): PendingApproval | null 
   const rawInput = i.metadata?.input ?? i.originalArgs;
   const input = rawInput && typeof rawInput === "object" ? (rawInput as Record<string, unknown>) : undefined;
   const toolName = i.toolName ?? (typeof i.metadata?.toolName === "string" ? i.metadata.toolName : undefined) ?? "tool";
-  const resolve = i.resolveInterrupt;
-  const answer = (approved: boolean) => resolve.call(i, isToolApproval ? approved : { approved });
+  const answer = (approved: boolean, reason?: string) => answerInterrupt(i, { approved, ...(reason ? { reason } : {}) });
   return {
     id: i.id ?? i.toolCallId ?? toolName,
     toolName,
@@ -70,8 +103,27 @@ export function pendingApprovalFrom(interrupt: unknown): PendingApproval | null 
     target: toolTarget({ id: "", name: toolName, input }),
     canAnswer: i.canResolve !== false && (i.status === undefined || i.status === "pending" || i.status === "error"),
     approve: () => answer(true),
-    reject: () => answer(false),
+    reject: (reason?: string) => answer(false, reason),
   };
+}
+
+/**
+ * Answers a bound approval interrupt. A `generic` one (the browser has no tool definitions) is
+ * resolved with the README's resume payload: `{ approved: true, seenUpdatedAt? }` or
+ * `{ approved: false, reason? }`; the server turns it into what the tools take. A `tool-approval`
+ * one (a client that knows the tool) takes the boolean only.
+ */
+export function answerInterrupt(interrupt: unknown, decision: ApprovalDecision): void {
+  const i = interrupt as { kind?: string; resolveInterrupt?: (answer: unknown) => void };
+  if (typeof i?.resolveInterrupt !== "function") return;
+  if (i.kind === "tool-approval") {
+    i.resolveInterrupt(decision.approved);
+    return;
+  }
+  const payload = decision.approved
+    ? { approved: true, ...(decision.seenUpdatedAt ? { seenUpdatedAt: decision.seenUpdatedAt } : {}) }
+    : { approved: false, ...(decision.reason ? { reason: decision.reason } : {}) };
+  i.resolveInterrupt.call(i, payload);
 }
 
 const VERB: Record<string, string> = {
@@ -87,12 +139,13 @@ const VERB: Record<string, string> = {
 };
 
 /**
- * The minimal approve/reject control: the tool, its target and its input (collapsed). #65's diff
- * card replaces it.
+ * The minimal approve/reject control: the tool, its target and its input (collapsed). The chat
+ * uses the diff card (`ApprovalCard`); this stays for custom setups that want less.
  */
 export function ApprovalControl({ approval }: ApprovalRendererProps) {
   const verb = VERB[approval.toolName];
-  const input = approval.input ? formatToolResult(approval.input).text : "";
+  const formatted = approval.input ? formatToolResult(approval.input) : undefined;
+  const input = formatted?.text ?? "";
   return (
     <Banner className="assistant-approval" type="warning">
       <div className="assistant-approval__body">
@@ -110,13 +163,18 @@ export function ApprovalControl({ approval }: ApprovalRendererProps) {
         {input ? (
           <Collapsible header={<span className="assistant-text assistant-text--small">Details</span>} initCollapsed>
             <pre className="assistant-pre">{input}</pre>
+            {formatted?.truncated ? (
+              <p className="assistant-text assistant-text--tertiary assistant-text--small">
+                Shortened for display: the full change is longer than this.
+              </p>
+            ) : null}
           </Collapsible>
         ) : null}
         <div className="assistant-row">
           <Button buttonStyle="primary" disabled={!approval.canAnswer} margin={false} onClick={approval.approve}>
             Approve
           </Button>
-          <Button buttonStyle="secondary" disabled={!approval.canAnswer} margin={false} onClick={approval.reject}>
+          <Button buttonStyle="secondary" disabled={!approval.canAnswer} margin={false} onClick={() => approval.reject()}>
             Reject
           </Button>
         </div>

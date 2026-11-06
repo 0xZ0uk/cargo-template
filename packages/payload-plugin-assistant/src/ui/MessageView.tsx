@@ -22,6 +22,11 @@ export interface MessageViewProps {
   /** The admin route (`/admin`): links under it navigate inside the admin. */
   adminRoute: string;
   hrefFor: (ref: DocumentRef) => string;
+  /**
+   * Renders a tool call instead of its row (the approval card of a write), or `undefined` for
+   * the default row.
+   */
+  renderToolCall?: (call: ToolCallLike, result: ToolResultLike | undefined) => React.ReactNode | undefined;
 }
 
 /** Collects tool results by `toolCallId` across messages. */
@@ -90,7 +95,7 @@ function markdownComponents(adminRoute: string) {
 }
 
 /** One message: Markdown text, reasoning collapsed, tool calls as compact rows. */
-export function MessageView({ message, results, slugs, adminRoute, hrefFor }: MessageViewProps) {
+export function MessageView({ message, results, slugs, adminRoute, hrefFor, renderToolCall }: MessageViewProps) {
   const components = useMemo(() => markdownComponents(adminRoute), [adminRoute]);
   const isUser = message.role === "user";
 
@@ -135,6 +140,8 @@ export function MessageView({ message, results, slugs, adminRoute, hrefFor }: Me
       case "tool-call": {
         const call = part as unknown as ToolCallLike;
         const result = results.get(call.id);
+        const custom = renderToolCall?.(call, result);
+        if (custom !== undefined) return <React.Fragment key={key}>{custom}</React.Fragment>;
         return (
           <ToolCallRow
             call={call}

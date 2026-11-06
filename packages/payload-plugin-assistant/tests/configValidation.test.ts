@@ -41,6 +41,7 @@ describe("assistantPlugin", () => {
       "get /assistant/config",
       "post /assistant/chat",
       "get /assistant/chat",
+      "get /assistant/approvals",
       "post /assistant/chat/stop",
       "get /assistant/conversations",
       "get /assistant/conversations/:threadId",

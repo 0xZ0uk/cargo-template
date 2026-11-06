@@ -1,4 +1,5 @@
 import type { ModelMessage, RunAgentResumeItem } from "@tanstack/ai";
+import { MAX_REJECT_REASON_CHARS, REJECTED_TOOL_RESULT } from "../approvals/types";
 
 /** Thread and run ids: what a UUID, a nanoid or a TanStack id looks like. Nothing that could break a header. */
 const ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
@@ -15,7 +16,14 @@ export type ValidChatRequest = {
   model: string | undefined;
   messages: ModelMessage[];
   resume: RunAgentResumeItem[] | undefined;
+  /** Approvals sent with the `updatedAt` their card showed: checked for a change since (409 `stale`). */
+  seen: SeenApproval[];
 };
+
+export interface SeenApproval {
+  interruptId: string;
+  seenUpdatedAt: string;
+}
 
 export type Validation<T> = { ok: true; value: T } | { ok: false; error: string };
 
@@ -37,12 +45,42 @@ function userText(content: unknown): string | undefined {
   return parts.join("\n");
 }
 
-function resumeItems(value: unknown): Validation<RunAgentResumeItem[] | undefined> {
+/**
+ * An approval answer as TanStack resumes it. The admin UI (and scripts) send
+ * `{ approved: true, seenUpdatedAt? }` or `{ approved: false, reason? }` (or a bare boolean);
+ * the server owns what reaches the tools:
+ *
+ * - approved → `{ approved: true }`: edited arguments are not accepted, the user approves what
+ *   the card showed. `seenUpdatedAt` is taken out for the stale check.
+ * - rejected → `{ approved: false, payload: { error, reason? } }`: the reject branch of the
+ *   tools' `approvalSchema` (`REJECT_APPROVAL_SCHEMA`); `payload` becomes the denied call's tool
+ *   result, so the model reads that the user said no, and why.
+ *
+ * Anything else (not an approval) passes through unchanged.
+ */
+function approvalAnswer(payload: unknown): Validation<{ payload: unknown; seenUpdatedAt?: string }> {
+  const envelope = payload && typeof payload === "object" && !Array.isArray(payload) ? (payload as Record<string, unknown>) : undefined;
+  const approved = typeof payload === "boolean" ? payload : typeof envelope?.approved === "boolean" ? envelope.approved : undefined;
+  if (approved === undefined) return { ok: true, value: { payload } };
+  if (approved) {
+    const seen = envelope?.seenUpdatedAt;
+    if (seen !== undefined && (typeof seen !== "string" || seen.length > 64)) return fail('"seenUpdatedAt" must be an ISO date');
+    return { ok: true, value: { payload: { approved: true }, ...(typeof seen === "string" ? { seenUpdatedAt: seen } : {}) } };
+  }
+  const reason = envelope?.reason;
+  if (reason !== undefined && reason !== null && typeof reason !== "string") return fail('"reason" must be text');
+  const text = typeof reason === "string" ? reason.trim() : "";
+  if (text.length > MAX_REJECT_REASON_CHARS) return fail(`"reason" is longer than ${MAX_REJECT_REASON_CHARS} characters`);
+  return { ok: true, value: { payload: { approved: false, payload: { error: REJECTED_TOOL_RESULT, ...(text ? { reason: text } : {}) } } } };
+}
+
+function resumeItems(value: unknown): Validation<{ items: RunAgentResumeItem[]; seen: SeenApproval[] } | undefined> {
   if (value === undefined || value === null) return { ok: true, value: undefined };
   if (!Array.isArray(value) || value.length === 0 || value.length > MAX_RESUME) {
     return fail(`"resume" must be a non-empty array of at most ${MAX_RESUME} decisions`);
   }
   const items: RunAgentResumeItem[] = [];
+  const seen: SeenApproval[] = [];
   for (const item of value) {
     const { interruptId, status, payload } = (item ?? {}) as Record<string, unknown>;
     if (typeof interruptId !== "string" || !interruptId || interruptId.length > 256) {
@@ -51,9 +89,16 @@ function resumeItems(value: unknown): Validation<RunAgentResumeItem[] | undefine
     if (status !== "resolved" && status !== "cancelled") {
       return fail('"resume[].status" must be "resolved" or "cancelled"');
     }
-    items.push({ interruptId, status, ...(payload !== undefined ? { payload } : {}) } as RunAgentResumeItem);
+    if (status === "cancelled" || payload === undefined) {
+      items.push({ interruptId, status, ...(payload !== undefined ? { payload } : {}) } as RunAgentResumeItem);
+      continue;
+    }
+    const answer = approvalAnswer(payload);
+    if (!answer.ok) return answer;
+    if (answer.value.seenUpdatedAt) seen.push({ interruptId, seenUpdatedAt: answer.value.seenUpdatedAt });
+    items.push({ interruptId, status, payload: answer.value.payload } as RunAgentResumeItem);
   }
-  return { ok: true, value: items };
+  return { ok: true, value: { items, seen } };
 }
 
 /**
@@ -109,6 +154,13 @@ export function validateChatBody(raw: unknown, headerRunId: string | null): Vali
 
   return {
     ok: true,
-    value: { threadId: body.threadId, runId: runId as string | undefined, model: model as string | undefined, messages, resume: resume.value },
+    value: {
+      threadId: body.threadId,
+      runId: runId as string | undefined,
+      model: model as string | undefined,
+      messages,
+      resume: resume.value?.items,
+      seen: resume.value?.seen ?? [],
+    },
   };
 }

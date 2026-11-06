@@ -9,6 +9,8 @@ export const CHAT_ENDPOINT_PATH = "/assistant/chat";
 export const STOP_ENDPOINT_PATH = "/assistant/chat/stop";
 /** The caller's conversations: `GET /api/assistant/conversations`, then `/:threadId`. */
 export const CONVERSATIONS_ENDPOINT_PATH = "/assistant/conversations";
+/** What each pending approval would change: `GET /api/assistant/approvals?threadId=`. */
+export const APPROVALS_ENDPOINT_PATH = "/assistant/approvals";
 /** What the admin UI needs first: `GET /api/assistant/config`. */
 export const CONFIG_ENDPOINT_PATH = "/assistant/config";
 

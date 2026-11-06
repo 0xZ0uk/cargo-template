@@ -190,6 +190,18 @@ describe("tool calls", () => {
     ]);
   });
 
+  it("never links the documents of a delete: they no longer exist", () => {
+    for (const name of ["deleteDocuments", "deleteDocument"]) {
+      expect(
+        documentRefs(
+          { id: "d", name, input: { slug: "pages", id: 7 } },
+          { toolCallId: "d", content: fenced('Document deleted successfully from collection "pages"!', { id: 7, title: "Old" }) },
+          slugs
+        )
+      ).toEqual([]);
+    }
+  });
+
   it("caps the links and skips failed calls' results", () => {
     const docs = Array.from({ length: 30 }, (_, i) => ({ id: i + 1 }));
     expect(

@@ -72,6 +72,30 @@ const DROPPED = new Set<string>([...AUTH_TOOL_NAMES, ...UNSUPPORTED_TOOL_NAMES])
 export const needsApproval = (tool: Pick<McpTool, "annotations">): boolean =>
   tool.annotations?.readOnlyHint !== true;
 
+/**
+ * The reject branch of every approval tool's `approvalSchema`: a rejection carries a payload,
+ * `{ error, reason? }`, which `chat()` uses as the denied call's tool result. The server builds
+ * it from the UI's `{ approved: false, reason }` (`src/server/validate.ts`), so the model reads
+ * that the user said no, and why. Approving takes no payload (no approve branch).
+ */
+export const REJECT_APPROVAL_SCHEMA = {
+  type: "object",
+  properties: {
+    error: { type: "string" },
+    reason: { type: "string", maxLength: 2000 },
+  },
+  required: ["error"],
+  additionalProperties: false,
+} as const;
+
+/** Gives the tools that need approval the reject payload schema (in place; returns the list). */
+export function withRejectPayload<T extends { needsApproval?: unknown }>(tools: T[]): T[] {
+  for (const tool of tools) {
+    if (tool.needsApproval) (tool as T & { approvalSchema?: unknown }).approvalSchema = { reject: REJECT_APPROVAL_SCHEMA };
+  }
+  return tools;
+}
+
 /** The built-in filter plus the plugin's `toolFilter`. */
 export const buildToolFilter =
   (extra?: (tool: AssistantToolInfo) => boolean) =>
@@ -178,7 +202,7 @@ export function createPayloadToolSource(options: PayloadToolSourceOptions): Payl
     async tools(toolsOptions) {
       try {
         const connected = await connect(toolsOptions?.signal);
-        return await connected.tools(toolsOptions);
+        return withRejectPayload(await connected.tools(toolsOptions));
       } catch (error) {
         throw toDiscoveryError(error);
       }
@@ -239,6 +263,7 @@ export const PAYLOAD_TOOLS_SYSTEM_PROMPT = [
   "On findDocuments, always pass `select` with only the fields you need, a small `limit` (10 or fewer unless the user asks for more) and `depth: 0`. Use countDocuments to answer how-many questions.",
   "The draft/published status of a versioned document is the `_status` field. Write drafts (`draft: true`) unless the user asks you to publish.",
   "Tools that change content wait for the user's approval. If a tool returns an access error, tell the user you are not allowed to do that; do not retry it or look for a workaround.",
+  "If the user rejects a change, nothing was written: read their reason, if they gave one, and don't propose the same change again unless they ask.",
 ].join("\n");
 
 /** {@link PAYLOAD_TOOLS_SYSTEM_PROMPT}, after the site's own `instructions` when given. */

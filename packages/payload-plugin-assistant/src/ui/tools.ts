@@ -215,6 +215,8 @@ export function documentRefs(
     return slugs.globals.has(target) ? [{ kind: "global", slug: target, label: target }] : [];
   }
   if (!slugs.collections.has(target)) return [];
+  // A delete leaves nothing to open: its documents' edit views would be "not found".
+  if (/^delete/i.test(call.name)) return [];
 
   const refs = new Map<string, DocumentRef>();
   const add = (id: string | undefined, label?: string) => {
