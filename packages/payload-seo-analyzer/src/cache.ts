@@ -295,6 +295,56 @@ export function hashConfig(value: unknown): string {
   return (h >>> 0).toString(36)
 }
 
+/** The slice of a request the best-effort cache helpers need: only the logger. */
+interface CacheLogReq {
+  payload?: { logger?: { warn?: (message: string) => void } }
+}
+
+/** A lookup that came back from a failing store (read as a miss); `set` is skipped for it. */
+export interface SafeCacheLookup<T> extends CacheLookup<T> {
+  storeFailed?: boolean
+}
+
+/**
+ * Best-effort `lookup` for the public documents (sitemaps, llms.txt): a store read error is
+ * logged and treated as a cache miss, so the caller builds and serves the document instead of
+ * failing a request from Googlebot over an R2 blip. Admin endpoints keep calling `lookup` directly.
+ */
+export async function safeLookup<T>(
+  cache: SeoSharedCache,
+  base: string,
+  key: string,
+  req: CacheLogReq,
+): Promise<SafeCacheLookup<T>> {
+  try {
+    return await cache.lookup<T>(base, key)
+  } catch (e) {
+    req.payload?.logger?.warn?.(`[seo] cache read failed for ${base}: ${e instanceof Error ? e.message : 'unknown'}`)
+    return { data: null, gen: '', storeFailed: true }
+  }
+}
+
+/**
+ * Best-effort `set` for the public documents: a store write error is logged and swallowed,
+ * the freshly built document is still returned. Skipped when the lookup already failed (the
+ * store is unreachable and there is no valid generation to stamp the entry with).
+ */
+export async function safeSet<T>(
+  cache: SeoSharedCache,
+  base: string,
+  key: string,
+  data: T,
+  lookup: SafeCacheLookup<unknown>,
+  req: CacheLogReq,
+): Promise<void> {
+  if (lookup.storeFailed) return
+  try {
+    await cache.set(base, key, data, lookup.gen)
+  } catch (e) {
+    req.payload?.logger?.warn?.(`[seo] cache write failed for ${base}: ${e instanceof Error ? e.message : 'unknown'}`)
+  }
+}
+
 /**
  * Cache layer used by the endpoints and hooks whose results the admin UI depends on.
  *

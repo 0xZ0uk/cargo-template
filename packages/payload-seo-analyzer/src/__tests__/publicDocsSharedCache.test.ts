@@ -244,3 +244,79 @@ describe('llms.txt with a cacheStore', () => {
     expect(store.data.size).toBe(0)
   })
 })
+
+describe('public documents survive a failing cacheStore, and are keyed by config', () => {
+  const docs = [page('about', { title: 'About us', publishedAt: new Date().toISOString() })]
+
+  const handlers = [
+    ['sitemap.xml', (cache: SeoSharedCache, cfg: object) => createSitemapHandler(['pages'], cfg, cache), 'sitemap.xml', '/about'],
+    ['sitemap-news', (cache: SeoSharedCache, cfg: object) => createNewsSitemapHandler(['pages'], cfg, cache), 'sitemap-news.xml', '/about'],
+    ['sitemap-images', (cache: SeoSharedCache, cfg: object) => createImageSitemapHandler(['pages'], cfg, cache), 'sitemap-images.xml', '<urlset'],
+    ['sitemap-video', (cache: SeoSharedCache, cfg: object) => createVideoSitemapHandler(['pages'], cfg, cache), 'sitemap-video.xml', '<urlset'],
+    ['llms.txt', (cache: SeoSharedCache, cfg: object) => createLlmsTxtHandler(['pages'], cfg, cache), 'llms.txt', '/about'],
+  ] as const
+
+  for (const [name, create, file, needle] of handlers) {
+    describe(name, () => {
+      const url = `http://localhost/api/seo-plugin/${file}`
+
+      it('a failing store read is a cache miss: built and served with 200', async () => {
+        vi.stubEnv('SEO_LLMS_TXT', '1')
+        const store = fakeStore()
+        store.get = async () => {
+          throw new Error('r2 read down')
+        }
+        const payload = makePayload(docs)
+        const res = await create(isolate(store), config)(req(payload, url))
+        expect(res.status).toBe(200)
+        expect(await res.text()).toContain(needle)
+        expect(payload.find).toHaveBeenCalled()
+        expect(payload.logger.warn).toHaveBeenCalledWith(expect.stringContaining('cache read failed'))
+        expect(payload.logger.error).not.toHaveBeenCalled()
+      })
+
+      it('a failing store write is logged and the built document is still returned with 200', async () => {
+        vi.stubEnv('SEO_LLMS_TXT', '1')
+        const store = fakeStore()
+        store.put = async () => {
+          throw new Error('r2 write down')
+        }
+        const payload = makePayload(docs)
+        const res = await create(isolate(store), config)(req(payload, url))
+        expect(res.status).toBe(200)
+        expect(await res.text()).toContain(needle)
+        expect(payload.logger.warn).toHaveBeenCalledWith(expect.stringContaining('cache write failed'))
+        expect(payload.logger.error).not.toHaveBeenCalled()
+      })
+
+      it('a changed siteName / collectionRoutes rebuilds instead of reusing the persisted entry', async () => {
+        vi.stubEnv('SEO_LLMS_TXT', '1')
+        const store = fakeStore()
+        const payload = makePayload(docs)
+        const r = req(payload, url)
+        const base = { siteUrl: SITE, siteName: 'One' }
+        await create(isolate(store), base)(r)
+        const keys = [...store.data.keys()].filter((k) => k.startsWith('entry/'))
+        expect(keys).toHaveLength(1)
+
+        // Same config on a fresh isolate: reused.
+        const calls = payload.find.mock.calls.length
+        await create(isolate(store), base)(r)
+        expect(payload.find.mock.calls.length).toBe(calls)
+
+        // Changed config: a new key and a rebuild.
+        await create(isolate(store), { ...base, siteName: 'Two' })(r)
+        expect(payload.find.mock.calls.length).toBeGreaterThan(calls)
+        const afterName = [...store.data.keys()].filter((k) => k.startsWith('entry/'))
+        expect(afterName).toHaveLength(2)
+
+        const callsAfterName = payload.find.mock.calls.length
+        await create(isolate(store), { ...base, collectionRoutes: { pages: '/p' } })(r)
+        expect(payload.find.mock.calls.length).toBeGreaterThan(callsAfterName)
+        const all = [...store.data.keys()].filter((k) => k.startsWith('entry/'))
+        expect(new Set(all).size).toBe(3)
+        for (const key of all) expect(key).toMatch(KEY_CHARS)
+      })
+    })
+  }
+})

@@ -10,7 +10,7 @@ import { buildDocPath } from '../helpers/docUrl.js'
 import { requestOrigin, resolveSiteUrl } from '../helpers/siteUrl.js'
 import { buildSelect } from '../helpers/buildSelect.js'
 import { fetchAllDocs } from '../helpers/fetchAllDocs.js'
-import { defaultSeoSharedCache, type SeoSharedCache } from '../cache.js'
+import { defaultSeoSharedCache, hashConfig, safeLookup, safeSet, type SeoSharedCache } from '../cache.js'
 import { sha256Hex } from '../helpers/sha256.js'
 
 /**
@@ -102,8 +102,11 @@ export function createSitemapHandler(
       const serverUrl = resolveSiteUrl(seoConfig?.siteUrl, requestOrigin(req))
       // The collections and the origin (request-derived: uppercase host, IPv6 literal, query
       // string…) are hashed so the key stays within the store's `[a-z0-9:/._-]`.
-      const cacheKey = `${SITEMAP_XML_CACHE_BASE}:${await sha256Hex(JSON.stringify([targetCollections, serverUrl]))}`
-      const lookup = await cache.lookup<string>(SITEMAP_XML_CACHE_BASE, cacheKey)
+      // Persisted entries outlive deploys: scope them by the config that shapes the XML
+      // (`collectionRoutes` builds every `<loc>`).
+      const configSuffix = cache.persistent ? `:${hashConfig({ v: 1, seoConfig: seoConfig ?? null })}` : ''
+      const cacheKey = `${SITEMAP_XML_CACHE_BASE}:${await sha256Hex(JSON.stringify([targetCollections, serverUrl]))}${configSuffix}`
+      const lookup = await safeLookup<string>(cache, SITEMAP_XML_CACHE_BASE, cacheKey, req)
       if (typeof lookup.data === 'string') return xmlResponse(lookup.data)
 
       // Read sitemap config from seo-settings
@@ -210,7 +213,7 @@ export function createSitemapHandler(
 
       // Stamped with the generation read BEFORE the build: a save that lands meanwhile makes
       // this entry stale instead of masking it.
-      await cache.set(SITEMAP_XML_CACHE_BASE, cacheKey, xml, lookup.gen)
+      await safeSet(cache, SITEMAP_XML_CACHE_BASE, cacheKey, xml, lookup, req)
       return xmlResponse(xml)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Internal server error'

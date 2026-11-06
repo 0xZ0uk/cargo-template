@@ -21,7 +21,7 @@
  */
 import type { Payload, PayloadHandler } from 'payload'
 import { buildDocPath } from '../helpers/docUrl.js'
-import { defaultSeoSharedCache, type SeoSharedCache } from '../cache.js'
+import { defaultSeoSharedCache, hashConfig, safeLookup, safeSet, type SeoSharedCache } from '../cache.js'
 import { sha256Hex } from '../helpers/sha256.js'
 import type { SeoConfig } from '../types.js'
 import { resolveSiteUrl as resolveSharedSiteUrl } from '../helpers/siteUrl.js'
@@ -62,8 +62,17 @@ function docPath(slug: string, collection?: string, seoConfig?: SeoConfig): stri
  * collections and the site URL, so a changed `SITE_URL` never serves an old document). Hashed
  * to stay within the store's `[a-z0-9:/._-]`.
  */
-async function sitemapCacheKey(base: string, targetCollections: string[], siteUrl: string): Promise<string> {
-  return `${base}:${await sha256Hex(JSON.stringify([targetCollections, siteUrl]))}`
+async function sitemapCacheKey(
+  cache: SeoSharedCache,
+  base: string,
+  targetCollections: string[],
+  siteUrl: string,
+  seoConfig: SeoConfig | undefined,
+): Promise<string> {
+  // Persisted entries outlive deploys: scope them by the config that shapes the XML
+  // (`siteName` is the news publication, `collectionRoutes` builds every `<loc>`).
+  const configSuffix = cache.persistent ? `:${hashConfig({ v: 1, seoConfig: seoConfig ?? null })}` : ''
+  return `${base}:${await sha256Hex(JSON.stringify([targetCollections, siteUrl]))}${configSuffix}`
 }
 
 function xmlResponse(xml: string, status = 200): Response {
@@ -166,8 +175,8 @@ export function createNewsSitemapHandler(
     try {
       const siteUrl = resolveSiteUrl(seoConfig)
       // Serve the rendered XML while it is still warm — see the file header.
-      const cacheKey = await sitemapCacheKey(SITEMAP_NEWS_CACHE_BASE, targetCollections, siteUrl)
-      const lookup = await cache.lookup<string>(SITEMAP_NEWS_CACHE_BASE, cacheKey)
+      const cacheKey = await sitemapCacheKey(cache, SITEMAP_NEWS_CACHE_BASE, targetCollections, siteUrl, seoConfig)
+      const lookup = await safeLookup<string>(cache, SITEMAP_NEWS_CACHE_BASE, cacheKey, req)
       if (typeof lookup.data === 'string') return xmlResponse(lookup.data)
 
       // Publication name: configured siteName, else the host.
@@ -202,7 +211,7 @@ export function createNewsSitemapHandler(
       })
 
       const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:news="http://www.google.com/schemas/sitemap-news/0.9">\n${entries.join('\n')}\n</urlset>`
-      await cache.set(SITEMAP_NEWS_CACHE_BASE, cacheKey, xml, lookup.gen)
+      await safeSet(cache, SITEMAP_NEWS_CACHE_BASE, cacheKey, xml, lookup, req)
       return xmlResponse(xml)
     } catch (error) {
       req.payload.logger.error(`[seo] sitemap-news error: ${error instanceof Error ? error.message : 'unknown'}`)
@@ -223,8 +232,8 @@ export function createImageSitemapHandler(
     try {
       const siteUrl = resolveSiteUrl(seoConfig)
       // Serve the rendered XML while it is still warm — see the file header.
-      const cacheKey = await sitemapCacheKey(SITEMAP_IMAGES_CACHE_BASE, targetCollections, siteUrl)
-      const lookup = await cache.lookup<string>(SITEMAP_IMAGES_CACHE_BASE, cacheKey)
+      const cacheKey = await sitemapCacheKey(cache, SITEMAP_IMAGES_CACHE_BASE, targetCollections, siteUrl, seoConfig)
+      const lookup = await safeLookup<string>(cache, SITEMAP_IMAGES_CACHE_BASE, cacheKey, req)
       if (typeof lookup.data === 'string') return xmlResponse(lookup.data)
 
       const entries: string[] = []
@@ -242,7 +251,7 @@ export function createImageSitemapHandler(
       })
 
       const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">\n${entries.join('\n')}\n</urlset>`
-      await cache.set(SITEMAP_IMAGES_CACHE_BASE, cacheKey, xml, lookup.gen)
+      await safeSet(cache, SITEMAP_IMAGES_CACHE_BASE, cacheKey, xml, lookup, req)
       return xmlResponse(xml)
     } catch (error) {
       req.payload.logger.error(`[seo] sitemap-images error: ${error instanceof Error ? error.message : 'unknown'}`)
@@ -263,8 +272,8 @@ export function createVideoSitemapHandler(
     try {
       const siteUrl = resolveSiteUrl(seoConfig)
       // Serve the rendered XML while it is still warm — see the file header.
-      const cacheKey = await sitemapCacheKey(SITEMAP_VIDEO_CACHE_BASE, targetCollections, siteUrl)
-      const lookup = await cache.lookup<string>(SITEMAP_VIDEO_CACHE_BASE, cacheKey)
+      const cacheKey = await sitemapCacheKey(cache, SITEMAP_VIDEO_CACHE_BASE, targetCollections, siteUrl, seoConfig)
+      const lookup = await safeLookup<string>(cache, SITEMAP_VIDEO_CACHE_BASE, cacheKey, req)
       if (typeof lookup.data === 'string') return xmlResponse(lookup.data)
 
       const entries: string[] = []
@@ -299,7 +308,7 @@ export function createVideoSitemapHandler(
       })
 
       const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:video="http://www.google.com/schemas/sitemap-video/1.1">\n${entries.join('\n')}\n</urlset>`
-      await cache.set(SITEMAP_VIDEO_CACHE_BASE, cacheKey, xml, lookup.gen)
+      await safeSet(cache, SITEMAP_VIDEO_CACHE_BASE, cacheKey, xml, lookup, req)
       return xmlResponse(xml)
     } catch (error) {
       req.payload.logger.error(`[seo] sitemap-video error: ${error instanceof Error ? error.message : 'unknown'}`)

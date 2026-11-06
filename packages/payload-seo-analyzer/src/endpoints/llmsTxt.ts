@@ -14,7 +14,7 @@
 import type { PayloadHandler } from 'payload'
 import { buildDocPath } from '../helpers/docUrl.js'
 import type { SeoConfig } from '../types.js'
-import { defaultSeoSharedCache, type SeoSharedCache } from '../cache.js'
+import { defaultSeoSharedCache, hashConfig, safeLookup, safeSet, type SeoSharedCache } from '../cache.js'
 import { sha256Hex } from '../helpers/sha256.js'
 import { buildSelect } from '../helpers/buildSelect.js'
 import { fetchAllDocs } from '../helpers/fetchAllDocs.js'
@@ -128,8 +128,11 @@ export function createLlmsTxtHandler(
       const siteUrl = resolveSiteUrl(seoConfig?.siteUrl, requestOrigin(req))
       // The origin is request-derived when no site URL is configured: hash it (and the
       // collections) to keep the key within the store's `[a-z0-9:/._-]`.
-      const cacheKey = `${LLMS_TXT_CACHE_BASE}:${await sha256Hex(JSON.stringify([targetCollections, siteUrl]))}`
-      const lookup = await cache.lookup<string>(LLMS_TXT_CACHE_BASE, cacheKey)
+      // Persisted entries outlive deploys: scope them by the config that shapes the body
+      // (`siteName`, `siteDescription`, `collectionRoutes`).
+      const configSuffix = cache.persistent ? `:${hashConfig({ v: 1, seoConfig: seoConfig ?? null })}` : ''
+      const cacheKey = `${LLMS_TXT_CACHE_BASE}:${await sha256Hex(JSON.stringify([targetCollections, siteUrl]))}${configSuffix}`
+      const lookup = await safeLookup<string>(cache, LLMS_TXT_CACHE_BASE, cacheKey, req)
       if (typeof lookup.data === 'string') return new Response(lookup.data, { headers: textHeaders })
 
       const siteName = resolveSiteName(seoConfig, siteUrl)
@@ -169,7 +172,7 @@ export function createLlmsTxtHandler(
 
       const body = buildLlmsTxt({ siteName, siteDescription, sections })
       // Stamped with the generation read before the build, so a save that lands meanwhile wins.
-      await cache.set(LLMS_TXT_CACHE_BASE, cacheKey, body, lookup.gen)
+      await safeSet(cache, LLMS_TXT_CACHE_BASE, cacheKey, body, lookup, req)
       return new Response(body, { headers: textHeaders })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Internal server error'
