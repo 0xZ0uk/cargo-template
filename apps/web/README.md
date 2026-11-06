@@ -76,6 +76,37 @@ The assistant's two Durable Object classes (`AssistantConversation`, `AssistantC
 
 `pnpm run deploy` (not `pnpm deploy`, which is pnpm's own command) applies migrations to the remote D1 database, runs `PRAGMA optimize`, builds the Worker with `APP_ENV=production` and deploys it with `varlock-wrangler`. Non-sensitive values become Worker vars and sensitive ones become secrets. `varlock-wrangler deploy` replaces the Worker's vars and secrets with the schema's, so define any new ones in `.env.schema` rather than the dashboard. The build fails if `PAYLOAD_SECRET` doesn't resolve for production. If you add a named Wrangler environment, set `CLOUDFLARE_ENV` so the migration commands use the same bindings.
 
+### Deploying to staging
+
+Deploy-only behaviour (the assistant's Durable Objects, the `ASSISTANT_SELF` service binding, Workers Rate Limiting) can't be tried on a preview URL: `wrangler versions upload` refuses a config with Durable Object `exports`. Use the `staging` Wrangler environment instead: a second Worker, `cargo-template-staging` on `workers.dev`, with its own D1 databases, R2 bucket, Durable Object namespaces, rate-limit counters (`namespace_id` 1101–1105) and Analytics Engine dataset (`cargo_ab_staging`). Production's resources are never referenced by it. Its `ASSISTANT_SELF` binding points at `cargo-template-staging`, so the assistant's tool calls stay on staging.
+
+Create the resources once, in the account that holds production, and put the printed `database_id`s in `env.staging.d1_databases` in `wrangler.jsonc`:
+
+```bash
+export CLOUDFLARE_ACCOUNT_ID=<account id>   # `wrangler whoami`; needed when the login sees several accounts
+pnpm wrangler d1 create cargo-template-staging
+pnpm wrangler d1 create cargo-template-seo-staging
+pnpm wrangler r2 bucket create cargo-template-media-staging
+pnpm r2:lifecycle:staging
+```
+
+Staging has its own `APP_ENV`, so varlock reads its values from `.env.staging.local` (gitignored), not production's:
+
+```bash
+echo "PAYLOAD_SECRET=$(openssl rand -hex 32)" > .env.staging.local
+echo "OPENROUTER_API_KEY=..." >> .env.staging.local   # optional: the assistant and SEO AI features
+```
+
+Keep that `PAYLOAD_SECRET` for later deploys (a new one logs everyone out and invalidates API keys). Never set `ASSISTANT_TEST_MODEL` there; `APP_ENV=staging` ignores it anyway. Then deploy:
+
+```bash
+pnpm run deploy:staging
+```
+
+It runs `migrate:staging` and `seo-store:migrate:staging` (the Payload CLI and the SEO store against the staging D1s, through `CLOUDFLARE_ENV=staging`), `PRAGMA optimize`, then builds with `APP_ENV=staging CLOUDFLARE_ENV=staging` and deploys with `varlock-wrangler deploy`. The Cloudflare Vite plugin writes the staging environment, flattened, into `dist/server/wrangler.json`, which `wrangler deploy` picks up, so the deploy step takes no `--env`. The first deploy creates the Durable Object namespaces. Open `/admin` on the printed URL to create the first user. The cron trigger runs on staging too.
+
+To remove staging, delete the Worker (which deletes its Durable Objects) and the resources: `pnpm wrangler delete --name cargo-template-staging`, `pnpm wrangler d1 delete cargo-template-staging`, `pnpm wrangler d1 delete cargo-template-seo-staging`, then empty and delete the bucket (`pnpm wrangler r2 bucket delete cargo-template-media-staging`).
+
 ## Staying under D1's 10 GB limit
 
 A D1 database is capped at 10 GB. Most Payload sites never get close, as long as heavy or ever-growing data stays out of D1. This template is set up for that:
@@ -97,20 +128,21 @@ When you add features that produce append-only data, keep it out of the main D1 
 
 Run these inside `apps/web`, or from the repo root as `pnpm web <command>` (e.g. `pnpm web migrate:create`).
 
-| Command               | Purpose                                                         |
-| --------------------- | --------------------------------------------------------------- |
-| `pnpm dev`            | Node dev server with local D1 and local-disk media              |
-| `pnpm build`          | Build the Worker and static assets                              |
-| `pnpm preview`        | Build and run in local workerd (local D1 + R2)                  |
-| `pnpm run deploy`     | Migrate remote D1, build and deploy                             |
-| `pnpm r2:lifecycle`   | Add the R2 rule that expires stale SEO cache objects            |
-| `pnpm generate:types` | Regenerate Cloudflare (`cloudflare-env.d.ts`) and Payload types |
-| `pnpm migrate:create` | Create a migration in `src/db/migrations`                       |
-| `pnpm migrate`        | Apply migrations to the local D1 database                       |
-| `pnpm migrate:remote` | Apply migrations to the remote D1 database                      |
-| `pnpm test:int`       | Run Local API integration tests                                 |
-| `pnpm test:e2e`       | Run Playwright against `pnpm dev` (`E2E_PORT`, default 3000; `E2E_BASE_URL` for a server you started on the local D1) |
-| `pnpm lint`           | Run ESLint                                                      |
+| Command                   | Purpose                                                                                                               |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `pnpm dev`                | Node dev server with local D1 and local-disk media                                                                    |
+| `pnpm build`              | Build the Worker and static assets                                                                                    |
+| `pnpm preview`            | Build and run in local workerd (local D1 + R2)                                                                        |
+| `pnpm run deploy`         | Migrate remote D1, build and deploy                                                                                   |
+| `pnpm run deploy:staging` | The same for the staging Worker (see Deploying to staging)                                                            |
+| `pnpm r2:lifecycle`       | Add the R2 rule that expires stale SEO cache objects                                                                  |
+| `pnpm generate:types`     | Regenerate Cloudflare (`cloudflare-env.d.ts`) and Payload types                                                       |
+| `pnpm migrate:create`     | Create a migration in `src/db/migrations`                                                                             |
+| `pnpm migrate`            | Apply migrations to the local D1 database                                                                             |
+| `pnpm migrate:remote`     | Apply migrations to the remote D1 database                                                                            |
+| `pnpm test:int`           | Run Local API integration tests                                                                                       |
+| `pnpm test:e2e`           | Run Playwright against `pnpm dev` (`E2E_PORT`, default 3000; `E2E_BASE_URL` for a server you started on the local D1) |
+| `pnpm lint`               | Run ESLint                                                                                                            |
 
 ## How it works
 
@@ -147,11 +179,11 @@ A/B measurement (`src/plugins/abMeasurement.ts`) writes to Workers Analytics Eng
 
 **GA4 (optional, next to Analytics Engine).** Set `GA_MEASUREMENT_ID` (a `G-XXXXXXXXXX` id from Google Analytics > Admin > Data streams; it's public, not a secret: set it in `.env.production`, like `SITE_URL`) and public pages load gtag.js (`async`, from `https://www.googletagmanager.com/gtag/js?id=…`) through the page's `<head>` (`gtagScripts` in `src/utilities/googleAnalytics.ts`); a page that runs an experiment also renders the plugin's `<ExperimentTracker>`, which tags GA4 events with the experiment, the visitor's bucket and their visitor id. Unset, nothing GA-related renders or loads: no script tag, no inline snippet, no request. `loadPage` returns the id as `gaMeasurementId`, and `null` for every draft (live preview, on-page editing, preview links) and for 404s and redirects, so those never load it; the admin isn't a frontend route and never does. Create these **event-scoped custom dimensions** in GA4 (Admin > Custom definitions) to report on them; the parameter names are what the tracker sets:
 
-| Dimension name | Event parameter |
-| --- | --- |
-| A/B experiment | `fr_ab_experiment` (the page's path, e.g. `/pricing`) |
-| A/B variant | `fr_ab_variant` (the bucket: `original` or the variant's slug) |
-| A/B visitor ID | `fr_ab_visitor_id` |
+| Dimension name | Event parameter                                                |
+| -------------- | -------------------------------------------------------------- |
+| A/B experiment | `fr_ab_experiment` (the page's path, e.g. `/pricing`)          |
+| A/B variant    | `fr_ab_variant` (the bucket: `original` or the variant's slug) |
+| A/B visitor ID | `fr_ab_visitor_id`                                             |
 
 The tracker reads the experiment (`exp_<path>`) and visitor id (`ab_visitor_id`) cookies the A/B resolver already sets; they aren't HttpOnly, and nothing is added to the page for it beyond the experiment's path. The bucket and visitor id go to GA4 as `fr_ab_*` parameters, so mention them in your privacy policy and consent flow: this template adds no consent banner, so gate `GA_MEASUREMENT_ID` on your own consent requirements. On a full page load the first page view carries the dimensions (`GoogleAnalyticsConfig` sends GA4's `config` after the tracker's `set`, and gtag runs its queue in order); on client-side navigation the tracker sets them again when an experiment page mounts, and they apply to the events GA4 sends after that. GA4 and Analytics Engine **don't count the same thing**: GA4 counts events, users and sessions (every page view, filtered by its own consent, ad-blockers and sampling), while Analytics Engine counts one impression per visitor, experiment run and bucket, and one conversion per visitor, run and bucket, server-side and unaffected by blockers. Expect GA4 numbers to be larger for views and smaller for users, and don't compare the two directly.
 
@@ -188,7 +220,7 @@ In development you can skip auth with `http://localhost:3000/api/mcp?overrideAcc
 
 **Rate limit.** `ASSISTANT_RATE_LIMIT` (`wrangler.jsonc`, `namespace_id` 1005) allows 20 chat turns per minute per admin user, where a turn is a message or an approval answer. It's wired to the plugin's `rateLimit` hook in `src/plugins/assistantRateLimit.ts`. Without the binding there's no limit.
 
-**Tests.** `tests/e2e/assistant.e2e.spec.ts` sends a message, then approves and rejects an update to a draft page. It needs no key: `playwright.config.ts` starts the dev server with `ASSISTANT_TEST_MODEL=1`, which turns on the plugin's scripted test model. Only requests to `localhost` use it, and `APP_ENV=production` ignores the flag, so a deployed Worker always uses OpenRouter.
+**Tests.** `tests/e2e/assistant.e2e.spec.ts` sends a message, then approves and rejects an update to a draft page. It needs no key: `playwright.config.ts` starts the dev server with `ASSISTANT_TEST_MODEL=1`, which turns on the plugin's scripted test model. Only requests to `localhost` use it, and `APP_ENV=production` or `staging` ignores the flag, so a deployed Worker always uses OpenRouter.
 
 ### Current limitations
 

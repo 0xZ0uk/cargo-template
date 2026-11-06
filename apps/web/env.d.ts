@@ -10,16 +10,17 @@
 export type CoercedEnvSchema = {
   /**
    * **APP_ENV**  
-   * Selects which `.env.[APP_ENV]` files load. `pnpm deploy` sets it to `production`.  
+   * Selects which `.env.[APP_ENV]` files load. `pnpm run deploy` sets it to `production`,  
+   * `pnpm run deploy:staging` to `staging` (the staging Worker, see README > Deploying to staging).  
    * ![icon](data:image/svg+xml;utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2220%22%20height%3D%2220%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20fill%3D%22%23808080%22%20d%3D%22M7.885%2010.23L12%203.463l4.116%206.769zm9.606%2011q-1.558%200-2.64-1.081t-1.082-2.64t1.082-2.649t2.64-1.09t2.649%201.09t1.09%202.649t-1.09%202.64t-2.649%201.082m-13.722-.5v-6.462h6.462v6.462z%22%2F%3E%3C%2Fsvg%3E)   
    */
-  APP_ENV?: "development" | "production";
+  APP_ENV?: "development" | "staging" | "production";
   
   /**
    * **PAYLOAD_SECRET** 🔐 _sensitive_  
    * Signs Payload auth tokens and encrypts sensitive fields. Generate with  
    * `openssl rand -hex 32`. `varlock-wrangler deploy` uploads it as a Worker secret.  
-   * Leak detection is production-only: in dev, React's server component debug info serializes  
+   * Leak detection is on for deployed Workers only: in dev, React's server component debug info serializes  
    * props, and Payload's admin views pass the `payload` instance (config included) as a prop.  
    * ![icon](data:image/svg+xml;utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2220%22%20height%3D%2220%22%20viewBox%3D%220%200%2032%2032%22%3E%3Cpath%20fill%3D%22%23808080%22%20d%3D%22M29%2022h-5a2.003%202.003%200%200%201-2-2v-6a2%202%200%200%201%202-2h5v2h-5v6h5ZM18%2012h-4V8h-2v14h6a2.003%202.003%200%200%200%202-2v-6a2%202%200%200%200-2-2m-4%208v-6h4v6Zm-6-8H3v2h5v2H4a2%202%200%200%200-2%202v2a2%202%200%200%200%202%202h6v-8a2%202%200%200%200-2-2m0%208H4v-2h4Z%22%2F%3E%3C%2Fsvg%3E)   
    */
@@ -218,8 +219,9 @@ export type CoercedEnvSchema = {
    * **ASSISTANT_TEST_MODEL**  
    * Tests only: `1` answers admin assistant turns with a scripted model instead of OpenRouter, so  
    * the Playwright specs need no key (`playwright.config.ts` sets it for the server it starts).  
-   * Ignored when APP_ENV is `production`, and the plugin only uses it for requests to localhost,  
-   * so it can't replace the real model on a deployed Worker. Never set it in `.env.production`.  
+   * Ignored unless APP_ENV is `development`, and the plugin only uses it for requests to localhost,  
+   * so it can't replace the real model on a deployed Worker. Never set it in `.env.production` or  
+   * `.env.staging`.  
    * ![icon](data:image/svg+xml;utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2220%22%20height%3D%2220%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20fill%3D%22%23808080%22%20d%3D%22M7.885%2010.23L12%203.463l4.116%206.769zm9.606%2011q-1.558%200-2.64-1.081t-1.082-2.64t1.082-2.649t2.64-1.09t2.649%201.09t1.09%202.649t-1.09%202.64t-2.649%201.082m-13.722-.5v-6.462h6.462v6.462z%22%2F%3E%3C%2Fsvg%3E)   
    */
   ASSISTANT_TEST_MODEL?: 0 | 1;
