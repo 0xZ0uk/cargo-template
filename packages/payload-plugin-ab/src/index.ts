@@ -1,5 +1,16 @@
 export { abTestingPlugin } from "./plugin";
-export type { AbTestingPluginConfig, StorageAdapter, CollectionABConfig } from "./types/config";
+export type {
+  AbBucketResult,
+  AbConversionEvent,
+  AbMeasurementConfig,
+  AbMeasurementCookieConfig,
+  AbResults,
+  AbTestingPluginConfig,
+  CollectionABConfig,
+  StorageAdapter,
+} from "./types/config";
+export type { AbResultsResponse } from "./endpoints/measurement";
+export { DEFAULT_CONVERSION_COOKIE_PREFIX } from "./endpoints/measurement";
 export type { ManifestCache, ManifestCacheOptions, ManifestCacheValue } from "./cache/types";
 export type { AbCookieConfig } from "./cookie/types";
 export { resolveAbCookieNames } from "./cookie/utils/resolveAbCookieNames";

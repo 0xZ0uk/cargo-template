@@ -52,7 +52,8 @@ function patchField(fields: Field[], name: string, patcher: (f: Field) => Field)
 export function injectAdminFields<TVariantData extends object>(
   collection: CollectionConfig,
   collectionSlug: string,
-  abConfig: CollectionABConfig<TVariantData>
+  abConfig: CollectionABConfig<TVariantData>,
+  options: { showResults?: boolean } = {}
 ): CollectionConfig {
   const slugField = abConfig.slugField ?? DEFAULT_SLUG_FIELD;
 
@@ -97,6 +98,9 @@ export function injectAdminFields<TVariantData extends object>(
           clientProps: {
             slugField,
             titleField: abConfig.nameField ?? collection.admin?.useAsTitle ?? "title",
+            // Only with `measurement` configured: the panel then shows results per bucket from
+            // `GET {api}/_ab/results`.
+            ...(options.showResults ? { resultsPath: "/_ab/results" } : {}),
           },
         },
       },

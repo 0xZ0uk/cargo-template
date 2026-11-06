@@ -4,7 +4,7 @@ import { sqliteAdapter } from "@payloadcms/db-sqlite";
 import { buildConfig, getPayload, handleEndpoints } from "payload";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { abTestingPlugin } from "../../src";
+import { abTestingPlugin, type AbResults } from "../../src";
 import { payloadCollectionAdapter } from "../../src/adapters/payloadCollection";
 import { createResolveAbRewrite } from "../../src/middleware";
 
@@ -19,12 +19,15 @@ interface Variant {
 }
 
 const storage = payloadCollectionAdapter<Variant>();
+const recordConversion = vi.fn();
+const getResults = vi.fn(async (): Promise<AbResults> => ({ configured: false, reason: "No credentials." }));
 const PAGES = "pages" as CollectionSlug;
 const MANIFEST = "ab-manifest" as CollectionSlug;
 
 let payload: Payload;
 let config: SanitizedConfig;
 let token: string;
+let memberToken: string;
 
 type Doc = Record<string, unknown> & { id: number | string };
 
@@ -90,6 +93,8 @@ beforeAll(async () => {
     admin: { user: "users" },
     collections: [
       { slug: "users", auth: true, fields: [] },
+      // Another auth collection (site members): signed in, but not an admin-panel user.
+      { slug: "members", auth: true, fields: [] },
       {
         slug: "pages",
         admin: { useAsTitle: "title" },
@@ -112,6 +117,7 @@ beforeAll(async () => {
               typeof doc.slug === "string" && doc.slug ? `/${locale}/${doc.slug}` : null,
           },
         },
+        measurement: { recordConversion, getResults },
       }),
     ],
   });
@@ -126,6 +132,17 @@ beforeAll(async () => {
     data: { email: "editor@example.com", password: "test-password" },
   });
   token = login.token!;
+  await payload.create({
+    collection: "members" as CollectionSlug,
+    data: { email: "member@example.com", password: "test-password" } as never,
+    overrideAccess: true,
+  });
+  memberToken = (
+    await payload.login({
+      collection: "members" as never,
+      data: { email: "member@example.com", password: "test-password" },
+    })
+  ).token!;
 }, 60_000);
 
 afterAll(async () => {
@@ -151,7 +168,7 @@ describe("Payload 4 boot", () => {
     ) as any;
     expect(field.admin.components.Field).toEqual({
       path: "@cargo/payload-plugin-ab/admin/VariantsField#VariantsField",
-      clientProps: { slugField: "slug", titleField: "title" },
+      clientProps: { slugField: "slug", titleField: "title", resultsPath: "/_ab/results" },
     });
   });
 });
@@ -711,5 +728,164 @@ describe("manifest storage", () => {
       authorization: "JWT not-a-token",
     });
     await expect(wrong.read("/store/rest")).rejects.toThrow();
+  });
+});
+
+describe("measurement", () => {
+  let page: Doc;
+  let variant: Doc;
+  const KEY = "/en/measured";
+
+  const convert = (body: unknown, cookie = "", init: { contentType?: string } = {}) =>
+    handleEndpoints({
+      config,
+      request: new Request("http://localhost:3000/api/_ab/convert", {
+        method: "POST",
+        headers: { "Content-Type": init.contentType ?? "application/json", cookie },
+        body: typeof body === "string" ? body : JSON.stringify(body),
+      }),
+    }).then(async (res) => ({
+      status: res.status,
+      setCookie: res.headers.get("set-cookie"),
+      body: (await res.json().catch(() => null)) as Record<string, any>,
+    }));
+
+  beforeAll(async () => {
+    page = await createPublishedPage("measured", "Measured");
+    variant = await addVariant(page);
+    await payload.update({
+      collection: PAGES,
+      id: variant.id,
+      data: { _status: "published" } as never,
+      locale: "en" as never,
+      publishAllLocales: true,
+      overrideAccess: true,
+    });
+  });
+
+  afterEach(() => {
+    recordConversion.mockReset();
+    getResults.mockClear();
+  });
+
+  describe("POST /api/_ab/convert", () => {
+    const assigned = (bucket: string) =>
+      `ab_visitor_id=visitor-1; payload_ab_bucket_en_measured=${encodeURIComponent(bucket)}`;
+
+    it("records a conversion with the bucket and visitor from the cookies, not the body", async () => {
+      const res = await convert(
+        { experiment: KEY, goal: "cta", bucket: "original", visitorId: "forged" },
+        assigned(variant.slug as string)
+      );
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ recorded: true });
+      expect(recordConversion).toHaveBeenCalledTimes(1);
+      expect(recordConversion.mock.calls[0]![0]).toEqual({
+        experiment: KEY,
+        bucket: variant.slug,
+        goal: "cta",
+        visitorId: "visitor-1",
+      });
+      expect(res.setCookie).toMatch(
+        new RegExp(`^payload_ab_cv_en_measured=${variant.slug}; Path=/; .*SameSite=Lax; HttpOnly$`, "u")
+      );
+    });
+
+    it("counts a visitor once per bucket", async () => {
+      const cookie = `${assigned("original")}; payload_ab_cv_en_measured=original`;
+      const res = await convert({ experiment: KEY, goal: "cta" }, cookie);
+      expect(res.body).toEqual({ recorded: false, reason: "duplicate" });
+      expect(recordConversion).not.toHaveBeenCalled();
+
+      // A visitor moved to another bucket (their variant was deleted) converts there again.
+      const moved = `${assigned(variant.slug as string)}; payload_ab_cv_en_measured=original`;
+      expect((await convert({ experiment: KEY, goal: "cta" }, moved)).body).toEqual({ recorded: true });
+    });
+
+    it("accepts sendBeacon's text/plain body", async () => {
+      const res = await convert(JSON.stringify({ experiment: KEY, goal: "cta" }), assigned("original"), {
+        contentType: "text/plain;charset=UTF-8",
+      });
+      expect(res.status).toBe(200);
+      expect(recordConversion).toHaveBeenCalledTimes(1);
+    });
+
+    it("refuses a visitor without an assignment, or with a bucket that isn't live", async () => {
+      expect((await convert({ experiment: KEY, goal: "cta" })).status).toBe(409);
+      // No visitor id: the cookies weren't set by the resolver.
+      const noVisitor = `payload_ab_bucket_en_measured=original`;
+      expect((await convert({ experiment: KEY, goal: "cta" }, noVisitor)).status).toBe(409);
+      expect((await convert({ experiment: KEY, goal: "cta" }, assigned("measured--gone00"))).status).toBe(409);
+      expect(recordConversion).not.toHaveBeenCalled();
+    });
+
+    it("validates the body", async () => {
+      const cookie = assigned("original");
+      expect((await convert("not json", cookie)).status).toBe(400);
+      expect((await convert({ experiment: KEY, goal: "signup" }, cookie)).status).toBe(400);
+      expect((await convert({ experiment: "measured", goal: "cta" }, cookie)).status).toBe(400);
+      expect((await convert({ experiment: KEY }, cookie)).status).toBe(400);
+      expect((await convert(JSON.stringify({ experiment: KEY, goal: "cta", pad: "x".repeat(4096) }), cookie)).status).toBe(413);
+      expect(recordConversion).not.toHaveBeenCalled();
+    });
+
+    it("answers 404 for a page without an experiment", async () => {
+      const res = await convert({ experiment: "/en/no-experiment", goal: "cta" }, assigned("original"));
+      expect(res.status).toBe(404);
+    });
+
+    it("answers 500 when the host's recordConversion throws, and sets no marker", async () => {
+      recordConversion.mockRejectedValueOnce(new Error("boom"));
+      const res = await convert({ experiment: KEY, goal: "cta" }, assigned("original"));
+      expect(res.status).toBe(500);
+      expect(res.setCookie).toBeNull();
+    });
+  });
+
+  describe("GET /api/_ab/results", () => {
+    const results = (query: string, auth: string | null = `JWT ${token}`) =>
+      handleEndpoints({
+        config,
+        request: new Request(`http://localhost:3000/api/_ab/results?${query}`, {
+          headers: auth ? { Authorization: auth } : {},
+        }),
+      }).then(async (res) => ({ status: res.status, body: (await res.json()) as Record<string, any> }));
+
+    it("is for admin-panel users only", async () => {
+      expect((await results(`collection=pages&id=${page.id}`, null)).status).toBe(401);
+      expect((await results(`collection=pages&id=${page.id}`, `JWT ${memberToken}`)).status).toBe(403);
+      expect(getResults).not.toHaveBeenCalled();
+    });
+
+    it("computes the key from the document and passes the experiment's start", async () => {
+      const res = await results(`collection=pages&id=${page.id}&locale=pt`);
+      expect(res.status).toBe(200);
+      expect(res.body.experiment).toEqual({ key: "/pt/measured", startedAt: expect.any(String) });
+      expect(res.body.results).toEqual({ configured: false, reason: "No credentials." });
+      expect(getResults).toHaveBeenCalledWith(
+        expect.objectContaining({ experiment: "/pt/measured", startedAt: res.body.experiment.startedAt })
+      );
+    });
+
+    it("returns no experiment before a variant is published", async () => {
+      const draftOnly = await createPublishedPage("not-started", "Not started");
+      await addVariant(draftOnly);
+      const res = await results(`collection=pages&id=${draftOnly.id}`);
+      expect(res.body).toEqual({ experiment: null, results: null });
+      expect(getResults).not.toHaveBeenCalled();
+    });
+
+    it("validates the collection and refuses a variant", async () => {
+      expect((await results(`collection=posts&id=1`)).status).toBe(400);
+      expect((await results(`collection=pages`)).status).toBe(400);
+      expect((await results(`collection=pages&id=${variant.id}`)).status).toBe(400);
+    });
+
+    it("answers 502 when the host's getResults fails", async () => {
+      getResults.mockRejectedValueOnce(new Error("SQL API down"));
+      const res = await results(`collection=pages&id=${page.id}`);
+      expect(res.status).toBe(502);
+      expect(res.body.error).toBe("SQL API down");
+    });
   });
 });

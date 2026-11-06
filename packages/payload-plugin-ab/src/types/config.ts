@@ -1,4 +1,4 @@
-import type { CollectionConfig, GlobalConfig, Payload } from "payload";
+import type { CollectionConfig, GlobalConfig, Payload, PayloadRequest } from "payload";
 
 export interface StorageAdapter<TVariantData extends object = object> {
   /**
@@ -59,6 +59,79 @@ export interface CollectionABConfig<TVariantData extends object = object> {
   }) => TVariantData;
 }
 
+/** One conversion, as `POST /api/_ab/convert` hands it to `recordConversion`. */
+export interface AbConversionEvent {
+  /** The manifest key (the original page's path). */
+  experiment: string;
+  /** 'original' or a variant's bucket, read from the visitor's bucket cookie. */
+  bucket: string;
+  /** One of `measurement.goals`. */
+  goal: string;
+  /**
+   * From the visitor-id cookie. Pseudonymous but persistent: don't write it to a store that
+   * must hold no PII.
+   */
+  visitorId: string;
+}
+
+/** Counts for one bucket since the experiment started. */
+export interface AbBucketResult {
+  bucket: string;
+  impressions: number;
+  conversions: number;
+}
+
+export type AbResults =
+  /** The host can't read results (e.g. no analytics credentials). `reason` is shown to editors. */
+  | { configured: false; reason?: string }
+  | {
+      configured: true;
+      buckets: AbBucketResult[];
+      /** How many days the analytics store keeps events; older ones no longer count. */
+      retentionDays?: number;
+    };
+
+export interface AbMeasurementCookieConfig {
+  /** Must match the resolver's. Default: 'payload_ab_bucket'. */
+  bucketCookiePrefix?: string;
+  /** Must match the resolver's. Default: 'ab_visitor_id'. */
+  visitorIdCookieName?: string;
+  /**
+   * Prefix for the cookie that marks a visitor as converted for one experiment and bucket, so
+   * repeat clicks count once. Full name built like the bucket cookie's. Default: 'payload_ab_cv'.
+   */
+  conversionCookiePrefix?: string;
+  /** Seconds. Default: 7_776_000 (90 days, the bucket cookie's default). */
+  conversionCookieMaxAge?: number;
+}
+
+/**
+ * Measurement: where conversions go and where results come from. The plugin owns the
+ * endpoints, their checks and the admin panel; the host owns the analytics store.
+ */
+export interface AbMeasurementConfig<TVariantData extends object = object> {
+  /** Goal names `POST /api/_ab/convert` accepts. Default: `['cta']`. */
+  goals?: string[];
+  /** The bucket of a manifest entry. Default: its `bucket` property (the default variant data). */
+  getBucket?: (variant: TVariantData) => string;
+  /**
+   * Stores one conversion. Called once per visitor, experiment and bucket (a cookie marks
+   * the visitor as converted), after the bucket was read from the visitor's own cookies and
+   * checked against the live manifest.
+   */
+  recordConversion: (event: AbConversionEvent, req: PayloadRequest) => void | Promise<void>;
+  /**
+   * Reads the counts for one experiment since `startedAt`, for the Variants panel. Runs on
+   * the server only: credentials it uses never reach the browser.
+   */
+  getResults: (args: {
+    experiment: string;
+    startedAt: string;
+    req: PayloadRequest;
+  }) => Promise<AbResults>;
+  cookies?: AbMeasurementCookieConfig;
+}
+
 export interface AbTestingPluginConfig<TVariantData extends object = object> {
   /** Default: true */
   enabled?: boolean;
@@ -74,4 +147,10 @@ export interface AbTestingPluginConfig<TVariantData extends object = object> {
    * analytics plugin's `ab.experimentsCollectionSlug` if overridden.
    */
   experimentsCollectionSlug?: string;
+  /**
+   * Turns on measurement: `POST /api/_ab/convert` (conversions), `GET /api/_ab/results`
+   * (counts per bucket, admin-panel users only) and the results in the Variants panel.
+   * Without it none of these exist.
+   */
+  measurement?: AbMeasurementConfig<TVariantData>;
 }

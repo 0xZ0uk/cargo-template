@@ -21,6 +21,7 @@ import {
   AB_VARIANT_OF_FIELD,
 } from "../../constants";
 import { VariantRow } from "./VariantRow";
+import { VariantResults } from "./VariantResults";
 
 export interface VariantData {
   id: string;
@@ -33,6 +34,11 @@ interface VariantsFieldProps {
   slugField?: string;
   titleField?: string;
   collectionSlug?: string; // injected via customComponents clientProps
+  /**
+   * Set by the plugin when `measurement` is configured: the results endpoint, relative to the
+   * API route. Without it the panel shows no results.
+   */
+  resultsPath?: string;
 }
 
 const CLEAR_ALL_MODAL_SLUG = "ab-variants-clear-all";
@@ -41,6 +47,7 @@ export function VariantsField({
   slugField = "slug",
   titleField = "title",
   collectionSlug: collectionSlugProp,
+  resultsPath,
 }: VariantsFieldProps) {
   const { id, collectionSlug: docCollectionSlug } = useDocumentInfo();
   const slug = collectionSlugProp ?? docCollectionSlug;
@@ -282,6 +289,15 @@ export function VariantsField({
                 </Button>
               </div>
             </div>
+
+            {resultsPath && (
+              <VariantResults
+                url={`${apiURL}${resultsPath}`}
+                collectionSlug={slug!}
+                docId={id}
+                variants={variants}
+              />
+            )}
           </>
         )}
       </div>

@@ -95,7 +95,7 @@ The plugin injects into each configured collection:
 - `admin.baseFilter`, so variants don't show in the list view or link pickers
 - `beforeChange` / `afterChange` / `afterDelete` hooks
 
-and adds the `ab-manifest` and `ab-experiments` collections (both hidden unless `debug: true`) and `POST /api/_ab/duplicate`.
+and adds the `ab-manifest` and `ab-experiments` collections (both hidden unless `debug: true`) and `POST /api/_ab/duplicate` (plus the measurement endpoints with `measurement`, see [Measurement](#measurement)).
 
 ### Traffic percentages
 
@@ -125,13 +125,14 @@ resolveAbRewrite(
 ) // → Promise<AbRewrite | null>
 ```
 
-It returns `null` when the path runs no experiment, or when the visitor is already assigned to the original and has nothing to set: render the page as requested. Otherwise:
+It returns `null` when the path runs no experiment (or the manifest can't be read): render the page as requested. Otherwise, including for a returning visitor already in the original bucket (no cookies to set, but the view still counts):
 
 ```ts
 {
   bucket: 'about--4ji9qa',            // or 'original'
   pathname: '/en/about--4ji9qa',      // the page to render
   variant: { bucket, rewritePath, passPercentage } | null,
+  visitorId: '7d0c…',                 // from the cookie, or new (then also in cookies)
   cookies: [{ name, value, options: { path: '/', sameSite: 'lax', maxAge } }],
   setCookieHeaders: ['payload_ab_bucket_en_about=about--4ji9qa; Path=/; Max-Age=…'],
 }
@@ -164,7 +165,7 @@ The loader also runs as a server-function call on client-side navigation; the br
 
 Things the host decides:
 
-- **Caching.** A response that depends on the visitor's bucket must not be shared from a cache keyed only by URL. That includes visitors already in the original bucket, for whom the resolver returns `null` (as it does for a page without an experiment), so decide from the manifest (`storage.read(key)` has variants), not from the resolver's result. `apps/web` reads the manifest once and runs the resolver on it (`routeAb` in `src/plugins/abTesting.ts`).
+- **Caching.** A response that depends on the visitor's bucket must not be shared from a cache keyed only by URL, original bucket included. Decide from the manifest (`storage.read(key)` has variants) rather than from the resolver's result, which is also `null` when the manifest read fails. `apps/web` reads the manifest once and runs the resolver on it (`routeAb` in `src/plugins/abTesting.ts`).
 - **SEO.** Variant pages are ordinary published pages at their own slug (`/about--4ji9qa`). Point their canonical URL at the original, and leave them out of the sitemap. `apps/web` redirects (302) a visitor who asks for a variant at its own URL, builds the canonical URL from the requested slug, and excludes `_abVariantOf` documents with the SEO analyzer's `excludeDocs` option.
 
 ### Cookies
@@ -177,7 +178,32 @@ Things the host decides:
 
 Keys are URI-encoded in cookie names (with `(` and `)` escaped too), since a name must be plain ASCII without separators: `/fr/à-propos` becomes `payload_ab_bucket_fr_%C3%A0-propos`. If the bucket cookie is gone, the assignment is restored from the experiment cookie; a bucket whose variant no longer exists is drawn again. Override names and lifetimes with `cookies` (`bucketCookiePrefix`, `visitorIdCookieName`, `getExpCookieName`, `visitorIdMaxAge`, `expCookieMaxAge`, `bucketCookieMaxAge`, in seconds), and use `resolveAbCookieNames(config, key)` to hand the same names to `ExperimentTracker`.
 
-## Analytics
+## Measurement
+
+Pass `measurement` to count conversions and show results in the Variants panel. The plugin owns the endpoints, their checks and the panel; the host owns the store:
+
+```ts
+abTestingPlugin({
+  // …
+  measurement: {
+    goals: ['cta'], // default
+    // Called once per visitor, experiment and bucket. `visitorId` is pseudonymous but persistent.
+    recordConversion: ({ experiment, bucket, goal, visitorId }, req) => { /* write it */ },
+    // Server only: credentials stay here.
+    getResults: async ({ experiment, startedAt, req }) =>
+      ({ configured: true, buckets: [{ bucket: 'original', impressions: 120, conversions: 6 }] }),
+      // or { configured: false, reason: 'Set … to see results.' }
+  },
+})
+```
+
+- **`POST /api/_ab/convert`**, body `{ experiment, goal }` (JSON; `navigator.sendBeacon`'s `text/plain` works too). The bucket and visitor id come from the request's own cookies, never from the body; the bucket must be live in the manifest (`409` otherwise, `404` without an experiment, `400` for a bad body or unknown goal). The first conversion sets an HttpOnly marker cookie (`payload_ab_cv_{key}`, the bucket, 90 days) and later ones answer `{ recorded: false, reason: 'duplicate' }`. The cookies are `SameSite=Lax`, so a cross-site form post carries none and can't convert for a visitor.
+- **`GET /api/_ab/results?collection=&id=&locale=`**: for users of the admin panel's auth collection only (`req.user.collection === config.admin.user`), who must also be able to read the document. The manifest key comes from `generatePath` on that document, and `startedAt` from `ab-experiments`. Answers `{ experiment: null, results: null }` before a variant is published.
+- **The panel** shows a results table under the variants (original, current variants, then "Deleted variant (bucket)" rows for data whose variant is gone), with totals, or the host's `reason` when `configured` is false. A bucket is matched to a variant by slug, as in the default variant data.
+
+Impressions are the host's to count (the plugin doesn't see page views): `apps/web` counts one per visitor and bucket in its page loader.
+
+## GA4
 
 Mount `<ExperimentTracker experimentId={manifestKey} />` (from `@cargo/payload-plugin-ab/analytics`, a client component) on variant-served pages. It sets three GA4 event-scoped parameters with `gtag('set', …)`: `fr_ab_experiment` (the manifest key), `fr_ab_variant` (the bucket) and `fr_ab_visitor_id`. Register them as custom dimensions in GA4. It does nothing when `gtag` never loads.
 
@@ -192,6 +218,7 @@ interface AbTestingPluginConfig<TVariantData extends object> {
   enabled?: boolean                    // default true
   debug?: boolean                      // show the manifest and experiments collections. default false
   experimentsCollectionSlug?: string   // default 'ab-experiments'
+  measurement?: AbMeasurementConfig    // conversions and results, see Measurement
 }
 
 interface CollectionABConfig<TVariantData> {
@@ -258,9 +285,9 @@ Reads are cache-first, and a key with no experiment is cached as `null`, so page
 
 | Import path | Exports |
 | --- | --- |
-| `@cargo/payload-plugin-ab` | `abTestingPlugin`, `resolveAbCookieNames`, `AB_EXPERIMENTS_SLUG`, `AB_DIMENSION_PARAMS`, types (including `ManifestCache`) |
+| `@cargo/payload-plugin-ab` | `abTestingPlugin`, `resolveAbCookieNames`, `AB_EXPERIMENTS_SLUG`, `AB_DIMENSION_PARAMS`, `DEFAULT_CONVERSION_COOKIE_PREFIX`, types (including `ManifestCache`, `AbMeasurementConfig`, `AbResults`) |
 | `@cargo/payload-plugin-ab/adapters/payload-collection` | `payloadCollectionAdapter`, `withManifestCache`, `createMemoryManifestCache`, types |
-| `@cargo/payload-plugin-ab/middleware` | `createResolveAbRewrite`, `parseCookieHeader`, `serializeAbCookie`, `resolveAbCookieNames`, types |
+| `@cargo/payload-plugin-ab/middleware` | `createResolveAbRewrite`, `parseCookieHeader`, `serializeAbCookie`, `bucketCookieName`, `resolveAbCookieNames`, types |
 | `@cargo/payload-plugin-ab/analytics` (also `/analytics/client`) | `ExperimentTracker`, `resolveAbCookieNames`, types |
 | `@cargo/payload-plugin-ab/admin/VariantsField` | the Variants panel (import-map path) |
 
@@ -272,7 +299,7 @@ pnpm --filter @cargo/payload-plugin-ab typecheck
 pnpm --filter @cargo/payload-plugin-ab build
 ```
 
-`tests/integration/boot.test.ts` boots Payload 4 with drafts and two locales and drives the endpoint and REST calls through Payload's own handler: duplicate auth, variant drafts, per-locale manifest entries, staged and published percentages (with an unpublished variant edit that must stay unpublished), unpublishing a variant or the original, deletes, and the manifest storage (concurrent writes to different keys, a create race on one key, REST access with and without a session or credentials). `tests/cache/` covers the read cache. `tests/payload4Tokens.test.ts` keeps v3 admin tokens out of the styles.
+`tests/integration/boot.test.ts` boots Payload 4 with drafts and two locales and drives the endpoint and REST calls through Payload's own handler: duplicate auth, variant drafts, per-locale manifest entries, staged and published percentages (with an unpublished variant edit that must stay unpublished), unpublishing a variant or the original, deletes, the measurement endpoints (conversion cookies, dedupe and validation; results auth and key lookup), and the manifest storage (concurrent writes to different keys, a create race on one key, REST access with and without a session or credentials). `tests/cache/` covers the read cache. `tests/payload4Tokens.test.ts` keeps v3 admin tokens out of the styles.
 
 ## License
 
