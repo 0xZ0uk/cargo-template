@@ -25,6 +25,7 @@ import {
 import { SCORE_GOOD, SCORE_OK } from '../constants.js'
 import { formatAdminURL } from 'payload/shared'
 import { SeoSocialPreview } from './SeoSocialPreview.js'
+import { SerpPreview } from './SerpPreview.js'
 import { useDashboardT, useSeoFeature } from '../hooks/useSeoLocale.js'
 import { type DashboardTranslations } from '../dashboard-i18n.js'
 import { withSeoErrorBoundary } from './withSeoErrorBoundary.js'
@@ -1083,6 +1084,15 @@ const SeoAnalyzerInner: React.FC = () => {
           </div>
         </Banner>
       )}
+
+      {/* Google result preview, from the form's own values */}
+      <SerpPreview
+        metaTitle={socialPreviewData.metaTitle}
+        metaDescription={socialPreviewData.metaDescription}
+        slug={socialPreviewData.slug}
+        hostname={socialPreviewData.hostname}
+        keyphrases={focusKeyword?.trim() ? [focusKeyword] : undefined}
+      />
 
       {/* Social Preview */}
       <SeoSocialPreview

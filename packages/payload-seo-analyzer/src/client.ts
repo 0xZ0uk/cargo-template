@@ -30,5 +30,3 @@ export { MetaImageField } from './components/MetaImageField.js'
 export { OverviewField } from './components/OverviewField.js'
 // SERP Preview
 export { SerpPreview } from './components/SerpPreview.js'
-// Preview field alias for metaFields UI field
-export { SerpPreview as SerpPreviewField } from './components/SerpPreview.js'
