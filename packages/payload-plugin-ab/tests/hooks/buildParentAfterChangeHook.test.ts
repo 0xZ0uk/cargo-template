@@ -5,16 +5,12 @@ import type { AbTestingPluginConfig, CollectionABConfig } from "../../src/types/
 
 const applyVariantPercentage = vi.fn().mockResolvedValue(undefined);
 const recomputeManifestForParent = vi.fn().mockResolvedValue(undefined);
-const ensureExperimentRecords = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("../../src/utils/applyVariantPercentage", () => ({
   applyVariantPercentage: (...args: unknown[]) => applyVariantPercentage(...args),
 }));
 vi.mock("../../src/utils/recomputeManifest", () => ({
   recomputeManifestForParent: (...args: unknown[]) => recomputeManifestForParent(...args),
-}));
-vi.mock("../../src/hooks/ensureExperimentRecords", () => ({
-  ensureExperimentRecords: (...args: unknown[]) => ensureExperimentRecords(...args),
 }));
 
 const abConfig: CollectionABConfig = { generatePath: () => null };
@@ -41,7 +37,6 @@ describe("buildParentAfterChangeHook", () => {
   beforeEach(() => {
     applyVariantPercentage.mockClear();
     recomputeManifestForParent.mockClear();
-    ensureExperimentRecords.mockClear();
   });
 
   it("does nothing while a parent-driven cascade is running", async () => {
@@ -64,7 +59,6 @@ describe("buildParentAfterChangeHook", () => {
     await run({ doc: { id: "p1", _status: "published" }, req });
     expect(applyVariantPercentage.mock.calls[0][0]).toMatchObject({ isPublish: true });
     expect(recomputeManifestForParent).toHaveBeenCalledTimes(1);
-    expect(ensureExperimentRecords).toHaveBeenCalledTimes(1);
   });
 
   it("clears both context keys so they cannot leak into a later operation", async () => {
@@ -94,14 +88,13 @@ describe("buildParentAfterChangeHook", () => {
     expect(recomputeManifestForParent).not.toHaveBeenCalled();
   });
 
-  it("recomputes the parent manifest, without recording an experiment, when a variant is unpublished", async () => {
+  it("recomputes the parent manifest when a variant is unpublished", async () => {
     await run({
       doc: { id: "v1", _status: "draft", _abVariantOf: "p1" },
       req: makeReq({}, "draft"),
     });
     expect(recomputeManifestForParent).toHaveBeenCalledTimes(1);
     expect(recomputeManifestForParent.mock.calls[0][0]).toBe("p1");
-    expect(ensureExperimentRecords).not.toHaveBeenCalled();
   });
 
   it("recomputes when the original is unpublished in one locale only", async () => {
@@ -111,7 +104,6 @@ describe("buildParentAfterChangeHook", () => {
     });
     expect(recomputeManifestForParent).toHaveBeenCalledTimes(1);
     expect(recomputeManifestForParent.mock.calls[0][0]).toBe("p1");
-    expect(ensureExperimentRecords).not.toHaveBeenCalled();
   });
 
   it("doesn't read the row for a collection without drafts", async () => {

@@ -1,5 +1,6 @@
 export { createResolveAbRewrite } from "./resolveAbRewrite";
 export { parseCookieHeader, serializeAbCookie } from "./utils/cookies";
+export { abRunMarker } from "./utils/runMarker";
 export { bucketCookieName } from "../cookie/utils/bucketCookieName";
 export type {
   AbCookie,

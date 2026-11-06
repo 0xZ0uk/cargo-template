@@ -50,12 +50,17 @@ export interface CollectionABConfig<TVariantData extends object = object> {
   }) => string | null;
   /**
    * Builds the data stored per variant in the manifest.
-   * When omitted, auto-generates: { bucket: variantSlug, rewritePath: generatePath(variantDoc), passPercentage: _abPassPercentage }
+   * When omitted, auto-generates: { bucket: variantSlug, rewritePath: generatePath(variantDoc), passPercentage: _abPassPercentage, startedAt }
    */
   generateVariantData?: (args: {
     doc: Record<string, unknown>;
     variantDoc: Record<string, unknown>;
     locale: string | undefined;
+    /**
+     * When the experiment's current run started (ISO). Store it to tell runs apart where only
+     * the manifest is read (e.g. per-run dedupe with `abRunMarker`).
+     */
+    startedAt: string;
   }) => TVariantData;
 }
 
@@ -97,8 +102,8 @@ export interface AbMeasurementCookieConfig {
   /** Must match the resolver's. Default: 'ab_visitor_id'. */
   visitorIdCookieName?: string;
   /**
-   * Prefix for the cookie that marks a visitor as converted for one experiment and bucket, so
-   * repeat clicks count once. Full name built like the bucket cookie's. Default: 'payload_ab_cv'.
+   * Prefix for the cookie that marks a visitor as converted for one experiment run and bucket
+   * (value `<bucket>:<run>`, see `abRunMarker`), so repeat clicks count once. Full name built like the bucket cookie's. Default: 'payload_ab_cv'.
    */
   conversionCookiePrefix?: string;
   /** Seconds. Default: 7_776_000 (90 days, the bucket cookie's default). */
@@ -115,11 +120,18 @@ export interface AbMeasurementConfig<TVariantData extends object = object> {
   /** The bucket of a manifest entry. Default: its `bucket` property (the default variant data). */
   getBucket?: (variant: TVariantData) => string;
   /**
-   * Stores one conversion. Called once per visitor, experiment and bucket (a cookie marks
+   * Stores one conversion. Called once per visitor, experiment run and bucket (a cookie marks
    * the visitor as converted), after the bucket was read from the visitor's own cookies and
    * checked against the live manifest.
    */
   recordConversion: (event: AbConversionEvent, req: PayloadRequest) => void | Promise<void>;
+  /**
+   * Bounds `POST /api/_ab/convert` (unauthenticated, and deduped only by the client's own
+   * cookie), e.g. per IP. Runs first on every request: resolve `true` to let it through,
+   * `false` to answer 429 without recording anything. If it throws, the request goes through
+   * (and the error is logged). Default: no limit.
+   */
+  rateLimit?: (req: PayloadRequest) => boolean | Promise<boolean>;
   /**
    * Reads the counts for one experiment since `startedAt`, for the Variants panel. Runs on
    * the server only: credentials it uses never reach the browser.

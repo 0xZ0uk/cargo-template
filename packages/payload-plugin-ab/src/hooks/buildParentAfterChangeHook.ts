@@ -6,7 +6,6 @@ import type { VariantPercentageEntry } from "../utils/buildPercentagePlan";
 import { recomputeManifestForParent } from "../utils/recomputeManifest";
 import { isFullyPublished } from "../utils/isFullyPublished";
 import { resolveId } from "../utils/resolveId";
-import { ensureExperimentRecords } from "./ensureExperimentRecords";
 
 export function buildParentAfterChangeHook<TVariantData extends object>(
   parentCollectionSlug: string,
@@ -36,7 +35,6 @@ export function buildParentAfterChangeHook<TVariantData extends object>(
         return;
       }
       await recomputeManifestForParent(parentId, parentCollectionSlug, abConfig, pluginConfig, req);
-      await ensureExperimentRecords(parentId, parentCollectionSlug, abConfig, pluginConfig, req);
       return;
     }
 
@@ -68,6 +66,5 @@ export function buildParentAfterChangeHook<TVariantData extends object>(
     }
 
     await recomputeManifestForParent(doc.id, parentCollectionSlug, abConfig, pluginConfig, req);
-    await ensureExperimentRecords(doc.id, parentCollectionSlug, abConfig, pluginConfig, req);
   };
 }

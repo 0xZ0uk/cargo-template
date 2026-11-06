@@ -15,6 +15,9 @@
 
 - Measurement (`measurement` option): `POST /api/_ab/convert` records a conversion for the requesting visitor, with the bucket and visitor id read from their cookies and checked against the live manifest, once per visitor, experiment and bucket (HttpOnly marker cookie); `GET /api/_ab/results` returns counts per bucket since the experiment started, for admin-panel users only; the Variants panel shows them (impressions, conversions, rate, deleted variants) through the new `resultsPath` client prop. The host supplies `recordConversion` and `getResults`, so the store is its choice. Without the option none of this exists.
 - `bucketCookieName` (`/middleware`) and an `httpOnly` cookie option for `serializeAbCookie`.
+- Experiment runs: the manifest recompute starts a run (an `ab-experiments` row) when a key gets published variants and ends it (deletes the row) when the key's entry is cleared, so a later experiment on the same page gets a fresh `startedAt`. Before, the first run's row was kept until the original was deleted. The default variant data carries the run's `startedAt`, and `generateVariantData` receives it. `ensureExperimentRecords` is gone.
+- `abRunMarker(bucket, startedAt)` (`/middleware`): the conversion marker (`payload_ab_cv_*`) holds `<bucket>:<run>`, so a returning visitor converts again in a new run.
+- `measurement.rateLimit(req)`: an optional limiter for `POST /api/_ab/convert`; `false` answers 429 and records nothing.
 - Optional read cache: `ManifestCache` (`get`/`set`/`delete` with a TTL), the adapter's `cache` and `cacheTtl` (default 30 s) options, `withManifestCache` for any adapter, and `createMemoryManifestCache` as a reference implementation. Reads are cache-first with negative entries for keys without an experiment; writes and clears update the cache.
 
 ## [3.0.0-beta.0] - 2026-11-05

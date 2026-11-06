@@ -4,6 +4,7 @@ import { AB_EXPERIMENTS_SLUG, AB_VARIANT_OF_FIELD } from "../constants";
 import { DEFAULT_VISITOR_ID_COOKIE_NAME } from "../cookie/constants";
 import { bucketCookieName } from "../cookie/utils/bucketCookieName";
 import { parseCookieHeader, serializeAbCookie } from "../middleware/utils/cookies";
+import { abRunMarker } from "../middleware/utils/runMarker";
 
 export const DEFAULT_GOALS = ["cta"];
 export const DEFAULT_CONVERSION_COOKIE_PREFIX = "payload_ab_cv";
@@ -23,10 +24,12 @@ const defaultGetBucket = (variant: object) => (variant as { bucket?: unknown }).
  * The body names only the experiment (its manifest key) and the goal: `{ experiment, goal }`,
  * as JSON (`fetch`, or `navigator.sendBeacon`, which sends `text/plain`). The bucket and the
  * visitor id come from the request's own cookies, never from the body, and the bucket must
- * still be live in the manifest. A visitor counts once per experiment and bucket: the first
- * conversion sets an HttpOnly marker cookie, and later ones are acknowledged but not
- * recorded. The cookies are `SameSite=Lax`, so a cross-site form post carries none of them
- * and can't convert on a visitor's behalf.
+ * still be live in the manifest. A visitor counts once per experiment run and bucket: the
+ * first conversion sets an HttpOnly marker cookie (`<bucket>:<run>`, see `abRunMarker`), and
+ * later ones are acknowledged but not recorded. The cookies are `SameSite=Lax`, so a
+ * cross-site form post carries none of them and can't convert on a visitor's behalf. The
+ * marker is the client's own cookie, so `measurement.rateLimit` bounds what a client that
+ * drops it can add.
  */
 export function buildConvertHandler<TVariantData extends object>(
   pluginConfig: AbTestingPluginConfig<TVariantData>,
@@ -41,7 +44,43 @@ export function buildConvertHandler<TVariantData extends object>(
     conversionCookieMaxAge = DEFAULT_CONVERSION_MAX_AGE,
   } = measurement.cookies ?? {};
 
+  const experimentsSlug = (pluginConfig.experimentsCollectionSlug ??
+    AB_EXPERIMENTS_SLUG) as CollectionSlug;
+
+  /** The run's start: from the manifest (the default variant data carries it), else its row. */
+  const runStartedAt = async (
+    experiment: string,
+    variants: TVariantData[],
+    req: PayloadRequest
+  ): Promise<string | null> => {
+    for (const variant of variants) {
+      const startedAt = (variant as { startedAt?: unknown }).startedAt;
+      if (typeof startedAt === "string") return startedAt;
+    }
+    const { docs } = await req.payload.find({
+      collection: experimentsSlug,
+      where: { manifestKey: { equals: experiment } },
+      depth: 0,
+      limit: 1,
+      pagination: false,
+      overrideAccess: true,
+      req,
+    });
+    return (docs[0] as { startedAt?: string } | undefined)?.startedAt ?? null;
+  };
+
   return async (req) => {
+    if (measurement.rateLimit) {
+      let allowed = true;
+      try {
+        allowed = await measurement.rateLimit(req);
+      } catch (err) {
+        // A broken limiter shouldn't stop measurement: let the request through, and say so.
+        req.payload.logger.error({ err, msg: "[payload-plugin-ab] rateLimit failed" });
+      }
+      if (!allowed) return json({ error: "Too many requests" }, 429, { "Retry-After": "60" });
+    }
+
     let body: unknown;
     try {
       const text = req.text ? await req.text() : "";
@@ -80,7 +119,10 @@ export function buildConvertHandler<TVariantData extends object>(
     }
 
     const markerName = bucketCookieName(experiment, conversionCookiePrefix);
-    if (cookies.get(markerName) === bucket) return json({ recorded: false, reason: "duplicate" });
+    const markerValue = abRunMarker(bucket, await runStartedAt(experiment, variants, req));
+    if (cookies.get(markerName) === markerValue) {
+      return json({ recorded: false, reason: "duplicate" });
+    }
 
     try {
       await measurement.recordConversion({ experiment, bucket, goal, visitorId }, req);
@@ -91,7 +133,7 @@ export function buildConvertHandler<TVariantData extends object>(
 
     const marker = serializeAbCookie({
       name: markerName,
-      value: bucket,
+      value: markerValue,
       options: { path: "/", sameSite: "lax", maxAge: conversionCookieMaxAge, httpOnly: true },
     });
     return json({ recorded: true }, 200, { "Set-Cookie": marker });

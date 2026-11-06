@@ -58,7 +58,8 @@ Share one adapter between the Payload config and the resolver:
 // src/plugins/abTesting.ts
 import { payloadCollectionAdapter } from '@cargo/payload-plugin-ab/adapters/payload-collection'
 
-export type AbVariant = { bucket: string; rewritePath: string; passPercentage: number }
+// `startedAt` is the experiment run's start (see Measurement > Runs).
+export type AbVariant = { bucket: string; rewritePath: string; passPercentage: number; startedAt?: string }
 
 export const abStorage = payloadCollectionAdapter<AbVariant>()
 ```
@@ -187,8 +188,10 @@ abTestingPlugin({
   // …
   measurement: {
     goals: ['cta'], // default
-    // Called once per visitor, experiment and bucket. `visitorId` is pseudonymous but persistent.
+    // Called once per visitor, experiment run and bucket. `visitorId` is pseudonymous but persistent.
     recordConversion: ({ experiment, bucket, goal, visitorId }, req) => { /* write it */ },
+    // Optional: runs first on every conversion request; false answers 429 and records nothing.
+    rateLimit: async (req) => (await env.MY_LIMITER.limit({ key: clientIp(req) })).success,
     // Server only: credentials stay here.
     getResults: async ({ experiment, startedAt, req }) =>
       ({ configured: true, buckets: [{ bucket: 'original', impressions: 120, conversions: 6 }] }),
@@ -197,17 +200,31 @@ abTestingPlugin({
 })
 ```
 
-- **`POST /api/_ab/convert`**, body `{ experiment, goal }` (JSON; `navigator.sendBeacon`'s `text/plain` works too). The bucket and visitor id come from the request's own cookies, never from the body; the bucket must be live in the manifest (`409` otherwise, `404` without an experiment, `400` for a bad body or unknown goal). The first conversion sets an HttpOnly marker cookie (`payload_ab_cv_{key}`, the bucket, 90 days) and later ones answer `{ recorded: false, reason: 'duplicate' }`. The cookies are `SameSite=Lax`, so a cross-site form post carries none and can't convert for a visitor.
+- **`POST /api/_ab/convert`**, body `{ experiment, goal }` (JSON; `navigator.sendBeacon`'s `text/plain` works too). The bucket and visitor id come from the request's own cookies, never from the body; the bucket must be live in the manifest (`409` otherwise, `404` without an experiment, `400` for a bad body or unknown goal). The first conversion sets an HttpOnly marker cookie (`payload_ab_cv_{key}`, value `<bucket>:<run>`, 90 days) and later ones in the same run answer `{ recorded: false, reason: 'duplicate' }`. The cookies are `SameSite=Lax`, so a cross-site form post carries none and can't convert for a visitor. The endpoint is unauthenticated and the marker is the client's own cookie, so pass `rateLimit` (e.g. per IP) to bound what a script that drops it can add; when it resolves `false` the endpoint answers `429` and records nothing (if it throws, the request goes through and the error is logged).
 - **`GET /api/_ab/results?collection=&id=&locale=`**: for users of the admin panel's auth collection only (`req.user.collection === config.admin.user`), who must also be able to read the document. The manifest key comes from `generatePath` on that document, and `startedAt` from `ab-experiments`. Answers `{ experiment: null, results: null }` before a variant is published.
 - **The panel** shows a results table under the variants (original, current variants, then "Deleted variant (bucket)" rows for data whose variant is gone), with totals, or the host's `reason` when `configured` is false. A bucket is matched to a variant by slug, as in the default variant data.
 
-Impressions are the host's to count (the plugin doesn't see page views): `apps/web` counts one per visitor and bucket in its page loader.
+Impressions are the host's to count (the plugin doesn't see page views): `apps/web` counts one per visitor, run and bucket in its page loader.
+
+### Runs
+
+An experiment runs on a manifest key from its first published variant until it has none left. The recompute that writes the manifest keeps its `ab-experiments` row in step: the first published variant creates the row (`startedAt` = now), and when the key's entry is cleared (the last variant unpublished or deleted, or the original unpublished or deleted) the row is deleted. Publishing a variant again later starts a new run with a new `startedAt`, so results count from then, not from the first experiment ever run on the page.
+
+The default variant data carries the run's `startedAt` on every entry (a custom `generateVariantData` receives it as `startedAt`), so a resolver knows the run from the manifest read it already makes. The dedupe markers hold `abRunMarker(bucket, startedAt)` (`/middleware`): `<bucket>:<startedAt in base-36 ms>`. A visitor returning in a new run on the same page doesn't match their old marker and is counted again.
+
+### Known biases
+
+- Browsers that refuse cookies count an impression on every view and can never convert.
+- Bots that run no JS add impressions but no conversions.
+- A determined client can still forge conversions: anyone who fetches the page gets valid bucket and visitor cookies, and by dropping the marker can post a conversion each time, up to the host's `rateLimit` (per IP, in `apps/web` 20 a minute), and more from many IPs. The counts are fit for comparing variants, not for anything paid per conversion.
+- The bucket cookie outlives a run: a returning visitor stays in the original bucket in the next run on the same page (a bucket whose variant is gone is drawn again).
+- During the host's manifest-cache window (`apps/web`: up to 30 s) a just-removed variant's bucket can still receive an impression, and the first views of a new run can carry the previous run's marker value.
 
 ## GA4
 
 Mount `<ExperimentTracker experimentId={manifestKey} />` (from `@cargo/payload-plugin-ab/analytics`, a client component) on variant-served pages. It sets three GA4 event-scoped parameters with `gtag('set', …)`: `fr_ab_experiment` (the manifest key), `fr_ab_variant` (the bucket) and `fr_ab_visitor_id`. Register them as custom dimensions in GA4. It does nothing when `gtag` never loads.
 
-The `ab-experiments` collection records each experiment's `startedAt` when its first variant is published.
+The `ab-experiments` collection records the `startedAt` of each experiment's current run (see [Runs](#runs)).
 
 ## Configuration
 
@@ -223,8 +240,8 @@ interface AbTestingPluginConfig<TVariantData extends object> {
 
 interface CollectionABConfig<TVariantData> {
   generatePath: (args: { doc: Record<string, unknown>; locale: string | undefined }) => string | null
-  generateVariantData?: (args: { doc; variantDoc; locale }) => TVariantData
-  // default: { bucket: variant slug, rewritePath: generatePath(variantDoc), passPercentage }
+  generateVariantData?: (args: { doc; variantDoc; locale; startedAt }) => TVariantData
+  // default: { bucket: variant slug, rewritePath: generatePath(variantDoc), passPercentage, startedAt }
   slugField?: string   // default 'slug'; variants get `{slug}--{6 chars}`
   tenantField?: string // hidden on variants
   nameField?: string   // variant title in the panel; default: the collection's useAsTitle
