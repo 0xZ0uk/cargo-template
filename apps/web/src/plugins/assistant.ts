@@ -26,13 +26,16 @@ export function assistantConversations(env: Bindings): AssistantConversationsOpt
  * The plugin's scripted test model, for the Playwright specs (`ASSISTANT_TEST_MODEL=1`, set in
  * `playwright.config.ts`), so CI runs real assistant turns with no OpenRouter key.
  *
- * Three locks: the flag must be `1`, `APP_ENV` must not be `production` (`pnpm deploy` sets it),
- * and the plugin only uses it for requests made to a loopback host, so a deployed Worker keeps
- * the real model even if the first two were set by mistake.
+ * Three locks: the flag must be `1`, `APP_ENV` must be `development` (or unset): an allowlist,
+ * so any deployed env (`production`, `staging`, or one added later) keeps it off; and the plugin only uses it for
+ * requests made to a loopback host, so a deployed Worker keeps the real model even if the first
+ * two were set by mistake.
  */
 export function assistantTestModel(env: {
   ASSISTANT_TEST_MODEL?: string
   APP_ENV?: string
 }): boolean {
-  return env.ASSISTANT_TEST_MODEL === '1' && env.APP_ENV !== 'production'
+  return env.ASSISTANT_TEST_MODEL === '1' && DEV_APP_ENVS.has(env.APP_ENV ?? '')
 }
+
+const DEV_APP_ENVS = new Set(['', 'development'])

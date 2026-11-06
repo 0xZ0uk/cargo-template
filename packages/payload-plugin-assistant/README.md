@@ -473,7 +473,7 @@ survives a restarted object:
 (`localhost`, `*.localhost`, 127.0.0.1, ::1; `usesTestModel`) and then tells the turn through
 `settings.testModel`. Any other request still needs `apiKey` (503 `not_configured` without one), so
 a `testModel` left on can't swap the model of a deployed Worker. `apps/web` also turns it on only
-with `ASSISTANT_TEST_MODEL=1` outside `APP_ENV=production`. `GET /api/assistant/config` answers
+with `ASSISTANT_TEST_MODEL=1` outside `APP_ENV=production` and `staging`. `GET /api/assistant/config` answers
 `testModel: true` when it applies.
 
 ## Dependencies
