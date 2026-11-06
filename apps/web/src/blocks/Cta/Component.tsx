@@ -22,7 +22,12 @@ const Buttons: React.FC<{ links?: Links | null; onPrimary?: boolean; className?:
   if (!items.length) return null
 
   return (
-    <div className={cn('flex flex-col gap-3 sm:flex-row sm:flex-wrap', className)}>
+    // `data-ab-goal`: on a page in an A/B experiment, a click on one of these links counts as a
+    // conversion (AbConversionTracker). Inert everywhere else.
+    <div
+      className={cn('flex flex-col gap-3 sm:flex-row sm:flex-wrap', className)}
+      data-ab-goal="cta"
+    >
       {items.map(({ id, link }, index) => {
         const outline = link.appearance === 'outline'
 

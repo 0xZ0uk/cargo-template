@@ -28,8 +28,8 @@ export function parseCookieHeader(header: string | null | undefined): Map<string
 
 /** Serializes a cookie for a `Set-Cookie` header. The value is URI-encoded; the name is used as is. */
 export function serializeAbCookie(cookie: AbCookie): string {
-  const { maxAge, path, sameSite } = cookie.options;
+  const { httpOnly, maxAge, path, sameSite } = cookie.options;
   const expires = new Date(Date.now() + maxAge * 1000).toUTCString();
 
-  return `${cookie.name}=${encodeURIComponent(cookie.value)}; Path=${path}; Max-Age=${maxAge}; Expires=${expires}; SameSite=${sameSite === "lax" ? "Lax" : sameSite}`;
+  return `${cookie.name}=${encodeURIComponent(cookie.value)}; Path=${path}; Max-Age=${maxAge}; Expires=${expires}; SameSite=${sameSite === "lax" ? "Lax" : sameSite}${httpOnly ? "; HttpOnly" : ""}`;
 }

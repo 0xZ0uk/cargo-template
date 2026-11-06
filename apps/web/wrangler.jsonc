@@ -38,6 +38,16 @@
       "remote": true,
     },
   ],
+  // A/B experiment measurement (src/plugins/abMeasurement.ts): one data point per impression
+  // and per conversion, no personal data. Datasets are created on first write; no setup.
+  // Local dev and tests have no real dataset, and the Variants panel reads results through the
+  // SQL API (AB_ANALYTICS_ACCOUNT_ID / AB_ANALYTICS_API_TOKEN in .env.schema).
+  "analytics_engine_datasets": [
+    {
+      "binding": "AB_ANALYTICS",
+      "dataset": "cargo_ab",
+    },
+  ],
   "r2_buckets": [
     {
       "binding": "R2",
@@ -63,6 +73,15 @@
       "name": "SEO_RATE_LIMIT_AI_INTERACTIVE",
       "namespace_id": "1003",
       "simple": { "limit": 30, "period": 60 },
+    },
+    // A/B conversions (`POST /api/_ab/convert`, unauthenticated), per client IP: a visitor
+    // converts once per experiment, so this only stops a script that drops the dedupe cookie.
+    // Generous enough for visitors behind one shared IP (an office, a carrier NAT).
+    // See abConversionRateLimit in src/plugins/abMeasurement.ts.
+    {
+      "name": "AB_RATE_LIMIT_CONVERT",
+      "namespace_id": "1004",
+      "simple": { "limit": 20, "period": 60 },
     },
   ],
 }

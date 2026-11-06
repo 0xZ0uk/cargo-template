@@ -9,9 +9,10 @@ import { pickUniformBucket } from "./utils/pickUniformBucket";
 import { parseCookieHeader, serializeAbCookie } from "./utils/cookies";
 import { DEFAULT_VISITOR_ID_COOKIE_NAME } from "../cookie/constants";
 import { defaultGetExpCookieName } from "../cookie/utils/defaultGetExpCookieName";
-import { encodeCookieNamePart } from "../cookie/utils/encodeCookieNamePart";
-
-const DEFAULT_BUCKET_COOKIE_PREFIX = "payload_ab_bucket";
+import {
+  DEFAULT_BUCKET_COOKIE_PREFIX,
+  bucketCookieName as buildBucketCookieName,
+} from "../cookie/utils/bucketCookieName";
 const DEFAULT_VISITOR_MAX_AGE = 60 * 60 * 24 * 365;
 const DEFAULT_EXP_MAX_AGE = 60 * 60 * 24 * 90;
 
@@ -43,9 +44,9 @@ export function createResolveAbRewrite<TVariantData extends object>(
   } = cookieConfig;
 
   /**
-   * Resolves the bucket for one page view. Returns null when the page runs no experiment, or
-   * when the visitor is already assigned to the original and nothing needs setting: render
-   * the page as requested.
+   * Resolves the bucket for one page view. Returns null only when the page runs no experiment
+   * (or the manifest can't be read): render the page as requested. A visitor already in the
+   * original bucket gets an answer too, with no cookies to set, so the host can count the view.
    */
   return async function resolveAbRewrite(
     /** The incoming request, or its `Cookie` header value. */
@@ -72,9 +73,7 @@ export function createResolveAbRewrite<TVariantData extends object>(
       typeof request === "string" ? request : (request?.headers.get("cookie") ?? null)
     );
 
-    const bucketCookieName = `${bucketCookiePrefix}_${encodeCookieNamePart(
-      manifestKey.replace(/^\//, "").replace(/\//g, "_")
-    )}`;
+    const bucketCookieName = buildBucketCookieName(manifestKey, bucketCookiePrefix);
     const existingBucket = requestCookies.get(bucketCookieName);
 
     const existingVisitorId = requestCookies.get(visitorIdCookieName);
@@ -92,8 +91,6 @@ export function createResolveAbRewrite<TVariantData extends object>(
         ? pickWeightedBucket(variants, getBucket, getPassPercentage)
         : pickUniformBucket(variants, getBucket));
 
-    if (bucket === "original" && existingBucket === "original") return null;
-
     const match = variants.find((v) => getBucket(v) === bucket) ?? null;
     const cookies: AbCookie[] = [];
     const set = (name: string, value: string, maxAge: number) =>
@@ -107,6 +104,7 @@ export function createResolveAbRewrite<TVariantData extends object>(
       bucket,
       pathname: match ? getRewritePath(match) : originalRewritePath,
       variant: match,
+      visitorId,
       cookies,
       setCookieHeaders: cookies.map(serializeAbCookie),
     };

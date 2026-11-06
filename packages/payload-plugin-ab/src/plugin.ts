@@ -5,6 +5,7 @@ import { buildParentAfterChangeHook } from "./hooks/buildParentAfterChangeHook";
 import { buildParentAfterDeleteHook } from "./hooks/buildParentAfterDeleteHook";
 import { buildParentBeforeChangeHook } from "./hooks/buildParentBeforeChangeHook";
 import { buildDuplicateVariantHandler } from "./endpoints/duplicateVariant";
+import { buildConvertHandler, buildResultsHandler } from "./endpoints/measurement";
 import { buildExperimentsCollection } from "./collections/buildExperimentsCollection";
 import { AB_EXPERIMENTS_SLUG, PLUGIN_NAME } from "./constants";
 
@@ -13,7 +14,7 @@ const PREFIX = `[${PLUGIN_NAME}]`;
 export const abTestingPlugin =
   <TVariantData extends object>(pluginConfig: AbTestingPluginConfig<TVariantData>): Plugin =>
   (incomingConfig: Config): Config => {
-    const { enabled = true, debug = false, collections, storage } = pluginConfig;
+    const { enabled = true, debug = false, collections, storage, measurement } = pluginConfig;
 
     if (!enabled) return incomingConfig;
 
@@ -40,7 +41,9 @@ export const abTestingPlugin =
         if (!abConfig) return collection;
 
         // Inject admin fields (UI panel, hidden data fields, list filter)
-        const withAdminFields = injectAdminFields(collection, collection.slug, abConfig);
+        const withAdminFields = injectAdminFields(collection, collection.slug, abConfig, {
+          showResults: Boolean(measurement),
+        });
 
         // Inject hooks
         return {
@@ -78,6 +81,20 @@ export const abTestingPlugin =
           method: "post",
           handler: buildDuplicateVariantHandler(pluginConfig),
         },
+        ...(measurement
+          ? [
+              {
+                path: "/_ab/convert",
+                method: "post" as const,
+                handler: buildConvertHandler(pluginConfig, measurement),
+              },
+              {
+                path: "/_ab/results",
+                method: "get" as const,
+                handler: buildResultsHandler(pluginConfig, measurement),
+              },
+            ]
+          : []),
       ],
     };
   };

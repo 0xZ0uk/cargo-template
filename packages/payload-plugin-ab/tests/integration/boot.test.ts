@@ -4,9 +4,9 @@ import { sqliteAdapter } from "@payloadcms/db-sqlite";
 import { buildConfig, getPayload, handleEndpoints } from "payload";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { abTestingPlugin } from "../../src";
+import { abTestingPlugin, type AbResults } from "../../src";
 import { payloadCollectionAdapter } from "../../src/adapters/payloadCollection";
-import { createResolveAbRewrite } from "../../src/middleware";
+import { abRunMarker, createResolveAbRewrite } from "../../src/middleware";
 
 /**
  * Real Payload 4 on in-memory SQLite (D1 is SQLite), with drafts and two locales like a
@@ -19,12 +19,16 @@ interface Variant {
 }
 
 const storage = payloadCollectionAdapter<Variant>();
+const recordConversion = vi.fn();
+const rateLimit = vi.fn(async (_req: unknown) => true);
+const getResults = vi.fn(async (): Promise<AbResults> => ({ configured: false, reason: "No credentials." }));
 const PAGES = "pages" as CollectionSlug;
 const MANIFEST = "ab-manifest" as CollectionSlug;
 
 let payload: Payload;
 let config: SanitizedConfig;
 let token: string;
+let memberToken: string;
 
 type Doc = Record<string, unknown> & { id: number | string };
 
@@ -90,6 +94,8 @@ beforeAll(async () => {
     admin: { user: "users" },
     collections: [
       { slug: "users", auth: true, fields: [] },
+      // Another auth collection (site members): signed in, but not an admin-panel user.
+      { slug: "members", auth: true, fields: [] },
       {
         slug: "pages",
         admin: { useAsTitle: "title" },
@@ -112,6 +118,7 @@ beforeAll(async () => {
               typeof doc.slug === "string" && doc.slug ? `/${locale}/${doc.slug}` : null,
           },
         },
+        measurement: { recordConversion, getResults, rateLimit },
       }),
     ],
   });
@@ -126,6 +133,17 @@ beforeAll(async () => {
     data: { email: "editor@example.com", password: "test-password" },
   });
   token = login.token!;
+  await payload.create({
+    collection: "members" as CollectionSlug,
+    data: { email: "member@example.com", password: "test-password" } as never,
+    overrideAccess: true,
+  });
+  memberToken = (
+    await payload.login({
+      collection: "members" as never,
+      data: { email: "member@example.com", password: "test-password" },
+    })
+  ).token!;
 }, 60_000);
 
 afterAll(async () => {
@@ -151,7 +169,7 @@ describe("Payload 4 boot", () => {
     ) as any;
     expect(field.admin.components.Field).toEqual({
       path: "@cargo/payload-plugin-ab/admin/VariantsField#VariantsField",
-      clientProps: { slugField: "slug", titleField: "title" },
+      clientProps: { slugField: "slug", titleField: "title", resultsPath: "/_ab/results" },
     });
   });
 });
@@ -323,19 +341,32 @@ describe("variant lifecycle", () => {
     });
 
     const m = await manifest();
-    expect(m["/en/about"]).toEqual([
-      { bucket: variant.slug, rewritePath: `/en/${variant.slug}`, passPercentage: 1 },
-    ]);
-    expect(m["/pt/about"]).toEqual([
-      { bucket: variant.slug, rewritePath: `/pt/${variant.slug}`, passPercentage: 1 },
-    ]);
-
     const experiments = await payload.find({
       collection: "ab-experiments" as CollectionSlug,
       where: { parentDocId: { equals: String(page.id) } },
       overrideAccess: true,
     });
     expect(experiments.docs.map((d: any) => d.manifestKey).sort()).toEqual(["/en/about", "/pt/about"]);
+    // Each entry carries its run's start, so a resolver knows the run from the manifest alone.
+    const startOf = (key: string) =>
+      (experiments.docs as any[]).find((d) => d.manifestKey === key).startedAt;
+
+    expect(m["/en/about"]).toEqual([
+      {
+        bucket: variant.slug,
+        rewritePath: `/en/${variant.slug}`,
+        passPercentage: 1,
+        startedAt: startOf("/en/about"),
+      },
+    ]);
+    expect(m["/pt/about"]).toEqual([
+      {
+        bucket: variant.slug,
+        rewritePath: `/pt/${variant.slug}`,
+        passPercentage: 1,
+        startedAt: startOf("/pt/about"),
+      },
+    ]);
   });
 
   it("lists the variant drafts over REST, as the Variants panel does", async () => {
@@ -711,5 +742,250 @@ describe("manifest storage", () => {
       authorization: "JWT not-a-token",
     });
     await expect(wrong.read("/store/rest")).rejects.toThrow();
+  });
+});
+
+describe("measurement", () => {
+  let page: Doc;
+  let variant: Doc;
+  const KEY = "/en/measured";
+
+  const convert = (body: unknown, cookie = "", init: { contentType?: string } = {}) =>
+    handleEndpoints({
+      config,
+      request: new Request("http://localhost:3000/api/_ab/convert", {
+        method: "POST",
+        headers: { "Content-Type": init.contentType ?? "application/json", cookie },
+        body: typeof body === "string" ? body : JSON.stringify(body),
+      }),
+    }).then(async (res) => ({
+      status: res.status,
+      setCookie: res.headers.get("set-cookie"),
+      body: (await res.json().catch(() => null)) as Record<string, any>,
+    }));
+
+  beforeAll(async () => {
+    page = await createPublishedPage("measured", "Measured");
+    variant = await addVariant(page);
+    await payload.update({
+      collection: PAGES,
+      id: variant.id,
+      data: { _status: "published" } as never,
+      locale: "en" as never,
+      publishAllLocales: true,
+      overrideAccess: true,
+    });
+  });
+
+  afterEach(() => {
+    recordConversion.mockReset();
+    getResults.mockClear();
+    rateLimit.mockClear();
+  });
+
+  /** The marker value for this run: `<bucket>:<run>`. */
+  const runMarker = async (bucket: string) => {
+    const { docs } = await payload.find({
+      collection: "ab-experiments" as CollectionSlug,
+      where: { manifestKey: { equals: KEY } },
+      overrideAccess: true,
+    });
+    return abRunMarker(bucket, (docs[0] as any).startedAt);
+  };
+
+  describe("POST /api/_ab/convert", () => {
+    const assigned = (bucket: string) =>
+      `ab_visitor_id=visitor-1; payload_ab_bucket_en_measured=${encodeURIComponent(bucket)}`;
+
+    it("records a conversion with the bucket and visitor from the cookies, not the body", async () => {
+      const res = await convert(
+        { experiment: KEY, goal: "cta", bucket: "original", visitorId: "forged" },
+        assigned(variant.slug as string)
+      );
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ recorded: true });
+      expect(recordConversion).toHaveBeenCalledTimes(1);
+      expect(recordConversion.mock.calls[0]![0]).toEqual({
+        experiment: KEY,
+        bucket: variant.slug,
+        goal: "cta",
+        visitorId: "visitor-1",
+      });
+      const marker = encodeURIComponent(await runMarker(variant.slug as string));
+      expect(res.setCookie).toMatch(
+        new RegExp(`^payload_ab_cv_en_measured=${marker}; Path=/; .*SameSite=Lax; HttpOnly$`, "u")
+      );
+      expect(rateLimit).toHaveBeenCalledTimes(1);
+    });
+
+    it("counts a visitor once per run and bucket", async () => {
+      const original = encodeURIComponent(await runMarker("original"));
+      const cookie = `${assigned("original")}; payload_ab_cv_en_measured=${original}`;
+      const res = await convert({ experiment: KEY, goal: "cta" }, cookie);
+      expect(res.body).toEqual({ recorded: false, reason: "duplicate" });
+      expect(recordConversion).not.toHaveBeenCalled();
+
+      // A visitor moved to another bucket (their variant was deleted) converts there again.
+      const moved = `${assigned(variant.slug as string)}; payload_ab_cv_en_measured=${original}`;
+      expect((await convert({ experiment: KEY, goal: "cta" }, moved)).body).toEqual({ recorded: true });
+
+      // A marker from an earlier experiment on this page (bare bucket, or another run) doesn't count.
+      for (const stale of ["original", encodeURIComponent(abRunMarker("original", "2020-01-01T00:00:00.000Z"))]) {
+        const returning = `${assigned("original")}; payload_ab_cv_en_measured=${stale}`;
+        expect((await convert({ experiment: KEY, goal: "cta" }, returning)).body).toEqual({ recorded: true });
+      }
+    });
+
+    it("answers 429 and records nothing when rateLimit refuses", async () => {
+      rateLimit.mockResolvedValueOnce(false);
+      const res = await convert({ experiment: KEY, goal: "cta" }, assigned("original"));
+      expect(res.status).toBe(429);
+      expect(res.setCookie).toBeNull();
+      expect(recordConversion).not.toHaveBeenCalled();
+    });
+
+    it("lets the request through when rateLimit throws", async () => {
+      rateLimit.mockRejectedValueOnce(new Error("binding down"));
+      const res = await convert({ experiment: KEY, goal: "cta" }, assigned("original"));
+      expect(res.status).toBe(200);
+      expect(recordConversion).toHaveBeenCalledTimes(1);
+    });
+
+    it("accepts sendBeacon's text/plain body", async () => {
+      const res = await convert(JSON.stringify({ experiment: KEY, goal: "cta" }), assigned("original"), {
+        contentType: "text/plain;charset=UTF-8",
+      });
+      expect(res.status).toBe(200);
+      expect(recordConversion).toHaveBeenCalledTimes(1);
+    });
+
+    it("refuses a visitor without an assignment, or with a bucket that isn't live", async () => {
+      expect((await convert({ experiment: KEY, goal: "cta" })).status).toBe(409);
+      // No visitor id: the cookies weren't set by the resolver.
+      const noVisitor = `payload_ab_bucket_en_measured=original`;
+      expect((await convert({ experiment: KEY, goal: "cta" }, noVisitor)).status).toBe(409);
+      expect((await convert({ experiment: KEY, goal: "cta" }, assigned("measured--gone00"))).status).toBe(409);
+      expect(recordConversion).not.toHaveBeenCalled();
+    });
+
+    it("validates the body", async () => {
+      const cookie = assigned("original");
+      expect((await convert("not json", cookie)).status).toBe(400);
+      expect((await convert({ experiment: KEY, goal: "signup" }, cookie)).status).toBe(400);
+      expect((await convert({ experiment: "measured", goal: "cta" }, cookie)).status).toBe(400);
+      expect((await convert({ experiment: KEY }, cookie)).status).toBe(400);
+      expect((await convert(JSON.stringify({ experiment: KEY, goal: "cta", pad: "x".repeat(4096) }), cookie)).status).toBe(413);
+      expect(recordConversion).not.toHaveBeenCalled();
+    });
+
+    it("answers 404 for a page without an experiment", async () => {
+      const res = await convert({ experiment: "/en/no-experiment", goal: "cta" }, assigned("original"));
+      expect(res.status).toBe(404);
+    });
+
+    it("answers 500 when the host's recordConversion throws, and sets no marker", async () => {
+      recordConversion.mockRejectedValueOnce(new Error("boom"));
+      const res = await convert({ experiment: KEY, goal: "cta" }, assigned("original"));
+      expect(res.status).toBe(500);
+      expect(res.setCookie).toBeNull();
+    });
+  });
+
+  describe("GET /api/_ab/results", () => {
+    const results = (query: string, auth: string | null = `JWT ${token}`) =>
+      handleEndpoints({
+        config,
+        request: new Request(`http://localhost:3000/api/_ab/results?${query}`, {
+          headers: auth ? { Authorization: auth } : {},
+        }),
+      }).then(async (res) => ({ status: res.status, body: (await res.json()) as Record<string, any> }));
+
+    it("is for admin-panel users only", async () => {
+      expect((await results(`collection=pages&id=${page.id}`, null)).status).toBe(401);
+      expect((await results(`collection=pages&id=${page.id}`, `JWT ${memberToken}`)).status).toBe(403);
+      expect(getResults).not.toHaveBeenCalled();
+    });
+
+    it("computes the key from the document and passes the experiment's start", async () => {
+      const res = await results(`collection=pages&id=${page.id}&locale=pt`);
+      expect(res.status).toBe(200);
+      expect(res.body.experiment).toEqual({ key: "/pt/measured", startedAt: expect.any(String) });
+      expect(res.body.results).toEqual({ configured: false, reason: "No credentials." });
+      expect(getResults).toHaveBeenCalledWith(
+        expect.objectContaining({ experiment: "/pt/measured", startedAt: res.body.experiment.startedAt })
+      );
+    });
+
+    it("returns no experiment before a variant is published", async () => {
+      const draftOnly = await createPublishedPage("not-started", "Not started");
+      await addVariant(draftOnly);
+      const res = await results(`collection=pages&id=${draftOnly.id}`);
+      expect(res.body).toEqual({ experiment: null, results: null });
+      expect(getResults).not.toHaveBeenCalled();
+    });
+
+    it("validates the collection and refuses a variant", async () => {
+      expect((await results(`collection=posts&id=1`)).status).toBe(400);
+      expect((await results(`collection=pages`)).status).toBe(400);
+      expect((await results(`collection=pages&id=${variant.id}`)).status).toBe(400);
+    });
+
+    it("starts a new run, with a later start, after the experiment ended", async () => {
+      const restarted = await createPublishedPage("restarted", "Restarted");
+      const publish = (id: Doc["id"]) =>
+        payload.update({
+          collection: PAGES,
+          id,
+          data: { _status: "published" } as never,
+          locale: "en" as never,
+          publishAllLocales: true,
+          overrideAccess: true,
+        });
+      const first = await addVariant(restarted);
+      await publish(first.id);
+      const before = await results(`collection=pages&id=${restarted.id}`);
+      expect(before.body.experiment?.startedAt).toEqual(expect.any(String));
+
+      // Ending it: the last variant goes, and so does the run.
+      expect((await api(`/pages/${first.id}`, { method: "DELETE" })).status).toBe(200);
+      expect((await results(`collection=pages&id=${restarted.id}`)).body).toEqual({
+        experiment: null,
+        results: null,
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      const second = await addVariant(restarted);
+      await publish(second.id);
+      const after = await results(`collection=pages&id=${restarted.id}`);
+      expect(Date.parse(after.body.experiment.startedAt)).toBeGreaterThan(
+        Date.parse(before.body.experiment.startedAt)
+      );
+      // The manifest entry carries the new run.
+      expect((await manifest())["/en/restarted"][0].startedAt).toBe(after.body.experiment.startedAt);
+    });
+
+    it("ends the run when the variant is unpublished, too", async () => {
+      const paused = await createPublishedPage("paused", "Paused");
+      const v = await addVariant(paused);
+      const setStatus = (status: "published" | "draft") =>
+        payload.update({
+          collection: PAGES,
+          id: v.id,
+          data: { _status: status } as never,
+          ...(status === "published" ? { publishAllLocales: true } : { unpublishAllLocales: true }),
+          overrideAccess: true,
+        });
+      await setStatus("published");
+      expect((await results(`collection=pages&id=${paused.id}`)).body.experiment).not.toBeNull();
+      await setStatus("draft");
+      expect((await results(`collection=pages&id=${paused.id}`)).body.experiment).toBeNull();
+    });
+
+    it("answers 502 when the host's getResults fails", async () => {
+      getResults.mockRejectedValueOnce(new Error("SQL API down"));
+      const res = await results(`collection=pages&id=${page.id}`);
+      expect(res.status).toBe(502);
+      expect(res.body.error).toBe("SQL API down");
+    });
   });
 });

@@ -47,7 +47,9 @@ export const Route = createFileRoute('/_frontend/$slug')({
 })
 
 function SlugPage() {
-  const { draft, livePreview, page } = Route.useLoaderData()
+  const { draft, experiment, livePreview, page } = Route.useLoaderData()
 
-  return page ? <PageTemplate draft={draft} livePreview={livePreview} page={page} /> : null
+  return page ? (
+    <PageTemplate draft={draft} experiment={experiment} livePreview={livePreview} page={page} />
+  ) : null
 }

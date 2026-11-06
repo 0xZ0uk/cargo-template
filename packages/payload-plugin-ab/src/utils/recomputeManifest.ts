@@ -3,7 +3,15 @@ import { hasDraftsEnabled } from "payload/shared";
 import type { AbTestingPluginConfig, CollectionABConfig } from "../types/config";
 import { AB_PASS_PERCENTAGE_FIELD, AB_VARIANT_OF_FIELD, DEFAULT_SLUG_FIELD } from "../constants";
 import { getLocales } from "./getLocales";
+import { endExperimentRun, startExperimentRun } from "./experimentRuns";
 
+/**
+ * Rewrites the manifest entries of one original document (one per locale) from its published
+ * variants, and keeps the experiment's run in step: a key that gets published variants starts
+ * a run (an `ab-experiments` row with `startedAt`), and a key that loses them (its last
+ * variant unpublished or deleted, or the original unpublished) ends it. The default variant
+ * data carries the run's `startedAt`, so a resolver knows the run from the manifest alone.
+ */
 export async function recomputeManifestForParent<TVariantData extends object>(
   parentId: string | number,
   parentCollectionSlug: string,
@@ -33,8 +41,10 @@ export async function recomputeManifestForParent<TVariantData extends object>(
     if (!manifestKey) continue;
 
     // An unpublished original serves nothing in this locale, so neither do its variants.
+    const run = { manifestKey, parentId, parentCollection: parentCollectionSlug, locale };
     if (drafts && parentDoc._status !== "published") {
       await pluginConfig.storage.clear(manifestKey, payload);
+      await endExperimentRun(run, pluginConfig, req);
       continue;
     }
 
@@ -63,12 +73,14 @@ export async function recomputeManifestForParent<TVariantData extends object>(
 
     if (variantDocs.length === 0) {
       await pluginConfig.storage.clear(manifestKey, payload);
+      await endExperimentRun(run, pluginConfig, req);
       continue;
     }
 
+    const startedAt = await startExperimentRun(run, pluginConfig, req);
     const variantData = variantDocs.map((variantDoc: Record<string, unknown>) => {
       if (abConfig.generateVariantData) {
-        return abConfig.generateVariantData({ doc: parentDoc, variantDoc, locale });
+        return abConfig.generateVariantData({ doc: parentDoc, variantDoc, locale, startedAt });
       }
       // Default: derive bucket from slug, rewritePath from generatePath on variant doc
       const variantPath = abConfig.generatePath({ doc: variantDoc, locale });
@@ -76,6 +88,7 @@ export async function recomputeManifestForParent<TVariantData extends object>(
         bucket: (variantDoc[slugField] as string) ?? String(variantDoc.id),
         rewritePath: variantPath ?? "",
         passPercentage: (variantDoc[AB_PASS_PERCENTAGE_FIELD] as number) ?? 0,
+        startedAt,
       } as unknown as TVariantData;
     });
 

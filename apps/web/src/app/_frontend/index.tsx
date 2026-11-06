@@ -15,8 +15,10 @@ export const Route = createFileRoute('/_frontend/')({
 })
 
 function HomePage() {
-  const { draft, livePreview, page } = Route.useLoaderData()
+  const { draft, experiment, livePreview, page } = Route.useLoaderData()
 
   // `loadPage` falls back to a static page for `home`, so this only guards the type.
-  return page ? <PageTemplate draft={draft} livePreview={livePreview} page={page} /> : null
+  return page ? (
+    <PageTemplate draft={draft} experiment={experiment} livePreview={livePreview} page={page} />
+  ) : null
 }
