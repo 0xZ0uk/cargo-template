@@ -11,6 +11,8 @@
 
 ### Fixed
 
+- Approval diffs of arrays and blocks (#113 review): rows pair by id (rows without one by position), a removed row is labelled `(removed)` with its position before so it can no longer share a path or label with a kept row, a new row with no values is still reported, and a reordered row shows a `Position` change instead of an empty diff.
+- "Approve all" and each Approve are disabled until every pending change has loaded, so nothing is approved unseen or without the `updatedAt` its diff was built from; a change whose diff couldn't be loaded asks "Approve anyway?" on its own card and blocks Approve all; after a stale refusal the old diff is replaced by a loading state until the fresh one arrives (#113 review).
 - A send refused before the run started (rate limited, `model_not_allowed`, not configured) no longer leaves its bubble in the transcript (#112 review).
 - A successful delete no longer links to the edit views of the deleted documents (#112 review).
 - The approval input is no longer cut silently: the diff card shows values whole and scrollable and says when one was shortened; `ApprovalControl` says so too (#112 review).

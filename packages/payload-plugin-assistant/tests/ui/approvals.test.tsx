@@ -193,6 +193,36 @@ describe("approval card", () => {
     expect(approve).toHaveBeenCalledTimes(1);
   });
 
+  it("Approve is disabled while the change is loading", () => {
+    const approve = vi.fn();
+    render(<ApprovalCard approval={approval({ approve, proposal: undefined })} />);
+    const button = screen.getByRole("button", { name: "Approve" }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    fireEvent.click(button);
+    expect(approve).not.toHaveBeenCalled();
+    // Rejecting what you can't read yet is safe.
+    expect((screen.getByRole("button", { name: "Reject" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("a change that couldn't be shown needs an explicit confirmation before it is approved", () => {
+    const approve = vi.fn();
+    render(<ApprovalCard approval={approval({ approve, proposal: null })} />);
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    expect(approve).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert").textContent).toMatch(/could not be shown/);
+    fireEvent.click(screen.getByRole("button", { name: "Approve anyway" }));
+    expect(approve).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancelling the confirmation approves nothing", () => {
+    const approve = vi.fn();
+    render(<ApprovalCard approval={approval({ approve, proposal: null })} />);
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(approve).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Approve" })).toBeTruthy();
+  });
+
   it("answered while others wait: says so, with Undo", () => {
     const undo = vi.fn();
     render(<ApprovalCard approval={approval({ status: "decided", decision: { approved: true }, waitingFor: 1, undo })} />);
@@ -409,6 +439,130 @@ describe("chat panel", () => {
       fireEvent.click(within(card("Home")).getByRole("button", { name: "Approve anyway" }));
       expect(fakeChat.resolved).toHaveLength(2);
       expect(fakeChat.resolved[1]!.map((r) => r.id)).toEqual(["i1", "i2"]);
+    });
+
+    describe("before the changes have loaded", () => {
+      /** A proposals request the test answers when it chooses. */
+      const deferredProposals = (...bodies: Array<() => Response>) => {
+        const resolvers: Array<() => void> = [];
+        let call = 0;
+        return {
+          resolvers,
+          impl: (url: string) => {
+            if (!url.includes("/approvals")) return undefined;
+            const make = bodies[Math.min(call, bodies.length - 1)]!;
+            call += 1;
+            return new Promise<Response>((resolve) => resolvers.push(() => resolve(make()))) as unknown as Response;
+          },
+        };
+      };
+      const approvalCards = () => Array.from(document.querySelectorAll<HTMLElement>(".assistant-approval-card"));
+      const button = (name: string | RegExp) => screen.getByRole("button", { name }) as HTMLButtonElement;
+
+      it("Approve all and each Approve stay disabled until every change has loaded; then the answers carry the updatedAt", async () => {
+        const proposals = deferredProposals(() => Response.json(proposalsBody()));
+        setUp(proposals.impl);
+        await waitFor(() => expect(proposals.resolvers).toHaveLength(1));
+
+        expect(button("Approve all").disabled).toBe(true);
+        expect(button("Approve all").title).toMatch(/Waiting for the changes to load/);
+        for (const approve of screen.getAllByRole("button", { name: "Approve" })) expect((approve as HTMLButtonElement).disabled).toBe(true);
+        // Clicking a disabled button does nothing.
+        fireEvent.click(button("Approve all"));
+        expect(fakeChat.resolved).toHaveLength(0);
+        // Rejecting unseen changes is safe, so it isn't blocked.
+        expect(button("Reject all").disabled).toBe(false);
+
+        await act(async () => proposals.resolvers[0]!());
+        await screen.findByRole("link", { name: "Home" });
+        expect(button("Approve all").disabled).toBe(false);
+        fireEvent.click(button("Approve all"));
+        expect(fakeChat.resolved).toEqual([
+          [
+            { id: "i1", payload: { approved: true, seenUpdatedAt: "2026-11-01T00:00:00.000Z" } },
+            { id: "i2", payload: { approved: true, seenUpdatedAt: "2026-11-02T00:00:00.000Z" } },
+          ],
+        ]);
+      });
+
+      it("a proposals request that fails: Approve all is blocked, each card asks to confirm, and Reject all still works", async () => {
+        setUp((url) => (url.includes("/approvals") ? Response.json({ error: "boom" }, { status: 500 }) : undefined));
+        await waitFor(() => expect(screen.getAllByText(/could not be prepared for review/)).toHaveLength(2));
+
+        expect(button("Approve all").disabled).toBe(true);
+        expect(button("Approve all").title).toMatch(/own confirmation/);
+        fireEvent.click(button("Approve all"));
+        expect(fakeChat.resolved).toHaveLength(0);
+
+        const cards = approvalCards();
+        fireEvent.click(within(cards[0]!).getByRole("button", { name: "Approve" }));
+        expect(fakeChat.resolved).toHaveLength(0);
+        expect(within(cards[0]!).getByRole("alert").textContent).toMatch(/could not be shown/);
+        fireEvent.click(within(cards[0]!).getByRole("button", { name: "Approve anyway" }));
+        expect(within(cards[0]!).getByText(/^Approved/)).toBeTruthy();
+
+        // Approve all still waits for the other unseen change; Reject all answers it.
+        expect(button("Approve all").disabled).toBe(true);
+        fireEvent.click(button("Reject all"));
+        // No diff, so no updatedAt for the stale check: the explicit confirmation stands in for it.
+        expect(fakeChat.resolved).toEqual([
+          [
+            { id: "i1", payload: { approved: true } },
+            { id: "i2", payload: { approved: false } },
+          ],
+        ]);
+      });
+
+      it("one change loaded and one not: Approve all is blocked, the loaded card approves with its updatedAt", async () => {
+        setUp((url) =>
+          url.includes("/approvals") ? Response.json({ approvals: [proposalsBody().approvals[0]] }) : undefined
+        );
+        await screen.findByRole("link", { name: "Home" });
+        expect(button("Approve all").disabled).toBe(true);
+
+        const home = card("Home");
+        fireEvent.click(within(home).getByRole("button", { name: "Approve" }));
+        expect(within(home).getByText(/^Approved/)).toBeTruthy();
+        const other = approvalCards().find((a) => a !== home)!;
+        fireEvent.click(within(other).getByRole("button", { name: "Approve" }));
+        fireEvent.click(within(other).getByRole("button", { name: "Approve anyway" }));
+        expect(fakeChat.resolved).toEqual([
+          [
+            { id: "i1", payload: { approved: true, seenUpdatedAt: "2026-11-01T00:00:00.000Z" } },
+            { id: "i2", payload: { approved: true } },
+          ],
+        ]);
+      });
+
+      it("after a stale refusal the old diff is not approvable while the new one loads", async () => {
+        const second = deferredProposals(() => Response.json(proposalsBody(true)));
+        let loads = 0;
+        const fetchMock = setUp((url) => {
+          if (!url.includes("/approvals")) return undefined;
+          loads += 1;
+          return loads === 1 ? Response.json(proposalsBody()) : second.impl(url);
+        });
+        await screen.findByRole("link", { name: "Home" });
+        fireEvent.click(screen.getByRole("button", { name: "Approve all" }));
+
+        await act(async () => {
+          fetchMock.mockImplementationOnce(async () =>
+            Response.json({ code: "stale", error: "changed", interruptIds: ["i1"] }, { status: 409 })
+          );
+          await fakeChat.options!().fetchClient("/api/assistant/chat?threadId=t", { method: "POST" });
+          fakeChat.set({ resuming: false });
+        });
+        await waitFor(() => expect(second.resolvers).toHaveLength(1));
+
+        // The reloading card shows a loading state, not the diff it was answered against.
+        const loadingCard = screen.getByLabelText("Loading the change").closest("article") as HTMLElement;
+        expect((within(loadingCard).getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(true);
+        expect(button("Approve all").disabled).toBe(true);
+
+        await act(async () => second.resolvers[0]!());
+        await waitFor(() => expect(screen.queryByLabelText("Loading the change")).toBeNull());
+        expect(within(card("Home")).getByText(/changed after you reviewed the change\. The diff below/)).toBeTruthy();
+      });
     });
   });
 });

@@ -612,8 +612,12 @@ The reply is over when the stream ends (`isLoading`), not at a `RUN_FINISHED` (o
 - **What it shows** comes from `GET /api/assistant/approvals` (`src/server/approvals.ts`): the
   action, the collection or global, the document (title linked to its edit view, status), and the
   change as `FieldChange`s, field by field (`src/approvals/diff.ts`, pure, driven by the field
-  config: groups, tabs, rows, arrays and blocks paired by row `id`, selects by label, relationships
-  by id). Per action:
+  config: groups, tabs, rows, arrays and blocks, selects by label, relationships by id).
+  Array and block rows pair by row `id` (rows without one, as an assistant writes them, pair by
+  position, after the ids have claimed theirs). A row that was removed is labelled
+  `Layout › 2 (removed) · Hero`, one that was added shows as added, and a row that changed place
+  gets a `Position` change (`before: "1"`, `after: "3"`): only rows outside the longest run that
+  kept their order count as moved, so inserting or removing a row doesn't flag the ones after it.) Per action:
   - **update**: the current document, read as the user, against the proposed `data`, only the
     fields `data` sets; by `where`: the matching documents (first 10) and the count;
   - **create**: every proposed field (each document of `createDocuments`);
@@ -630,6 +634,11 @@ The reply is over when the stream ends (`isLoading`), not at a `RUN_FINISHED` (o
   interrupt batch **all or nothing**, so with several pending approvals each card keeps its answer
   ("sent with the other answers once N more changes have one", with Undo) and the batch is sent
   once, when the last one is answered. "Approve all" / "Reject all" answer the rest.
+- **Nothing is approved unseen.** Approve (and Approve all) stay disabled until the change's diff
+  has loaded; every approval then carries the `updatedAt` that diff was built from. If the diff
+  couldn't be loaded, the card shows the tool's input and Approve asks "Approve anyway?" first (no
+  `updatedAt`, so no stale check); Approve all is disabled while any unanswered change needs that,
+  or needs a re-review after the document changed. Reject and Reject all are never blocked.
 - **Stale proposals**: the proposal flags `changedSinceProposal` when the document's `updatedAt` is
   after the interrupt; the card warns and Approve becomes "Approve anyway" (and "Approve all" waits
   for that review). Approving sends `seenUpdatedAt`; if the document changed after the card showed

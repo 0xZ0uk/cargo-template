@@ -43,6 +43,13 @@ export interface ApprovalBatch {
   answered: number;
   approveAll: () => void;
   rejectAll: () => void;
+  /**
+   * Why "Approve all" can't be used now, or `undefined`: `loading` while a pending change's diff
+   * hasn't arrived (approving it would be blind, and send no `updatedAt` for the stale check);
+   * `review` while an unanswered change needs its own confirmation (its document changed, or its
+   * diff couldn't be loaded). Reject all is never blocked.
+   */
+  approveAllBlocked: "loading" | "review" | undefined;
   /** Send the kept answers again after a failed submission. */
   retry: () => void;
   /** The last submission failed (not stale): answers are kept, `retry` resends them. */
@@ -61,6 +68,11 @@ export interface ApprovalBatchOptions {
   documentHref: (slug: string, id: string) => string | undefined;
 }
 
+/** An unanswered change that must be confirmed on its own card, never in bulk. */
+const needsOwnReview = (proposal: ApprovalProposal | null | undefined, staleReview: boolean) =>
+  proposal === null || Boolean(proposal?.changedSinceProposal) || staleReview;
+
+/** The answer for a card: an approval carries the `updatedAt` its diff was built from. */
 const decisionFor = (approved: boolean, proposal: ApprovalProposal | null | undefined): ApprovalDecision => {
   const updatedAt = proposal?.items.length === 1 ? proposal.items[0]?.document?.updatedAt : undefined;
   return approved ? { approved: true, ...(updatedAt ? { seenUpdatedAt: updatedAt } : {}) } : { approved: false };
@@ -160,15 +172,24 @@ export function useApprovalBatch({ chat, apiRoute, threadId, lastError, resetErr
     [base, decisions, stale, submit]
   );
 
+  const undecided = base.filter((b) => !decisions[b.approval.id]).length;
+  const loading = base.some((b) => !proposals.has(b.approval.id));
+  const needsReview = base.some(
+    (b) => !decisions[b.approval.id] && needsOwnReview(proposals.get(b.approval.id), stale.has(b.approval.id))
+  );
+  const approveAllBlocked = loading ? "loading" : needsReview ? "review" : undefined;
+
   const answerRest = useCallback(
     (approved: boolean) => {
+      // Approving what hasn't been seen, or needs its own confirmation, is never done in bulk.
+      if (approved && approveAllBlocked) return;
       const next = { ...decisions };
       for (const { approval } of base) next[approval.id] ??= decisionFor(approved, proposals.get(approval.id));
       setDecisions(next);
       setStale(new Set());
       if (base.length) submit(next);
     },
-    [base, decisions, proposals, submit]
+    [base, decisions, proposals, submit, approveAllBlocked]
   );
 
   // A submission that ended with the interrupts back is a refusal: stale, or a transport error.
@@ -187,6 +208,8 @@ export function useApprovalBatch({ chat, apiRoute, threadId, lastError, resetErr
     const staleIds = staleInterruptIds(lastError()).filter((id) => ids.has(id));
     if (staleIds.length) {
       setStale(new Set(staleIds));
+      // The old diff is out of date: show the card as loading until the new one arrives.
+      setProposals((current) => new Map([...current].filter(([id]) => !staleIds.includes(id))));
       setDecisions((current) => Object.fromEntries(Object.entries(current).filter(([id]) => !staleIds.includes(id))));
       setReload((n) => n + 1);
     } else {
@@ -207,7 +230,6 @@ export function useApprovalBatch({ chat, apiRoute, threadId, lastError, resetErr
     }
   }, [idsKey]);
 
-  const undecided = base.filter((b) => !decisions[b.approval.id]).length;
 
   const pending = useMemo(
     () =>
@@ -223,7 +245,10 @@ export function useApprovalBatch({ chat, apiRoute, threadId, lastError, resetErr
           ...(decision ? { decision } : {}),
           staleReview: stale.has(approval.id),
           waitingFor: decision ? undecided : Math.max(undecided - 1, 0),
-          approve: () => decide(approval.id, decisionFor(true, proposal)),
+          // No diff yet: nothing to approve (the card's button is disabled; this is the guard).
+          approve: () => {
+            if (proposal !== undefined) decide(approval.id, decisionFor(true, proposal));
+          },
           reject: (reason?: string) => decide(approval.id, { approved: false, ...(reason?.trim() ? { reason: reason.trim() } : {}) }),
           undo: () => decide(approval.id, undefined),
           documentHref: (id: string) => (slug ? documentHref(slug, id) : undefined),
@@ -260,6 +285,7 @@ export function useApprovalBatch({ chat, apiRoute, threadId, lastError, resetErr
     answered: base.length - undecided,
     approveAll: () => answerRest(true),
     rejectAll: () => answerRest(false),
+    approveAllBlocked,
     retry: () => submit(decisions),
     failed,
     staleCount: stale.size,

@@ -142,7 +142,12 @@ export function ChatPanel({
     [approvals, batch, streaming, ApprovalComponent]
   );
   const unplaced = approvals.filter((approval) => !toolCallIds.has(approval.toolCallId));
-  const needsReview = approvals.some((a) => !a.decision && (a.proposal?.changedSinceProposal || a.staleReview));
+  const approveAllHint =
+    batch.approveAllBlocked === "loading"
+      ? "Waiting for the changes to load: you can’t approve what you haven’t seen."
+      : batch.approveAllBlocked === "review"
+        ? "A change needs its own confirmation (its document changed, or it couldn’t be shown): review it first."
+        : undefined;
 
   // Follow the reply while the reader is at the bottom; leave them alone once they scroll up.
   useEffect(() => {
@@ -261,10 +266,10 @@ export function ChatPanel({
                 <div className="assistant-row">
                   <Button
                     buttonStyle="primary"
-                    disabled={chat.resuming || needsReview || batch.answered === approvals.length}
+                    disabled={chat.resuming || Boolean(batch.approveAllBlocked) || batch.answered === approvals.length}
                     margin={false}
                     onClick={batch.approveAll}
-                    tooltip={needsReview ? "A document changed since it was proposed: review that change first." : undefined}
+                    tooltip={approveAllHint}
                   >
                     Approve all
                   </Button>

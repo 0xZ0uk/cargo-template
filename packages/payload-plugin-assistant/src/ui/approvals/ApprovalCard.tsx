@@ -168,12 +168,14 @@ export function ApprovalCard({ approval }: ApprovalRendererProps) {
   const status = approval.status ?? "pending";
   const proposal = approval.proposal;
   const changed = Boolean(proposal?.changedSinceProposal || approval.staleReview);
+  // A diff that couldn't be loaded is approved blind: ask for an explicit confirmation first.
+  const unseen = proposal === null;
   const action = proposal?.action ?? "other";
   const statusInfo = STATUS[status];
   const canAnswer = approval.canAnswer && status === "pending";
 
   const approve = () => {
-    if (changed && !confirming) {
+    if ((changed || unseen) && !confirming) {
       setConfirming(true);
       return;
     }
@@ -256,7 +258,9 @@ export function ApprovalCard({ approval }: ApprovalRendererProps) {
           <>
             {confirming ? (
               <p className="assistant-text assistant-text--small" role="alert">
-                The document changed since this was proposed. Approve this change anyway?
+                {unseen
+                  ? "The change could not be shown, so you haven’t seen what it does. Approve it anyway?"
+                  : "The document changed since this was proposed. Approve this change anyway?"}
               </p>
             ) : null}
             <div className="assistant-row">
