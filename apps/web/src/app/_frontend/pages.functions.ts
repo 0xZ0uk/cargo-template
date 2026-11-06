@@ -96,7 +96,7 @@ export const loadPage = createServerFn({ method: 'GET', strict: { output: false 
       if (varies) setResponseHeader('Cache-Control', 'private, no-store')
       // With the default variant data, the bucket is the variant's slug.
       variantSlug = ab?.variant?.bucket
-      // `routeAb` also counted the impression (once per visitor and bucket).
+      // `routeAb` also counted the impression (once per visitor, run and bucket).
       if (ab) experiment = pagePath(data.slug)
     }
 
