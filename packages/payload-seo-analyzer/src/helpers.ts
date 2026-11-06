@@ -793,24 +793,53 @@ function _extractLists(
   return lists
 }
 
+export interface HeadingSkip {
+  /** Position of the offending heading in the list that was passed in. */
+  index: number
+  /** Level of the heading right before it (1-6). */
+  previousLevel: number
+  /** Level of the offending heading (1-6). */
+  level: number
+  /** Levels that were jumped over, e.g. h2 -> h5 gives [3, 4]. */
+  skippedLevels: number[]
+  text: string
+}
+
+const HEADING_LEVELS: Record<string, number> = { h1: 1, h2: 2, h3: 3, h4: 4, h5: 5, h6: 6 }
+
+/**
+ * Find every heading that skips a level (e.g. h2 -> h4 without an h3).
+ *
+ * Each heading is compared with the heading right before it, so a skip is caught
+ * even after the outline has gone back up (h1 h2 h3 h2 h4). Going back up by any
+ * number of levels is fine, and the first heading never counts as a skip: the H1
+ * checks cover the top of the page. Tags that aren't h1-h6 are ignored.
+ *
+ * Approach after focusreactive/payload-plugins `payload-plugin-seo`
+ * (`derive-vitals/heading-issues.ts`, MIT, commit e40c7a0).
+ */
+export function findHeadingSkips(headings: Array<{ tag: string; text: string }>): HeadingSkip[] {
+  const skips: HeadingSkip[] = []
+  let previousLevel = 0
+
+  headings.forEach((h, index) => {
+    const level = HEADING_LEVELS[h.tag]
+    if (!level) return
+
+    if (previousLevel > 0 && level > previousLevel + 1) {
+      const skippedLevels: number[] = []
+      for (let l = previousLevel + 1; l < level; l++) skippedLevels.push(l)
+      skips.push({ index, previousLevel, level, skippedLevels, text: h.text })
+    }
+    previousLevel = level
+  })
+
+  return skips
+}
+
 /**
  * Check heading hierarchy: no level skipping (e.g. h2 -> h4 without h3).
  */
 export function checkHeadingHierarchy(headings: Array<{ tag: string; text: string }>): boolean {
-  if (headings.length === 0) return true
-
-  const levelMap: Record<string, number> = { h1: 1, h2: 2, h3: 3, h4: 4, h5: 5, h6: 6 }
-  let maxLevel = 0
-
-  for (const h of headings) {
-    const level = levelMap[h.tag] || 0
-    if (level > maxLevel + 1 && maxLevel > 0) {
-      return false
-    }
-    if (level > maxLevel) {
-      maxLevel = level
-    }
-  }
-
-  return true
+  return findHeadingSkips(headings).length === 0
 }

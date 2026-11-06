@@ -249,6 +249,59 @@ describe('checkHeadings', () => {
     const h1Check = checks.find((c) => c.id === 'h1-unique')
     expect(h1Check?.status).toBe('warning')
   })
+
+  describe('heading-hierarchy', () => {
+    const run = (tags: Array<[string, string]>) =>
+      checkHeadings(
+        makeInput(),
+        makeCtx({ allHeadings: tags.map(([tag, text]) => ({ tag, text })) }),
+      ).find((c) => c.id === 'heading-hierarchy')
+
+    it('passes a correct outline', () => {
+      const check = run([['h1', 'Title'], ['h2', 'A'], ['h3', 'B'], ['h2', 'C']])
+      expect(check?.status).toBe('pass')
+      expect(check?.tip).toBeUndefined()
+    })
+
+    it('names the heading that skips a level, after the outline went back up', () => {
+      const check = run([
+        ['h1', 'Title'],
+        ['h2', 'Menu'],
+        ['h3', 'Starters'],
+        ['h2', 'Visit us'],
+        ['h4', 'Opening hours'],
+      ])
+      expect(check?.status).toBe('warning')
+      expect(check?.message).toBe(
+        '"Opening hours" (h4) follows an h2. Make it an h3, or add an h3 above it.',
+      )
+      expect(check?.tip).toBeTruthy()
+    })
+
+    it('counts the other skips', () => {
+      const check = run([
+        ['h1', 'Title'],
+        ['h3', 'First'],
+        ['h2', 'Back'],
+        ['h4', 'Second'],
+        ['h6', 'Third'],
+      ])
+      expect(check?.message).toContain('"First" (h3) follows an h1')
+      expect(check?.message).toContain('2 more heading(s) skip a level.')
+    })
+
+    it('sees the post title as the first h1', () => {
+      // buildContext prepends the title as an h1 when the content has none.
+      const check = run([['h1', 'Post title'], ['h3', 'Straight to h3']])
+      expect(check?.status).toBe('warning')
+      expect(check?.message).toContain('"Straight to h3" (h3) follows an h1')
+    })
+
+    it('handles empty heading text', () => {
+      const check = run([['h2', 'A'], ['h4', '  ']])
+      expect(check?.message).toContain('An empty heading (h4) follows an h2')
+    })
+  })
 })
 
 // ---------------------------------------------------------------------------
