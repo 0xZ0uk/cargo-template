@@ -10,6 +10,7 @@ import * as migration_20261106_025216_seo_noindex from './20261106_025216_seo_no
 import * as migration_20261106_083840_socials from './20261106_083840_socials';
 import * as migration_20261106_092406_ab from './20261106_092406_ab';
 import * as migration_20261106_110114_ab_ended_runs from './20261106_110114_ab_ended_runs';
+import * as migration_20261106_193957_fk_on_delete from './20261106_193957_fk_on_delete';
 
 export const migrations = [
   {
@@ -70,6 +71,11 @@ export const migrations = [
   {
     up: migration_20261106_110114_ab_ended_runs.up,
     down: migration_20261106_110114_ab_ended_runs.down,
-    name: '20261106_110114_ab_ended_runs'
+    name: '20261106_110114_ab_ended_runs',
+  },
+  {
+    up: migration_20261106_193957_fk_on_delete.up,
+    down: migration_20261106_193957_fk_on_delete.down,
+    name: '20261106_193957_fk_on_delete'
   },
 ];
