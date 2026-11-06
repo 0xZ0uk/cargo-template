@@ -36,7 +36,7 @@ export function truncateAtWord(text: string, maxChars: number): string {
   return kept + ELLIPSIS
 }
 
-const MARKS_RE = /[̀-ͯ]/g
+const MARKS_RE = /[\u0300-\u036f]/g
 const QUOTED_RE = /^["“”](.+)["“”]$/s
 
 function escapeRegExp(value: string): string {
