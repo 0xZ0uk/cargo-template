@@ -2,9 +2,8 @@ import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 
-vi.mock('@payloadcms/ui', () => ({
-  Button: () => null,
-  toast: { error: vi.fn(), success: vi.fn() },
+vi.mock('@payloadcms/ui', async () => ({
+  ...(await import('./helpers/payloadUiStub.js')).payloadUiStub,
   useConfig: vi.fn(() => {
     throw new Error('useConfig must not run without sourceKind')
   }),

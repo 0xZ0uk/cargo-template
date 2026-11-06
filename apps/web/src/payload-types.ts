@@ -332,6 +332,10 @@ export interface Page {
    */
   isCornerstone?: boolean | null;
   /**
+   * Adds a robots "noindex" meta tag and leaves the page out of sitemap.xml and llms.txt.
+   */
+  noindex?: boolean | null;
+  /**
    * Target keyword for SEO analysis
    */
   focusKeyword?: string | null;
@@ -1765,6 +1769,7 @@ export interface PagesSelect<T extends boolean = true> {
   publishedAt?: T;
   slug?: T;
   isCornerstone?: T;
+  noindex?: T;
   focusKeyword?: T;
   focusKeywords?:
     | T

@@ -25,7 +25,7 @@ describe('collapsible headers are real buttons', () => {
     const header = screen.getAllByRole('button')[0]
     expect(header.tagName).toBe('BUTTON')
     // Without type="button" this would submit Payload's document form, since
-    // SerpPreview is mounted as a UI field inside it.
+    // SerpPreview is mounted in the sidebar inside it.
     expect(header.getAttribute('type')).toBe('button')
     expect(header.getAttribute('aria-expanded')).toBe('false')
 
@@ -39,6 +39,43 @@ describe('collapsible headers are real buttons', () => {
     expect(header.tagName).toBe('BUTTON')
     expect(header.getAttribute('type')).toBe('button')
     expect(header.getAttribute('aria-expanded')).toBe('false')
+  })
+})
+
+describe('SerpPreview shows the values it is given', () => {
+  it('renders the title and description, bolds the keyphrase and drops the placeholders', () => {
+    const { container } = render(
+      <SerpPreview
+        hostname="exemple.fr"
+        keyphrases={['café']}
+        metaDescription="Notre guide du CAFE de spécialité"
+        metaTitle="Le meilleur café de Paris"
+        slug="guide"
+      />,
+    )
+    fireEvent.click(screen.getAllByRole('button')[0]) // the preview starts collapsed
+    const title = container.querySelector('.seo-serp__title') as HTMLElement
+    const desc = container.querySelector('.seo-serp__description') as HTMLElement
+    expect(title.textContent).toBe('Le meilleur café de Paris')
+    expect(desc.textContent).toBe('Notre guide du CAFE de spécialité')
+    expect(title.querySelector('strong')?.textContent).toBe('café')
+    expect(desc.querySelector('strong')?.textContent).toBe('CAFE')
+    expect(container.textContent).not.toMatch(/no meta (title|description)/i)
+    expect(container.textContent).toContain('exemple.fr')
+  })
+
+  it('cuts a long description at a word boundary for the active device', () => {
+    const words = Array.from({ length: 60 }, (_, i) => `mot${i}`).join(' ')
+    const { container } = render(<SerpPreview metaDescription={words} metaTitle="T" />)
+    fireEvent.click(screen.getAllByRole('button')[0])
+    const desc = () => (container.querySelector('.seo-serp__description') as HTMLElement).textContent as string
+    const desktop = desc()
+    expect(desktop.endsWith(' …')).toBe(true)
+    expect(desktop.length).toBeLessThanOrEqual(162)
+    expect(words.startsWith(desktop.slice(0, -2))).toBe(true)
+
+    fireEvent.click(screen.getByRole('button', { name: /mobile/i }))
+    expect(desc().length).toBeLessThan(desktop.length)
   })
 })
 
@@ -121,7 +158,7 @@ describe('LiveRegion', () => {
 
 describe('no <button> may fall back to type="submit"', () => {
   it('SerpPreview and SeoSocialPreview render only typed buttons', () => {
-    // These two are mounted as UI fields INSIDE Payload's document <form>.
+    // These two are mounted in the sidebar, INSIDE Payload's document <form>.
     // An untyped button there submits the document on click.
     render(
       <div>

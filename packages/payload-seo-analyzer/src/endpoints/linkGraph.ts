@@ -312,7 +312,7 @@ export function createLinkGraphHandler(targetCollections: string[], globals: str
       // 1. Fetch all documents from target collections and globals
       const slugMap = new Map<
         string,
-        { id: number | string; title: string; slug: string; collection: string }
+        { id: number | string; title: string; slug: string; collection: string; noindex: boolean }
       >()
 
       // Map of slug -> outgoing internal links
@@ -345,6 +345,8 @@ export function createLinkGraphHandler(targetCollections: string[], globals: str
           title,
           slug: nodeId,
           collection: collectionLabel,
+          // A noindex page is hidden on purpose: it should not be reported as an orphan.
+          noindex: d.noindex === true || d.meta?.noindex === true,
         })
 
         // Extract internal links and deduplicate by target slug
@@ -411,7 +413,7 @@ export function createLinkGraphHandler(targetCollections: string[], globals: str
           slug,
           inDegree,
           outDegree,
-          isOrphan: !homeSlugs.has(slug) && inDegree === 0,
+          isOrphan: !homeSlugs.has(slug) && inDegree === 0 && !docInfo.noindex,
           isHub: outDegree > HUB_THRESHOLD,
         })
 

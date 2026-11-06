@@ -1,6 +1,6 @@
 /**
  * SEO fields added automatically to collections by the plugin.
- * Includes: focusKeyword, focusKeywords array, isCornerstone, and the SeoAnalyzer UI.
+ * Includes: focusKeyword, focusKeywords array, isCornerstone, noindex, and the SeoAnalyzer UI.
  */
 
 import type { Field } from 'payload'
@@ -14,6 +14,19 @@ export function seoFields(): Field[] {
       label: 'Cornerstone content',
       admin: {
         description: 'Cornerstone content is the most important content on your site and should be well linked.',
+        position: 'sidebar',
+      },
+    },
+    {
+      // Read as `doc.noindex` by the sitemaps, llms.txt, /validate, the indexation audit
+      // and `buildMetadata`; the host renders the robots meta tag from it.
+      name: 'noindex',
+      type: 'checkbox',
+      defaultValue: false,
+      label: 'Hide from search engines',
+      admin: {
+        description:
+          'Adds a robots "noindex" meta tag and leaves the page out of sitemap.xml and llms.txt.',
         position: 'sidebar',
       },
     },

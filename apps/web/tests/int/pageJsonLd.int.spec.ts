@@ -100,4 +100,19 @@ describe('pageHead', () => {
       { children: '{"b":2}', type: 'application/ld+json' },
     ])
   })
+
+  it('adds a robots noindex tag only when the page is hidden from search engines', () => {
+    const head = (noindex?: boolean) =>
+      pageHead({
+        draft: false,
+        livePreview: false,
+        jsonLd: [],
+        origin: 'https://example.com',
+        page: { layout: [], noindex, slug: 'thank-you', title: 'Thank you' } as never,
+      }).meta
+
+    expect(head(true)).toContainEqual({ name: 'robots', content: 'noindex' })
+    expect(head(false)).not.toContainEqual(expect.objectContaining({ name: 'robots' }))
+    expect(head(undefined)).not.toContainEqual(expect.objectContaining({ name: 'robots' }))
+  })
 })

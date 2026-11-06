@@ -3,6 +3,13 @@
 import React, { useState } from 'react'
 import { Button, Collapsible, SearchIcon } from '@payloadcms/ui'
 import { cx, rangeTone, type Tone } from '../ui/index.js'
+import {
+  SERP_DESCRIPTION_MAX_CHARS_DESKTOP,
+  SERP_DESCRIPTION_MAX_CHARS_MOBILE,
+  SERP_TITLE_MAX_CHARS_DESKTOP,
+  SERP_TITLE_MAX_CHARS_MOBILE,
+} from '../constants.js'
+import { highlightKeyphrases, truncateAtWord } from '../helpers/serpPreviewText.js'
 import { useDashboardT } from '../hooks/useSeoLocale.js'
 import { withSeoErrorBoundary } from './withSeoErrorBoundary.js'
 import './SerpPreview.css'
@@ -16,6 +23,8 @@ export interface SerpPreviewProps {
   slug?: string
   hostname?: string
   favicon?: string
+  /** Focus keyphrase (and any synonyms), bolded in the title and description like Google does. */
+  keyphrases?: string[]
 }
 
 // ---------------------------------------------------------------------------
@@ -24,11 +33,6 @@ export interface SerpPreviewProps {
 /** Text class for a tone (neutral reads as secondary text). */
 function toneText(tone: Tone): string {
   return tone === 'neutral' ? 'seo-text--secondary' : `seo-text--${tone}`
-}
-
-function truncateText(text: string, maxChars: number): string {
-  if (text.length <= maxChars) return text
-  return text.slice(0, maxChars).trimEnd() + '...'
 }
 
 function buildBreadcrumb(hostname: string, slug?: string): string {
@@ -62,6 +66,7 @@ function SerpPreviewInner({
   slug,
   hostname,
   favicon,
+  keyphrases,
 }: SerpPreviewProps) {
   const t = useDashboardT()
   const [device, setDevice] = useState<DeviceMode>('desktop')
@@ -74,9 +79,12 @@ function SerpPreviewInner({
 
   const isDesktop = device === 'desktop'
 
-  // Truncation limit per device
-  const descMaxChars = isDesktop ? 160 : 120
-  const displayDesc = desc ? truncateText(desc, descMaxChars) : ''
+  // Truncation limit per device (Google cuts by pixel width: these are approximations)
+  const titleMaxChars = isDesktop ? SERP_TITLE_MAX_CHARS_DESKTOP : SERP_TITLE_MAX_CHARS_MOBILE
+  const descMaxChars = isDesktop ? SERP_DESCRIPTION_MAX_CHARS_DESKTOP : SERP_DESCRIPTION_MAX_CHARS_MOBILE
+  const displayTitle = title ? truncateAtWord(title, titleMaxChars) : ''
+  const displayDesc = desc ? truncateAtWord(desc, descMaxChars) : ''
+  const terms = keyphrases ?? []
 
   const counters: Array<{ label: string; text: string; tone: Tone }> = [
     {
@@ -146,12 +154,12 @@ function SerpPreviewInner({
           </div>
 
           <div className="seo-serp__title">
-            {title ? title : <span className="seo-serp-preview__placeholder">{t.serpPreview.noMetaTitle}</span>}
+            {displayTitle ? highlightKeyphrases(displayTitle, terms) : <span className="seo-serp-preview__placeholder">{t.serpPreview.noMetaTitle}</span>}
           </div>
 
           <div className="seo-serp__description">
             {displayDesc ? (
-              displayDesc
+              highlightKeyphrases(displayDesc, terms)
             ) : (
               <span className="seo-serp-preview__placeholder">{t.serpPreview.noMetaDescription}</span>
             )}
@@ -236,10 +244,9 @@ function DeviceButton({
 }
 
 /**
- * Payload mounts this field from the import map on every edit screen, so the
- * boundary must live in this module — the plugin never owns the parent form.
- * A crash here degrades to a retryable notice instead of taking the whole
- * document editor down.
+ * Rendered by the sidebar (`SeoAnalyzer`) from the form's values. The boundary lives in this
+ * module, so a crash here degrades to a retryable notice instead of taking the sidebar (and
+ * the document editor with it) down.
  */
 export const SerpPreview = withSeoErrorBoundary(SerpPreviewInner, { viewName: 'SerpPreview' })
 

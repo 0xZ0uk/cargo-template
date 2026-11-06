@@ -1,7 +1,17 @@
 'use client'
 
-import { Button, toast, useConfig, useDocumentInfo, useListDrawer } from '@payloadcms/ui'
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  Banner,
+  Button,
+  Collapsible,
+  Pill,
+  Tabs,
+  toast,
+  useConfig,
+  useDocumentInfo,
+  useListDrawer,
+} from '@payloadcms/ui'
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 
 import type { PlatformId } from '../constants.js'
 import type {
@@ -44,7 +54,9 @@ import {
 } from './socialComposerViewModel.js'
 import { VideoPreviewPane, VideoTile } from './SocialMediaPreview.js'
 import { StandaloneSocialComposer } from './StandaloneSocialComposer.js'
+import { Card, Check, cx, Field, Fieldset, LoadingState, PILL_STYLE, type Tone } from './ui/index.js'
 import { useSocialsAccess } from './useSocialsAccess.js'
+import './ui/styles.css'
 import './socials.css'
 
 type Props =
@@ -81,6 +93,10 @@ type ResolvedTemplate = {
   }
   sourceKind?: string
 }
+/** Pill tone for a history row's status. */
+const historyStatusTone = (status: string | undefined): Tone =>
+  status === 'published' ? 'success' : status === 'queued' ? 'warning' : 'neutral'
+
 type PreviewEnvelope = {
   capabilities: PlatformCapabilities
   draft: SocialDraft
@@ -95,6 +111,7 @@ type PreviewEnvelope = {
 const SourceComposerAuthorized: React.FC<{ sourceKind: string }> = ({ sourceKind }) => {
   const { id } = useDocumentInfo()
   const { config } = useConfig()
+  const uid = useId()
 
   // Payload serializes plugin client configuration under admin.custom.
   const socials = asRecord(asRecord(config.admin?.custom)?.socials)
@@ -602,17 +619,13 @@ const SourceComposerAuthorized: React.FC<{ sourceKind: string }> = ({ sourceKind
   }
 
   if (!id) {
-    return (
-      <section className="socials-composer">
-        Save this document before publishing to socials.
-      </section>
-    )
+    return <Banner type="default">Save this document before publishing to socials.</Banner>
   }
   if (!state || !envelope || !mergedDraft) {
     return (
-      <section aria-busy="true" className="socials-composer">
-        Loading social composer…
-      </section>
+      <Card aria-busy>
+        <LoadingState label="Loading social composer…" />
+      </Card>
     )
   }
 
@@ -647,37 +660,42 @@ const SourceComposerAuthorized: React.FC<{ sourceKind: string }> = ({ sourceKind
   // datetime-local values must use local fields rather than an ISO UTC wall clock.
   const scheduleMin = formatLocalDateTimeMin(new Date())
 
-  return (
-    <section className="socials-composer">
-      <header className="socials-composer__header">
-        <div>
-          <h2 className="socials-heading">Social composer</h2>
-          <p>Compose, validate, preview, and publish without leaving this document.</p>
-        </div>
-        <div aria-label="Social platform" className="socials-composer__tabs" role="tablist">
-          {enabledPlatforms.map((idValue) => (
-            <button
-              aria-selected={platform === idValue}
-              data-platform={idValue}
-              key={idValue}
-              onClick={() => {
-                setPlatform(idValue)
-                setSelectedTemplateId('')
-              }}
-              role="tab"
-              type="button"
-            >
-              {PLATFORM_LABELS[idValue]}
-            </button>
-          ))}
-        </div>
-      </header>
+  const errorIssues = validation?.issues.filter((issue) => issue.severity === 'error') ?? []
 
+  return (
+    <Card
+      actions={
+        // Payload's Tabs takes no aria-label, so the group carries it (see #34).
+        <div aria-label="Social platform" role="group">
+          <Tabs<PlatformId>
+            onChange={(idValue) => {
+              setPlatform(idValue)
+              setSelectedTemplateId('')
+            }}
+            tabs={enabledPlatforms.map((idValue) => ({
+              id: `${uid}-tab-${idValue}`,
+              label: PLATFORM_LABELS[idValue],
+              panelID: `${uid}-panel`,
+              value: idValue,
+            }))}
+            value={platform}
+          />
+        </div>
+      }
+      description="Compose, validate, preview, and publish without leaving this document."
+      headingLevel="h2"
+      title="Social composer"
+    >
       <div className="socials-composer__layout">
-        <div className="socials-composer__fields" role="tabpanel">
-          <label>
-            Template
+        <div
+          aria-labelledby={`${uid}-tab-${platform}`}
+          className="socials-stack"
+          id={`${uid}-panel`}
+          role="tabpanel"
+        >
+          <Field label="Template">
             <select
+              className="socials-select"
               onChange={(event) => applyTemplate(event.target.value)}
               value={selectedTemplateId}
             >
@@ -688,12 +706,12 @@ const SourceComposerAuthorized: React.FC<{ sourceKind: string }> = ({ sourceKind
                 </option>
               ))}
             </select>
-          </label>
+          </Field>
 
-          <div className="socials-composer__row">
-            <label>
-              Destination
+          <div className="socials-pair">
+            <Field label="Destination">
               <select
+                className="socials-select"
                 onChange={(event) => updateState({ destinationId: event.target.value })}
                 required
                 value={state.destinationId}
@@ -705,10 +723,10 @@ const SourceComposerAuthorized: React.FC<{ sourceKind: string }> = ({ sourceKind
                   </option>
                 ))}
               </select>
-            </label>
-            <label>
-              Format
+            </Field>
+            <Field label="Format">
               <select
+                className="socials-select"
                 onChange={(event) => handleFormatChange(event.target.value)}
                 value={state.format}
               >
@@ -718,115 +736,107 @@ const SourceComposerAuthorized: React.FC<{ sourceKind: string }> = ({ sourceKind
                   </option>
                 ))}
               </select>
-            </label>
+            </Field>
           </div>
 
           {platform === 'pinterest' && (
-            <label>
-              Pin title{' '}
+            <Field label="Pin title">
               <input
                 aria-label="Pin title"
+                className="socials-input"
                 maxLength={100}
                 onChange={(event) => updateState({ title: event.target.value })}
                 value={state.title}
               />
-            </label>
+            </Field>
           )}
 
           {(platform === 'instagram' || platform === 'facebook') && (
-            <label>
-              Title (first line)
+            <Field
+              description="Instagram and Facebook have no separate title field; this becomes the first line of the caption/message."
+              label="Title (first line)"
+            >
               <input
                 aria-label="Title (first line)"
+                className="socials-input"
                 onChange={(event) => updateState({ title: event.target.value })}
                 placeholder="Optional. Becomes the first line of the caption/message."
                 value={state.title}
               />
-              <span className="socials-composer__count">
-                Instagram and Facebook have no separate title field; this becomes the first line of
-                the caption/message.
-              </span>
-            </label>
+            </Field>
           )}
 
-          <label>
-            {platform === 'gbp'
-              ? 'Summary'
-              : platform === 'instagram'
-                ? 'Caption'
-                : platform === 'facebook'
-                  ? 'Message'
-                  : 'Description'}
+          <Field
+            description={`${state.copy.length}${copyLimit ? ` / ${copyLimit}` : ''} characters`}
+            descriptionTone={copyLimit && state.copy.length > copyLimit ? 'danger' : undefined}
+            label={
+              platform === 'gbp'
+                ? 'Summary'
+                : platform === 'instagram'
+                  ? 'Caption'
+                  : platform === 'facebook'
+                    ? 'Message'
+                    : 'Description'
+            }
+          >
             <textarea
               aria-label="Post copy"
+              className="socials-textarea"
               onChange={(event) => updateState({ copy: event.target.value })}
               rows={7}
               value={state.copy}
             />
-            <span
-              className={
-                copyLimit && state.copy.length > copyLimit
-                  ? 'socials-composer__count socials-composer__count--error'
-                  : 'socials-composer__count'
-              }
-            >
-              {state.copy.length}
-              {copyLimit ? ` / ${copyLimit}` : ''} characters
-            </span>
-          </label>
+          </Field>
 
           {(platform === 'pinterest' || (platform === 'facebook' && state.format === 'LINK')) && (
-            <label>
-              Outbound link{' '}
+            <Field label="Outbound link">
               <input
                 aria-label="Outbound link"
+                className="socials-input"
                 onChange={(event) => updateState({ link: event.target.value })}
                 type="url"
                 value={state.link}
               />
-            </label>
+            </Field>
           )}
           {((platform === 'pinterest' && state.format === 'IMAGE') ||
             (platform === 'instagram' && state.format === 'IMAGE') ||
             (platform === 'facebook' && state.format === 'PHOTO')) && (
-            <label>
-              Accessibility text{' '}
+            <Field label="Accessibility text">
               <textarea
                 aria-label="Accessibility text"
+                className="socials-textarea"
                 onChange={(event) => updateState({ altText: event.target.value })}
                 rows={3}
                 value={state.altText}
               />
-            </label>
+            </Field>
           )}
           {platform === 'facebook' && state.format === 'VIDEO' && (
-            <label>
-              Video title{' '}
+            <Field label="Video title">
               <input
                 aria-label="Video title"
+                className="socials-input"
                 onChange={(event) => updateState({ videoTitle: event.target.value })}
                 value={state.videoTitle}
               />
-            </label>
+            </Field>
           )}
           {platform === 'instagram' && state.format === 'REELS' && (
-            <label className="socials-composer__check">
-              <input
-                aria-label="Also share Reel to Feed"
-                checked={state.shareToFeed}
-                onChange={(event) => updateState({ shareToFeed: event.target.checked })}
-                type="checkbox"
-              />{' '}
-              Also share Reel to Feed
-            </label>
+            <Check
+              aria-label="Also share Reel to Feed"
+              checked={state.shareToFeed}
+              label="Also share Reel to Feed"
+              onChange={(event) => updateState({ shareToFeed: event.target.checked })}
+            />
           )}
 
           {platform === 'gbp' && (
             <>
-              <div className="socials-composer__row">
-                <label>
-                  CTA{' '}
+              <div className="socials-pair">
+                <Field label="CTA">
                   <select
+                    className="socials-select"
                     onChange={(event) =>
                       updateState({
                         callToAction: event.target.value as ComposerState['callToAction'],
@@ -841,76 +851,76 @@ const SourceComposerAuthorized: React.FC<{ sourceKind: string }> = ({ sourceKind
                       </option>
                     ))}
                   </select>
-                </label>
+                </Field>
                 {state.callToAction !== 'CALL' && (
-                  <label>
-                    {state.format === 'OFFER' ? 'Redeem URL' : 'CTA URL'}{' '}
+                  <Field label={state.format === 'OFFER' ? 'Redeem URL' : 'CTA URL'}>
                     <input
                       aria-label={state.format === 'OFFER' ? 'Redeem URL' : 'CTA URL'}
+                      className="socials-input"
                       onChange={(event) => updateState({ callToActionUrl: event.target.value })}
                       type="url"
                       value={state.callToActionUrl}
                     />
-                  </label>
+                  </Field>
                 )}
               </div>
               {(state.format === 'EVENT' || state.format === 'OFFER') && (
                 <>
-                  <label>
-                    Event title{' '}
+                  <Field label="Event title">
                     <input
                       aria-label="Event title"
+                      className="socials-input"
                       onChange={(event) => updateState({ eventTitle: event.target.value })}
                       value={state.eventTitle}
                     />
-                  </label>
-                  <div className="socials-composer__row">
-                    <label>
-                      Starts{' '}
+                  </Field>
+                  <div className="socials-pair">
+                    <Field label="Starts">
                       <input
                         aria-label="Event starts"
+                        className="socials-input"
                         onChange={(event) => updateState({ eventStart: event.target.value })}
                         type="datetime-local"
                         value={state.eventStart}
                       />
-                    </label>
-                    <label>
-                      Ends{' '}
+                    </Field>
+                    <Field label="Ends">
                       <input
                         aria-label="Event ends"
+                        className="socials-input"
                         onChange={(event) => updateState({ eventEnd: event.target.value })}
                         type="datetime-local"
                         value={state.eventEnd}
                       />
-                    </label>
+                    </Field>
                   </div>
                 </>
               )}
               {state.format === 'OFFER' && (
-                <div className="socials-composer__row">
-                  <label>
-                    Coupon code{' '}
+                <div className="socials-pair">
+                  <Field label="Coupon code">
                     <input
                       aria-label="Coupon code"
+                      className="socials-input"
                       onChange={(event) => updateState({ offerCode: event.target.value })}
                       value={state.offerCode}
                     />
-                  </label>
-                  <label>
-                    Terms{' '}
+                  </Field>
+                  <Field label="Terms">
                     <textarea
                       aria-label="Offer terms"
+                      className="socials-textarea"
                       onChange={(event) => updateState({ offerTerms: event.target.value })}
                       rows={3}
                       value={state.offerTerms}
                     />
-                  </label>
+                  </Field>
                 </div>
               )}
               {state.format === 'ALERT' && (
-                <label>
-                  Alert type{' '}
+                <Field label="Alert type">
                   <select
+                    className="socials-select"
                     onChange={(event) =>
                       updateState({ alertType: event.target.value as ComposerState['alertType'] })
                     }
@@ -919,44 +929,46 @@ const SourceComposerAuthorized: React.FC<{ sourceKind: string }> = ({ sourceKind
                     <option value="">Select…</option>
                     <option value="COVID_19">COVID-19</option>
                   </select>
-                </label>
+                </Field>
               )}
-              <label>
-                Language code (optional){' '}
+              <Field label="Language code (optional)">
                 <input
                   aria-label="Language code"
+                  className="socials-input"
                   onChange={(event) => updateState({ languageCode: event.target.value })}
                   placeholder="en-US"
                   value={state.languageCode}
                 />
-              </label>
+              </Field>
             </>
           )}
 
           {(mediaRequired || assets.length > 0) && (
-            <fieldset className="socials-composer__media">
-              <legend>
-                Media{' '}
-                {supportsMultipleMedia(platform, state.format) ? '(choose and order 2-10)' : ''}
-              </legend>
-              {assets.length === 0 && <p>No source media is available.</p>}
-              <label className="socials-composer__media-search">
-                Find media
+            <Fieldset
+              legend={`Media ${supportsMultipleMedia(platform, state.format) ? '(choose and order 2-10)' : ''}`}
+            >
+              {assets.length === 0 && (
+                <p className="socials-text--secondary">No source media is available.</p>
+              )}
+              <Field label="Find media">
                 <input
                   aria-label="Find media"
+                  className="socials-input"
                   onChange={(event) => setMediaSearch(event.target.value)}
                   placeholder="Search media descriptions"
                   type="search"
                   value={mediaSearch}
                 />
-              </label>
-              <p aria-live="polite">
+              </Field>
+              <p aria-live="polite" className="socials-text--secondary">
                 {`${visibleAssets.length} of ${assets.length} media items, ${state.selectedMedia.length} selected`}
               </p>
               {mediaSearch.trim() && visibleAssets.length === 0 && (
-                <p>No matching media. Clear the search to see everything.</p>
+                <p className="socials-text--secondary">
+                  No matching media. Clear the search to see everything.
+                </p>
               )}
-              <div className="socials-composer__media-grid" role="list">
+              <div className="socials-media__grid" role="list">
                 {visibleAssets.map((asset) => {
                   const orderIndex = state.selectedMedia.indexOf(asset.url)
                   const selected = orderIndex >= 0
@@ -966,14 +978,12 @@ const SourceComposerAuthorized: React.FC<{ sourceKind: string }> = ({ sourceKind
                     // Drag reorder is a progressive enhancement; the per-tile
                     // arrow buttons provide the keyboard/touch-accessible path.
                     <div
-                      className={[
-                        'socials-composer__asset',
-                        selected && 'socials-composer__asset--selected',
-                        !isAccepted && 'socials-composer__asset--disabled',
-                        reorderable && 'socials-composer__asset--draggable',
-                      ]
-                        .filter(Boolean)
-                        .join(' ')}
+                      className={cx(
+                        'socials-media__asset',
+                        selected && 'socials-media__asset--selected',
+                        !isAccepted && 'socials-media__asset--disabled',
+                        reorderable && 'socials-media__asset--draggable',
+                      )}
                       draggable={reorderable}
                       key={asset.url}
                       onDragEnd={() => setDragFrom(null)}
@@ -1007,20 +1017,20 @@ const SourceComposerAuthorized: React.FC<{ sourceKind: string }> = ({ sourceKind
                       <button
                         aria-label={mediaToggleLabel(asset, selected, isAccepted)}
                         aria-pressed={selected}
-                        className="socials-composer__asset-toggle"
+                        className="socials-media__toggle"
                         disabled={!isAccepted}
                         onClick={() => isAccepted && toggleMedia(asset.url)}
                         title={isAccepted ? asset.altText : 'Not available for this format'}
                         type="button"
                       />
                       {asset.altText && (
-                        <span className="socials-composer__asset-caption">{asset.altText}</span>
+                        <span className="socials-media__caption">{asset.altText}</span>
                       )}
                       {reorderable && (
-                        <span className="socials-composer__asset-order">{orderIndex + 1}</span>
+                        <span className="socials-media__order">{orderIndex + 1}</span>
                       )}
                       {reorderable && (
-                        <div className="socials-composer__asset-arrows">
+                        <div className="socials-media__arrows">
                           <button
                             aria-label="Move media earlier"
                             disabled={orderIndex <= 0}
@@ -1044,13 +1054,14 @@ const SourceComposerAuthorized: React.FC<{ sourceKind: string }> = ({ sourceKind
                 })}
               </div>
 
-              <div className="socials-composer__add-media">
-                <Button onClick={openDrawer} size="medium">
+              <div className="socials-row">
+                <Button buttonStyle="secondary" margin={false} onClick={openDrawer} size="medium">
                   Media library
                 </Button>
-                <div className="socials-composer__add-media-url">
+                <div className="socials-media__add-url">
                   <input
                     aria-label="Media URL"
+                    className="socials-input"
                     onChange={(event) => setUrlInput(event.target.value)}
                     onKeyDown={(event) => {
                       if (event.key === 'Enter') {
@@ -1064,6 +1075,7 @@ const SourceComposerAuthorized: React.FC<{ sourceKind: string }> = ({ sourceKind
                   />
                   <select
                     aria-label="URL media type"
+                    className="socials-select socials-select--inline"
                     onChange={(event) =>
                       setUrlTypeOverride(event.target.value as 'image' | 'video')
                     }
@@ -1072,66 +1084,77 @@ const SourceComposerAuthorized: React.FC<{ sourceKind: string }> = ({ sourceKind
                     <option value="image">Image</option>
                     <option value="video">Video</option>
                   </select>
-                  <Button disabled={!urlInput.trim()} onClick={handleAddByUrl} size="medium">
+                  <Button
+                    buttonStyle="secondary"
+                    disabled={!urlInput.trim()}
+                    margin={false}
+                    onClick={handleAddByUrl}
+                    size="medium"
+                  >
                     Add URL
                   </Button>
                 </div>
               </div>
-            </fieldset>
+            </Fieldset>
           )}
 
-          <label>
-            Schedule (optional){' '}
+          <Field label="Schedule (optional)">
             <input
               aria-label="Schedule post"
+              className="socials-input"
               min={scheduleMin}
               onChange={(event) => setScheduledAt(event.target.value)}
               type="datetime-local"
               value={scheduledAt}
             />
-          </label>
+          </Field>
 
-          {validation?.issues.length ? (
-            <ul aria-live="polite" className="socials-composer__issues">
-              {validation.issues.map((issue, index) => (
-                <li
-                  className={`socials-composer__issue--${issue.severity}`}
-                  key={`${issue.field ?? 'general'}-${index}`}
-                >
-                  {issue.message}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p aria-live="polite" className="socials-composer__valid">
-              Ready to publish
-            </p>
-          )}
+          <div aria-live="polite">
+            {validation?.issues.length ? (
+              <Banner type={errorIssues.length > 0 ? 'danger' : 'warning'}>
+                <ul className="socials-banner-list">
+                  {validation.issues.map((issue, index) => (
+                    <li
+                      data-severity={issue.severity}
+                      key={`${issue.field ?? 'general'}-${index}`}
+                    >
+                      {issue.message}
+                    </li>
+                  ))}
+                </ul>
+              </Banner>
+            ) : (
+              <Banner type="success">Ready to publish</Banner>
+            )}
+          </div>
           {publishedRef && (
-            <p className="socials-composer__success">
+            <Banner type="success">
               {publishedRef.meta?.scheduled ? 'Scheduled successfully.' : 'Published successfully.'}{' '}
               {publishedRef.externalUrl && (
                 <a href={publishedRef.externalUrl} rel="noreferrer" target="_blank">
                   View post
                 </a>
               )}
-            </p>
+            </Banner>
           )}
-          <Button
-            disabled={loading || validation?.ok === false}
-            onClick={() => {
-              void publish()
-            }}
-          >
-            {loading ? 'Publishing…' : scheduledAt ? 'Schedule post' : 'Publish now'}
-          </Button>
+          <div className="socials-row">
+            <Button
+              buttonStyle="primary"
+              disabled={loading || validation?.ok === false}
+              margin={false}
+              onClick={() => {
+                void publish()
+              }}
+            >
+              {loading ? 'Publishing…' : scheduledAt ? 'Schedule post' : 'Publish now'}
+            </Button>
+          </div>
         </div>
 
-        <aside
-          aria-label={`${PLATFORM_LABELS[platform]} preview`}
-          className={`socials-composer__preview socials-composer__preview--${platform}`}
-        >
-          <span className="socials-composer__preview-platform">{PLATFORM_LABELS[platform]}</span>
+        <aside aria-label={`${PLATFORM_LABELS[platform]} preview`} className="socials-preview">
+          <Pill className="socials-preview__platform" size="small">
+            {PLATFORM_LABELS[platform]}
+          </Pill>
           {previewAsset?.type === 'image' && <img alt={state.altText} src={previewAsset.url} />}
           {previewAsset?.type === 'video' && (
             <VideoPreviewPane
@@ -1140,133 +1163,116 @@ const SourceComposerAuthorized: React.FC<{ sourceKind: string }> = ({ sourceKind
             />
           )}
           <strong>{state.title || envelope.draft.content.title}</strong>
-          <p>{state.copy}</p>
+          <p className="socials-preview__copy">{state.copy}</p>
           {state.link && (platform === 'pinterest' || state.format === 'LINK') && (
-            <small>{state.link}</small>
+            <small className="socials-text--secondary">{state.link}</small>
           )}
-          <em>API preview - final rendering may vary by platform and device.</em>
+          <p className="socials-text--secondary">
+            API preview - final rendering may vary by platform and device.
+          </p>
         </aside>
       </div>
 
       {history.length > 0 && (
-        <details className="socials-composer__history">
-          <summary>
-            Recent {PLATFORM_LABELS[platform]} history ({history.length})
-          </summary>
-          <ul>
+        <Collapsible
+          header={`Recent ${PLATFORM_LABELS[platform]} history (${history.length})`}
+          initCollapsed
+        >
+          <ul className="socials-list">
             {history.slice(0, 5).map((row) => (
-              <li key={row.id} style={{ alignItems: 'center', display: 'flex', gap: '0.5rem' }}>
-                <span style={{ flex: 1 }}>
-                  <span
-                    style={{
-                      color:
-                        row.status === 'published'
-                          ? 'var(--color-text-success)'
-                          : row.status === 'deleted'
-                            ? 'var(--color-text-tertiary)'
-                            : row.status === 'queued'
-                              ? 'var(--color-text-warning)'
-                              : row.status === 'cancelled'
-                                ? 'var(--color-text-tertiary)'
-                                : undefined,
-                    }}
-                  >
-                    {row.status ?? 'unknown'}
-                  </span>
-                  {row.status === 'queued' && row.scheduledAt
-                    ? ` · scheduled for ${new Date(row.scheduledAt).toLocaleString()}`
-                    : row.publishedAt
-                      ? ` · ${new Date(row.publishedAt).toLocaleString()}`
-                      : ''}
-                  {row.externalUrl && (
-                    <>
-                      {' '}
-                      ·{' '}
+              <li className="socials-list__item" key={row.id}>
+                <span className="socials-list__main">
+                  <span className="socials-row">
+                    <Pill pillStyle={PILL_STYLE[historyStatusTone(row.status)]} size="small">
+                      {row.status ?? 'unknown'}
+                    </Pill>
+                    <span className="socials-text--secondary">
+                      {row.status === 'queued' && row.scheduledAt
+                        ? `scheduled for ${new Date(row.scheduledAt).toLocaleString()}`
+                        : row.publishedAt
+                          ? new Date(row.publishedAt).toLocaleString()
+                          : ''}
+                    </span>
+                    {row.externalUrl && (
                       <a href={row.externalUrl} rel="noreferrer" target="_blank">
                         open
                       </a>
-                    </>
-                  )}
+                    )}
+                  </span>
                 </span>
                 {/* Published rows: delete / mark-deleted action */}
-                {row.status === 'published' && (
-                  <span style={{ display: 'flex', gap: '0.25rem' }}>
-                    {confirmingDeleteId === row.id ? (
-                      <>
-                        <button
-                          disabled={deletingId === row.id}
-                          onClick={() => {
-                            if (isInstagram) {
-                              void markDeletedPost(row.id)
-                            } else {
-                              void deletePost(row.id)
-                            }
-                          }}
-                          style={{ color: 'var(--color-text-danger)', fontSize: '0.8rem' }}
-                          type="button"
-                        >
-                          {isInstagram ? 'Confirm mark deleted' : 'Confirm delete'}
-                        </button>
-                        <button
-                          onClick={() => setConfirmingDeleteId(undefined)}
-                          style={{ fontSize: '0.8rem' }}
-                          type="button"
-                        >
-                          Cancel
-                        </button>
-                      </>
-                    ) : (
-                      <button
+                {row.status === 'published' &&
+                  (confirmingDeleteId === row.id ? (
+                    <span className="socials-row">
+                      <Button
+                        buttonStyle="destructive"
                         disabled={deletingId === row.id}
-                        onClick={() => setConfirmingDeleteId(row.id)}
-                        style={{ color: 'var(--color-text-danger-secondary)', fontSize: '0.8rem' }}
-                        type="button"
+                        margin={false}
+                        onClick={() => {
+                          if (isInstagram) {
+                            void markDeletedPost(row.id)
+                          } else {
+                            void deletePost(row.id)
+                          }
+                        }}
                       >
-                        {isInstagram ? 'Mark deleted (removed in app)' : 'Delete'}
-                      </button>
-                    )}
-                  </span>
-                )}
-                {row.status === 'queued' && (
-                  <span style={{ display: 'flex', gap: '0.25rem' }}>
-                    {confirmingDeleteId === row.id ? (
-                      <>
-                        <button
-                          disabled={deletingId === row.id}
-                          onClick={() => void cancelPost(row.id)}
-                          style={{ color: 'var(--color-text-danger)', fontSize: '0.8rem' }}
-                          type="button"
-                        >
-                          Confirm cancel
-                        </button>
-                        <button
-                          onClick={() => setConfirmingDeleteId(undefined)}
-                          style={{ fontSize: '0.8rem' }}
-                          type="button"
-                        >
-                          Keep
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        disabled={deletingId === row.id}
-                        onClick={() => setConfirmingDeleteId(row.id)}
-                        style={{ color: 'var(--color-text-danger-secondary)', fontSize: '0.8rem' }}
-                        type="button"
+                        {isInstagram ? 'Confirm mark deleted' : 'Confirm delete'}
+                      </Button>
+                      <Button
+                        buttonStyle="ghost"
+                        margin={false}
+                        onClick={() => setConfirmingDeleteId(undefined)}
                       >
                         Cancel
-                      </button>
-                    )}
-                  </span>
-                )}
+                      </Button>
+                    </span>
+                  ) : (
+                    <Button
+                      buttonStyle="secondary"
+                      disabled={deletingId === row.id}
+                      margin={false}
+                      onClick={() => setConfirmingDeleteId(row.id)}
+                    >
+                      {isInstagram ? 'Mark deleted (removed in app)' : 'Delete'}
+                    </Button>
+                  ))}
+                {row.status === 'queued' &&
+                  (confirmingDeleteId === row.id ? (
+                    <span className="socials-row">
+                      <Button
+                        buttonStyle="destructive"
+                        disabled={deletingId === row.id}
+                        margin={false}
+                        onClick={() => void cancelPost(row.id)}
+                      >
+                        Confirm cancel
+                      </Button>
+                      <Button
+                        buttonStyle="ghost"
+                        margin={false}
+                        onClick={() => setConfirmingDeleteId(undefined)}
+                      >
+                        Keep
+                      </Button>
+                    </span>
+                  ) : (
+                    <Button
+                      buttonStyle="secondary"
+                      disabled={deletingId === row.id}
+                      margin={false}
+                      onClick={() => setConfirmingDeleteId(row.id)}
+                    >
+                      Cancel
+                    </Button>
+                  ))}
               </li>
             ))}
           </ul>
-        </details>
+        </Collapsible>
       )}
 
       <ListDrawer onSelect={handleLibrarySelect as never} />
-    </section>
+    </Card>
   )
 }
 
@@ -1301,12 +1307,14 @@ export const SocialPublishPanelClient: React.FC<Props> = ({ mode = 'source', sou
   const normalizedSourceKind = sourceKind?.trim()
   if (!normalizedSourceKind) {
     return (
-      <section className="socials-composer" role="alert">
-        <strong>Socials source is not configured.</strong>
-        <p>
-          Set <code>{"clientProps: { sourceKind: '<your-kind>' }"}</code> on this admin component.
-        </p>
-      </section>
+      <div role="alert">
+        <Banner type="danger">
+          <strong>Socials source is not configured.</strong>{' '}
+          <span>
+            Set <code>{"clientProps: { sourceKind: '<your-kind>' }"}</code> on this admin component.
+          </span>
+        </Banner>
+      </div>
     )
   }
 

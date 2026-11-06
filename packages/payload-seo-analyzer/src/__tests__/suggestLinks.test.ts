@@ -51,7 +51,29 @@ describe('/suggest-links', () => {
   it('reads only the projected fields, not whole documents', async () => {
     const find = makeFind()
     await createSuggestLinksHandler(['pages'])(makeReq(find))
-    expect(find.mock.calls[0][0].select).toEqual({ title: true, slug: true, focusKeyword: true })
+    expect(find.mock.calls[0][0].select).toEqual({
+      title: true,
+      slug: true,
+      focusKeyword: true,
+      noindex: true,
+      meta: { noindex: true },
+    })
+  })
+
+  it('does not suggest noindex pages as link targets', async () => {
+    const find = vi.fn(async ({ collection }: { collection: string }) => {
+      if (collection !== 'pages') return { docs: [], hasNextPage: false }
+      return {
+        docs: [
+          { id: '1', title: 'Website creation', slug: 'website-creation', focusKeyword: 'website creation', noindex: true },
+          { id: '2', title: 'Organic search', slug: 'organic-search', focusKeyword: 'organic search', meta: { noindex: true } },
+        ],
+        hasNextPage: false,
+      }
+    })
+    const res = await createSuggestLinksHandler(['pages'])(makeReq(find))
+    const body = (await res.json()) as { suggestions: unknown[] }
+    expect(body.suggestions).toEqual([])
   })
 
   it('reuses the cached corpus on the next call', async () => {

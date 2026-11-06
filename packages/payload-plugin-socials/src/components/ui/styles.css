@@ -1,0 +1,261 @@
+/*
+ * Socials admin UI primitives (see ./primitives.tsx).
+ *
+ * Payload 4 design tokens only (--color-*, --text-*, --spacer-*, --radius-*, --field-*),
+ * so every surface follows the admin theme in light and dark mode. No hex colours: if a
+ * token is missing, pick the closest semantic one rather than hard-coding a value.
+ */
+
+/* ---------- Layout ------------------------------------------------------- */
+
+.socials-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacer-4);
+  padding: var(--spacer-4) var(--gutter-h) var(--spacer-6);
+}
+
+/* Inside Payload's .list-header (see ViewHeader), which owns the gutters. */
+.socials-view-header__description {
+  width: 100%;
+  margin: var(--spacer-1) 0 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-body-medium-font-size);
+  line-height: var(--text-body-medium-line-height);
+}
+
+.socials-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacer-3);
+}
+
+.socials-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacer-2);
+}
+
+/* Two controls side by side, stacked on narrow screens. */
+.socials-pair {
+  display: grid;
+  gap: var(--spacer-3);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+}
+
+/* ---------- Typography ---------------------------------------------------- */
+
+.socials-text--secondary {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-body-small-font-size);
+  line-height: var(--text-body-small-line-height);
+}
+
+
+/* ---------- Surfaces ------------------------------------------------------ */
+
+.socials-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--color-bg);
+  border: var(--stroke-width-small) solid var(--color-border);
+  border-radius: var(--radius-medium);
+}
+
+.socials-card__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacer-2) var(--spacer-3);
+  padding: var(--spacer-3);
+  border-bottom: var(--stroke-width-small) solid var(--color-border);
+}
+
+.socials-card__heading {
+  display: flex;
+  flex: 1 1 16rem;
+  flex-direction: column;
+  gap: var(--spacer-1);
+  min-width: 0;
+}
+
+.socials-card__title {
+  margin: 0;
+  color: var(--color-text);
+  font-family: var(--text-heading-small-font-family);
+  font-size: var(--text-heading-small-font-size);
+  font-weight: var(--text-heading-small-font-weight);
+  line-height: var(--text-heading-small-line-height);
+  letter-spacing: var(--text-heading-small-letter-spacing);
+}
+
+.socials-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacer-3);
+  padding: var(--spacer-3);
+}
+
+.socials-fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacer-2);
+  min-width: 0;
+  margin: 0;
+  padding: var(--spacer-3);
+  border: var(--stroke-width-small) solid var(--color-border);
+  border-radius: var(--radius-small);
+}
+
+.socials-fieldset__legend {
+  padding-inline: var(--spacer-1);
+  color: var(--field-color-label);
+  font-size: var(--text-body-small-font-size);
+  font-weight: var(--text-body-medium-bold-font-weight);
+}
+
+.socials-inset {
+  margin: 0;
+  padding: var(--spacer-2) var(--spacer-3);
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-small);
+}
+
+/* ---------- Form controls ------------------------------------------------- */
+
+.socials-field,
+.socials-field__control {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacer-1);
+  min-width: 0;
+}
+
+.socials-field__label {
+  color: var(--field-color-label);
+  font-size: var(--text-body-small-font-size);
+  font-weight: var(--text-body-medium-bold-font-weight);
+}
+
+.socials-field__description {
+  color: var(--field-color-description);
+  font-size: var(--text-body-small-font-size);
+  line-height: var(--text-body-small-line-height);
+}
+
+.socials-field__description--danger {
+  color: var(--color-text-danger);
+}
+
+.socials-input,
+.socials-select,
+.socials-textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: var(--spacer-5);
+  padding: 0 var(--spacer-2-5);
+  color: var(--field-color-text);
+  background: var(--field-color-bg);
+  border: var(--stroke-width-small) solid var(--field-color-border);
+  border-radius: var(--radius-small);
+  font: inherit;
+  font-size: var(--text-body-medium-font-size);
+  line-height: var(--text-body-medium-line-height);
+  outline: none;
+  color-scheme: inherit;
+}
+
+.socials-textarea {
+  padding-block: var(--spacer-2);
+  resize: vertical;
+}
+
+.socials-input::placeholder,
+.socials-textarea::placeholder {
+  color: var(--field-color-placeholder);
+}
+
+.socials-input:hover:not(:focus, :disabled),
+.socials-select:hover:not(:focus, :disabled),
+.socials-textarea:hover:not(:focus, :disabled) {
+  border-color: var(--field-color-border-hover);
+}
+
+.socials-input:focus,
+.socials-select:focus,
+.socials-textarea:focus {
+  border-color: var(--field-color-border-focus);
+}
+
+.socials-input--inline,
+.socials-select--inline {
+  width: auto;
+}
+
+.socials-input--mono,
+.socials-textarea--mono {
+  font-family: var(--text-mono-family);
+  font-size: var(--text-mono-small-font-size);
+}
+
+/* Checkbox and its label on one line. */
+.socials-check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacer-2);
+  cursor: pointer;
+  color: var(--color-text);
+}
+
+.socials-check__input {
+  flex-shrink: 0;
+  width: auto;
+  margin: 0;
+}
+
+/* ---------- Status -------------------------------------------------------- */
+
+.socials-dot {
+  display: inline-block;
+  flex-shrink: 0;
+  width: var(--spacer-2);
+  height: var(--spacer-2);
+  background: var(--color-icon-tertiary);
+  border-radius: var(--radius-full);
+}
+
+.socials-dot--success {
+  background: var(--color-icon-success);
+}
+
+.socials-dot--warning {
+  background: var(--color-icon-warning);
+}
+
+.socials-dot--danger {
+  background: var(--color-icon-danger);
+}
+
+.socials-dot--brand {
+  background: var(--color-icon-brand);
+}
+
+.socials-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacer-5) var(--spacer-3);
+  color: var(--color-text-secondary);
+}
+
+/* A Banner holding a list of messages. */
+.socials-banner-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacer-1);
+  margin: 0;
+  padding-inline-start: var(--spacer-4);
+}

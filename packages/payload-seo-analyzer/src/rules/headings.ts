@@ -2,9 +2,16 @@
  * SEO Rules — Headings H1-H6 checks (weight: 2, category: important)
  */
 import type { SeoCheck, SeoInput, AnalysisContext } from '../types.js'
-import { checkHeadingHierarchy, normalizeForComparison, keywordMatchesText } from '../helpers.js'
+import { findHeadingSkips, normalizeForComparison, keywordMatchesText } from '../helpers.js'
 import { WORDS_PER_HEADING } from '../constants.js'
 import { getTranslations } from '../i18n.js'
+
+const MAX_HEADING_TEXT = 60
+
+function truncateHeadingText(text: string): string {
+  const clean = text.replace(/\s+/g, ' ').trim()
+  return clean.length > MAX_HEADING_TEXT ? `${clean.slice(0, MAX_HEADING_TEXT - 1).trimEnd()}…` : clean
+}
 
 export function checkHeadings(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
   const checks: SeoCheck[] = []
@@ -67,15 +74,24 @@ export function checkHeadings(input: SeoInput, ctx: AnalysisContext): SeoCheck[]
   }
 
   // 17. Heading hierarchy (no level skipping)
-  const goodHierarchy = checkHeadingHierarchy(allHeadings)
+  const skips = findHeadingSkips(allHeadings)
+  const [firstSkip] = skips
   checks.push({
     id: 'heading-hierarchy',
     label: r.hierarchyLabel,
-    status: goodHierarchy ? 'pass' : 'warning',
-    message: goodHierarchy ? r.hierarchyPass : r.hierarchyFail,
+    status: firstSkip ? 'warning' : 'pass',
+    message: firstSkip
+      ? r.hierarchyFail(
+          truncateHeadingText(firstSkip.text),
+          firstSkip.level,
+          firstSkip.previousLevel,
+          skips.length - 1,
+        )
+      : r.hierarchyPass,
     category: 'important',
     weight: 2,
     group: 'headings',
+    ...(firstSkip ? { tip: r.hierarchyTip } : {}),
   })
 
   // 18. Focus keyword in at least one H2 (smart matching)

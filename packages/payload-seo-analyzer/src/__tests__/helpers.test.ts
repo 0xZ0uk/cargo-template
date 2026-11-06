@@ -14,6 +14,7 @@ import {
   detectPassiveVoice,
   hasTransitionWord,
   checkHeadingHierarchy,
+  findHeadingSkips,
   countLongSections,
   isStopWordInCompoundExpression,
 } from '../helpers'
@@ -485,6 +486,59 @@ describe('checkHeadingHierarchy', () => {
 
   it('returns true for empty headings', () => {
     expect(checkHeadingHierarchy([])).toBe(true)
+  })
+
+  it('returns false for a skip after the outline went back up', () => {
+    expect(checkHeadingHierarchy(seq('h1 h2 h3 h2 h4'))).toBe(false)
+    expect(checkHeadingHierarchy(seq('h2 h3 h2 h4'))).toBe(false)
+  })
+
+  it('returns true when levels go back up by more than one', () => {
+    expect(checkHeadingHierarchy(seq('h1 h2 h3 h4 h2 h3'))).toBe(true)
+    expect(checkHeadingHierarchy(seq('h1 h2 h3 h4 h1'))).toBe(true)
+  })
+
+  it('lets a leading h3 pass: the H1 checks cover the top', () => {
+    expect(checkHeadingHierarchy(seq('h3 h4'))).toBe(true)
+  })
+})
+
+function seq(tags: string): Array<{ tag: string; text: string }> {
+  return tags.split(' ').map((tag, i) => ({ tag, text: `Heading ${i}` }))
+}
+
+describe('findHeadingSkips', () => {
+  it('returns nothing for a correct outline and for no headings', () => {
+    expect(findHeadingSkips(seq('h1 h2 h3 h4 h2 h3'))).toEqual([])
+    expect(findHeadingSkips([])).toEqual([])
+  })
+
+  it('compares each heading with the previous one', () => {
+    expect(findHeadingSkips(seq('h1 h2 h3 h2 h4'))).toEqual([
+      { index: 4, previousLevel: 2, level: 4, skippedLevels: [3], text: 'Heading 4' },
+    ])
+    expect(findHeadingSkips(seq('h2 h3 h2 h4'))).toHaveLength(1)
+  })
+
+  it('lists every skipped level', () => {
+    expect(findHeadingSkips(seq('h2 h5'))[0]).toMatchObject({
+      index: 1,
+      previousLevel: 2,
+      level: 5,
+      skippedLevels: [3, 4],
+    })
+  })
+
+  it('returns every skip, in order', () => {
+    expect(findHeadingSkips(seq('h1 h3 h4 h2 h4 h6')).map((s) => s.index)).toEqual([1, 4, 5])
+  })
+
+  it('never flags the first heading', () => {
+    expect(findHeadingSkips(seq('h3'))).toEqual([])
+  })
+
+  it('ignores tags that are not h1-h6', () => {
+    expect(findHeadingSkips([...seq('h1'), { tag: 'p', text: 'x' }, { tag: 'h2', text: 'y' }])).toEqual([])
   })
 })
 

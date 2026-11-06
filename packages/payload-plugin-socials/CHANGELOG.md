@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Changed
+
+- The admin UI (`/admin/socials`, the dashboard widget, the Socials tab, the standalone composer and the template builder) is rebuilt on `@payloadcms/ui` components and Payload 4 tokens, following the SEO analyzer's UI rules; `socials.css` keeps only what the components don't cover. Behaviour is unchanged. Platform tabs no longer use per-platform brand colours.
+
+### Fixed
+
+- Composer channel chips: the checkbox sits inline with its label instead of stacking above it.
+
 ## [0.12.0-beta.0] - 2026-11-04
 
 Cargo's fork (`@cargo/payload-plugin-socials`) of upstream 0.11.1 (`b2ee260`), ported to Payload 4. No option changes. The schema is the same tables as 0.11.1; on Payload 4 that requires the opt-outs below, or Payload adds version tables.

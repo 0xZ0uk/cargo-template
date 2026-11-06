@@ -1,6 +1,6 @@
 'use client'
 
-import { useConfig, useField } from '@payloadcms/ui'
+import { Banner, Button, Collapsible, Pill, useConfig, useField } from '@payloadcms/ui'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 
 import type { SocialCopyFieldKey } from '../types/index.js'
@@ -14,6 +14,8 @@ import {
   TEMPLATE_FILTERS,
   tokensFromScopeKeys,
 } from './socialTemplateBuilderModel.js'
+import { Card, Field } from './ui/index.js'
+import './ui/styles.css'
 import './socials.css'
 
 // ---------------------------------------------------------------------------
@@ -83,47 +85,42 @@ const TokenPicker: React.FC<TokenPickerProps> = ({
       : `Insert${kindLabel ? ` (fields available for ${kindLabel})` : ''}:`
 
   return (
-    <div aria-label="Insert token" className="stfb__token-picker" role="group">
-      <span className="stfb__token-picker-label">{label}</span>
-      {staticTokens.map((token) => (
-        <button
-          aria-label={`Insert ${token} token`}
-          className="stfb__token-chip"
-          key={token}
-          onClick={() => onInsert(token)}
-          type="button"
-        >
-          {token}
-        </button>
-      ))}
-      {metaTokens.length > 0 && (
-        <>
-          <span aria-hidden="true" className="stfb__token-picker-sep">
-            |
-          </span>
-          {metaTokens.map((token) => (
-            <button
-              aria-label={`Insert ${token} token`}
-              className="stfb__token-chip stfb__token-chip--meta"
-              key={token}
-              onClick={() => onInsert(token)}
-              type="button"
-            >
-              {token}
-            </button>
-          ))}
-        </>
-      )}
+    <div aria-label="Insert token" className="socials-stack" role="group">
+      <div className="socials-row">
+        <span className="socials-text--secondary">{label}</span>
+        {staticTokens.map((token) => (
+          <Button
+            aria-label={`Insert ${token} token`}
+            buttonStyle="pill"
+            key={token}
+            margin={false}
+            onClick={() => onInsert(token)}
+          >
+            {token}
+          </Button>
+        ))}
+        {metaTokens.map((token) => (
+          <Button
+            aria-label={`Insert ${token} token`}
+            buttonStyle="dashed"
+            key={token}
+            margin={false}
+            onClick={() => onInsert(token)}
+          >
+            {token}
+          </Button>
+        ))}
+      </div>
       {variant === 'none' && (
-        <span className="stfb__token-hint">
+        <p className="socials-text--secondary">
           Choose the collection this template is for (the “Source kind” field) to see its fields.
-        </span>
+        </p>
       )}
       {variant === 'fallback' && (
-        <span className="stfb__token-hint">
+        <p className="socials-text--secondary">
           Showing all template fields; this collection has no sample record to discover its fields
           from yet.
-        </span>
+        </p>
       )}
     </div>
   )
@@ -145,11 +142,11 @@ const FilterMenu: React.FC<FilterMenuProps> = ({ onApply, token }) => {
   }
 
   return (
-    <div aria-label="Apply filter" className="stfb__filter-menu" role="group">
-      <span className="stfb__filter-label">Filter:</span>
+    <div aria-label="Apply filter" className="socials-row" role="group">
+      <span className="socials-text--secondary">Filter:</span>
       <select
         aria-label="Select filter"
-        className="stfb__filter-select"
+        className="socials-select socials-select--inline"
         onChange={(e) => {
           setFilter(e.target.value)
           setArg('')
@@ -165,20 +162,20 @@ const FilterMenu: React.FC<FilterMenuProps> = ({ onApply, token }) => {
       {needsArg && (
         <input
           aria-label={`${filter} argument`}
-          className="stfb__filter-arg"
+          className="socials-input socials-input--inline"
           onChange={(e) => setArg(e.target.value)}
           placeholder={filter === 'truncate' ? 'N chars' : 'value'}
           value={arg}
         />
       )}
-      <button
+      <Button
         aria-label={`Apply ${filter} filter`}
-        className="stfb__filter-apply"
+        buttonStyle="secondary"
+        margin={false}
         onClick={() => onApply(filter, needsArg ? arg : undefined)}
-        type="button"
       >
         Apply to {token}
-      </button>
+      </Button>
     </div>
   )
 }
@@ -397,27 +394,31 @@ export const SocialTemplateFieldBuilder: React.FC<SocialTemplateFieldBuilderProp
 
   const overLimit = charLimit !== undefined && currentValue.length > charLimit
 
+  const fieldClass = multiline
+    ? 'socials-textarea socials-textarea--mono'
+    : 'socials-input socials-input--mono'
+
   return (
-    <div className="stfb">
-      {/* Field label + raw-mode toggle */}
-      <div className="stfb__toolbar">
-        <span className="stfb__field-label">{COPY_FIELD_LABELS[copyField]}</span>
-        <button
+    <Card
+      actions={
+        <Button
           aria-pressed={rawMode}
-          className={`stfb__raw-toggle${rawMode ? ' stfb__raw-toggle--active' : ''}`}
+          buttonStyle="ghost"
+          margin={false}
           onClick={() => setRawMode((prev) => !prev)}
-          type="button"
         >
           {rawMode ? 'Builder mode' : 'Raw mode'}
-        </button>
-      </div>
-
+        </Button>
+      }
+      className="socials-builder"
+      title={COPY_FIELD_LABELS[copyField]}
+    >
       {rawMode ? (
         /* Raw-string fallback: plain textarea or input */
         multiline ? (
           <textarea
             aria-label={`${copyField} template (raw)`}
-            className="stfb__raw-area"
+            className={fieldClass}
             onChange={handleChange}
             onKeyUp={trackCursor}
             onSelect={trackCursor}
@@ -428,7 +429,7 @@ export const SocialTemplateFieldBuilder: React.FC<SocialTemplateFieldBuilderProp
         ) : (
           <input
             aria-label={`${copyField} template (raw)`}
-            className="stfb__raw-input"
+            className={fieldClass}
             onChange={handleChange}
             onKeyUp={trackCursor}
             onSelect={trackCursor}
@@ -439,11 +440,11 @@ export const SocialTemplateFieldBuilder: React.FC<SocialTemplateFieldBuilderProp
         )
       ) : (
         /* Builder: editable field + pickers */
-        <div className="stfb__builder">
+        <div className="socials-stack">
           {multiline ? (
             <textarea
               aria-label={`${copyField} template`}
-              className="stfb__field"
+              className={fieldClass}
               onChange={handleChange}
               onKeyUp={trackCursor}
               onSelect={trackCursor}
@@ -454,7 +455,7 @@ export const SocialTemplateFieldBuilder: React.FC<SocialTemplateFieldBuilderProp
           ) : (
             <input
               aria-label={`${copyField} template`}
-              className="stfb__field"
+              className={fieldClass}
               onChange={handleChange}
               onKeyUp={trackCursor}
               onSelect={trackCursor}
@@ -474,7 +475,7 @@ export const SocialTemplateFieldBuilder: React.FC<SocialTemplateFieldBuilderProp
 
           <FilterMenu onApply={handleApplyFilter} token={activeToken} />
 
-          <p className="stfb__scope-hint">
+          <p className="socials-text--secondary">
             Only tokens in scope (resolved by the host&apos;s SourceContextResolver) produce output.
             Fields not in scope must be exposed via the resolver&apos;s <code>metadata</code> map.
           </p>
@@ -482,60 +483,57 @@ export const SocialTemplateFieldBuilder: React.FC<SocialTemplateFieldBuilderProp
       )}
 
       {/* Character count */}
-      <div className="stfb__meta">
-        <span
-          aria-live="polite"
-          className={overLimit ? 'stfb__char-count stfb__char-count--over' : 'stfb__char-count'}
-        >
-          {currentValue.length}
-          {charLimit !== undefined ? ` / ${charLimit}` : ''} chars
+      <div className="socials-row">
+        <span aria-live="polite">
+          <Pill pillStyle={overLimit ? 'error' : 'light'} size="small">
+            {currentValue.length}
+            {charLimit !== undefined ? ` / ${charLimit}` : ''} chars
+          </Pill>
         </span>
       </div>
 
       {/* Live preview — locked to the template's bound source kind */}
       {sourceKinds.length > 0 && (
-        <details className="stfb__preview-section">
-          <summary className="stfb__preview-summary">Live preview</summary>
+        <Collapsible header="Live preview" initCollapsed>
           {selectedKind ? (
-            <>
-              <div className="stfb__preview-controls">
-                <span className="stfb__preview-label-text">
-                  Previewing a <strong>{boundKind?.label ?? selectedKind}</strong> record. A recent
-                  one is auto-selected; change the ID to preview a different record.
-                </span>
-                <label className="stfb__preview-label">
-                  Record ID
-                  <input
-                    aria-label="Preview record ID"
-                    className="stfb__preview-id"
-                    onChange={(e) => setSelectedId(e.target.value)}
-                    placeholder="Auto-filled from a recent record"
-                    type="text"
-                    value={selectedId}
-                  />
-                </label>
-              </div>
+            <div className="socials-stack">
+              <p className="socials-text--secondary">
+                Previewing a <strong>{boundKind?.label ?? selectedKind}</strong> record. A recent
+                one is auto-selected; change the ID to preview a different record.
+              </p>
+              <Field label="Record ID">
+                <input
+                  aria-label="Preview record ID"
+                  className="socials-input"
+                  onChange={(e) => setSelectedId(e.target.value)}
+                  placeholder="Auto-filled from a recent record"
+                  type="text"
+                  value={selectedId}
+                />
+              </Field>
 
               {previewError && (
-                <p className="stfb__preview-error" role="alert">
-                  {previewError}
-                </p>
-              )}
-              {previewText !== undefined && !previewError && (
-                <div aria-live="polite" className="stfb__preview-output">
-                  <span className="stfb__preview-label-text">Rendered output:</span>
-                  <pre className="stfb__preview-text">{previewText || '(empty)'}</pre>
+                <div role="alert">
+                  <Banner type="danger">{previewError}</Banner>
                 </div>
               )}
-            </>
+              {previewText !== undefined && !previewError && (
+                <div aria-live="polite" className="socials-stack">
+                  <span className="socials-text--secondary">Rendered output:</span>
+                  <pre className="socials-inset socials-builder__preview">
+                    {previewText || '(empty)'}
+                  </pre>
+                </div>
+              )}
+            </div>
           ) : (
-            <p className="stfb__preview-hint">
+            <p className="socials-text--secondary">
               Choose the collection this template is for (the “Source kind” field above) to preview
               it against a record.
             </p>
           )}
-        </details>
+        </Collapsible>
       )}
-    </div>
+    </Card>
   )
 }

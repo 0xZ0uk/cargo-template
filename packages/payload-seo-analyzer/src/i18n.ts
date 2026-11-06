@@ -79,7 +79,8 @@ export interface RuleTranslations {
     h1KeywordFail: (kw: string) => string
     hierarchyLabel: string
     hierarchyPass: string
-    hierarchyFail: string
+    hierarchyFail: (text: string, level: number, previousLevel: number, more: number) => string
+    hierarchyTip: string
     h2KeywordLabel: string
     h2KeywordPass: string
     h2KeywordFail: (kw: string) => string
@@ -612,7 +613,10 @@ const rulesEn: RuleTranslations = {
     h1KeywordFail: (kw) => `The keyword "${kw}" is not in the H1 — Add it to the main heading.`,
     hierarchyLabel: 'Heading hierarchy',
     hierarchyPass: 'The heading hierarchy is correct (h2 before h3, etc.).',
-    hierarchyFail: 'The heading hierarchy is not respected — Use h2 before h3, h3 before h4, etc.',
+    hierarchyFail: (text, level, previousLevel, more) =>
+      `${text ? `"${text}"` : 'An empty heading'} (h${level}) follows an h${previousLevel}. Make it an h${previousLevel + 1}, or add an h${previousLevel + 1} above it.${more > 0 ? ` ${more} more heading(s) skip a level.` : ''}`,
+    hierarchyTip:
+      'Keep heading levels in order: a heading can go one level deeper than the one before it, or back up any number of levels.',
     h2KeywordLabel: 'Keyword in an H2',
     h2KeywordPass: 'The keyword is present in at least one H2 subheading.',
     h2KeywordFail: (kw) => `Add the keyword "${kw}" to one of the H2 subheadings.`,
