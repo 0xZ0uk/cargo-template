@@ -19,9 +19,10 @@ const isolate = (store: SeoCacheStore, opts: Partial<ConstructorParameters<typeo
 const SITE = 'https://site.example'
 const config = { siteUrl: SITE }
 
-const psiResponse = () =>
+const psiResponse = (loadingExtra: Record<string, unknown> = {}) =>
   Response.json({
     loadingExperience: {
+      ...loadingExtra,
       metrics: {
         LARGEST_CONTENTFUL_PAINT_MS: { percentile: 2100 },
         INTERACTION_TO_NEXT_PAINT: { percentile: 150 },
@@ -31,8 +32,8 @@ const psiResponse = () =>
     lighthouseResult: { audits: {} },
   })
 
-function stubFetch() {
-  const fetchMock = vi.fn(async () => psiResponse())
+function stubFetch(loadingExtra: Record<string, unknown> = {}) {
+  const fetchMock = vi.fn(async (_url: string, _init?: unknown) => psiResponse(loadingExtra))
   vi.stubGlobal('fetch', fetchMock)
   return fetchMock
 }
@@ -54,6 +55,7 @@ const EDITOR = { id: 2, collection: 'users', role: 'editor' }
 const urlQuery = (target: string, extra = '') => `url=${encodeURIComponent(target)}${extra}`
 
 afterEach(() => {
+  vi.unstubAllEnvs()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
   vi.useRealTimers()
@@ -168,6 +170,81 @@ describe('core-web-vitals — shared cache', () => {
     vi.setSystemTime(Date.now() + 2 * 60 * 60 * 1000)
     await createCoreWebVitalsHandler(config, isolate(store))(makeReq(q))
     expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('core-web-vitals — PSI key', () => {
+  const psiKey = (fetchMock: ReturnType<typeof stubFetch>) => new URL(String(fetchMock.mock.calls[0]![0])).searchParams.get('key')
+
+  it('forwards PAGESPEED_API_KEY and reports keyConfigured', async () => {
+    vi.stubEnv('PAGESPEED_API_KEY', 'k-123')
+    const fetchMock = stubFetch()
+    const res = await createCoreWebVitalsHandler(config, isolate(fakeStore()))(makeReq(urlQuery(`${SITE}/page`)))
+    expect(psiKey(fetchMock)).toBe('k-123')
+    expect(((await res.json()) as { keyConfigured: boolean }).keyConfigured).toBe(true)
+  })
+
+  it('sends no key without PAGESPEED_API_KEY, and ignores the old GOOGLE_PAGESPEED_API_KEY alias', async () => {
+    vi.stubEnv('PAGESPEED_API_KEY', '')
+    vi.stubEnv('GOOGLE_PAGESPEED_API_KEY', 'legacy')
+    const fetchMock = stubFetch()
+    const res = await createCoreWebVitalsHandler(config, isolate(fakeStore()))(makeReq(urlQuery(`${SITE}/page`)))
+    expect(psiKey(fetchMock)).toBeNull()
+    expect(((await res.json()) as { keyConfigured: boolean }).keyConfigured).toBe(false)
+  })
+
+  it('reports the current key state on a cache hit, not the one stored with the result', async () => {
+    vi.stubEnv('PAGESPEED_API_KEY', '')
+    stubFetch()
+    const store = fakeStore()
+    await createCoreWebVitalsHandler(config, isolate(store))(makeReq(urlQuery(`${SITE}/page`)))
+    vi.stubEnv('PAGESPEED_API_KEY', 'k-123')
+    const fetchMock = stubFetch()
+    const res = await createCoreWebVitalsHandler(config, isolate(store))(makeReq(urlQuery(`${SITE}/page`)))
+    const body = (await res.json()) as { cached?: boolean; keyConfigured: boolean }
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(body.cached).toBe(true)
+    expect(body.keyConfigured).toBe(true)
+  })
+
+  it('answers a PSI 429 with a 502 that names PAGESPEED_API_KEY', async () => {
+    vi.stubEnv('PAGESPEED_API_KEY', '')
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 429 })))
+    const res = await createCoreWebVitalsHandler(config, isolate(fakeStore()))(makeReq(urlQuery(`${SITE}/page`)))
+    expect(res.status).toBe(502)
+    expect(((await res.json()) as { error: string }).error).toContain('PAGESPEED_API_KEY')
+  })
+})
+
+describe('core-web-vitals — origin fallback', () => {
+  const run = async (loadingExtra: Record<string, unknown>) => {
+    stubFetch(loadingExtra)
+    const res = await createCoreWebVitalsHandler(config, isolate(fakeStore()))(makeReq(urlQuery(`${SITE}/page`)))
+    return (await res.json()) as { source: string; originFallback: boolean }
+  }
+
+  it('flags field data that PSI took from the whole origin', async () => {
+    expect(await run({ origin_fallback: true })).toMatchObject({ source: 'field', originFallback: true })
+  })
+
+  it('is false for the page\'s own field data', async () => {
+    expect(await run({})).toMatchObject({ source: 'field', originFallback: false })
+    expect(await run({ origin_fallback: false })).toMatchObject({ originFallback: false })
+  })
+
+  it('is false for lab data, even if PSI sets the flag without metrics', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ loadingExperience: { origin_fallback: true }, lighthouseResult: { audits: {} } })))
+    const res = await createCoreWebVitalsHandler(config, isolate(fakeStore()))(makeReq(urlQuery(`${SITE}/page`)))
+    expect(await res.json()).toMatchObject({ source: 'lab', originFallback: false })
+  })
+
+  it('keeps the flag in the cached result', async () => {
+    stubFetch({ origin_fallback: true })
+    const store = fakeStore()
+    const q = urlQuery(`${SITE}/page`)
+    await createCoreWebVitalsHandler(config, isolate(store))(makeReq(q))
+    const res = await createCoreWebVitalsHandler(config, isolate(store))(makeReq(q))
+    expect(await res.json()).toMatchObject({ cached: true, originFallback: true })
   })
 })
 

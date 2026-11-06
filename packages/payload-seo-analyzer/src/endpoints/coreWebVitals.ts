@@ -11,8 +11,13 @@
  *  - On-demand only (no automatic site-wide crawl — that would blow the PSI quota).
  *  - SSRF-safe: only the configured site's own origin can be tested.
  *
- * The PSI API key is OPTIONAL (read from env). Without a key, PSI still works at a lower
- * quota. Read-only; requires an authenticated user.
+ * `PAGESPEED_API_KEY` (env) is effectively REQUIRED on a deployed Worker: without a key PSI
+ * uses a shared keyless quota that usually answers 429. The code still runs without one, so
+ * local dev and tests work, and the panel says why a request failed.
+ * Read-only; requires an authenticated user.
+ *
+ * `originFallback`: PSI sets `loadingExperience.origin_fallback` when the page has too little
+ * CrUX traffic and the field data is the whole site's. The response passes it on.
  */
 import type { PayloadHandler } from 'payload'
 import type { SeoConfig } from '../types.js'
@@ -96,12 +101,19 @@ export function createCoreWebVitalsHandler(
       const cachedCwv = noCache ? null : lookup.data
       if (cachedCwv) {
         return Response.json(
-          { ...cachedCwv, cached: true, ...(lookup.builtAt !== undefined ? { builtAt: lookup.builtAt } : {}) },
+          {
+            ...cachedCwv,
+            cached: true,
+            // Whether the key is set NOW: a result measured before the key was added must not
+            // keep telling the admin to set it for the rest of its 24 h.
+            keyConfigured: !!process.env.PAGESPEED_API_KEY,
+            ...(lookup.builtAt !== undefined ? { builtAt: lookup.builtAt } : {}),
+          },
           { headers: { 'Cache-Control': 'no-store' } },
         )
       }
 
-      const apiKey = process.env.PAGESPEED_API_KEY || process.env.GOOGLE_PAGESPEED_API_KEY || ''
+      const apiKey = process.env.PAGESPEED_API_KEY || ''
 
       const psi = new URL('https://www.googleapis.com/pagespeedonline/v5/runPagespeed')
       psi.searchParams.set('url', target)
@@ -115,7 +127,7 @@ export function createCoreWebVitalsHandler(
       try {
         const resp = await fetch(psi.toString(), { signal: controller.signal })
         if (!resp.ok) {
-          const detail = resp.status === 429 ? ' (PSI quota exceeded — add a PAGESPEED_API_KEY)' : ''
+          const detail = resp.status === 429 ? ' (PSI quota exceeded — set PAGESPEED_API_KEY)' : ''
           return Response.json(
             { error: `PageSpeed Insights request failed: ${resp.status}${detail}` },
             { status: 502 },
@@ -139,6 +151,8 @@ export function createCoreWebVitalsHandler(
       const fieldClsRaw = fieldMetric('CUMULATIVE_LAYOUT_SHIFT_SCORE')
       const fieldCls = fieldClsRaw !== null ? fieldClsRaw / 100 : null // CrUX returns CLS * 100
       const hasFieldData = fieldLcp !== null || fieldInp !== null || fieldCls !== null
+      // PSI answers with the whole origin's CrUX data when the page has too little traffic.
+      const originFallback = hasFieldData && loadingExperience.origin_fallback === true
 
       // ---- Lab data (Lighthouse) fallback ----
       const lighthouse = (psiData.lighthouseResult || {}) as Record<string, unknown>
@@ -161,6 +175,7 @@ export function createCoreWebVitalsHandler(
         strategy,
         source: hasFieldData ? 'field' : 'lab',
         hasFieldData,
+        originFallback,
         metrics: {
           lcp: { value: lcp, unit: 'ms', rating: rate(lcp, CWV_THRESHOLDS.lcp) },
           inp: {
