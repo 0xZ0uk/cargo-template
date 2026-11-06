@@ -24,6 +24,7 @@ import { Footer } from './Footer/config'
 import { Header } from './Header/config'
 import { defaultLexical } from './fields/defaultLexical'
 import type { Page } from './payload-types'
+import { abMeasurementConfig } from './plugins/abMeasurement'
 import { abStorage } from './plugins/abTesting'
 import { limitVersions } from './plugins/limitVersions'
 import { r2SeoCacheStore } from './plugins/seoCacheStore'
@@ -232,6 +233,11 @@ export default buildConfig({
             typeof doc.slug === 'string' && doc.slug ? pagePath(doc.slug) : null,
         },
       },
+      // Measurement (src/plugins/abMeasurement.ts): `loadPage` counts impressions and CTA
+      // clicks post conversions to `/api/_ab/convert`, both into Workers Analytics Engine;
+      // the Variants panel reads results per bucket through its SQL API, once
+      // AB_ANALYTICS_ACCOUNT_ID and AB_ANALYTICS_API_TOKEN are set.
+      measurement: abMeasurementConfig(cloudflare),
     }),
     // On-page editing (packages/onpage): "Edit on page" in the admin opens the page with an
     // editor, and edits autosave as drafts through Payload's REST API. Pages only: Header and

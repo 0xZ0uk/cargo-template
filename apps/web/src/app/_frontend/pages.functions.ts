@@ -33,6 +33,11 @@ export type LoadPageResult = {
   redirectTo?: string
   /** The public origin (`SITE_URL`, else the request origin) for canonical URLs. */
   siteUrl: string
+  /**
+   * The A/B experiment this view is part of (its manifest key, the page's path), or null. The
+   * page then reports CTA clicks as conversions; the bucket stays in the visitor's cookies.
+   */
+  experiment?: string | null
 }
 
 // Lexical's recursive node types defeat TanStack's serializability check, so it's turned off
@@ -78,6 +83,7 @@ export const loadPage = createServerFn({ method: 'GET', strict: { output: false 
     // links) always show the page that was asked for. The manifest key is the requested
     // page's path, never the variant's.
     let variantSlug: string | undefined
+    let experiment: string | null = null
     if (!draft) {
       const { routeAb } = await import('@/plugins/abTesting')
       const { varies, ab } = await routeAb(getRequestHeader('cookie'), pagePath(data.slug), payload)
@@ -89,6 +95,8 @@ export const loadPage = createServerFn({ method: 'GET', strict: { output: false 
       if (varies) setResponseHeader('Cache-Control', 'private, no-store')
       // With the default variant data, the bucket is the variant's slug.
       variantSlug = ab?.variant?.bucket
+      // `routeAb` also counted the impression (once per visitor and bucket).
+      if (ab) experiment = pagePath(data.slug)
     }
 
     // In edit mode, strings come back with invisible markers that map them to their fields.
@@ -164,6 +172,7 @@ export const loadPage = createServerFn({ method: 'GET', strict: { output: false 
     return {
       canonicalSlug,
       draft,
+      experiment: page ? experiment : null,
       jsonLd,
       livePreview: Boolean(user) && Boolean(data.draft),
       origin,

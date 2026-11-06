@@ -38,6 +38,16 @@
       "remote": true,
     },
   ],
+  // A/B experiment measurement (src/plugins/abMeasurement.ts): one data point per impression
+  // and per conversion, no personal data. Datasets are created on first write; no setup.
+  // Local dev and tests have no real dataset, and the Variants panel reads results through the
+  // SQL API (AB_ANALYTICS_ACCOUNT_ID / AB_ANALYTICS_API_TOKEN in .env.schema).
+  "analytics_engine_datasets": [
+    {
+      "binding": "AB_ANALYTICS",
+      "dataset": "cargo_ab",
+    },
+  ],
   "r2_buckets": [
     {
       "binding": "R2",

@@ -80,7 +80,10 @@ export type AbRouting = {
    * manifest couldn't be read), so no shared cache may store it.
    */
   varies: boolean
-  /** The resolver's answer: the variant to render and the cookies to set, or null to render the page as requested. */
+  /**
+   * The resolver's answer: the bucket, the variant to render (null for the original) and the
+   * cookies to set. Null when the page runs no experiment: render the page as requested.
+   */
   ab: AbRewrite<AbVariant> | null
 }
 
@@ -101,11 +104,14 @@ const resolverFor = (variants: AbVariant[]) =>
  * Routes a page view. `key` is the page's path (`pagePath(slug)`), the manifest key the
  * plugin's `generatePath` writes.
  *
- * The resolver's `null` means both "no experiment here" and "already in the original bucket,
- * nothing to set", and only the first may be cached by URL. So the manifest is read here once,
- * `varies` reports whether the page has variants, and the resolver runs on those variants.
- * A failed read routes nobody (the page renders as requested), as the resolver itself does,
- * but still counts as `varies`: the next request may well be routed.
+ * The manifest is read here once, `varies` reports whether the page has variants, and the
+ * resolver runs on those variants. A failed read routes nobody (the page renders as
+ * requested), as the resolver itself does, but still counts as `varies`: the next request may
+ * well be routed. (`varies` comes from the manifest rather than from `ab`, which is also null
+ * when the manifest can't be read.)
+ *
+ * A routed view also counts as an impression (Workers Analytics Engine, once per visitor and
+ * bucket; see `recordImpression`). Its marker cookie joins `ab.setCookieHeaders`.
  */
 export async function routeAb(
   cookieHeader: string | undefined,
@@ -119,5 +125,19 @@ export async function routeAb(
     return { varies: true, ab: null }
   }
   if (!variants?.length) return { varies: false, ab: null }
-  return { varies: true, ab: await resolverFor(variants)(cookieHeader, key, key, key) }
+  const ab = await resolverFor(variants)(cookieHeader, key, key, key)
+  if (!ab) return { varies: true, ab }
+
+  const { cloudflareEnv } = await import('#cloudflare-runtime')
+  const { recordImpression } = await import('./abMeasurement')
+  const marker = recordImpression(
+    cloudflareEnv.AB_ANALYTICS as AnalyticsEngineDataset | undefined,
+    cookieHeader,
+    key,
+    ab,
+  )
+  return {
+    varies: true,
+    ab: marker ? { ...ab, setCookieHeaders: [...ab.setCookieHeaders, marker] } : ab,
+  }
 }
