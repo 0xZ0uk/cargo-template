@@ -1,5 +1,6 @@
 import { onpage } from '@cargo/onpage-plugin'
 import { tanstackSession } from '@cargo/onpage-tanstack-start/session'
+import { abTestingPlugin } from '@cargo/payload-plugin-ab'
 import { createSqlSeoDataStore, seoAnalyzerPlugin } from '@cargo/payload-seo-analyzer'
 import { sqliteD1Adapter } from '@payloadcms/db-d1-sqlite'
 import { mcpPlugin } from '@payloadcms/plugin-mcp'
@@ -23,6 +24,7 @@ import { Footer } from './Footer/config'
 import { Header } from './Header/config'
 import { defaultLexical } from './fields/defaultLexical'
 import type { Page } from './payload-types'
+import { abStorage } from './plugins/abTesting'
 import { limitVersions } from './plugins/limitVersions'
 import { r2SeoCacheStore } from './plugins/seoCacheStore'
 import { workersSeoRateLimit } from './plugins/seoRateLimit'
@@ -131,7 +133,7 @@ export default buildConfig({
         },
         pages: {
           description:
-            'Website pages, served at /<slug> (the page with slug "home" is served at /). Built from layout blocks (sections) and SEO meta. Saved as drafts until published.',
+            'Website pages, served at /<slug> (the page with slug "home" is served at /). Built from layout blocks (sections) and SEO meta. Saved as drafts until published. Pages with `_abVariantOf` set are A/B test variants of that page (slug `<original>--<hash>`), shown to a share of its visitors; they are created, weighted and removed in the admin\'s Variants panel, and `_abVariantOf` / `_abPassPercentage` cannot be written here.',
         },
         media: {
           description:
@@ -211,13 +213,32 @@ export default buildConfig({
         warmCache: false,
       },
     }),
+    // A/B testing (packages/payload-plugin-ab): the Variants panel on Pages clones a page into
+    // variants and sets each one's share of traffic; `loadPage` routes visitors between them.
+    // The manifest (which variants a page has) lives in the hidden `ab-manifest` collection,
+    // one row per page path, read through the Cache API (src/plugins/abTesting.ts). Its keys
+    // are the paths visitors request, so they come from `pagePath` (`home` → `/`).
+    abTestingPlugin({
+      storage: abStorage,
+      collections: {
+        pages: {
+          generatePath: ({ doc }) =>
+            typeof doc.slug === 'string' && doc.slug ? pagePath(doc.slug) : null,
+        },
+      },
+    }),
     // On-page editing (packages/onpage): "Edit on page" in the admin opens the page with an
     // editor, and edits autosave as drafts through Payload's REST API. Pages only: Header and
     // Footer have no drafts, so every keystroke would publish. Comments and saved sections
     // (`comments`, `patterns`) stay off; each adds a collection to the main D1.
     onpage({
       collections: {
-        pages: { url: ({ doc }) => (typeof doc.slug === 'string' ? pagePath(doc.slug) : null) },
+        pages: {
+          url: ({ doc }) => (typeof doc.slug === 'string' ? pagePath(doc.slug) : null),
+          // A/B variants are edited in the Variants panel's drawer, and visitors reach them
+          // through the original's URL, so they get no "Edit on page".
+          hideEditWhen: '_abVariantOf',
+        },
       },
       session: tanstackSession({ secret }),
     }),

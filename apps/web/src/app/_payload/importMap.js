@@ -5,6 +5,7 @@ import { MetaDescriptionComponent as MetaDescriptionComponent_a8a977ebc872c5d5ea
 import { PreviewComponent as PreviewComponent_a8a977ebc872c5d5ea7ee689724c0860 } from '@payloadcms/plugin-seo/client'
 import { SocialPublishPanelClient as SocialPublishPanelClient_5fd21c991680a0e7a8a18e6a7e9e5018 } from '@cargo/payload-plugin-socials/client'
 import { SeoAnalyzerField as SeoAnalyzerField_91407beeea43f355408968e66219c5e2 } from '@cargo/payload-seo-analyzer/client'
+import { VariantsField as VariantsField_5a30499b68ace24702c5abb549ed9c1c } from '@cargo/payload-plugin-ab/admin/VariantsField'
 import { LLMInstructionsMenuItem as LLMInstructionsMenuItem_3817bf644402e67bfe6577f60ef982de } from '@payloadcms/ui'
 import { OnPageAdminControls as OnPageAdminControls_a22e6095b62e0dad910a5e23238b0d49 } from '@cargo/onpage-plugin/admin'
 import { RscEntryLexicalCell as RscEntryLexicalCell_44fe37237e0ebf4470c9990d8cb7b07e } from '@payloadcms/richtext-lexical/rsc'
@@ -62,6 +63,7 @@ export const importMap = {
   "@payloadcms/plugin-seo/client#PreviewComponent": PreviewComponent_a8a977ebc872c5d5ea7ee689724c0860,
   "@cargo/payload-plugin-socials/client#SocialPublishPanelClient": SocialPublishPanelClient_5fd21c991680a0e7a8a18e6a7e9e5018,
   "@cargo/payload-seo-analyzer/client#SeoAnalyzerField": SeoAnalyzerField_91407beeea43f355408968e66219c5e2,
+  "@cargo/payload-plugin-ab/admin/VariantsField#VariantsField": VariantsField_5a30499b68ace24702c5abb549ed9c1c,
   "@payloadcms/ui#LLMInstructionsMenuItem": LLMInstructionsMenuItem_3817bf644402e67bfe6577f60ef982de,
   "@cargo/onpage-plugin/admin#OnPageAdminControls": OnPageAdminControls_a22e6095b62e0dad910a5e23238b0d49,
   "@payloadcms/richtext-lexical/rsc#RscEntryLexicalCell": RscEntryLexicalCell_44fe37237e0ebf4470c9990d8cb7b07e,
