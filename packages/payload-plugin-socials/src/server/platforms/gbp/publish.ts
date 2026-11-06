@@ -11,7 +11,11 @@ import { GBP_SUMMARY_MAX_CHARS, SOCIAL_POSTS_SLUG } from '../../../constants.js'
 import { resolvePlatformImageUrl } from '../../assets/resolvePlatformImage.js'
 import { resolveConfiguredText } from '../../copy/resolveConfiguredCopy.js'
 import { persistPublicationAudit } from '../../services/publicationPersistence.js'
-import { PlatformApiError, ValidationError } from '../../utilities/errors.js'
+import {
+  classifyRequestFailure,
+  PlatformApiError,
+  ValidationError,
+} from '../../utilities/errors.js'
 import { sha256Hex } from '../../utilities/hash.js'
 import { resolvePublicationIdempotencyKey } from '../../utilities/publicationIdentity.js'
 import { GBP_HOSTS, gbpJson, makeGbpRequest } from './api.js'
@@ -323,11 +327,12 @@ export const publishGbpLocalPost = async (args: {
   })
 
   if (!response.name) {
+    // Google answered 2xx: the Local Post may exist even though no name came back.
     throw new PlatformApiError({
       message: 'GBP localPosts.create returned no name',
+      ...classifyRequestFailure({ effect: 'create', status: 200 }),
       platform: 'gbp',
       raw: response,
-      retryable: false,
       statusCode: 502,
     })
   }

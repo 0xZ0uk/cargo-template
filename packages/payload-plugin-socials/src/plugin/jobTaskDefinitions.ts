@@ -1,5 +1,7 @@
 import type { Payload, PayloadRequest } from 'payload'
 
+import { JobCancelledError } from 'payload'
+
 import type {
   NormalizedPluginOptions,
   PlatformId,
@@ -22,9 +24,11 @@ import { getPlatformAdapter } from '../server/platforms/registry.js'
 import { queuePublicationReconciliation } from '../server/services/publicationReconciliation.js'
 import { markPublicationOutcomeUnknown } from '../server/services/publicationReservation.js'
 import { resolveSourceContext } from '../server/sources/registry.js'
+import { getRetryRefusal } from '../server/services/retryGuard.js'
 import {
   getUnknownPublicationRef,
   hasUnknownPublicationOutcome,
+  isAutoRetrySafe,
 } from '../server/utilities/errors.js'
 import { createPluginLogger, redactSecretString } from '../server/utilities/logger.js'
 
@@ -39,13 +43,45 @@ import { createPluginLogger, redactSecretString } from '../server/utilities/logg
  *     options are fetched fresh from the plugin's `getPluginOptions()`
  *     registry every invocation. This makes the handlers safe to register
  *     once and survive hot reloads.
- *   - Errors are RETURNED (`{ errorMessage, state: 'failed' }`), not thrown.
- *     Payload's job tracking flags this cleanly without unhandled rejection
- *     noise.
+ *   - Failures are THROWN. Payload 4 reads only `output` from a handler's
+ *     result and logs anything returned as succeeded; only a thrown error
+ *     marks the job failed. Which error decides whether Payload retries:
+ *       - a plain `Error` for transient failures that are safe to re-run
+ *         (Payload applies the task's `retries`, with `SOCIALS_RETRY_BACKOFF`);
+ *         for a publish, only when `isAutoRetrySafe` says so;
+ *       - `SocialsTaskFailure` for failures the `social-posts` row already
+ *         records and that must not be re-run blindly (unknown publish
+ *         outcome, terminal states, non-retryable provider rejections).
+ *     The README's "Job failures and retries" section has the matrix.
  *   - Side effects on `social-posts` rows use `overrideAccess: true` and
  *     pass `context: { socials:skip-hooks: true }` to keep any future
  *     re-entrant hooks inert.
  */
+
+/**
+ * A failure the task has already handled: the `social-posts` row records it
+ * (`status`, `lastError`) or there is nothing to retry. It extends Payload's
+ * `JobCancelledError`, the only error Payload 4 records as a job failure
+ * (`hasError: true`, `error: { cancelled: true, message }`) without applying
+ * the task's `retries`. Re-publishing such a post is the operator's call (the
+ * `socialPostRetry` task, after `POST /api/socials/posts/:postId/resolve` for
+ * an unknown outcome), never an automatic job retry: a blind re-run could
+ * post twice.
+ */
+export class SocialsTaskFailure extends JobCancelledError {
+  constructor(message: string) {
+    super(message)
+    this.name = 'SocialsTaskFailure'
+  }
+}
+
+/**
+ * Payload's backoff between a task's retries: `2^n × delay` after the n-th
+ * failed attempt (1, 2, then 4 minutes). Payload sets the job's `waitUntil`,
+ * so a drain before then skips it: a throttled publish is not retried inside
+ * the platform's throttle window, however often the queue runs.
+ */
+export const SOCIALS_RETRY_BACKOFF = { type: 'exponential', delay: 60_000 } as const
 
 const pluginOptionsByPayload = new WeakMap<Payload, NormalizedPluginOptions>()
 
@@ -157,7 +193,7 @@ const buildPublishTaskConfig = () =>
 
       const post = await loadPost(req.payload, input.postId)
       if (!post) {
-        return { errorMessage: `social-posts/${input.postId} not found`, state: 'failed' as const }
+        throw new SocialsTaskFailure(`social-posts/${input.postId} not found`)
       }
       if (post.status === 'published' && post.externalId) {
         // Already done — idempotent no-op.
@@ -170,7 +206,7 @@ const buildPublishTaskConfig = () =>
         }
       }
       if (post.status === 'cancelled') {
-        return { errorMessage: 'post is cancelled', state: 'failed' as const }
+        throw new SocialsTaskFailure('post is cancelled')
       }
       if (post.platform === 'facebook' && post.status === 'scheduled' && post.externalId) {
         const pageId = typeof post.meta?.pageId === 'string' ? post.meta.pageId : undefined
@@ -180,7 +216,7 @@ const buildPublishTaskConfig = () =>
             post.id,
             'scheduled Facebook post is missing meta.pageId',
           )
-          return { errorMessage: 'scheduled Facebook post is missing meta.pageId', state: 'failed' }
+          throw new SocialsTaskFailure('scheduled Facebook post is missing meta.pageId')
         }
         try {
           const scheduledPublishTime =
@@ -211,8 +247,10 @@ const buildPublishTaskConfig = () =>
           }
           return { output: { pending: reconciliation.pending, postId: post.id } }
         } catch (error) {
+          // No Payload retry: the post is now `failed` with an externalId, and a
+          // re-run would take the publish path and post it a second time.
           await markPostFailed(req.payload, post.id, error)
-          return { errorMessage: safeErrorMessage(error), state: 'failed' as const }
+          throw new SocialsTaskFailure(safeErrorMessage(error))
         }
       }
       if (post.platform === 'gbp' && post.status === 'publishing' && post.externalId) {
@@ -243,8 +281,10 @@ const buildPublishTaskConfig = () =>
             },
           }
         } catch (error) {
+          // No Payload retry: the post is now `failed` with an externalId, and a
+          // re-run would take the publish path and post it a second time.
           await markPostFailed(req.payload, post.id, error)
-          return { errorMessage: safeErrorMessage(error), state: 'failed' as const }
+          throw new SocialsTaskFailure(safeErrorMessage(error))
         }
       }
 
@@ -259,7 +299,7 @@ const buildPublishTaskConfig = () =>
       if (!queuedInput || typeof queuedInput !== 'object') {
         const err = `social-posts/${post.id}.meta.queuedInput missing`
         await markPostFailed(req.payload, post.id, err)
-        return { errorMessage: err, state: 'failed' as const }
+        throw new SocialsTaskFailure(err)
       }
 
       if (!(await claimPostForPublish(req.payload, post.id))) {
@@ -282,10 +322,7 @@ const buildPublishTaskConfig = () =>
         })
       } catch (error) {
         await markPostFailed(req.payload, post.id, error)
-        return {
-          errorMessage: safeErrorMessage(error),
-          state: 'failed' as const,
-        }
+        throw new SocialsTaskFailure(safeErrorMessage(error))
       }
 
       try {
@@ -316,25 +353,28 @@ const buildPublishTaskConfig = () =>
         if (hasUnknownPublicationOutcome(error)) {
           await markPublicationOutcomeUnknown(req.payload, post.id, getUnknownPublicationRef(error))
           log.error('publish outcome unknown; automatic retry suppressed')
-          return {
-            output: {
-              outcomeUnknown: true,
-              postId: post.id,
-            },
-          }
+          // The row is `unknown` (or still `publishing`), which the claim refuses,
+          // so even a re-run would not publish; fail without retries anyway.
+          throw new SocialsTaskFailure(
+            `social-posts/${post.id}: publish outcome unknown; reconcile before retrying`,
+          )
         }
         await markPostFailed(req.payload, post.id, error)
-        log.error('publish failed', { error: safeErrorMessage(error) })
-        return {
-          errorMessage: safeErrorMessage(error),
-          state: 'failed' as const,
+        const message = safeErrorMessage(error)
+        if (isAutoRetrySafe(error)) {
+          // The platform provably created nothing and asks to try again later:
+          // Payload's retry (after the backoff) re-claims the `failed` row.
+          log.error('publish failed; retryable', { error: message })
+          throw new Error(message)
         }
+        log.error('publish failed', { error: message })
+        throw new SocialsTaskFailure(message)
       }
     },
     inputSchema: [],
     interfaceName: 'SocialsPublishTaskInput',
     outputSchema: [],
-    retries: 3,
+    retries: { attempts: 3, backoff: SOCIALS_RETRY_BACKOFF },
   }) as const
 
 // ---------------------------------------------------------------------------
@@ -342,6 +382,11 @@ const buildPublishTaskConfig = () =>
 // ---------------------------------------------------------------------------
 
 type RetryTaskInput = {
+  /**
+   * The operator checked the platform and the post is not there. Required to
+   * retry a post that may already be live (see `getRetryRefusal`).
+   */
+  confirmNotPublished?: boolean
   postId: number | string
 }
 
@@ -357,10 +402,23 @@ const buildRetryTaskConfig = () =>
       // Flip status back to `queued` and let the publish task handle it.
       const post = await loadPost(req.payload, input.postId)
       if (!post) {
-        return { errorMessage: `social-posts/${input.postId} not found`, state: 'failed' as const }
+        throw new SocialsTaskFailure(`social-posts/${input.postId} not found`)
       }
       if (post.status === 'published') {
         return { output: { alreadyPublished: true, postId: post.id } }
+      }
+      const refusal = getRetryRefusal(post, {
+        basePath: getPluginOptions(req.payload).api.basePath,
+        confirmNotPublished: input.confirmNotPublished,
+      })
+      if (refusal) {
+        // Re-publishing could post twice; the row is left as it is.
+        throw new SocialsTaskFailure(refusal)
+      }
+      if (input.confirmNotPublished === true) {
+        log.warn('retrying a post the operator confirmed is not published', {
+          status: post.status,
+        })
       }
       try {
         await req.payload.update({
@@ -370,10 +428,8 @@ const buildRetryTaskConfig = () =>
           overrideAccess: true,
         })
       } catch (error) {
-        return {
-          errorMessage: safeErrorMessage(error),
-          state: 'failed' as const,
-        }
+        // Only flips the row back to `queued`: safe for Payload to retry.
+        throw new Error(safeErrorMessage(error))
       }
       // Re-queue the publish task. We DO NOT recurse into the publish task
       // body inline — the queue path keeps retry attempts visible in the
@@ -386,7 +442,7 @@ const buildRetryTaskConfig = () =>
     inputSchema: [],
     interfaceName: 'SocialsRetryTaskInput',
     outputSchema: [],
-    retries: 1,
+    retries: { attempts: 1, backoff: SOCIALS_RETRY_BACKOFF },
   }) as const
 
 // ---------------------------------------------------------------------------
@@ -521,6 +577,7 @@ const buildInsightsRefreshTaskConfig = () =>
         refreshed: number
         skipped: number
       }> = []
+      const failedPlatforms: Array<{ error: string; platform: PlatformId }> = []
       for (const platform of targets) {
         if (!options.platforms[platform].enabled) {
           continue
@@ -538,14 +595,30 @@ const buildInsightsRefreshTaskConfig = () =>
           log.error(`insights refresh failed for ${platform}`, {
             error: error instanceof Error ? error.message : String(error),
           })
+          failedPlatforms.push({ error: safeErrorMessage(error), platform })
         }
       }
-      return { output: { summaries } }
+      const failed =
+        failedPlatforms.length + summaries.reduce((total, summary) => total + summary.failed, 0)
+      const refreshed = summaries.reduce((total, summary) => total + summary.refreshed, 0)
+      if (failed > 0 && refreshed === 0) {
+        // Nothing refreshed: throw so Payload retries (read-only on the
+        // platform side). A partial refresh succeeds with its counts.
+        throw new Error(
+          `insights refresh failed (${failed} failed, 0 refreshed)` +
+            (failedPlatforms.length
+              ? `: ${failedPlatforms.map((f) => `${f.platform}: ${f.error}`).join('; ')}`
+              : ''),
+        )
+      }
+      return {
+        output: failedPlatforms.length ? { failedPlatforms, summaries } : { summaries },
+      }
     },
     inputSchema: [],
     interfaceName: 'SocialsInsightsRefreshTaskInput',
     outputSchema: [],
-    retries: 1,
+    retries: { attempts: 1, backoff: SOCIALS_RETRY_BACKOFF },
   }) as const
 
 // ---------------------------------------------------------------------------
@@ -572,6 +645,7 @@ const buildConnectionRefreshTaskConfig = () =>
 
       const { getCredentials } = await import('../server/services/connectionService.js')
       const refreshed: Array<{ platform: PlatformId; refreshed: boolean }> = []
+      const failures: Array<{ error: string; platform: PlatformId }> = []
 
       for (const platform of targets) {
         if (!options.platforms[platform].enabled) {
@@ -618,14 +692,23 @@ const buildConnectionRefreshTaskConfig = () =>
             error: error instanceof Error ? error.message : String(error),
           })
           refreshed.push({ platform, refreshed: false })
+          failures.push({ error: safeErrorMessage(error), platform })
         }
+      }
+      if (failures.length) {
+        // Throw so Payload retries. Safe: the retry skips a platform refreshed
+        // in this run once its new token is outside the window, and
+        // refreshing a token again does not touch any post.
+        throw new Error(
+          `connection refresh failed: ${failures.map((f) => `${f.platform}: ${f.error}`).join('; ')}`,
+        )
       }
       return { output: { refreshed } }
     },
     inputSchema: [],
     interfaceName: 'SocialsConnectionRefreshTaskInput',
     outputSchema: [],
-    retries: 1,
+    retries: { attempts: 1, backoff: SOCIALS_RETRY_BACKOFF },
   }) as const
 
 // ---------------------------------------------------------------------------
@@ -659,11 +742,13 @@ const buildSweepTaskConfig = () =>
 
       const { queueSocialPostPublish } = await import('./jobQueue.js')
       let queued = 0
+      let failed = 0
       for (const row of result.docs as unknown as Array<{ id: number | string }>) {
         try {
           await queueSocialPostPublish({ payload: req.payload, postId: row.id, req })
           queued++
         } catch (error) {
+          failed++
           log.error('failed to queue publish for due post', {
             error: error instanceof Error ? error.message : String(error),
             postId: row.id,
@@ -671,7 +756,16 @@ const buildSweepTaskConfig = () =>
         }
       }
       log.info(`sweep queued ${queued} of ${result.docs.length} due posts`)
-      return { output: { queued, scanned: result.docs.length } }
+      if (failed > 0 && queued === 0) {
+        // `retries: 0`: the job is marked failed and the next sweep picks the
+        // still-`queued` posts up again.
+        throw new Error(`sweep could not queue any of ${result.docs.length} due posts`)
+      }
+      return {
+        output: failed
+          ? { failed, queued, scanned: result.docs.length }
+          : { queued, scanned: result.docs.length },
+      }
     },
     inputSchema: [],
     interfaceName: 'SocialsSweepTaskInput',

@@ -229,9 +229,17 @@ export {
   decryptStringWithKeyring,
   encryptString,
 } from './server/utilities/encryption.js'
-export { PlatformApiError } from './server/utilities/errors.js'
+export {
+  classifyRequestFailure,
+  isAutoRetrySafe,
+  PlatformApiError,
+} from './server/utilities/errors.js'
 
-export type { PlatformFieldViolation } from './server/utilities/errors.js'
+export type {
+  PlatformFieldViolation,
+  PlatformRequestEffect,
+  RequestFailureClassification,
+} from './server/utilities/errors.js'
 
 export { ACCESS_SCOPES } from './types/index.js'
 

@@ -59,6 +59,8 @@ describe('uploadPinterestVideoFromUrl', () => {
       options,
       '/v5/media',
       expect.objectContaining({ method: 'POST' }),
+      // Registering media publishes nothing: its failures are safe to repeat.
+      { effect: 'prepare' },
     )
     expect(fetchPinnedRemoteResponse).toHaveBeenCalledWith({
       allowedHosts: ['cdn.example.com'],

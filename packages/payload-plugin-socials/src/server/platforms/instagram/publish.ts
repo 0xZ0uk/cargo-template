@@ -19,7 +19,11 @@ import {
 import { resolvePlatformImageUrl } from '../../assets/resolvePlatformImage.js'
 import { resolveConfiguredText } from '../../copy/resolveConfiguredCopy.js'
 import { persistPublicationAudit } from '../../services/publicationPersistence.js'
-import { PlatformApiError, ValidationError } from '../../utilities/errors.js'
+import {
+  classifyRequestFailure,
+  PlatformApiError,
+  ValidationError,
+} from '../../utilities/errors.js'
 import { sha256Hex } from '../../utilities/hash.js'
 import { resolvePublicationIdempotencyKey } from '../../utilities/publicationIdentity.js'
 import { sleep } from '../../utilities/sleep.js'
@@ -259,6 +263,8 @@ const pollContainerStatus = async (
         message: `Instagram container ${containerId} expired before publish (24h limit)`,
         platform: 'instagram',
         retryable: false,
+        // Nothing is published before `media_publish`.
+        safeToRepeat: true,
         statusCode: 410,
         upstreamCode: 'container_expired',
       })
@@ -268,6 +274,7 @@ const pollContainerStatus = async (
         message: `Instagram container ${containerId} processing failed: ${status.status ?? 'unknown'}`,
         platform: 'instagram',
         retryable: false,
+        safeToRepeat: true,
         statusCode: 502,
         upstreamCode: 'container_error',
         upstreamMessage: status.status,
@@ -278,6 +285,8 @@ const pollContainerStatus = async (
         message: `Instagram container ${containerId} did not finish processing within ${maxWaitMs}ms`,
         platform: 'instagram',
         retryable: true,
+        // Nothing is published before `media_publish`; the retry builds a new container.
+        safeToRepeat: true,
         statusCode: 504,
         upstreamCode: 'container_timeout',
       })
@@ -302,13 +311,15 @@ const createContainer = async (
       headers: { 'Content-Type': 'application/json' },
       method: 'POST',
     },
+    // A container publishes nothing until `media_publish`; an unused one expires in 24h.
+    { effect: 'prepare' },
   )
   if (!response.id) {
     throw new PlatformApiError({
       message: 'Instagram container create returned no id',
+      ...classifyRequestFailure({ effect: 'prepare', status: 200 }),
       platform: 'instagram',
       raw: response,
-      retryable: false,
       statusCode: 502,
     })
   }
@@ -532,11 +543,12 @@ export const publishInstagramMedia = async (args: {
   // Publish.
   const published = await publishContainer(payload, options, input.igUserId, containerId)
   if (!published.id) {
+    // Meta answered 2xx: the media may be live even though no id came back.
     throw new PlatformApiError({
       message: 'Instagram media_publish returned no id',
+      ...classifyRequestFailure({ effect: 'create', status: 200 }),
       platform: 'instagram',
       raw: published,
-      retryable: false,
       statusCode: 502,
     })
   }

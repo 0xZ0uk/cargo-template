@@ -326,6 +326,8 @@ Content-Type: application/json
 
 or `{ "outcome": "not-published" }`. This prevents retry logic from creating duplicate public posts when the provider accepted a request but its response was lost.
 
+The manual retry (`POST /api/socials/internal/posts/{postId}/retry`, or queueing `socialPostRetry`) refuses, with `409`, a post that may already be on the platform: `unknown`, `publishing`, or any row with an `externalId`. Check the platform first. If the post is there, resolve it as `published`. If it is not, resolve an `unknown` post as `not-published` and retry, or retry with `{ "confirmNotPublished": true }` in the request body (or the task input).
+
 ## Scheduling
 
 The plugin defines the jobs and their tasks; **the host owns the trigger and runs the workers** (the same contract as the sibling Merchant Center plugin). The plugin never writes to your `jobs.autoRun`. Choose any of these, and mix freely:
@@ -363,6 +365,48 @@ export default buildConfig({
 Scheduling uses a per-revision token, rechecks the due time in the task, and cancels superseded Payload jobs when possible. The token and status checks remain the correctness fence if cancellation races with a worker.
 
 Facebook's `scheduledPublishTime` is provider-native scheduling. The generic source-publish `scheduledAt` is plugin scheduling. Accepted GBP posts and native Facebook schedules remain pending until reconciliation confirms the provider state; sweep jobs provide the backstop.
+
+### Job failures and retries
+
+Payload 4 reads only `output` from a task handler's result and logs anything returned as succeeded; only a thrown error marks a job failed. So every task failure throws, and the kind of error decides who retries it:
+
+- **Payload retries** (a plain `Error`): the failure is transient and re-running the task cannot post twice. Payload applies the task's `retries` and records each attempt in the job's `log`; after the last one the job has `hasError: true`. Retries back off exponentially (`SOCIALS_RETRY_BACKOFF`: 1, 2, then 4 minutes). Payload sets the job's `waitUntil`, so a drain before then skips the job, however often the queue runs, and a throttled publish is not retried inside the platform's throttle window.
+- **No Payload retry** (`SocialsTaskFailure`, a subclass of Payload's `JobCancelledError`): the `social-posts` row already records the failure (`status`, `lastError`), or there is nothing to retry. Payload marks the job `hasError: true` with `error: { cancelled: true, message }` and does not apply `retries`. Publishing the post again is an operator decision: `POST /api/socials/internal/posts/{postId}/retry` (the `socialPostRetry` task) or, for `unknown`, `POST /api/socials/posts/{postId}/resolve` first.
+
+#### Which publish failures Payload retries
+
+One function decides, `isAutoRetrySafe`: the error is a `PlatformApiError` with `outcome: 'failed'`, `retryable: true` and `safeToRepeat: true`. `safeToRepeat` means the attempt provably created no publication; it defaults to `false`, and the platform clients set it through one classifier, `classifyRequestFailure`, from the HTTP status and what the request does:
+
+| Request | Failure | `outcome` | Payload retry |
+| --- | --- | --- | --- |
+| Creates the post (`create`: Facebook `/feed`, `/photos`, `/videos`; Instagram `media_publish`; Pinterest `POST /v5/pins`; Business Profile `localPosts.create`; any other write by default) | 429, or a 4xx carrying a throttle code the platform documents as rejected (Meta 4, 17, 32, 613, 80000–80099) | `failed` | Yes |
+| | Other 4xx (validation, auth, permission) | `failed` | No |
+| | 5xx, 408, 425, timeout, network error, no response, or a 2xx the plugin can't read or that has no post id | `unknown` | No; the post goes `unknown` |
+| Publishes nothing by itself (`prepare`: Instagram containers, unpublished Facebook photos for a multi-photo post, Pinterest video registration and upload) | 5xx, 408, 425, 429 | `failed` | Yes (a duplicate is invisible and expires) |
+| Reads and polls (`idempotent`: Page token lookup, container and media status, token refresh) | Retryable status or network error; container or media processing timeout | `failed` | Yes |
+| Any | Request never sent (local queue full, distributed lease refused) | `failed` | Yes |
+
+The clients never replay a `create` request themselves after a 5xx or a lost response either; they only repeat it after a 429.
+
+| Task (`retries`) | Failure | Post row | Job |
+| --- | --- | --- | --- |
+| `socialPostPublish` (3, backoff) | `isAutoRetrySafe` (see above) | `failed`, `lastError` | Payload retries after the backoff; each retry re-claims the `failed` row |
+| | Any other publish error (validation, auth, non-retryable rejection, a `retryable` error without `safeToRepeat`, an error from outside the platform clients) | `failed`, `lastError` | Failed, no Payload retry |
+| | Outcome unknown (`PlatformApiError` with `outcome: 'unknown'`, `PublicationPersistenceError`) | `unknown`, provider id captured when known | Failed, no Payload retry |
+| | Source context cannot be resolved; `meta.queuedInput` missing; scheduled Facebook post without `meta.pageId` | `failed`, `lastError` | Failed, no Payload retry |
+| | Facebook / GBP reconciliation read failed | `failed`, `lastError` | Failed, no Payload retry (the post already has an `externalId`; a re-run would publish it again) |
+| | Post not found; post `cancelled` | unchanged | Failed, no Payload retry |
+| | Already published; claimed by another worker; stale schedule token; not due yet | unchanged | Succeeded (handled no-op) |
+| `socialPostRetry` (1, backoff) | Post not found | none | Failed, no Payload retry |
+| | Post may already be live (`unknown`, `publishing`, or has an `externalId`) and the input lacks `confirmNotPublished: true` | unchanged | Failed, no Payload retry; the message says how to resolve it |
+| | Flipping the row back to `queued`, or queueing the publish job, failed | unchanged or `queued` | Payload retries |
+| `socialInsightsRefresh` (1, backoff) | Nothing refreshed and at least one post or platform failed | unchanged | Payload retries (read-only on the platform) |
+| | Some posts refreshed, some failed | refreshed rows updated | Succeeded; `output.summaries[].failed` and `output.failedPlatforms` count the failures |
+| `socialConnectionRefresh` (1, backoff) | A platform's token refresh failed | none | Payload retries (a platform refreshed in the first attempt is skipped once its token is outside the window) |
+| `socialPostSweep` (0) | The due-post query failed, or no due post could be queued | unchanged (`queued`) | Failed; the next sweep picks the posts up |
+| | Some due posts could not be queued | unchanged (`queued`) | Succeeded; `output.failed` counts them |
+
+Double posting is prevented by four fences: Payload retries a publish only when `isAutoRetrySafe` holds, so never after a write the platform may have applied; every publish attempt (first run or retry) must atomically claim the row from `queued` or `failed`, so an `unknown`, `publishing` or `published` row is never published by a job; an unknown outcome stays `unknown` until an operator resolves it; and the manual retry refuses a post that may already be live unless the operator confirms it is not (`confirmNotPublished: true`).
 
 ## Image safety
 

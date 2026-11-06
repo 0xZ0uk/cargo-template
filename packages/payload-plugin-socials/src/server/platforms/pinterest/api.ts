@@ -12,12 +12,18 @@ import {
   recordConnectionError,
   saveCredentials,
 } from '../../services/connectionService.js'
-import { PlatformApiError } from '../../utilities/errors.js'
+import {
+  classifyRequestFailure,
+  PlatformApiError,
+  type PlatformRequestEffect,
+} from '../../utilities/errors.js'
 import { createPluginLogger } from '../../utilities/logger.js'
 import {
   isRetryableNetworkError,
   isSafeToRetryRequest,
   policyFetch,
+  resolveRequestEffect,
+  wasRequestNotSent,
 } from '../../utilities/requestPolicy.js'
 import { sleep } from '../../utilities/sleep.js'
 import { parsePinterestTokenResponseScopes } from './scopes.js'
@@ -147,6 +153,8 @@ const refreshPinterestAccessTokenUnlocked = async (
       platform: 'pinterest',
       raw: text,
       retryable: response.status >= 500,
+      // The token endpoint creates no post: repeating a publish is safe.
+      safeToRepeat: true,
       statusCode: response.status === 401 ? 401 : 502,
       upstreamCode: response.status,
       upstreamMessage: text,
@@ -246,6 +254,11 @@ const parseRetryAfter = (headerValue: null | string, fallbackSeconds = 5): numbe
 }
 
 export type PinterestRequestOptions = {
+  /**
+   * What the request does, for failure classification. Defaults from the
+   * method (`create` for POST); pass `prepare` for a media upload.
+   */
+  effect?: PlatformRequestEffect
   /** Override the base fetch init (headers, body, etc.). */
   init?: RequestInit
   /** Maximum retry attempts for failures eligible under the request policy. */
@@ -298,10 +311,13 @@ export const makePinterestRequest = async (
       }
       throw new PlatformApiError({
         message: 'Pinterest request failed before receiving a response',
-        outcome: safeToRetry ? 'failed' : 'unknown',
+        ...classifyRequestFailure({
+          effect: resolveRequestEffect(requestOptions.init, requestOptions.effect),
+          retryableNetworkError: isRetryableNetworkError(error),
+          sent: !wasRequestNotSent(error),
+        }),
         platform: 'pinterest',
         raw: error,
-        retryable: safeToRetry && isRetryableNetworkError(error),
         statusCode: 502,
         upstreamCode: error instanceof Error ? error.name : 'network_error',
         upstreamMessage: error instanceof Error ? error.message : String(error),
@@ -341,8 +357,10 @@ export const pinterestJson = async <T>(
   options: NormalizedPluginOptions,
   path: string,
   init?: RequestInit,
+  requestOptions: Pick<PinterestRequestOptions, 'effect'> = {},
 ): Promise<T> => {
-  const response = await makePinterestRequest(payload, options, path, { init })
+  const effect = resolveRequestEffect(init, requestOptions.effect)
+  const response = await makePinterestRequest(payload, options, path, { effect, init })
   if (!response.ok) {
     const text = await response.text().catch(() => '')
     let upstream: unknown = text
@@ -351,17 +369,11 @@ export const pinterestJson = async <T>(
     } catch {
       /* keep raw text */
     }
-    const safeToRetry = isSafeToRetryRequest(init)
-    const outcome =
-      !safeToRetry && response.status !== 429 && RETRYABLE_STATUS_CODES.has(response.status)
-        ? 'unknown'
-        : 'failed'
     throw new PlatformApiError({
       message: `Pinterest ${path} failed: ${response.status}`,
-      outcome,
+      ...classifyRequestFailure({ effect, status: response.status }),
       platform: 'pinterest',
       raw: upstream,
-      retryable: outcome === 'failed' && RETRYABLE_STATUS_CODES.has(response.status),
       statusCode: response.status,
       upstreamCode:
         typeof upstream === 'object' && upstream !== null && 'code' in upstream
@@ -373,5 +385,16 @@ export const pinterestJson = async <T>(
           : text,
     })
   }
-  return (await response.json()) as T
+  try {
+    return (await response.json()) as T
+  } catch (error) {
+    // Pinterest answered 2xx: a `create` may well have been applied.
+    throw new PlatformApiError({
+      message: `Pinterest ${path} returned an unreadable response`,
+      ...classifyRequestFailure({ effect, status: response.status }),
+      platform: 'pinterest',
+      raw: error,
+      statusCode: 502,
+    })
+  }
 }

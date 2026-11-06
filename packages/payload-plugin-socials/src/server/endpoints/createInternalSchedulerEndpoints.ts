@@ -2,7 +2,7 @@ import type { Endpoint } from 'payload'
 
 import type { NormalizedPluginOptions } from '../../types/index.js'
 
-import { PLATFORM_IDS } from '../../constants.js'
+import { PLATFORM_IDS, SOCIAL_POSTS_SLUG } from '../../constants.js'
 import {
   queueSocialConnectionRefresh,
   queueSocialInsightsRefresh,
@@ -12,7 +12,8 @@ import {
   sweepDueSocialPosts,
 } from '../../plugin/jobQueue.js'
 import { assertSchedulerApiKey } from '../utilities/apiKeyAuth.js'
-import { ValidationError } from '../utilities/errors.js'
+import { getRetryRefusal } from '../services/retryGuard.js'
+import { ConflictError, NotFoundError, ValidationError } from '../utilities/errors.js'
 import { errorResponse, getRouteParam, jsonResponse, parseRequestBody } from '../utilities/http.js'
 import { requireIdentifier, requireOneOf, requirePositiveInteger } from '../utilities/validation.js'
 
@@ -26,6 +27,8 @@ import { requireIdentifier, requireOneOf, requirePositiveInteger } from '../util
  *   POST /socials/internal/jobs/run             — drain queue (no sweep)
  *   POST /socials/internal/jobs/queue/:taskSlug — queue a specific task with body as input
  *   POST /socials/internal/posts/:postId/retry  — retry a specific failed/cancelled post
+ *                                                 (409 for a post that may already be live,
+ *                                                 unless the body has `confirmNotPublished: true`)
  *   POST /socials/internal/insights/refresh     — fire insights refresh now
  *   POST /socials/internal/connections/refresh  — fire connection refresh now
  *
@@ -149,7 +152,33 @@ const createRetryPostEndpoint = (options: NormalizedPluginOptions): Endpoint => 
     try {
       assertSchedulerApiKey(req, options)
       const postId = requireIdentifier(getRouteParam(req, 'postId'), 'postId')
-      const jobId = await queueSocialPostRetry({ payload: req.payload, postId, req })
+      const body = (await parseRequestBody(req).catch(() => ({}))) as Record<string, unknown>
+      const confirmNotPublished = body.confirmNotPublished === true
+      // Refuse up front a post that may already be live; the task checks again.
+      const post = (await req.payload
+        .findByID({
+          id: postId as never,
+          collection: SOCIAL_POSTS_SLUG as never,
+          depth: 0,
+          overrideAccess: true,
+        })
+        .catch(() => null)) as null | Parameters<typeof getRetryRefusal>[0]
+      if (!post) {
+        throw new NotFoundError(`social-posts/${postId} not found`)
+      }
+      const refusal = getRetryRefusal(post, {
+        basePath: options.api.basePath,
+        confirmNotPublished,
+      })
+      if (refusal) {
+        throw new ConflictError(refusal)
+      }
+      const jobId = await queueSocialPostRetry({
+        confirmNotPublished,
+        payload: req.payload,
+        postId,
+        req,
+      })
       return jsonResponse({ jobId, ok: true, postId })
     } catch (error) {
       return errorResponse(req, error)

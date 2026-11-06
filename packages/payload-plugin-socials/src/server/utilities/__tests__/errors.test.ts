@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  classifyRequestFailure,
   ConflictError,
   ForbiddenError,
+  isAutoRetrySafe,
   NotFoundError,
   PlatformApiError,
   PluginError,
@@ -68,5 +70,73 @@ describe('PlatformApiError', () => {
     expect(err.upstreamCode).toBe(4)
     expect(err.upstreamMessage).toBe('too many calls')
     expect(err.raw).toEqual({ code: 4 })
+  })
+})
+
+describe('classifyRequestFailure / isAutoRetrySafe', () => {
+  const unknown = { outcome: 'unknown', retryable: false, safeToRepeat: false }
+  it.each([
+    ['create, 500', { effect: 'create', status: 500 }, unknown],
+    ['create, 501', { effect: 'create', status: 501 }, unknown],
+    ['create, 503', { effect: 'create', status: 503 }, unknown],
+    ['create, 408', { effect: 'create', status: 408 }, unknown],
+    ['create, 425', { effect: 'create', status: 425 }, unknown],
+    ['create, no response (timeout)', { effect: 'create', retryableNetworkError: true }, unknown],
+    ['create, unreadable 2xx', { effect: 'create', status: 200 }, unknown],
+    [
+      'create, 429',
+      { effect: 'create', status: 429 },
+      { outcome: 'failed', retryable: true, safeToRepeat: true },
+    ],
+    [
+      'create, documented throttle on a 400',
+      { effect: 'create', status: 400, throttled: true },
+      { outcome: 'failed', retryable: true, safeToRepeat: true },
+    ],
+    [
+      'create, 400',
+      { effect: 'create', status: 400 },
+      { outcome: 'failed', retryable: false, safeToRepeat: true },
+    ],
+    [
+      'create, not sent',
+      { effect: 'create', sent: false },
+      { outcome: 'failed', retryable: true, safeToRepeat: true },
+    ],
+    [
+      'prepare, 500',
+      { effect: 'prepare', status: 500 },
+      { outcome: 'failed', retryable: true, safeToRepeat: true },
+    ],
+    [
+      'idempotent, 503',
+      { effect: 'idempotent', status: 503 },
+      { outcome: 'failed', retryable: true, safeToRepeat: true },
+    ],
+    [
+      'idempotent, 404',
+      { effect: 'idempotent', status: 404 },
+      { outcome: 'failed', retryable: false, safeToRepeat: true },
+    ],
+    [
+      'idempotent, retryable network error',
+      { effect: 'idempotent', retryableNetworkError: true },
+      { outcome: 'failed', retryable: true, safeToRepeat: true },
+    ],
+  ] as const)('%s', (_label, args, expected) => {
+    expect(classifyRequestFailure(args)).toEqual(expected)
+  })
+
+  it('lets Payload retry only a failed, retryable error that is safe to repeat', () => {
+    const make = (over: Record<string, unknown>) =>
+      new PlatformApiError({ message: 'x', platform: 'facebook', ...over })
+    expect(isAutoRetrySafe(make({ retryable: true, safeToRepeat: true }))).toBe(true)
+    expect(isAutoRetrySafe(make({ retryable: true }))).toBe(false)
+    expect(isAutoRetrySafe(make({ safeToRepeat: true }))).toBe(false)
+    // An unknown outcome is never safe to repeat, whatever the site claims.
+    const unknownError = make({ outcome: 'unknown', retryable: true, safeToRepeat: true })
+    expect(unknownError.safeToRepeat).toBe(false)
+    expect(isAutoRetrySafe(unknownError)).toBe(false)
+    expect(isAutoRetrySafe(new Error('boom'))).toBe(false)
   })
 })

@@ -9,7 +9,7 @@ import {
   DEFAULT_REQUEST_TIMEOUT_MS,
   RETRYABLE_ERROR_CODES,
 } from '../../constants.js'
-import { RateLimitedError } from './errors.js'
+import { type PlatformRequestEffect, RateLimitedError } from './errors.js'
 
 type PendingRequest = {
   resolve: () => void
@@ -29,6 +29,33 @@ const RETRY_SAFE_METHODS = new Set(['DELETE', 'GET', 'HEAD', 'OPTIONS', 'PUT'])
 
 export const isSafeToRetryRequest = (init: RequestInit | undefined): boolean =>
   RETRY_SAFE_METHODS.has((init?.method ?? 'GET').toUpperCase())
+
+/**
+ * The request's effect for `classifyRequestFailure`: the caller's explicit
+ * `effect`, else `idempotent` for a retry-safe method and `create` for any
+ * other (the conservative default for a write).
+ */
+export const resolveRequestEffect = (
+  init: RequestInit | undefined,
+  effect?: PlatformRequestEffect,
+): PlatformRequestEffect => effect ?? (isSafeToRetryRequest(init) ? 'idempotent' : 'create')
+
+/** Errors `policyFetch` threw before the request left the process. */
+const notSentErrors = new WeakSet<object>()
+
+/**
+ * Whether `policyFetch` threw `error` before sending anything (local queue
+ * full, distributed lease refused): the platform never saw the request.
+ */
+export const wasRequestNotSent = (error: unknown): boolean =>
+  typeof error === 'object' && error !== null && notSentErrors.has(error)
+
+const markNotSent = (error: unknown): unknown => {
+  if (typeof error === 'object' && error !== null) {
+    notSentErrors.add(error)
+  }
+  return error
+}
 
 const getLimiter = (payload: Payload, scope: string): LimiterState => {
   let byScope = limiterRegistry.get(payload)
@@ -138,15 +165,24 @@ export const policyFetch = async (args: {
   payload: Payload
   scope: string
 }): Promise<Response> => {
-  const releaseLocal = await acquireLocal(args.payload, args.scope, args.config)
+  const releaseLocal = await acquireLocal(args.payload, args.scope, args.config).catch(
+    (error: unknown) => {
+      throw markNotSent(error)
+    },
+  )
   let releaseDistributed: (() => Promise<void> | void) | undefined
   try {
     if (args.config?.acquireRequestLease) {
-      const lease = await args.config.acquireRequestLease({
-        maxConcurrency: args.config.maxConcurrency,
-        maxRequestsPerMinute: args.config.maxRequestsPerMinute,
-        scope: args.scope,
-      })
+      let lease: Awaited<ReturnType<typeof args.config.acquireRequestLease>>
+      try {
+        lease = await args.config.acquireRequestLease({
+          maxConcurrency: args.config.maxConcurrency,
+          maxRequestsPerMinute: args.config.maxRequestsPerMinute,
+          scope: args.scope,
+        })
+      } catch (error) {
+        throw markNotSent(error)
+      }
       releaseDistributed = lease.release
     }
     return await fetchWithTimeout(

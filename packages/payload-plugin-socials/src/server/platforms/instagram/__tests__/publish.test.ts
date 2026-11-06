@@ -5,6 +5,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { NormalizedPluginOptions, SocialSourceContext } from '../../../../types/index.js'
 
 import {
+  classifyRequestFailure,
+  isAutoRetrySafe,
   PlatformApiError,
   PublicationPersistenceError,
   ValidationError,
@@ -491,5 +493,52 @@ describe('publishInstagramMedia — idempotency key uses ORIGINAL url when autoC
     const containerBody = createBodies()[0]
     // No conversion: outbound body also uses the original url.
     expect(containerBody.image_url).toBe(JPEG_URL)
+  })
+})
+
+describe('publishInstagramMedia — failure classification (no double posts)', () => {
+  const run = () =>
+    publishInstagramMedia({
+      ctx: ctx(),
+      input: { igUserId: 'ig_1', imageUrl: 'https://cdn.example.com/main.jpg' },
+      options,
+      payload: asPayload(payload),
+    }).catch((e: unknown) => e)
+
+  it('creates containers as preparatory writes and media_publish as the creating write', async () => {
+    setupFlow()
+    await run()
+    const containerCall = mockedMetaJson.mock.calls.find((c) => String(c[3]).endsWith('/media'))
+    expect(containerCall?.[5]).toEqual({ effect: 'prepare' })
+    const publishCall = mockedMetaJson.mock.calls.find((c) =>
+      String(c[3]).includes('/media_publish'),
+    )
+    // No explicit effect: a POST defaults to `create`, so a 5xx or timeout is `unknown`.
+    expect(publishCall?.[5]).toBeUndefined()
+    expect((publishCall?.[4] as RequestInit).method).toBe('POST')
+  })
+
+  it('treats a media_publish 2xx without an id as an unknown outcome', async () => {
+    setupFlow({ publish: {} })
+    const err = await run()
+    expect(err).toMatchObject({ outcome: 'unknown', safeToRepeat: false })
+    expect(isAutoRetrySafe(err)).toBe(false)
+  })
+
+  it('propagates an unknown media_publish failure without persisting a row', async () => {
+    setupFlow()
+    const unknown = new PlatformApiError({
+      message: 'Meta /ig_1/media_publish failed: 500',
+      ...classifyRequestFailure({ effect: 'create', status: 500 }),
+      platform: 'instagram',
+    })
+    const succeed = mockedMetaJson.getMockImplementation()!
+    mockedMetaJson.mockImplementation((...args) =>
+      String(args[3]).includes('/media_publish') ? Promise.reject(unknown) : succeed(...args),
+    )
+    const err = await run()
+    expect(err).toBe(unknown)
+    expect(isAutoRetrySafe(err)).toBe(false)
+    expect(payload.create).not.toHaveBeenCalled()
   })
 })

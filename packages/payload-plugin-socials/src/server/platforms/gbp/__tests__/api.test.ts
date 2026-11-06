@@ -17,6 +17,11 @@ import {
   saveCredentials,
 } from '../../../services/connectionService.js'
 import { gbpJson, getGbpAccessToken, makeGbpRequest } from '../api.js'
+import {
+  hasUnknownPublicationOutcome,
+  isAutoRetrySafe,
+  PlatformApiError,
+} from '../../../utilities/errors.js'
 
 const TOKEN_URL = 'https://oauth2.googleapis.com/token'
 
@@ -230,5 +235,50 @@ describe('gbpJson', () => {
     const err = await gbpJson(payload, saOptions(), 'https://host/x').catch((e: unknown) => e)
     expect((err as { statusCode: number }).statusCode).toBe(404)
     expect((err as { upstreamMessage: string }).upstreamMessage).toBe('plain not found')
+  })
+})
+
+describe('failures on the request that creates the Local Post', () => {
+  const saOptions = () => buildOptions({ serviceAccount: { clientEmail: 'svc@x.iam', privateKey } })
+  const url = 'https://mybusiness.googleapis.com/v4/accounts/1/locations/2/localPosts'
+  const createPost = { body: '{}', headers: { 'Content-Type': 'application/json' }, method: 'POST' }
+  const unreadable2xx = {
+    json: () => Promise.reject(new SyntaxError('Unexpected token <')),
+    ok: true,
+    status: 200,
+    text: () => Promise.resolve('<html>'),
+  } as unknown as Response
+
+  it.each([
+    ['answers 500', errResText(500)],
+    ['answers 503', errResJson(503, { error: { message: 'unavailable', status: 'UNAVAILABLE' } })],
+    ['answers 2xx without JSON', unreadable2xx],
+  ])('POST localPosts %s → unknown, never retried by Payload', async (_label, response) => {
+    routeRequests([response])
+    const err = await gbpJson(payload, saOptions(), url, createPost).catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(PlatformApiError)
+    expect(err).toMatchObject({ outcome: 'unknown', retryable: false, safeToRepeat: false })
+    expect(isAutoRetrySafe(err)).toBe(false)
+    expect(hasUnknownPublicationOutcome(err)).toBe(true)
+    expect(fetchMock.mock.calls.filter(([input]) => input === url)).toHaveLength(1)
+  })
+
+  it('POST localPosts times out → unknown, never retried', async () => {
+    fetchMock.mockImplementation((input) =>
+      input === TOKEN_URL
+        ? Promise.resolve(okJson({ access_token: 'tok', expires_in: 3600 }))
+        : Promise.reject(new DOMException('Request timed out', 'TimeoutError')),
+    )
+    const err = await gbpJson(payload, saOptions(), url, createPost).catch((e: unknown) => e)
+    expect(err).toMatchObject({ outcome: 'unknown', retryable: false, safeToRepeat: false })
+    expect(isAutoRetrySafe(err)).toBe(false)
+    expect(fetchMock.mock.calls.filter(([input]) => input === url)).toHaveLength(1)
+  })
+
+  it('a 429 on POST localPosts is a rejection Payload may retry', async () => {
+    routeRequests([errResText(429), errResText(429), errResText(429)])
+    const err = await gbpJson(payload, saOptions(), url, createPost).catch((e: unknown) => e)
+    expect(err).toMatchObject({ outcome: 'failed', retryable: true, safeToRepeat: true })
+    expect(isAutoRetrySafe(err)).toBe(true)
   })
 })

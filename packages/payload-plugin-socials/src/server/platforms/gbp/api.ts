@@ -10,12 +10,18 @@ import {
   recordConnectionError,
   saveCredentials,
 } from '../../services/connectionService.js'
-import { PlatformApiError } from '../../utilities/errors.js'
+import {
+  classifyRequestFailure,
+  PlatformApiError,
+  type PlatformRequestEffect,
+} from '../../utilities/errors.js'
 import { createPluginLogger } from '../../utilities/logger.js'
 import {
   isRetryableNetworkError,
   isSafeToRetryRequest,
   policyFetch,
+  resolveRequestEffect,
+  wasRequestNotSent,
 } from '../../utilities/requestPolicy.js'
 import { sleep } from '../../utilities/sleep.js'
 
@@ -153,6 +159,8 @@ export const refreshGbpAccessToken = async (
       message: `GBP OAuth refresh failed: ${response.status}`,
       platform: 'gbp',
       retryable: response.status >= 500,
+      // The token endpoint creates no post: repeating a publish is safe.
+      safeToRepeat: true,
       statusCode: response.status === 401 ? 401 : 502,
       upstreamCode: response.status,
       upstreamMessage: text,
@@ -266,6 +274,8 @@ const mintServiceAccountAccessToken = async (
       message: `GBP service-account JWT exchange failed: ${response.status}`,
       platform: 'gbp',
       retryable: response.status >= 500,
+      // The token endpoint creates no post: repeating a publish is safe.
+      safeToRepeat: true,
       statusCode: response.status === 401 ? 401 : 502,
       upstreamCode: response.status,
       upstreamMessage: text,
@@ -369,6 +379,11 @@ const computeBackoffMs = (
 }
 
 export type GbpRequestOptions = {
+  /**
+   * What the request does, for failure classification. Defaults from the
+   * method (`create` for POST and PATCH).
+   */
+  effect?: PlatformRequestEffect
   init?: RequestInit
   maxRetries?: number
 }
@@ -420,10 +435,13 @@ export const makeGbpRequest = async (
       }
       throw new PlatformApiError({
         message: 'GBP request failed before receiving a response',
-        outcome: safeToRetry ? 'failed' : 'unknown',
+        ...classifyRequestFailure({
+          effect: resolveRequestEffect(requestOptions.init, requestOptions.effect),
+          retryableNetworkError: isRetryableNetworkError(error),
+          sent: !wasRequestNotSent(error),
+        }),
         platform: 'gbp',
         raw: error,
-        retryable: safeToRetry && isRetryableNetworkError(error),
         statusCode: 502,
         upstreamCode: error instanceof Error ? error.name : 'network_error',
         upstreamMessage: error instanceof Error ? error.message : String(error),
@@ -472,8 +490,10 @@ export const gbpJson = async <T>(
   options: NormalizedPluginOptions,
   url: string,
   init?: RequestInit,
+  requestOptions: Pick<GbpRequestOptions, 'effect'> = {},
 ): Promise<T> => {
-  const response = await makeGbpRequest(payload, options, url, { init })
+  const effect = resolveRequestEffect(init, requestOptions.effect)
+  const response = await makeGbpRequest(payload, options, url, { effect, init })
   if (!response.ok) {
     const text = await response.text().catch(() => '')
     let upstream: unknown = text
@@ -486,17 +506,11 @@ export const gbpJson = async <T>(
       typeof upstream === 'object' && upstream !== null && 'error' in upstream
         ? (upstream as { error?: Record<string, unknown> }).error
         : undefined
-    const safeToRetry = isSafeToRetryRequest(init)
-    const outcome =
-      !safeToRetry && response.status !== 429 && RETRYABLE_STATUS_CODES.has(response.status)
-        ? 'unknown'
-        : 'failed'
     throw new PlatformApiError({
       message: `GBP ${url} failed: ${response.status}`,
-      outcome,
+      ...classifyRequestFailure({ effect, status: response.status }),
       platform: 'gbp',
       raw: upstream,
-      retryable: outcome === 'failed' && RETRYABLE_STATUS_CODES.has(response.status),
       statusCode: response.status,
       upstreamCode: typeof errorBody?.status === 'string' ? errorBody.status : response.status,
       upstreamMessage: typeof errorBody?.message === 'string' ? errorBody.message : text,
@@ -505,5 +519,16 @@ export const gbpJson = async <T>(
   if (response.status === 204) {
     return undefined as T
   }
-  return (await response.json()) as T
+  try {
+    return (await response.json()) as T
+  } catch (error) {
+    // Google answered 2xx: a `create` may well have been applied.
+    throw new PlatformApiError({
+      message: `GBP ${url} returned an unreadable response`,
+      ...classifyRequestFailure({ effect, status: response.status }),
+      platform: 'gbp',
+      raw: error,
+      statusCode: 502,
+    })
+  }
 }

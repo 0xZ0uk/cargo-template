@@ -19,7 +19,11 @@ import {
   resolveConfiguredText,
 } from '../../copy/resolveConfiguredCopy.js'
 import { persistPublicationAudit } from '../../services/publicationPersistence.js'
-import { PlatformApiError, ValidationError } from '../../utilities/errors.js'
+import {
+  classifyRequestFailure,
+  PlatformApiError,
+  ValidationError,
+} from '../../utilities/errors.js'
 import { sha256Hex } from '../../utilities/hash.js'
 import { resolvePublicationIdempotencyKey } from '../../utilities/publicationIdentity.js'
 import { pinterestJson } from './api.js'
@@ -350,8 +354,10 @@ export const publishPinterestPin = async (args: {
   })
 
   if (!pin.id?.trim()) {
+    // Pinterest answered 2xx: the Pin may exist even though no id came back.
     throw new PlatformApiError({
       message: 'Pinterest create Pin response did not include an id',
+      ...classifyRequestFailure({ effect: 'create', status: 200 }),
       platform: 'pinterest',
       statusCode: 502,
     })

@@ -4,7 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { NormalizedPluginOptions } from '../../../../types/index.js'
 
-import { PlatformApiError } from '../../../utilities/errors.js'
+import {
+  hasUnknownPublicationOutcome,
+  isAutoRetrySafe,
+  PlatformApiError,
+} from '../../../utilities/errors.js'
 import { getAccessToken, getPinterestApiBase, makePinterestRequest, pinterestJson } from '../api.js'
 
 vi.mock('../../../services/connectionService.js', () => ({
@@ -240,5 +244,57 @@ describe('pinterestJson', () => {
     await expect(
       pinterestJson(payload, options, '/v5/pins', { method: 'POST' }),
     ).rejects.toMatchObject({ outcome: 'unknown', retryable: false })
+  })
+})
+
+describe('failures on the request that creates the Pin', () => {
+  const createPin = { body: '{}', headers: { 'Content-Type': 'application/json' }, method: 'POST' }
+
+  it.each([
+    ['answers 500', [res({ message: 'upstream failed' }, 500)]],
+    ['answers 502', [res('bad gateway', 502)]],
+    ['answers 2xx without JSON', [res('<html>', 201)]],
+  ])('POST /v5/pins %s → unknown, never retried by Payload', async (_label, responses) => {
+    const fetchMock = stubFetch(responses)
+    const err = await pinterestJson(payload, options, '/v5/pins', createPin).catch(
+      (e: unknown) => e,
+    )
+    expect(err).toBeInstanceOf(PlatformApiError)
+    expect(err).toMatchObject({ outcome: 'unknown', retryable: false, safeToRepeat: false })
+    expect(isAutoRetrySafe(err)).toBe(false)
+    expect(hasUnknownPublicationOutcome(err)).toBe(true)
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/v5/pins'))).toHaveLength(1)
+  })
+
+  it('POST /v5/pins times out → unknown, never retried', async () => {
+    const fetchMock = stubFetch([])
+    fetchMock.mockImplementation((url: string | URL) =>
+      String(url).includes('/v5/oauth/token')
+        ? Promise.resolve(res(tokenBody()))
+        : Promise.reject(new DOMException('Request timed out', 'TimeoutError')),
+    )
+    const err = await pinterestJson(payload, options, '/v5/pins', createPin).catch(
+      (e: unknown) => e,
+    )
+    expect(err).toMatchObject({ outcome: 'unknown', retryable: false, safeToRepeat: false })
+    expect(isAutoRetrySafe(err)).toBe(false)
+  })
+
+  it('a 400 on POST /v5/pins fails without a retry', async () => {
+    stubFetch([res({ code: 1, message: 'Invalid parameters' }, 400)])
+    const err = await pinterestJson(payload, options, '/v5/pins', createPin).catch(
+      (e: unknown) => e,
+    )
+    expect(err).toMatchObject({ outcome: 'failed', retryable: false })
+    expect(isAutoRetrySafe(err)).toBe(false)
+  })
+
+  it('a 5xx registering video media (publishes nothing) is safe for Payload to retry', async () => {
+    stubFetch([res({ message: 'upstream failed' }, 500)])
+    const err = await pinterestJson(payload, options, '/v5/media', createPin, {
+      effect: 'prepare',
+    }).catch((e: unknown) => e)
+    expect(err).toMatchObject({ outcome: 'failed', retryable: true, safeToRepeat: true })
+    expect(isAutoRetrySafe(err)).toBe(true)
   })
 })
