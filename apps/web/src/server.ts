@@ -28,7 +28,7 @@ async function runScheduledJobs(cron: string): Promise<void> {
 
   try {
     const { socialsOptions } = await import('./plugins/socials')
-    // Disabled (no SOCIALS_ENCRYPTION_KEY): the plugin registered no jobs, so there's nothing to run.
+    // Disabled (no SOCIALS_ENCRYPTION_KEY): its tasks are inert and nothing queues them, so there is nothing to run.
     if (!socialsOptions.disabled) {
       const { normalizePluginOptions, runQueuedSocialsJobs, sweepDueSocialPosts } =
         await import('@cargo/payload-plugin-socials')
