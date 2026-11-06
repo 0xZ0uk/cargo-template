@@ -4,7 +4,7 @@ import { Banner, Button, useConfig } from "@payloadcms/ui";
 import { formatAdminURL } from "payload/shared";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import type { ApprovalRenderer } from "./ApprovalControl";
-import { ApprovalControl } from "./ApprovalControl";
+import { ApprovalCard } from "./approvals/ApprovalCard";
 import type { AssistantClientConfig, ConversationSummary } from "./api";
 import {
   deleteConversation,
@@ -23,7 +23,10 @@ import type { DocumentRef, EntitySlugs } from "./tools";
 export interface AssistantChatProps {
   /** From the server: `false` when no API key is set (the config endpoint says the same). */
   configured?: boolean;
-  /** Renders a pending approval. Default: {@link ApprovalControl}; #65 passes the diff card. */
+  /**
+   * Renders an approval: pending, answered, then its outcome. Default: the diff card
+   * (`ApprovalCard`); `ApprovalControl` is the minimal alternative.
+   */
   ApprovalComponent?: ApprovalRenderer;
 }
 
@@ -67,7 +70,7 @@ function storeModel(model: string) {
  */
 export function AssistantChat({
   configured: configuredProp = true,
-  ApprovalComponent = ApprovalControl,
+  ApprovalComponent = ApprovalCard,
 }: AssistantChatProps) {
   const { config } = useConfig();
   const apiRoute = config.routes?.api ?? "/api";

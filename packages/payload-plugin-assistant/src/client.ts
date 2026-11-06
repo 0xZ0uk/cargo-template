@@ -7,8 +7,20 @@ export { AssistantChat, type AssistantChatProps } from "./ui/AssistantChat";
 export { AssistantNavLinkClient } from "./ui/AssistantNavLinkClient";
 export {
   ApprovalControl,
+  answerInterrupt,
   pendingApprovalFrom,
+  type ApprovalCardStatus,
+  type ApprovalDecision,
   type ApprovalRenderer,
   type ApprovalRendererProps,
   type PendingApproval,
 } from "./ui/ApprovalControl";
+export { ApprovalCard } from "./ui/approvals/ApprovalCard";
+export type {
+  ApprovalAction,
+  ApprovalProposal,
+  ApprovalsResponse,
+  FieldChange,
+  ProposalDocument,
+  ProposalItem,
+} from "./approvals/types";

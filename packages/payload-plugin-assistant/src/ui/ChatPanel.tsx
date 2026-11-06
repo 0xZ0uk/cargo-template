@@ -1,10 +1,10 @@
 "use client";
 
-import { Banner, ShimmerEffect } from "@payloadcms/ui";
+import { Banner, Button, ShimmerEffect } from "@payloadcms/ui";
 import { fetchServerSentEvents, useChat } from "@tanstack/ai-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ApprovalRenderer } from "./ApprovalControl";
-import { pendingApprovalFrom } from "./ApprovalControl";
+import { useApprovalBatch } from "./approvals/useApprovalBatch";
 import type { AssistantModelOption } from "./api";
 import { assistantUrl, chatUrl, recordingFetch } from "./api";
 import { Composer } from "./Composer";
@@ -12,7 +12,15 @@ import type { AssistantNotice } from "./errors";
 import { noticeForClientError, noticeForRunError } from "./errors";
 import type { MessageLike } from "./MessageView";
 import { collectToolResults, MessageView } from "./MessageView";
-import type { DocumentRef, EntitySlugs } from "./tools";
+import type { DocumentRef, EntitySlugs, ToolCallLike, ToolResultLike } from "./tools";
+
+/** The text of a user message's parts. */
+function userTextOf(message: MessageLike): string {
+  return message.parts
+    .filter((part) => part.type === "text")
+    .map((part) => (typeof part.content === "string" ? part.content : ""))
+    .join("");
+}
 
 export interface ChatPanelProps {
   apiRoute: string;
@@ -99,17 +107,65 @@ export function ChatPanel({
   const messages = chat.messages as unknown as ReadonlyArray<MessageLike>;
   const results = useMemo(() => collectToolResults(messages), [messages]);
 
-  const approvals = useMemo(
-    () => chat.interrupts.map((interrupt) => ({ interrupt, approval: pendingApprovalFrom(interrupt) })),
-    [chat.interrupts]
+  const documentHref = useCallback(
+    (slug: string, id: string) => (slugs.collections.has(slug) ? hrefFor({ kind: "collection", slug, id, label: id }) : undefined),
+    [slugs, hrefFor]
   );
-  const waitingForApproval = approvals.length > 0;
+  const batch = useApprovalBatch({
+    chat: chat as unknown as Parameters<typeof useApprovalBatch>[0]["chat"],
+    apiRoute,
+    threadId,
+    lastError: recorder.lastError,
+    resetError: recorder.reset,
+    documentHref,
+  });
+  const approvals = batch.pending;
+  const unbound = chat.interrupts.length - approvals.length;
+  const waitingForApproval = chat.interrupts.length > 0;
+
+  // Cards render in place of their tool call's row; approvals whose call isn't in the
+  // transcript (yet) render below the messages.
+  const toolCallIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const message of messages) {
+      for (const part of message.parts) if (part.type === "tool-call" && typeof part.id === "string") ids.add(part.id);
+    }
+    return ids;
+  }, [messages]);
+  const renderToolCall = useCallback(
+    (call: ToolCallLike, result: ToolResultLike | undefined) => {
+      const pending = approvals.find((approval) => approval.toolCallId === call.id);
+      if (pending) return <ApprovalComponent approval={pending} />;
+      const sent = batch.sent(call.id, result, streaming);
+      return sent ? <ApprovalComponent approval={sent} /> : undefined;
+    },
+    [approvals, batch, streaming, ApprovalComponent]
+  );
+  const unplaced = approvals.filter((approval) => !toolCallIds.has(approval.toolCallId));
+  const approveAllHint =
+    batch.approveAllBlocked === "loading"
+      ? "Waiting for the changes to load: you can’t approve what you haven’t seen."
+      : batch.approveAllBlocked === "review"
+        ? "A change needs its own confirmation (its document changed, or it couldn’t be shown): review it first."
+        : undefined;
 
   // Follow the reply while the reader is at the bottom; leave them alone once they scroll up.
   useEffect(() => {
     const el = scrollRef.current;
     if (el && stickToBottom.current) el.scrollTop = el.scrollHeight;
   }, [messages, approvals.length, runNotice]);
+
+  // A send refused before the run started (not configured, rate limited, a bad model): the text
+  // goes back into the composer and its bubble leaves the transcript (the server never stored it).
+  const [refused, setRefused] = useState<string | null>(null);
+  useEffect(() => {
+    if (refused === null) return;
+    setRefused(null);
+    const last = messages[messages.length - 1];
+    if (last && last.role === "user" && userTextOf(last).trim() === refused) {
+      chat.setMessages(chat.messages.slice(0, -1));
+    }
+  }, [refused, messages, chat]);
 
   const send = useCallback(async () => {
     const text = draft.trim();
@@ -119,8 +175,10 @@ export function ChatPanel({
     recorder.reset();
     stickToBottom.current = true;
     await chat.sendMessage(text);
-    // Refused before the run started (not configured, rate limited, a bad model): keep the text.
-    if (recorder.lastError()) setDraft((current) => current || text);
+    if (recorder.lastError()) {
+      setDraft((current) => current || text);
+      setRefused(text);
+    }
   }, [chat, draft, recorder]);
 
   const stop = useCallback(() => {
@@ -131,7 +189,7 @@ export function ChatPanel({
   const clientError = chat.error;
   const notice: AssistantNotice | null =
     runNotice ??
-    (clientError
+    (clientError && !batch.staleCount
       ? noticeForClientError(
           clientError,
           recorder.lastError() && { status: recorder.lastError()!.status, code: recorder.lastError()!.code }
@@ -140,7 +198,9 @@ export function ChatPanel({
 
   let disabledReason: string | undefined;
   if (!configured) disabledReason = "The assistant is not configured.";
-  else if (waitingForApproval) disabledReason = "Approve or reject the pending change first.";
+  else if (waitingForApproval) {
+    disabledReason = approvals.length > 1 ? "Answer the pending changes first." : "Approve or reject the pending change first.";
+  }
 
   return (
     <section aria-label="Chat" className="assistant-chat">
@@ -175,6 +235,7 @@ export function ChatPanel({
                 hrefFor={hrefFor}
                 key={message.id}
                 message={message}
+                renderToolCall={renderToolCall}
                 results={results}
                 slugs={slugs}
               />
@@ -188,22 +249,53 @@ export function ChatPanel({
             ) : null}
           </div>
         )}
-        {approvals.length ? (
+        {waitingForApproval || batch.failed ? (
           <div className="assistant-chat__approvals">
-            {approvals.map(({ interrupt, approval }) =>
-              approval ? (
-                <ApprovalComponent
-                  approval={{ ...approval, canAnswer: approval.canAnswer && !chat.resuming }}
-                  key={approval.id}
-                />
-              ) : (
-                <Banner key={(interrupt as { id: string }).id} type="warning">
-                  The assistant is paused on something this view can’t answer.
-                </Banner>
-              )
-            )}
-            {chat.interruptErrors.length ? (
-              <Banner type="danger">The answer could not be sent. Try again.</Banner>
+            {unplaced.map((approval) => (
+              <ApprovalComponent approval={approval} key={approval.id} />
+            ))}
+            {unbound > 0 ? (
+              <Banner type="warning">The assistant is paused on something this view can’t answer.</Banner>
+            ) : null}
+            {approvals.length > 1 ? (
+              <div aria-label="Pending changes" className="assistant-batch" role="group">
+                <p className="assistant-text assistant-text--small">
+                  {approvals.length} changes are waiting for you ({batch.answered} answered). Your answers are sent together,
+                  once every change has one.
+                </p>
+                <div className="assistant-row">
+                  <Button
+                    buttonStyle="primary"
+                    disabled={chat.resuming || Boolean(batch.approveAllBlocked) || batch.answered === approvals.length}
+                    margin={false}
+                    onClick={batch.approveAll}
+                    tooltip={approveAllHint}
+                  >
+                    Approve all
+                  </Button>
+                  <Button
+                    buttonStyle="secondary"
+                    disabled={chat.resuming || batch.answered === approvals.length}
+                    margin={false}
+                    onClick={batch.rejectAll}
+                  >
+                    Reject all
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+            {batch.staleCount ? (
+              <Banner type="warning">
+                {batch.staleCount === 1 ? "A document" : `${batch.staleCount} documents`} changed after you reviewed the
+                change, so nothing was sent. Review the updated change and answer again.
+              </Banner>
+            ) : batch.failed && approvals.length ? (
+              <Banner type="danger">
+                <span>Your answers could not be sent. </span>
+                <Button buttonStyle="secondary" disabled={chat.resuming} margin={false} onClick={batch.retry}>
+                  Send again
+                </Button>
+              </Banner>
             ) : null}
           </div>
         ) : null}

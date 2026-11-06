@@ -4,6 +4,8 @@
  * safe in the client bundle.
  */
 
+import type { ApprovalProposal, ApprovalsResponse } from "../approvals/types";
+
 export interface AssistantModelOption {
   id: string;
   label: string;
@@ -27,11 +29,14 @@ export interface ConversationSummary {
 export class AssistantApiError extends Error {
   readonly status: number;
   readonly code: string | undefined;
-  constructor(status: number, code: string | undefined, message: string) {
+  /** The whole JSON body (e.g. a 409 `stale`'s `interruptIds`), when there was one. */
+  readonly body: Record<string, unknown> | undefined;
+  constructor(status: number, code: string | undefined, message: string, body?: Record<string, unknown>) {
     super(message);
     this.name = "AssistantApiError";
     this.status = status;
     this.code = code;
+    this.body = body;
   }
 }
 
@@ -62,14 +67,16 @@ export function isValidThreadId(value: unknown): value is string {
 export async function readApiError(response: Response): Promise<AssistantApiError> {
   let code: string | undefined;
   let message = `Request failed (${response.status})`;
+  let json: Record<string, unknown> | undefined;
   try {
     const body = (await response.clone().json()) as { error?: unknown; code?: unknown };
+    if (body && typeof body === "object" && !Array.isArray(body)) json = body as Record<string, unknown>;
     if (typeof body?.code === "string") code = body.code;
     if (typeof body?.error === "string") message = body.error;
   } catch {
     // Not JSON (a proxy's HTML error page): keep the status.
   }
-  return new AssistantApiError(response.status, code, message);
+  return new AssistantApiError(response.status, code, message, json);
 }
 
 async function request<T>(url: string, init: RequestInit = {}): Promise<T> {
@@ -102,6 +109,21 @@ export function renameConversation(apiRoute: string, threadId: string, title: st
     assistantUrl(apiRoute, `/conversations/${encodeURIComponent(threadId)}`),
     { method: "PATCH", body: JSON.stringify({ title }) }
   );
+}
+
+/** What each pending approval of a conversation would change (`GET /approvals?threadId=`). */
+export async function fetchApprovals(apiRoute: string, threadId: string): Promise<ApprovalProposal[]> {
+  const body = await request<Partial<ApprovalsResponse>>(
+    `${assistantUrl(apiRoute, "/approvals")}?threadId=${encodeURIComponent(threadId)}`
+  );
+  return Array.isArray(body.approvals) ? body.approvals : [];
+}
+
+/** The interrupt ids of a 409 `stale` resume: their documents changed after the card showed them. */
+export function staleInterruptIds(error: AssistantApiError | undefined): string[] {
+  if (error?.status !== 409 || error.code !== "stale") return [];
+  const ids = error.body?.interruptIds;
+  return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string") : [];
 }
 
 export function deleteConversation(apiRoute: string, threadId: string) {

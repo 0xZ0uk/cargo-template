@@ -1,6 +1,7 @@
 import type { FakeResponseStep } from "@tanstack/ai/testing";
 import { describe, expect, it } from "vitest";
 import type { ChatTurnBody, TurnSettings } from "../../src/conversations/types";
+import { validateChatBody } from "../../src/server/validate";
 import { backend, bindings, newId, readEvents, turn, type SseEvent } from "./helpers";
 import { ADMIN_ORIGIN } from "./worker";
 
@@ -93,6 +94,27 @@ describe("the chat turn in the Durable Object", () => {
     await decide(second.id, false, "Left it.");
     expect((await titles())[id]).toBe("Approved title");
     expect((await hydrate(conversations, user, threadId)).interrupts).toBeNull();
+  });
+
+  it("reject with a reason: nothing written, and the reason is the denied call's result the model reads", async () => {
+    const conversations = backend();
+    const [user, threadId] = [newId("users"), newId("thread")];
+    const id = crypto.randomUUID();
+    const events = await readEvents(
+      await conversations.startTurn(turn(user, threadId, chatBody([{ toolCalls: [{ name: "updateDocument", input: { id, title: "Nope" } }] }], { message: "Rename" })))
+    );
+    const [pending] = ofType(events, "RUN_FINISHED").at(-1)!.outcome.interrupts;
+    // What the endpoint makes of the UI's answer.
+    const parsed = validateChatBody({ threadId, resume: [{ interruptId: pending.id, status: "resolved", payload: { approved: false, reason: "Wrong page" } }] }, null);
+    if (!parsed.ok) throw new Error(parsed.error);
+    const resumed = await readEvents(
+      await conversations.startTurn(turn(user, threadId, { ...chatBody([{ text: "OK." }]), messages: [], resume: parsed.value.resume }))
+    );
+    const result = JSON.stringify(ofType(resumed, "TOOL_CALL_RESULT"));
+    expect(result).toContain("The user rejected this change");
+    expect(result).toContain("Wrong page");
+    expect(textOf(resumed)).toBe("OK.");
+    expect((await titles())[id]).toBeUndefined();
   });
 
   it("disconnect mid-run: the run completes in the object, a rejoin replays the rest", async () => {

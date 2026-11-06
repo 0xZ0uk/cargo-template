@@ -1,5 +1,6 @@
 import type { Endpoint, PayloadRequest } from "payload";
 import {
+  APPROVALS_ENDPOINT_PATH,
   CHAT_ENDPOINT_PATH,
   CONFIG_ENDPOINT_PATH,
   CONVERSATIONS_ENDPOINT_PATH,
@@ -55,6 +56,7 @@ export function buildEndpoints(options: NormalizedAssistantOptions, deps: ChatDe
       handler: guarded({ configured: true, rateLimit: true }, (h, req) => h.handleChat(req, options, deps)),
     },
     { path: CHAT_ENDPOINT_PATH, method: "get", handler: guarded({}, (h, req) => h.handleChatGet(req, options, deps)) },
+    { path: APPROVALS_ENDPOINT_PATH, method: "get", handler: guarded({}, (h, req) => h.handleApprovals(req, options, deps)) },
     { path: STOP_ENDPOINT_PATH, method: "post", handler: guarded({}, (h, req) => h.handleStop(req, options, deps)) },
     {
       path: CONVERSATIONS_ENDPOINT_PATH,

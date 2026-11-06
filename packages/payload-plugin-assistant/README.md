@@ -7,8 +7,8 @@ with one Durable Object per conversation. Plan: [#58](https://github.com/0xZ0uk/
 > **Status: the chat works end to end in the admin.** The Payload tool source (#61), conversations
 > in Durable Objects (#62), the chat turn on OpenRouter with its endpoints (#63, see
 > [Endpoints](#endpoints-the-contract-for-the-admin-ui)) and the chat view (#64, see
-> [Admin UI](#admin-ui)) are in. Approvals use a minimal approve/reject control until the diff
-> cards (#65). Not registered in the app yet (#66).
+> [Admin UI](#admin-ui)) are in, with approval cards that show a diff before any write (#65, see
+> [Approvals](#approvals-diff-cards)). Not registered in the app yet (#66).
 
 ```ts
 import { assistantPlugin } from '@cargo/payload-plugin-assistant'
@@ -61,7 +61,7 @@ serialised request body, not the options object.
 | `.` | The plugin and option types (server). |
 | `./admin/AssistantView` | The admin view (a server component wrapped in `DefaultTemplate`; the import-map target). |
 | `./admin/AssistantNavLink` | The nav link (a server component that asks `access`; the import-map target). |
-| `./client` | The chat UI, client components only (`"use client"`): `AssistantChat`, `AssistantNavLinkClient`, `ApprovalControl`, `pendingApprovalFrom` and the `PendingApproval` / `ApprovalRenderer` types. Its CSS is `./client.css`, imported by `client.js`. |
+| `./client` | The chat UI, client components only (`"use client"`): `AssistantChat`, `AssistantNavLinkClient`, `ApprovalCard` (the default), `ApprovalControl` (minimal), `pendingApprovalFrom`, `answerInterrupt`, the `PendingApproval` / `ApprovalRenderer` / `ApprovalDecision` types and the proposal types (`ApprovalProposal`, `FieldChange`…). Its CSS is `./client.css`, imported by `client.js`. |
 | `./do` | The Durable Object classes `AssistantConversation` and `AssistantConversationIndex`, plus their stores. Workerd-only (`cloudflare:workers`): re-export them from the Worker entry, never import this entry from `payload.config.ts` or the admin bundle. |
 
 The endpoints load the AI runtime with `await import('./server/chat')`, and tsup code-splits it
@@ -299,7 +299,10 @@ Body: what `useChat`'s `fetchServerSentEvents(url)` sends (AG-UI `RunAgentInput`
   "messages": [/* …, */ { "id": "msg_…", "role": "user", "content": "Which pages have no meta description?" }],
   // or "message": "Which pages…" (scripts, curl)
   // or, to answer approvals (no message):
-  "resume": [{ "interruptId": "approval_call_…", "status": "resolved", "payload": { "approved": true } }]
+  "resume": [
+    { "interruptId": "approval_call_a", "status": "resolved", "payload": { "approved": true, "seenUpdatedAt": "2026-11-06T…" } },
+    { "interruptId": "approval_call_b", "status": "resolved", "payload": { "approved": false, "reason": "Keep the old title" } }
+  ]
 }
 ```
 
@@ -307,8 +310,20 @@ Body: what `useChat`'s `fetchServerSentEvents(url)` sends (AG-UI `RunAgentInput`
   the user's (text, or `[{ type: "text", text }]` parts; at most 32,000 characters). Earlier
   messages, assistant messages and tool results from the client are ignored: the stored transcript
   is the history. A message without an `id` gets one, so hydration ids are stable.
-- **Resume**: one entry per pending interrupt, `status: "resolved"` with `payload: { approved: true | false }`
-  (or `status: "cancelled"`). A resume takes no message; it is a new run (new `runId`).
+- **Resume**: one entry **per pending interrupt of the run** (TanStack validates the whole batch
+  before any tool runs; a partial batch ends in `RUN_ERROR` and nothing is written),
+  `status: "resolved"` with `payload: { approved: true, seenUpdatedAt? }` or
+  `{ approved: false, reason? }` (or a bare boolean, or `status: "cancelled"`). A resume takes no
+  message; it is a new run (new `runId`). The server owns what reaches the tools:
+  - approved → `{ approved: true }` (edited arguments are not accepted: the user approves what the
+    card showed);
+  - rejected → `{ approved: false, payload: { error: "The user rejected this change. Nothing was
+    written.", reason? } }`, the reject branch of every approval tool's `approvalSchema`
+    (`REJECT_APPROVAL_SCHEMA`). That payload is the denied call's tool result: the model reads that
+    the user said no, and why. `reason` is at most 2,000 characters (400 otherwise).
+  - `seenUpdatedAt` (the `updatedAt` the card's diff was built from): if that document's
+    `updatedAt` is different now, the **whole resume is refused** with
+    `409 { code: "stale", interruptIds }` and nothing runs. The card reloads and asks again.
 - Response: `200 text/event-stream`, headers `X-Run-Id`, `X-Thread-Id`. Each event is
   `id: <opaque offset>` + `data: <AG-UI chunk JSON>`; keep the last `id` to rejoin. The first event
   is TanStack's `CUSTOM run.accepted`.
@@ -339,6 +354,12 @@ stays in `rawEvent`.
 | `not_signed_in` | `/api/mcp` refused the forwarded session. | Sign in again. |
 | `tools_unavailable` | Payload's tools could not be listed. | Retry. |
 | `run_failed` | Anything else. | Retry. |
+
+### `GET /api/assistant/approvals?threadId=…`: what each pending approval would change
+
+`{ approvals: ApprovalProposal[] }` (types in `src/approvals/types.ts`), oldest first, built from
+the stored interrupts and read **as the caller** (`overrideAccess: false`, `depth: 0`, drafts).
+404 when the conversation isn't the caller's. See [Approvals](#approvals-diff-cards).
 
 ### `GET /api/assistant/chat?threadId=…`: rejoin a run, or load a conversation
 
@@ -573,19 +594,66 @@ The reply is over when the stream ends (`isLoading`), not at a `RUN_FINISHED` (o
   approval`, `Done`, `Failed`, `Rejected`, `Cancelled`); the result in a closed `Collapsible`,
   pretty-printed and cut at 4,000 characters. Documents the call returned or touched (plugin-mcp's
   fenced JSON, `docs`, `doc`, or `input.id`) link to their edit view, at most 10, and only for a
-  collection or global in the admin config.
-- **Approvals**: `ApprovalControl` per pending interrupt (tool, target, id, the input collapsed,
-  Approve / Reject); sending is disabled until they are answered. The browser has no definitions of
-  the server's MCP tools, so `@tanstack/ai-client` binds the server's `tool-approval` interrupt as
-  `generic`, answered with its response schema's `{ approved }`; `pendingApprovalFrom` handles both
-  kinds. #65 replaces the control: `<AssistantChat ApprovalComponent={DiffCard} />`, where the card
-  gets a `PendingApproval` (`toolName`, `target`, `input` = what the tool would write, `approve()`,
-  `reject()`, `canAnswer`). Expect an approved call that then fails on access: it shows as `Failed`.
+  collection or global in the admin config. A delete's documents are never linked (they are gone).
+- **Approvals**: a diff card in place of the write's tool row; see below. Sending is disabled
+  until every pending approval has an answer.
 - **Errors** (`src/ui/errors.ts`), inline as `Banner`s: `RUN_ERROR` codes and HTTP `{ code }`
   bodies map to not configured (warning, names `OPENROUTER_API_KEY`), invalid key, out of credits,
   rate limited, model unavailable (also `model_not_allowed`), context overflow, signed out,
   forbidden, tools unavailable, not found, stopped. A send refused before the run started puts the
-  text back in the composer.
+  text back in the composer and takes its bubble out of the transcript (the server never stored it).
+- **Narrow screens**: under 600px the composer puts the model picker and Send on one row and the
+  hint under them.
+
+### Approvals: diff cards
+
+`ApprovalCard` (`src/ui/approvals/`), the default `ApprovalComponent`, replaces a write's tool row.
+
+- **What it shows** comes from `GET /api/assistant/approvals` (`src/server/approvals.ts`): the
+  action, the collection or global, the document (title linked to its edit view, status), and the
+  change as `FieldChange`s, field by field (`src/approvals/diff.ts`, pure, driven by the field
+  config: groups, tabs, rows, arrays and blocks, selects by label, relationships by id).
+  Array and block rows pair by row `id` (rows without one, as an assistant writes them, pair by
+  position, after the ids have claimed theirs). A row that was removed is labelled
+  `Layout › 2 (removed) · Hero`, one that was added shows as added, and a row that changed place
+  gets a `Position` change (`before: "1"`, `after: "3"`): only rows outside the longest run that
+  kept their order count as moved, so inserting or removing a row doesn't flag the ones after it.) Per action:
+  - **update**: the current document, read as the user, against the proposed `data`, only the
+    fields `data` sets; by `where`: the matching documents (first 10) and the count;
+  - **create**: every proposed field (each document of `createDocuments`);
+  - **delete**: every value that will be lost; **restore version**: the version against the
+    current document; **duplicate**: the copy's values; any other write tool: its arguments.
+  - **Rich text** is converted from Lexical to readable text with light Markdown
+    (`src/approvals/lexical.ts`, headings, lists, quotes, links' text, uploads/blocks as
+    `[media: 4]`), detected by field type or by shape: never Lexical JSON.
+  - Values are shown **whole and scrollable**; only past 10,000 characters is one cut, and the
+    card says so (as it does for more than 150 changed fields). If the proposal can't be built,
+    the card shows the tool's full input. An unreadable document (deleted, no access) gives a
+    notice instead of a diff.
+- **Answers**: Approve, or Reject with an optional reason (sent to the model). TanStack resumes an
+  interrupt batch **all or nothing**, so with several pending approvals each card keeps its answer
+  ("sent with the other answers once N more changes have one", with Undo) and the batch is sent
+  once, when the last one is answered. "Approve all" / "Reject all" answer the rest.
+- **Nothing is approved unseen.** Approve (and Approve all) stay disabled until the change's diff
+  has loaded; every approval then carries the `updatedAt` that diff was built from. If the diff
+  couldn't be loaded, the card shows the tool's input and Approve asks "Approve anyway?" first (no
+  `updatedAt`, so no stale check); Approve all is disabled while any unanswered change needs that,
+  or needs a re-review after the document changed. Reject and Reject all are never blocked.
+- **Stale proposals**: the proposal flags `changedSinceProposal` when the document's `updatedAt` is
+  after the interrupt; the card warns and Approve becomes "Approve anyway" (and "Approve all" waits
+  for that review). Approving sends `seenUpdatedAt`; if the document changed after the card showed
+  it, the server answers 409 `stale`: those answers are dropped, the diffs reloaded and asked again,
+  the other answers kept. Note that `updatedAt` moves on any save, autosaves included.
+- **Outcome**: once sent, the card stays in the transcript and shows Applied (saved as a draft),
+  Rejected (with the reason), or Failed with the error from the tool result, including an access
+  error at apply time: tools run as the user and plugin-mcp lists one tool per operation for every
+  collection, so an approved write can still be denied. After a reload the tool row shows the
+  status instead.
+- **Ownership**: the proposals endpoint and every resume check the conversation's owner; another
+  user's conversation answers 404 and nothing runs.
+- `ApprovalControl` (the minimal #64 control) is still exported; a custom renderer gets a
+  `PendingApproval` with `proposal`, `status`, `decision`, `outcomeMessage`, `staleReview`,
+  `waitingFor`, `approve()`, `reject(reason?)`, `undo()` and `documentHref(id)`.
 
 ## Development
 
@@ -601,10 +669,14 @@ error/result/link helpers; options, boot (the view's redirects and the nav link'
 against real Payload), caps, the in-memory fallback and its
 conformance; `tests/integration/chat.test.ts`: every endpoint through Payload's router against real
 Payload + plugin-mcp, turns with `fakeText()`; `tests/turn.test.ts`: the real OpenRouter adapter with
-its `httpClient` replaced, asserting the serialised request and the error mapping). `vitest.workerd.config.ts` runs `tests/workerd/` under workerd with
+its `httpClient` replaced, asserting the serialised request and the error mapping;
+`tests/approvals/diff.test.ts`: the diff and Lexical-to-text helpers; `tests/integration/approvals.test.ts`:
+proposals, approve, reject with a reason, batches, stale proposals, an access error at apply
+time and ownership end to end; `tests/ui/approvals.test.tsx`: the card, and the chat panel's
+batch, stale and refused-send handling with a fake `useChat`). `vitest.workerd.config.ts` runs `tests/workerd/` under workerd with
 `@cloudflare/vitest-plugin` 1.4.11 (its Miniflare and Wrangler match the app's), against the test
 Worker in `tests/workerd/` (same bindings as the app wiring above): conformance of both objects,
 ownership, retention (alarm), reconnect after a mid-run disconnect, restart mid-run, and the MCP
 transport prototype, and the real turn in the object (`tests/workerd/chat.test.ts`: tools,
-approval resume, disconnect + rejoin, stop). Storage is shared between the tests of a file there, so each test uses its own
+approval resume, a reject reason reaching the model, disconnect + rejoin, stop). Storage is shared between the tests of a file there, so each test uses its own
 ids.
