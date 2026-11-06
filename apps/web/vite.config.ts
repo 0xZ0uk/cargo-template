@@ -119,6 +119,16 @@ const payloadConfig = withPayload(
       },
       resolve: {
         alias: {
+          // The assistant's Durable Object classes (re-exported by src/server.ts) need workerd's
+          // `cloudflare:workers`; on Node, a stub (the dev server keeps conversations in memory).
+          ...(useCloudflareRuntime
+            ? {}
+            : {
+                '@cargo/payload-plugin-assistant/do': path.resolve(
+                  __dirname,
+                  'src/runtime/assistantDurableObjects.node.ts',
+                ),
+              }),
           '#cloudflare-runtime': path.resolve(
             __dirname,
             useCloudflareRuntime ? 'src/runtime/cloudflare.ts' : 'src/runtime/node.ts',

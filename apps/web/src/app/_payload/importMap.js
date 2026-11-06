@@ -31,12 +31,14 @@ import { LLMInstructionsCell as LLMInstructionsCell_ab83ff7e88da8d3530831f296ec4
 import { RowLabel as RowLabel_ec255a65fa6fa8d1faeb09cf35284224 } from '@/Header/RowLabel'
 import { RowLabel as RowLabel_1f6ff6ff633e3695d348f4f3c58f1466 } from '@/Footer/RowLabel'
 import { RowLabel as RowLabel_881d177759bf43ec466dd71c19bfba23 } from '@/blocks/shared/RowLabel'
+import { AssistantNavLink as AssistantNavLink_06acd27e3b9fe908abfdd7c0adc627ef } from '@cargo/payload-plugin-assistant/admin/AssistantNavLink'
 import { SeoNavLink as SeoNavLink_91407beeea43f355408968e66219c5e2 } from '@cargo/payload-seo-analyzer/client'
 import { SocialsDashboardWidget as SocialsDashboardWidget_5fd21c991680a0e7a8a18e6a7e9e5018 } from '@cargo/payload-plugin-socials/client'
 import { SocialsNavLink as SocialsNavLink_5fd21c991680a0e7a8a18e6a7e9e5018 } from '@cargo/payload-plugin-socials/client'
 import { FolderIcon as FolderIcon_3817bf644402e67bfe6577f60ef982de } from '@payloadcms/ui'
 import { HierarchySidebarTabServer as HierarchySidebarTabServer_ab83ff7e88da8d3530831f296ec4756a } from '@payloadcms/ui/rsc'
 import { TagIcon as TagIcon_3817bf644402e67bfe6577f60ef982de } from '@payloadcms/ui'
+import { AssistantView as AssistantView_bc38c7907cd2b2ebd8016cd8da7034a3 } from '@cargo/payload-plugin-assistant/admin/AssistantView'
 import { SeoView as SeoView_62b561af77a7161a5fa3ccf8464d9f5e } from '@cargo/payload-seo-analyzer/views'
 import { SitemapAuditView as SitemapAuditView_62b561af77a7161a5fa3ccf8464d9f5e } from '@cargo/payload-seo-analyzer/views'
 import { SeoConfigView as SeoConfigView_62b561af77a7161a5fa3ccf8464d9f5e } from '@cargo/payload-seo-analyzer/views'
@@ -89,12 +91,14 @@ export const importMap = {
   "@/Header/RowLabel#RowLabel": RowLabel_ec255a65fa6fa8d1faeb09cf35284224,
   "@/Footer/RowLabel#RowLabel": RowLabel_1f6ff6ff633e3695d348f4f3c58f1466,
   "@/blocks/shared/RowLabel#RowLabel": RowLabel_881d177759bf43ec466dd71c19bfba23,
+  "@cargo/payload-plugin-assistant/admin/AssistantNavLink#AssistantNavLink": AssistantNavLink_06acd27e3b9fe908abfdd7c0adc627ef,
   "@cargo/payload-seo-analyzer/client#SeoNavLink": SeoNavLink_91407beeea43f355408968e66219c5e2,
   "@cargo/payload-plugin-socials/client#SocialsDashboardWidget": SocialsDashboardWidget_5fd21c991680a0e7a8a18e6a7e9e5018,
   "@cargo/payload-plugin-socials/client#SocialsNavLink": SocialsNavLink_5fd21c991680a0e7a8a18e6a7e9e5018,
   "@payloadcms/ui#FolderIcon": FolderIcon_3817bf644402e67bfe6577f60ef982de,
   "@payloadcms/ui/rsc#HierarchySidebarTabServer": HierarchySidebarTabServer_ab83ff7e88da8d3530831f296ec4756a,
   "@payloadcms/ui#TagIcon": TagIcon_3817bf644402e67bfe6577f60ef982de,
+  "@cargo/payload-plugin-assistant/admin/AssistantView#AssistantView": AssistantView_bc38c7907cd2b2ebd8016cd8da7034a3,
   "@cargo/payload-seo-analyzer/views#SeoView": SeoView_62b561af77a7161a5fa3ccf8464d9f5e,
   "@cargo/payload-seo-analyzer/views#SitemapAuditView": SitemapAuditView_62b561af77a7161a5fa3ccf8464d9f5e,
   "@cargo/payload-seo-analyzer/views#SeoConfigView": SeoConfigView_62b561af77a7161a5fa3ccf8464d9f5e,
