@@ -64,6 +64,7 @@ export function createSeoHealthHandler(basePath: string, seoConfig?: SeoConfig):
       // --- Derived warnings (what to fix) ---
       const warnings: string[] = []
       if (!config.aiKey) warnings.push('OPENROUTER_API_KEY not set — AI features fall back to heuristics.')
+      if (!config.pageSpeedKey) warnings.push('PAGESPEED_API_KEY not set — Core Web Vitals calls PageSpeed Insights on the shared keyless quota, which usually answers 429.')
       if (config.gscConfigured && !gscConnected) warnings.push('GSC configured but not connected — rank tracking & CTR opportunities inactive.')
       if (config.gscConfigured && !config.gscEncryptionKey) warnings.push('SEO_GSC_ENCRYPTION_KEY not set — GSC token encrypted with a derived key (set an explicit key for stability).')
       if ((config.alertWebhook || config.alertEmail) === false) warnings.push('No alert channel configured (SEO_ALERT_WEBHOOK_URL / SEO_ALERT_EMAIL) — monitoring digest will not be delivered.')

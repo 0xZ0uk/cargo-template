@@ -16,12 +16,17 @@ function makeReq() {
   } as any
 }
 
-const pageSpeedKey = async () => {
+type HealthBody = { ok?: boolean; config?: { pageSpeedKey: boolean }; warnings?: string[]; error?: string }
+
+const health = async (): Promise<HealthBody> => {
   const res = await createSeoHealthHandler('/api/seo-plugin', { siteUrl: 'https://site.example' })(makeReq())
-  const body = (await res.json()) as { config?: { pageSpeedKey: boolean }; error?: string }
+  const body = (await res.json()) as HealthBody
   expect(body.error).toBeUndefined()
-  return body.config!.pageSpeedKey
+  return body
 }
+
+const pageSpeedKey = async () => (await health()).config!.pageSpeedKey
+const pageSpeedWarning = (body: HealthBody) => body.warnings!.some((w) => w.startsWith('PAGESPEED_API_KEY'))
 
 afterEach(() => vi.unstubAllEnvs())
 
@@ -35,5 +40,17 @@ describe('health — PageSpeed key', () => {
     vi.stubEnv('PAGESPEED_API_KEY', '')
     vi.stubEnv('GOOGLE_PAGESPEED_API_KEY', 'legacy')
     expect(await pageSpeedKey()).toBe(false)
+  })
+
+  it('warns (and is not ok) without a key, since Core Web Vitals then usually gets a 429', async () => {
+    vi.stubEnv('PAGESPEED_API_KEY', '')
+    const body = await health()
+    expect(pageSpeedWarning(body)).toBe(true)
+    expect(body.ok).toBe(false)
+  })
+
+  it('does not warn about PageSpeed with a key', async () => {
+    vi.stubEnv('PAGESPEED_API_KEY', 'k-123')
+    expect(pageSpeedWarning(await health())).toBe(false)
   })
 })
