@@ -3,7 +3,7 @@
 import { useConfig } from '@payloadcms/ui'
 import React from 'react'
 
-import { resolveSocialsEndpointBase } from './accessModel.js'
+import { isSocialsDisabled, resolveSocialsEndpointBase } from './accessModel.js'
 import { useSocialsAccess } from './useSocialsAccess.js'
 
 type Props = {
@@ -23,7 +23,14 @@ type Props = {
  * Styling matches Payload's other plugin nav links (Merchant Center, GA4):
  * inline-only, theme-aware via CSS variables.
  */
-export const SocialsNavLink: React.FC<Props> = ({ href = '/admin/socials', label = 'Socials' }) => {
+export const SocialsNavLink: React.FC<Props> = (props) => {
+  const { config } = useConfig()
+  // Disabled: no endpoints to probe and nothing useful behind the link (the view
+  // itself explains why), so the sidebar stays as it is.
+  return isSocialsDisabled(config) ? null : <SocialsNavLinkEnabled {...props} />
+}
+
+const SocialsNavLinkEnabled: React.FC<Props> = ({ href = '/admin/socials', label = 'Socials' }) => {
   const { config } = useConfig()
   const { loading, publisher } = useSocialsAccess(resolveSocialsEndpointBase(config))
 

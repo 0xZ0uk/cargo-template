@@ -86,7 +86,7 @@ describe('applyCollectionEnhancements — schemaOnly + idempotency', () => {
     fields: [{ type: 'tabs', tabs: [{ fields: [], label: 'General' }] }],
   })
 
-  it('schemaOnly registers plugin collections but injects no host tab', () => {
+  it('schemaOnly registers plugin collections and still injects the host tab', () => {
     const options = normalizePluginOptions(
       baseOptions({ admin: { injectInto: [{ collection: 'products', sourceKind: 'product' }] } }),
     )
@@ -95,11 +95,10 @@ describe('applyCollectionEnhancements — schemaOnly + idempotency', () => {
 
     applyCollectionEnhancements(config, options, { schemaOnly: true })
 
-    // Plugin collections registered...
     expect(config.collections?.some((c) => c.slug === SOCIAL_POSTS_SLUG)).toBe(true)
-    // ...but no Socials tab injected into the host collection.
+    // The admin component paths (and so the import map) don't depend on schemaOnly.
     const tabs = products.fields[0] as { tabs: Array<{ fields: Array<{ name?: string }> }> }
-    expect(tabs.tabs.every((t) => !t.fields.some((f) => f.name === 'socials'))).toBe(true)
+    expect(tabs.tabs.some((t) => t.fields.some((f) => f.name === 'socials'))).toBe(true)
   })
 
   it('does not stack a second Socials tab when applied twice', () => {

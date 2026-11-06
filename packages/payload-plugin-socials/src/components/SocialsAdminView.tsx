@@ -7,7 +7,7 @@ import type { AuthorizeFn } from '../types/index.js'
 
 import { evaluateAuthorize } from '../server/utilities/access.js'
 import { SocialsAdminViewClient } from './SocialsAdminViewClientRef.js'
-import { ViewBody, ViewHeader } from './ui/index.js'
+import { DisabledNotice, ViewBody, ViewHeader } from './ui/index.js'
 
 /**
  * Server-rendered shell for the `/admin/socials` route. The header bits use
@@ -27,7 +27,7 @@ export const SocialsAdminView: React.FC<{ title?: string } & AdminViewServerProp
   user,
 }) => {
   const socialsConfig = (initPageResult?.req?.payload?.config?.custom as Record<string, unknown>)
-    ?.socials as { authorize?: AuthorizeFn; enabledPlatforms?: string[] } | undefined
+    ?.socials as { authorize?: AuthorizeFn; disabled?: boolean; enabledPlatforms?: string[] } | undefined
 
   const authorize = socialsConfig?.authorize
   const allowed = authorize
@@ -62,7 +62,11 @@ export const SocialsAdminView: React.FC<{ title?: string } & AdminViewServerProp
         title={title}
       />
       <ViewBody>
-        <SocialsAdminViewClient enabledPlatforms={enabledPlatforms} />
+        {socialsConfig?.disabled === true ? (
+          <DisabledNotice />
+        ) : (
+          <SocialsAdminViewClient enabledPlatforms={enabledPlatforms} />
+        )}
       </ViewBody>
     </DefaultTemplate>
   )

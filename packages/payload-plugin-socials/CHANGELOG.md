@@ -8,6 +8,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 - The admin UI (`/admin/socials`, the dashboard widget, the Socials tab, the standalone composer and the template builder) is rebuilt on `@payloadcms/ui` components and Payload 4 tokens, following the SEO analyzer's UI rules; `socials.css` keeps only what the components don't cover. Behaviour is unchanged. Platform tabs no longer use per-platform brand colours.
 
+- `disabled` no longer changes the admin component paths. It registers the nav link, the `/admin/socials` view, the dashboard widget and the Socials tab on `injectInto` collections like the enabled mode does, so Payload's generated import map is identical with and without the encryption key. The components read `admin.custom.socials.disabled` and show "Socials is turned off. Set its encryption key to enable it." (the nav link shows nothing) instead of calling endpoints; endpoints, jobs, hooks, scheduling and access are unchanged.
+
 ### Fixed
 
 - The Socials tab on a source document shows "No platform is enabled" when no platform is enabled, instead of loading a Pinterest composer whose requests fail with "platform is not enabled".

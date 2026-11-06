@@ -8,7 +8,7 @@
  * `ViewHeader` / `ViewBody` too.
  */
 
-import { Spinner } from '@payloadcms/ui'
+import { Banner, Spinner } from '@payloadcms/ui'
 import React from 'react'
 
 export type Tone = 'brand' | 'danger' | 'neutral' | 'success' | 'warning'
@@ -16,6 +16,13 @@ export type Tone = 'brand' | 'danger' | 'neutral' | 'success' | 'warning'
 /** Joins class names, skipping falsy ones. */
 export const cx = (...names: Array<false | null | string | undefined>): string =>
   names.filter(Boolean).join(' ')
+
+/** Shown by every socials admin surface when the plugin is `disabled`. */
+export const SOCIALS_DISABLED_NOTICE = 'Socials is turned off. Set its encryption key to enable it.'
+
+export function DisabledNotice() {
+  return <Banner type="default">{SOCIALS_DISABLED_NOTICE}</Banner>
+}
 
 /* ---------- Layout ------------------------------------------------------- */
 

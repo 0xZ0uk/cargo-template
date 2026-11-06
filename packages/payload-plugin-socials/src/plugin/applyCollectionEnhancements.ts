@@ -160,13 +160,8 @@ export const applyCollectionEnhancements = (
     config.collections.push(buildSocialTemplatesCollection(options, schemaOnly))
   }
 
-  // schemaOnly: register the plugin-owned collections (so host migrations keep
-  // the tables) but skip runtime admin wiring. Used by the `disabled` path.
-  if (schemaOnly) {
-    return config
-  }
-
-  // Inject Socials tab into each host collection.
+  // Inject Socials tab (also when schemaOnly: the admin component paths, and so
+  // the import map, must not depend on whether the plugin is disabled) into each host collection.
   for (const target of options.admin.injectInto) {
     const collection = config.collections.find((c) => c.slug === target.collection)
     if (!collection) {

@@ -86,6 +86,54 @@ describe('payloadPluginSocials curried factory', () => {
     expect(await connections?.access?.read?.({ req: { user: { id: 1 } } } as never)).toBe(false)
   })
 
+  it('registers the same admin component paths and client config shape when disabled', () => {
+    const configWithPages = (): Config =>
+      ({
+        collections: [{ slug: 'pages', fields: [] }],
+        endpoints: [],
+        globals: [],
+      }) as unknown as Config
+    const options = (overrides: Partial<PayloadPluginSocialsConfig> = {}) =>
+      validOptions({
+        admin: { injectInto: [{ collection: 'pages', sourceKind: 'product' }], mode: 'both' },
+        ...overrides,
+      })
+
+    // Every component reference (path + exportName) anywhere in the config.
+    const componentRefs = (value: unknown, found = new Set<string>()): string[] => {
+      if (typeof value === 'string') {
+        if (value.includes('@cargo/payload-plugin-socials')) {
+          found.add(value)
+        }
+      } else if (value && typeof value === 'object') {
+        const record = value as Record<string, unknown>
+        if (typeof record.path === 'string' && record.path.includes('@cargo/payload-plugin-socials')) {
+          found.add(`${record.path}#${String(record.exportName)}`)
+        }
+        for (const child of Object.values(record)) {
+          componentRefs(child, found)
+        }
+      }
+      return [...found].sort()
+    }
+
+    const enabled = payloadPluginSocials(options())(configWithPages())
+    const disabled = payloadPluginSocials(options({ disabled: true }))(configWithPages())
+
+    const enabledRefs = componentRefs(enabled)
+    expect(enabledRefs.length).toBeGreaterThanOrEqual(4)
+    expect(componentRefs(disabled)).toEqual(enabledRefs)
+    // Same admin config shape; only the flag differs.
+    const socials = (config: Config) =>
+      (config.admin?.custom as { socials: Record<string, unknown> }).socials
+    expect(Object.keys(socials(disabled)).sort()).toEqual(Object.keys(socials(enabled)).sort())
+    expect(socials(enabled).disabled).toBe(false)
+    expect(socials(disabled).disabled).toBe(true)
+    // Runtime stays off.
+    expect(disabled.endpoints).toHaveLength(0)
+    expect(disabled.jobs?.tasks ?? []).toHaveLength(0)
+  })
+
   it('rejects a second plugin instance instead of sharing process-level registries', () => {
     const config = baseConfig()
     payloadPluginSocials(validOptions())(config)

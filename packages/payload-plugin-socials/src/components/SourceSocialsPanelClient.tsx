@@ -24,7 +24,7 @@ import type {
 } from '../types/index.js'
 
 import { PLATFORM_IDS, PLATFORM_LABELS } from '../constants.js'
-import { resolveSocialsEndpointBase } from './accessModel.js'
+import { isSocialsDisabled, resolveSocialsEndpointBase } from './accessModel.js'
 import { fetchSocialPublish } from './fetchSocialPublish.js'
 import {
   acceptedMediaTypes,
@@ -54,7 +54,17 @@ import {
 } from './socialComposerViewModel.js'
 import { VideoPreviewPane, VideoTile } from './SocialMediaPreview.js'
 import { StandaloneSocialComposer } from './StandaloneSocialComposer.js'
-import { Card, Check, cx, Field, Fieldset, LoadingState, PILL_STYLE, type Tone } from './ui/index.js'
+import {
+  Card,
+  Check,
+  cx,
+  DisabledNotice,
+  Field,
+  Fieldset,
+  LoadingState,
+  PILL_STYLE,
+  type Tone,
+} from './ui/index.js'
 import { useSocialsAccess } from './useSocialsAccess.js'
 import './ui/styles.css'
 import './socials.css'
@@ -1315,9 +1325,19 @@ const SourceComposer: React.FC<{ sourceKind: string }> = ({ sourceKind }) => {
 // Entry point
 // ===========================================================================
 
+/** Shows the notice instead of its children when the plugin is `disabled`. */
+const DisabledGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { config } = useConfig()
+  return isSocialsDisabled(config) ? <DisabledNotice /> : <>{children}</>
+}
+
 export const SocialPublishPanelClient: React.FC<Props> = ({ mode = 'source', sourceKind }) => {
   if (mode === 'standalone') {
-    return <StandaloneSocialComposer />
+    return (
+      <DisabledGate>
+        <StandaloneSocialComposer />
+      </DisabledGate>
+    )
   }
 
   const normalizedSourceKind = sourceKind?.trim()
@@ -1334,5 +1354,9 @@ export const SocialPublishPanelClient: React.FC<Props> = ({ mode = 'source', sou
     )
   }
 
-  return <SourceComposer sourceKind={normalizedSourceKind} />
+  return (
+    <DisabledGate>
+      <SourceComposer sourceKind={normalizedSourceKind} />
+    </DisabledGate>
+  )
 }
