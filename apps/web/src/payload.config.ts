@@ -9,7 +9,6 @@ import type { GenerateTitle, GenerateURL } from '@payloadcms/plugin-seo/types'
 import { r2Storage } from '@payloadcms/storage-r2'
 import path from 'path'
 import { buildConfig } from 'payload'
-import type { PayloadLogger } from 'payload'
 import { fileURLToPath } from 'url'
 
 import { cloudflareEnv as cloudflare, isWorkersRuntime, waitUntil } from '#cloudflare-runtime'
@@ -32,37 +31,12 @@ import { workersSeoRateLimit } from './plugins/seoRateLimit'
 import { SocialsPlugin } from './plugins/socials'
 import { pagePath } from './utilities/pagePath'
 import { siteName } from './utilities/siteName'
+import { createWorkersLogger } from './utilities/workersLogger'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
 
-// Payload's default pino logger doesn't suit Workers; emit one JSON line per entry so
-// Workers Logs can index the fields.
-const createLog =
-  (level: string, write: typeof console.log) =>
-  (objectOrMessage: object | string, message?: string) => {
-    const entry =
-      typeof objectOrMessage === 'string'
-        ? { level, msg: objectOrMessage }
-        : {
-            level,
-            ...objectOrMessage,
-            msg: message ?? (objectOrMessage as { msg?: string }).msg,
-          }
-
-    write(JSON.stringify(entry))
-  }
-
-const cloudflareLogger = {
-  debug: createLog('debug', console.debug),
-  error: createLog('error', console.error),
-  fatal: createLog('fatal', console.error),
-  info: createLog('info', console.log),
-  level: process.env.PAYLOAD_LOG_LEVEL || 'info',
-  silent: () => undefined,
-  trace: createLog('trace', console.debug),
-  warn: createLog('warn', console.warn),
-} as unknown as PayloadLogger
+const cloudflareLogger = createWorkersLogger({ level: process.env.PAYLOAD_LOG_LEVEL || 'info' })
 
 // Payload's secret also seals onpage's edit-mode cookies and preview links.
 const secret = process.env.PAYLOAD_SECRET || cloudflare.PAYLOAD_SECRET || ''
