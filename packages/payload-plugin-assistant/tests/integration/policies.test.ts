@@ -6,6 +6,7 @@ import { join } from "node:path";
 
 import { sqliteAdapter } from "@payloadcms/db-sqlite";
 import { mcpPlugin } from "@payloadcms/plugin-mcp";
+import { lexicalEditor } from "@payloadcms/richtext-lexical";
 import type { AnyTextAdapter, ModelMessage } from "@tanstack/ai";
 import { fakeText, type FakeResponseStep } from "@tanstack/ai/testing";
 import { buildConfig, getPayload, handleEndpoints } from "payload";
@@ -17,6 +18,7 @@ vi.mock("@payloadcms/ui/rsc", () => ({ DefaultTemplate: () => null }));
 import type { AssistantAuditEvent } from "../../src/audit";
 import type { ApprovalProposal } from "../../src/approvals/types";
 import { assistantPluginWith } from "../../src/plugin";
+import { withMarkdownRichText } from "../../src/richText/tool";
 import { withFakeCost } from "../../src/server/testModel";
 import { inProcessDispatch } from "../../src/tools/inProcess";
 import type { UsageResponse } from "../../src/usage";
@@ -37,6 +39,8 @@ const ORIGIN = "http://localhost:3000";
  */
 const DAILY_COST_USD = 0.05;
 const SPEND: FakeResponseStep = { text: "y".repeat(400_000) };
+/** Low, so a test can cross it (#116's cap; every policy must still hold under it). */
+const MAX_TOOL_CALLS = 3;
 
 let tmpDir: string;
 let app: { payload: Payload; config: SanitizedConfig };
@@ -64,6 +68,7 @@ beforeAll(async () => {
         fields: [
           { name: "title", type: "text" },
           { name: "internalNote", type: "text" },
+          { name: "body", type: "richText", editor: lexicalEditor() },
           {
             name: "layout",
             type: "blocks",
@@ -75,7 +80,8 @@ beforeAll(async () => {
     plugins: [
       mcpPlugin({
         collections: {
-          pages: { description: "Website pages." },
+          // Rich text as Markdown in write results too (#116), like the app's collections.
+          pages: withMarkdownRichText("pages", { description: "Website pages." }),
           users: { description: "Admin users.", tools: { delete: true } as never },
         },
       }),
@@ -84,6 +90,7 @@ beforeAll(async () => {
           models: [{ id: "m", label: "M" }],
           apiKey: "sk-test",
           budget: { dailyCostUsd: DAILY_COST_USD },
+          maxToolCalls: MAX_TOOL_CALLS,
           redact: { pages: ["internalNote", "layout.trackingId"] },
           audit: (event) => {
             audited.push(event);
@@ -143,6 +150,18 @@ async function pauseOn(cookie: string, threadId: string) {
   return outcome.interrupts as Array<{ id: string }>;
 }
 
+/** A Lexical value with one paragraph. */
+const paragraph = (text: string) => ({
+  root: {
+    type: "root",
+    format: "",
+    indent: 0,
+    version: 1,
+    direction: "ltr",
+    children: [{ type: "paragraph", format: "", indent: 0, version: 1, direction: "ltr", textFormat: 0, children: [{ type: "text", text, format: 0, detail: 0, mode: "normal", style: "", version: 1 }] }],
+  },
+});
+
 const newPage = async (data: Record<string, unknown>) =>
   (await app.payload.create({ collection: "pages" as CollectionSlug, data: data as never, overrideAccess: true })) as unknown as { id: number };
 
@@ -183,9 +202,60 @@ describe("budgets", () => {
     expect(body.usage.exceeded).toBe(true);
     expect(body.usage.remaining.costUsd).toBe(0);
     expect(fake.state.callCount).toBe(0);
-    // A resume calls the model too.
-    expect((await resume(cookie, newThread(), [{ interruptId: "approval_x", payload: { approved: false } }])).status).toBe(402);
+    // Approving resumes the run, which calls the model too.
+    expect((await resume(cookie, newThread(), [{ interruptId: "approval_x", payload: { approved: true } }])).status).toBe(402);
     expect(fake.state.callCount).toBe(0);
+  });
+
+  it("over budget, approving a pending change is refused but rejecting it goes through and ends the run", async () => {
+    const { cookie } = await newUser();
+    const page = await newPage({ title: "Pending" });
+    const threadId = newThread();
+    script([{ toolCalls: [{ name: "updateDocument", input: { slug: "pages", id: String(page.id), data: { title: "Changed" } } }] }]);
+    const [interrupt] = await pauseOn(cookie, threadId);
+    // Another conversation uses up the day while the change waits.
+    script([SPEND]);
+    await readEvents(await send(cookie, newThread()));
+    expect((await usage(cookie)).exceeded).toBe(true);
+
+    // The model tries another write after the rejection: with the day used up, the run gets only
+    // its closing model call, so the second call never runs or asks.
+    script([{ toolCalls: [{ name: "updateDocument", input: { slug: "pages", id: String(page.id), data: { title: "Again" } } }] }, { text: "Never sent." }]);
+    const approve = await resume(cookie, threadId, [{ interruptId: interrupt!.id, payload: { approved: true } }]);
+    expect(approve.status).toBe(402);
+    expect(((await approve.json()) as { code: string }).code).toBe("budget_exceeded");
+    expect(fake.state.callCount).toBe(0);
+
+    script([{ text: "OK, I left it as it was." }, { text: "Never sent." }]);
+    const reject = await resume(cookie, threadId, [{ interruptId: interrupt!.id, payload: { approved: false, reason: "Not today." } }]);
+    expect(reject.status).toBe(200);
+    const events = await readEvents(reject);
+    expect(ofType(events, "RUN_FINISHED").at(-1)?.outcome?.type).not.toBe("interrupt");
+    // One model call: the closing answer, recorded (the documented overshoot).
+    expect(fake.state.callCount).toBe(1);
+    expect(audited).toEqual([]);
+    const after = (await app.payload.findByID({ collection: "pages" as CollectionSlug, id: page.id, overrideAccess: true })) as unknown as { title: string };
+    expect(after.title).toBe("Pending");
+    const transcript = await (await call(cookie, "GET", `/assistant/conversations/${threadId}`)).json();
+    expect(JSON.stringify(transcript)).toContain("OK, I left it as it was.");
+  });
+
+  it("over budget, a rejection gets only the closing model call: a read it asks for doesn't loop back to the model", async () => {
+    const { cookie } = await newUser();
+    const page = await newPage({ title: "Pending" });
+    const threadId = newThread();
+    script([{ toolCalls: [{ name: "updateDocument", input: { slug: "pages", id: String(page.id), data: { title: "Changed" } } }] }]);
+    const [interrupt] = await pauseOn(cookie, threadId);
+    script([SPEND]);
+    await readEvents(await send(cookie, newThread()));
+
+    script([{ toolCalls: [{ name: "findDocuments", input: { slug: "pages", limit: 1, depth: 0 } }] }, { text: "Never sent." }]);
+    const events = await readEvents(await resume(cookie, threadId, [{ interruptId: interrupt!.id, payload: { approved: false } }]));
+    // `maxSteps` 1: the read runs, but its result goes to no further model call; the run ends.
+    expect(fake.state.callCount).toBe(1);
+    expect(ofType(events, "TOOL_CALL_RESULT").map((event) => event.toolCallId)).toHaveLength(2);
+    expect(ofType(events, "RUN_FINISHED").at(-1)?.outcome?.type).not.toBe("interrupt");
+    expect(ofType(events, "RUN_ERROR")).toEqual([]);
   });
 
   it("is per user", async () => {
@@ -262,6 +332,26 @@ describe("audit log", () => {
     expect(audited[0]).toMatchObject({ tool: "createDocuments", collection: "pages", documentId: String(created.docs[0]!.id) });
   });
 
+  it("under the tool-call cap: one event per write that ran, none for the calls past the cap", async () => {
+    const { cookie } = await newUser();
+    const pages = await Promise.all([1, 2, 3, 4].map((n) => newPage({ title: `Cap ${n}` })));
+    const threadId = newThread();
+    script([
+      { toolCalls: pages.map((page) => ({ name: "updateDocument", input: { slug: "pages", id: String(page.id), data: { title: "Capped" } } })) },
+      { text: "Three of four." },
+    ]);
+    const interrupts = await pauseOn(cookie, threadId);
+    expect(interrupts).toHaveLength(pages.length);
+    const events = await readEvents(await resume(cookie, threadId, interrupts.map((i) => ({ interruptId: i.id, payload: { approved: true } }))));
+    // MAX_TOOL_CALLS calls ran; the last one failed with the cap's error and sent nothing.
+    expect(JSON.stringify(ofType(events, "TOOL_CALL_RESULT"))).toMatch(/tool calls/i);
+    expect(audited).toHaveLength(MAX_TOOL_CALLS);
+    expect(audited.every((event) => event.tool === "updateDocument" && event.conversationId === threadId)).toBe(true);
+    const changed = await app.payload.find({ collection: "pages" as CollectionSlug, where: { title: { equals: "Capped" } }, overrideAccess: true });
+    expect(changed.totalDocs).toBe(MAX_TOOL_CALLS);
+    expect(new Set(audited.map((event) => event.documentId))).toEqual(new Set(changed.docs.map((doc) => String(doc.id))));
+  });
+
   it("no event for a rejected approval", async () => {
     const { cookie } = await newUser();
     const page = await newPage({ title: "Keep" });
@@ -335,6 +425,31 @@ describe("redaction", () => {
     expect(seen).toContain("Landing");
     expect(seen).toContain("Buy");
     expect(seen).not.toContain("do-not-show");
+  });
+
+  it("an updateDocument result with rich text as Markdown (#116) is redacted too", async () => {
+    const { cookie } = await newUser();
+    const page = await newPage({ title: "Rich", internalNote: "do-not-show-note", body: paragraph("Hello rich world") });
+    seenByModel.length = 0;
+    const threadId = newThread();
+    script([
+      { toolCalls: [{ name: "updateDocument", input: { slug: "pages", id: String(page.id), data: { title: "Rich 2" }, returning: true, depth: 0 } }] },
+      recordTools,
+    ]);
+    const [interrupt] = await pauseOn(cookie, threadId);
+    const events = await readEvents(await resume(cookie, threadId, [{ interruptId: interrupt!.id, payload: { approved: true } }]));
+    const streamed = JSON.stringify(ofType(events, "TOOL_CALL_RESULT"));
+    const seen = seenByModel.join("\n");
+    for (const text of [seen, streamed]) {
+      // Converted (the body is Markdown, not Lexical JSON) and redacted.
+      expect(text).toContain("Hello rich world");
+      expect(text).toContain("Rich 2");
+      expect(text).not.toMatch(/\\?"root\\?"/);
+      expect(text).not.toContain("do-not-show");
+    }
+    const stored = await (await call(cookie, "GET", `/assistant/conversations/${threadId}`)).text();
+    expect(stored).toContain("Hello rich world");
+    expect(stored).not.toContain("do-not-show");
   });
 
   it("approval cards never show a redacted current value", async () => {

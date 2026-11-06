@@ -30,6 +30,8 @@ export interface ChatPanelProps {
   /** This view just created the thread (nothing stored yet): show the empty state, not placeholders. */
   isNew?: boolean;
   configured: boolean;
+  /** Today's budget is used up (#68): the empty state offers no example prompts, which would be refused. */
+  budgetExceeded?: boolean;
   models: AssistantModelOption[];
   model: string;
   onModelChange: (model: string) => void;
@@ -57,6 +59,7 @@ export function ChatPanel({
   threadId,
   isNew = false,
   configured,
+  budgetExceeded = false,
   models,
   model,
   onModelChange,
@@ -227,7 +230,7 @@ export function ChatPanel({
           </div>
         ) : body === "empty" ? (
           <EmptyConversation
-            examples={configured}
+            examples={configured && !budgetExceeded}
             onPick={(prompt) => {
               setDraft(prompt);
               inputRef.current?.focus();

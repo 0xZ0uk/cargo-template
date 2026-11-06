@@ -79,6 +79,11 @@ function withHeaders(response: Response, headers: Record<string, string>): Respo
   return copy;
 }
 
+/** A resume decision that applies nothing: cancelled, or an approval answered `approved: false` (`validate.ts`). */
+const isRejection = (item: { status: string; payload?: unknown }): boolean =>
+  item.status === "cancelled" ||
+  (typeof item.payload === "object" && item.payload !== null && (item.payload as { approved?: unknown }).approved === false);
+
 /** `POST /api/assistant/chat`: a new turn, or a resume with approval decisions. Answers the run's SSE. */
 export async function handleChat(req: PayloadRequest, options: NormalizedAssistantOptions, deps: ChatDeps = {}): Promise<Response> {
   let raw: unknown;
@@ -101,10 +106,15 @@ export async function handleChat(req: PayloadRequest, options: NormalizedAssista
   const backend = backendFor(req, options, deps);
   // The daily budget (#68), before anything else that costs: no model call once a cap is reached.
   // A read here, a write only in the user's index object (single writer). A run already going
-  // when the cap is crossed finishes, so one run may overshoot.
+  // when the cap is crossed finishes, so one run may overshoot. A resume that only rejects (or
+  // cancels) still goes through: it applies nothing and lets the paused run end, at the price of
+  // the model's closing answer (one model call: `maxSteps` 1), so a rejection can overshoot slightly.
+  const onlyRejects = Boolean(resume?.length) && resume!.every(isRejection);
+  let overBudget = false;
   if (options.budget) {
     const usage = await backend.usage(userOf(req), utcDay());
-    if (budgetExceeded(usage, options.budget)) {
+    overBudget = budgetExceeded(usage, options.budget);
+    if (overBudget && !onlyRejects) {
       const cap = options.budget.dailyCostUsd !== undefined && usage.costUsd >= options.budget.dailyCostUsd
         ? `today's assistant budget (${formatUsd(options.budget.dailyCostUsd)})`
         : `today's assistant token allowance (${options.budget.dailyTokens?.toLocaleString("en-US")} tokens)`;
@@ -142,7 +152,7 @@ export async function handleChat(req: PayloadRequest, options: NormalizedAssista
     model,
     apiKey: options.apiKey,
     systemPrompt: await buildSystemPrompt(req, options),
-    maxSteps: options.maxSteps,
+    maxSteps: overBudget ? 1 : options.maxSteps,
     maxToolCalls: options.maxToolCalls,
     maxContextTokens: options.maxContextTokens,
     mcpEndpoint: `${api}/mcp`,

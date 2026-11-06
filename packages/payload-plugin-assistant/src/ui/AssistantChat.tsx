@@ -270,6 +270,7 @@ export function AssistantChat({
             adminRoute={adminRoute}
             apiRoute={apiRoute}
             ApprovalComponent={ApprovalComponent}
+            budgetExceeded={usage?.exceeded ?? false}
             configured={configured}
             hrefFor={hrefFor}
             isNew={threadId === newThread}
