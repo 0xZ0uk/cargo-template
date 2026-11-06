@@ -4,6 +4,19 @@
 
 ### Added
 
+- Approval cards with a diff before any write (#65). `GET /api/assistant/approvals?threadId=` builds a proposal per pending interrupt, read as the user: update (field-by-field against the current document), create (the proposed fields), delete (what will be lost), restore version, duplicate, by-`where` batches; rich text converted from Lexical to readable text (`src/approvals/lexical.ts`), never JSON. `ApprovalCard` is the new default `ApprovalComponent`, rendered in place of the write's tool row, and keeps the outcome after sending: applied, rejected (with the reason) or failed with the error (access errors at apply time included).
+- Reject with a reason: the resume payload `{ approved: false, reason }` becomes the reject branch of the tools' `approvalSchema` (`REJECT_APPROVAL_SCHEMA`), which `chat()` returns to the model as the denied call's result. Approvals no longer accept edited arguments.
+- Several approvals in one turn are answered card by card (with Undo) or with Approve all / Reject all, and sent as one batch, since TanStack resumes a batch all or nothing.
+- Stale proposals: `changedSinceProposal` when the document changed after the interrupt (the card asks to confirm again), and `seenUpdatedAt` on approve: a document changed since the card showed it refuses the resume with `409 { code: "stale", interruptIds }`.
+
+### Fixed
+
+- A send refused before the run started (rate limited, `model_not_allowed`, not configured) no longer leaves its bubble in the transcript (#112 review).
+- A successful delete no longer links to the edit views of the deleted documents (#112 review).
+- The approval input is no longer cut silently: the diff card shows values whole and scrollable and says when one was shortened; `ApprovalControl` says so too (#112 review).
+- The composer at 390px: Send stays on the model picker's row, the hint goes under them (#112 review).
+- `pendingApprovalFrom` finds the tool call of a `generic` interrupt in its binding (`@tanstack/ai-client`'s snapshot drops `toolCallId`).
+
 - The chat view at `/admin/assistant` (#64), from a new client entry `./client` (`"use client"` added after the build, as in `payload-plugin-ab`; no server or workerd code). `useChat` (`@tanstack/ai-react` 1.0.2) over SSE with `persistence: true`: opening a conversation hydrates it, restores pending approvals and rejoins a run still going (a reload mid-reply picks the stream back up); Stop calls `POST /api/assistant/chat/stop`. The open conversation is in the URL (`?thread=`).
 - Messages: Markdown through `@tanstack/ai-react/ui`'s `TextPart` (`@tanstack/markdown`, already a dependency of `ai-react`: raw HTML escaped, executable URLs dropped, no new package); the user's own text stays plain; reasoning collapsed; each tool call a compact row (tool, collection, status) with its result collapsed and bounded, and links to the documents it returned or touched (only in collections/globals the admin knows, never from free text). Model-written links to admin pages navigate in place; other links open in a new tab without an opener.
 - Composer: multi-line, Enter sends, Shift+Enter adds a line (IME-safe), Stop while streaming, model picker from `GET /api/assistant/config` (remembered per browser). Disabled with a reason while not configured or while an approval waits.
