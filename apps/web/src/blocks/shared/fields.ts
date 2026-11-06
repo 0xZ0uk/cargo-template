@@ -123,8 +123,10 @@ export const mediaField = (overrides: Partial<Omit<UploadField, 'relationTo' | '
 type HeadingTag = 'h1' | 'h2' | 'h3' | 'h4'
 
 /**
- * Rich text for blocks: paragraphs, lists, links, and h2–h4 headings by default. A page has one
- * h1, usually the hero's title; only blocks that can open a page (Rich text) allow h1.
+ * Rich text for blocks: the root editor's features (paragraphs, bold/italic/underline, links,
+ * bulleted and numbered lists, see `fields/defaultLexical.ts`) plus h2–h4 headings by default and
+ * the toolbars. A page has one h1, usually the hero's title; only blocks that can open a page
+ * (Rich text) allow h1.
  */
 export const blockRichText = ({
   headings = ['h2', 'h3', 'h4'],

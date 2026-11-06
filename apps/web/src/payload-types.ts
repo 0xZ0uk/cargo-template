@@ -62,63 +62,73 @@ export type SupportedTimezones =
   | 'Pacific/Fiji';
 /**
  * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "LexicalNodes_17BFECDB".
+ * via the `definition` "LexicalNodes_92D266B8".
  */
-export type LexicalNodes_17BFECDB =
+export type LexicalNodes_92D266B8 =
   | SerializedTextNode
   | SerializedTabNode
   | SerializedLineBreakNode
-  | SerializedParagraphNode<LexicalNodes_17BFECDB>
-  | SerializedHeadingNode<LexicalNodes_17BFECDB, 'h1' | 'h2' | 'h3' | 'h4'>
-  | SerializedAutoLinkNode<LexicalNodes_17BFECDB, LexicalLinkFields>
-  | SerializedLinkNode<LexicalNodes_17BFECDB, LexicalLinkFields>;
+  | SerializedParagraphNode<LexicalNodes_92D266B8>
+  | SerializedHeadingNode<LexicalNodes_92D266B8, 'h1' | 'h2' | 'h3' | 'h4'>
+  | SerializedAutoLinkNode<LexicalNodes_92D266B8, LexicalLinkFields>
+  | SerializedLinkNode<LexicalNodes_92D266B8, LexicalLinkFields>
+  | SerializedListNode<LexicalNodes_92D266B8>
+  | SerializedListItemNode<LexicalNodes_92D266B8>;
 /**
  * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "LexicalNodes_6BBC15B4".
+ * via the `definition` "LexicalNodes_E3193365".
  */
-export type LexicalNodes_6BBC15B4 =
+export type LexicalNodes_E3193365 =
   | SerializedTextNode
   | SerializedTabNode
   | SerializedLineBreakNode
-  | SerializedParagraphNode<LexicalNodes_6BBC15B4>
-  | SerializedHeadingNode<LexicalNodes_6BBC15B4>
-  | SerializedAutoLinkNode<LexicalNodes_6BBC15B4, LexicalLinkFields>
-  | SerializedLinkNode<LexicalNodes_6BBC15B4, LexicalLinkFields>;
+  | SerializedParagraphNode<LexicalNodes_E3193365>
+  | SerializedHeadingNode<LexicalNodes_E3193365>
+  | SerializedAutoLinkNode<LexicalNodes_E3193365, LexicalLinkFields>
+  | SerializedLinkNode<LexicalNodes_E3193365, LexicalLinkFields>
+  | SerializedListNode<LexicalNodes_E3193365>
+  | SerializedListItemNode<LexicalNodes_E3193365>;
 /**
  * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "LexicalNodes_1F46C3CC".
+ * via the `definition` "LexicalNodes_725C8C7E".
  */
-export type LexicalNodes_1F46C3CC =
+export type LexicalNodes_725C8C7E =
   | SerializedTextNode
   | SerializedTabNode
   | SerializedLineBreakNode
-  | SerializedParagraphNode<LexicalNodes_1F46C3CC>
-  | SerializedHeadingNode<LexicalNodes_1F46C3CC, 'h4'>
-  | SerializedAutoLinkNode<LexicalNodes_1F46C3CC, LexicalLinkFields>
-  | SerializedLinkNode<LexicalNodes_1F46C3CC, LexicalLinkFields>;
+  | SerializedParagraphNode<LexicalNodes_725C8C7E>
+  | SerializedHeadingNode<LexicalNodes_725C8C7E, 'h4'>
+  | SerializedAutoLinkNode<LexicalNodes_725C8C7E, LexicalLinkFields>
+  | SerializedLinkNode<LexicalNodes_725C8C7E, LexicalLinkFields>
+  | SerializedListNode<LexicalNodes_725C8C7E>
+  | SerializedListItemNode<LexicalNodes_725C8C7E>;
 /**
  * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "LexicalNodes_556A39AF".
+ * via the `definition` "LexicalNodes_4DFA6439".
  */
-export type LexicalNodes_556A39AF =
+export type LexicalNodes_4DFA6439 =
   | SerializedTextNode
   | SerializedTabNode
   | SerializedLineBreakNode
-  | SerializedParagraphNode<LexicalNodes_556A39AF>
-  | SerializedHeadingNode<LexicalNodes_556A39AF, 'h2' | 'h3' | 'h4'>
-  | SerializedAutoLinkNode<LexicalNodes_556A39AF, LexicalLinkFields>
-  | SerializedLinkNode<LexicalNodes_556A39AF, LexicalLinkFields>;
+  | SerializedParagraphNode<LexicalNodes_4DFA6439>
+  | SerializedHeadingNode<LexicalNodes_4DFA6439, 'h2' | 'h3' | 'h4'>
+  | SerializedAutoLinkNode<LexicalNodes_4DFA6439, LexicalLinkFields>
+  | SerializedLinkNode<LexicalNodes_4DFA6439, LexicalLinkFields>
+  | SerializedListNode<LexicalNodes_4DFA6439>
+  | SerializedListItemNode<LexicalNodes_4DFA6439>;
 /**
  * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "LexicalNodes_AD327369".
+ * via the `definition` "LexicalNodes_4CF76457".
  */
-export type LexicalNodes_AD327369 =
+export type LexicalNodes_4CF76457 =
   | SerializedTextNode
   | SerializedTabNode
   | SerializedLineBreakNode
-  | SerializedParagraphNode<LexicalNodes_AD327369>
-  | SerializedAutoLinkNode<LexicalNodes_AD327369, LexicalLinkFields>
-  | SerializedLinkNode<LexicalNodes_AD327369, LexicalLinkFields>;
+  | SerializedParagraphNode<LexicalNodes_4CF76457>
+  | SerializedAutoLinkNode<LexicalNodes_4CF76457, LexicalLinkFields>
+  | SerializedLinkNode<LexicalNodes_4CF76457, LexicalLinkFields>
+  | SerializedListNode<LexicalNodes_4CF76457>
+  | SerializedListItemNode<LexicalNodes_4CF76457>;
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "LexicalNodes_3DE324E4".
@@ -423,7 +433,7 @@ export interface PageHeaderBlock {
  */
 export interface RichTextBlock {
   variant: 'narrow' | 'wide';
-  richText: LexicalRichText<LexicalNodes_17BFECDB>;
+  richText: LexicalRichText<LexicalNodes_92D266B8>;
   section: {
     background: 'default' | 'muted' | 'dark';
     spacing: 'none' | 'sm' | 'md' | 'lg';
@@ -454,7 +464,7 @@ export interface FaqBlock {
   items?:
     | {
         question: string;
-        answer: LexicalRichText<LexicalNodes_6BBC15B4>;
+        answer: LexicalRichText<LexicalNodes_E3193365>;
         id?: string | null;
       }[]
     | null;
@@ -572,7 +582,7 @@ export interface FeatureRowsBlock {
          */
         eyebrow?: string | null;
         title: string;
-        richText?: LexicalRichText<LexicalNodes_1F46C3CC> | null;
+        richText?: LexicalRichText<LexicalNodes_725C8C7E> | null;
         links?:
           | {
               link: {
@@ -615,7 +625,7 @@ export interface FeatureRowsBlock {
 export interface Media {
   id: number;
   alt: string;
-  caption?: LexicalRichText<LexicalNodes_AD327369> | null;
+  caption?: LexicalRichText<LexicalNodes_4CF76457> | null;
   _h_folders?: (number | null) | Folder;
   _h_tags?: (number | Tag)[] | null;
   prefix?: string | null;
@@ -1222,7 +1232,7 @@ export interface ColumnsBlock {
  * via the `definition` "ColumnTextElement".
  */
 export interface ColumnTextElement {
-  richText: LexicalRichText<LexicalNodes_556A39AF>;
+  richText: LexicalRichText<LexicalNodes_4DFA6439>;
   id?: string | null;
   blockName?: string | null;
   blockType: 'columnText';
@@ -3232,19 +3242,6 @@ export interface SerializedAutoLinkNode<TChildren, TFields = LexicalLinkFields> 
   fields: TFields;
 }
 
-/** Shape of a Lexical `richText` field. */
-export interface LexicalRichText<TNode> {
-  root: {
-    children: TNode[];
-    direction: LexicalElementDirection;
-    format: LexicalElementFormat;
-    indent: number;
-    type: 'root';
-    /** @deprecated Ignored when loading. Typed as required only to match Lexical's types: rich text sent through the API, CLI or MCP may not contain it. */
-    version: number;
-  };
-}
-
 export interface SerializedListNode<TChildren> extends SerializedLexicalElementBase<TChildren> {
   type: 'list';
   checked?: boolean;
@@ -3257,6 +3254,19 @@ export interface SerializedListItemNode<TChildren> extends SerializedLexicalElem
   type: 'listitem';
   checked?: boolean;
   value: number;
+}
+
+/** Shape of a Lexical `richText` field. */
+export interface LexicalRichText<TNode> {
+  root: {
+    children: TNode[];
+    direction: LexicalElementDirection;
+    format: LexicalElementFormat;
+    indent: number;
+    type: 'root';
+    /** @deprecated Ignored when loading. Typed as required only to match Lexical's types: rich text sent through the API, CLI or MCP may not contain it. */
+    version: number;
+  };
 }
 
 

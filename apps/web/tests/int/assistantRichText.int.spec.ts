@@ -92,14 +92,37 @@ describe("the app's editors in a Markdown round trip", () => {
     expect(unsupportedMarkdown(state)).toEqual([])
   })
 
-  it('FAQ answers have no headings, and no block editor has lists: kept as plain text, and detected', () => {
+  it('lists survive on every app editor: bulleted, numbered, nested', () => {
+    const source = '- one\n- two\n    - nested\n\n1. first\n2. second'
+    const faqItems = blockFields('faq').find((f) => f.name === 'items')!
+    const featureRows = blockFields('featureRows').find((f) => f.name === 'rows')!
+    const media = sanitized.collections.find((c) => c.slug === 'media')!
+    const fields: Array<[string, Converters]> = [
+      ['Rich text block', converters(blockFields('richText'), 'richText')],
+      ['FAQ answer', converters(faqItems.fields!, 'answer')],
+      ['Feature rows', converters(featureRows.fields!, 'richText')],
+      ['Media caption', converters(media.fields as AnyField[], 'caption')],
+    ]
+    for (const [name, c] of fields) {
+      const { state, markdown } = roundTrip(c, source)
+      expect(markdown, name).toBe(source)
+      expect(unsupportedMarkdown(state), name).toEqual([])
+      const types = JSON.stringify(state)
+      expect(types, name).toContain('"type":"list"')
+      expect(types, name).toContain('"listType":"bullet"')
+      expect(types, name).toContain('"listType":"number"')
+    }
+  })
+
+  it('FAQ answers have no headings, and checklists are not enabled: kept as plain text, and detected', () => {
     const faqItems = blockFields('faq').find((f) => f.name === 'items')!
     const answer = converters(faqItems.fields!, 'answer')
     expect(unsupportedMarkdown(roundTrip(answer, '## Heading\n\nText').state)).toEqual([
       'h2 headings',
     ])
     const richText = converters(blockFields('richText'), 'richText')
-    expect(unsupportedMarkdown(roundTrip(richText, '- one\n- two').state)).toEqual(['lists'])
+    const checklist = roundTrip(richText, '- [ ] todo\n- [x] done').state
+    expect(JSON.stringify(checklist)).not.toContain('"listType":"check"')
   })
 
   it('Media caption: bold, italic, links; underline (in the editor) is named as lost', () => {

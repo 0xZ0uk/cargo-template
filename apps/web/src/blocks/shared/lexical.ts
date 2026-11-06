@@ -37,12 +37,28 @@ export const bold = (value: string) =>
 export const heading = (tag: 'h1' | 'h2' | 'h3' | 'h4', value: string) =>
   element('heading', [text(value)], { tag })
 
-export const bulletList = (...items: string[]) =>
-  element(
-    'list',
-    items.map((item, i) => element('listitem', [text(item)], { value: i + 1 })),
-    { listType: 'bullet', start: 1, tag: 'ul' },
-  )
+/** A list item: its text, or its text and a nested list (see `numberedList` / `bulletList`). */
+export type ListItem = string | { text: string; list: SerializedLexicalNode }
+
+const list = (listType: 'bullet' | 'number', items: ListItem[]) => {
+  // Lexical numbers every `listitem`, nested-list wrappers included.
+  const children: SerializedLexicalNode[] = []
+  for (const item of items) {
+    const { text: label, list: nested } = typeof item === 'string' ? { text: item } : item
+    children.push(element('listitem', [text(label)], { value: children.length + 1 }))
+    // A nested list sits in a `listitem` of its own, right after the item it belongs to.
+    if (nested) children.push(element('listitem', [nested], { value: children.length + 1 }))
+  }
+  return element('list', children, {
+    listType,
+    start: 1,
+    tag: listType === 'bullet' ? 'ul' : 'ol',
+  })
+}
+
+export const bulletList = (...items: ListItem[]) => list('bullet', items)
+
+export const numberedList = (...items: ListItem[]) => list('number', items)
 
 /**
  * A whole rich-text value from block-level nodes. Typed by where it's used (the generated
