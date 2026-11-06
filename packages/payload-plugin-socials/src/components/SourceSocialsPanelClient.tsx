@@ -54,7 +54,7 @@ import {
 } from './socialComposerViewModel.js'
 import { VideoPreviewPane, VideoTile } from './SocialMediaPreview.js'
 import { StandaloneSocialComposer } from './StandaloneSocialComposer.js'
-import { Card, Check, cx, Field, Fieldset, LoadingState, PILL_STYLE, type Tone } from './ui/primitives.js'
+import { Card, Check, cx, Field, Fieldset, LoadingState, PILL_STYLE, type Tone } from './ui/index.js'
 import { useSocialsAccess } from './useSocialsAccess.js'
 import './ui/styles.css'
 import './socials.css'
@@ -1152,7 +1152,9 @@ const SourceComposerAuthorized: React.FC<{ sourceKind: string }> = ({ sourceKind
         </div>
 
         <aside aria-label={`${PLATFORM_LABELS[platform]} preview`} className="socials-preview">
-          <Pill size="small">{PLATFORM_LABELS[platform]}</Pill>
+          <Pill className="socials-preview__platform" size="small">
+            {PLATFORM_LABELS[platform]}
+          </Pill>
           {previewAsset?.type === 'image' && <img alt={state.altText} src={previewAsset.url} />}
           {previewAsset?.type === 'video' && (
             <VideoPreviewPane

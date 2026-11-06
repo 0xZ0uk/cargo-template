@@ -311,14 +311,15 @@
   min-width: 0;
 }
 
+/* A chip, not a bar: the preview is a column flex container that would stretch it. */
+.socials-preview__platform {
+  align-self: flex-start;
+}
+
 /* ---------- Template builder --------------------------------------------------- */
 
 .socials-builder {
   margin-bottom: var(--spacer-4);
-}
-
-.socials-builder__token--meta {
-  border-style: dashed;
 }
 
 .socials-builder__preview {

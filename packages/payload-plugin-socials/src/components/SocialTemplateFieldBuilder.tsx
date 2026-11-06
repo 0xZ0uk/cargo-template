@@ -14,7 +14,7 @@ import {
   TEMPLATE_FILTERS,
   tokensFromScopeKeys,
 } from './socialTemplateBuilderModel.js'
-import { Card, Field } from './ui/primitives.js'
+import { Card, Field } from './ui/index.js'
 import './ui/styles.css'
 import './socials.css'
 
@@ -102,8 +102,7 @@ const TokenPicker: React.FC<TokenPickerProps> = ({
         {metaTokens.map((token) => (
           <Button
             aria-label={`Insert ${token} token`}
-            buttonStyle="pill"
-            className="socials-builder__token--meta"
+            buttonStyle="dashed"
             key={token}
             margin={false}
             onClick={() => onInsert(token)}

@@ -7,7 +7,7 @@ import type { AuthorizeFn } from '../types/index.js'
 
 import { evaluateAuthorize } from '../server/utilities/access.js'
 import { SocialsAdminViewClient } from './SocialsAdminViewClientRef.js'
-import { ViewBody, ViewHeader } from './ui/primitives.js'
+import { ViewBody, ViewHeader } from './ui/index.js'
 
 /**
  * Server-rendered shell for the `/admin/socials` route. The header bits use

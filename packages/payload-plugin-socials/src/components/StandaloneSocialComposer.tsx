@@ -28,7 +28,7 @@ import {
   platformFormats,
 } from './socialComposerViewModel.js'
 import { VideoTile } from './SocialMediaPreview.js'
-import { Card, Check, cx, Field, Fieldset } from './ui/primitives.js'
+import { Card, Check, cx, Field, Fieldset } from './ui/index.js'
 import { useSocialsAccess } from './useSocialsAccess.js'
 import './ui/styles.css'
 import './socials.css'
