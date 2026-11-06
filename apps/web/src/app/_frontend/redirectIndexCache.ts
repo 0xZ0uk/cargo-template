@@ -31,26 +31,13 @@ export type RedirectIndexCacheOptions = {
 export const createRedirectIndexCache = (options: RedirectIndexCacheOptions) => {
   const now = options.now ?? Date.now
   let cache: CacheEntry | undefined
-  let inflight: { gen: string | undefined; promise: Promise<CacheEntry> } | undefined
 
-  const reload = (gen: string | undefined) => {
-    // Concurrent misses on the same generation share one read.
-    if (inflight && inflight.gen === gen) return inflight.promise
-
-    const promise = options
-      .load()
-      .then(({ index, ok }): CacheEntry => ({
-        gen,
-        expiresAt: now() + (ok ? options.ttlMs : options.failureTtlMs),
-        index,
-      }))
-      .finally(() => {
-        if (inflight?.promise === promise) inflight = undefined
-      })
-
-    inflight = { gen, promise }
-
-    return promise
+  // Each miss loads on its own: on Workers a promise belongs to the request that created it,
+  // so sharing one in-flight load with other requests can leave them hanging if that request
+  // ends first. Concurrent misses only happen right after a save, so the duplicate reads are rare.
+  const reload = async (gen: string | undefined): Promise<CacheEntry> => {
+    const { index, ok } = await options.load()
+    return { gen, expiresAt: now() + (ok ? options.ttlMs : options.failureTtlMs), index }
   }
 
   return async (): Promise<RedirectIndex> => {

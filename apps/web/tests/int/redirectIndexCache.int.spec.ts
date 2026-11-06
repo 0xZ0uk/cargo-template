@@ -72,12 +72,15 @@ describe('createRedirectIndexCache', () => {
     expect(load).toHaveBeenCalledTimes(2)
   })
 
-  it('shares one load between concurrent lookups on the same generation', async () => {
+  it('does not share an in-flight load between lookups (Workers ties a promise to its request)', async () => {
     const { getIndex, load } = setup()
 
-    await Promise.all([getIndex(), getIndex(), getIndex()])
-
-    expect(load).toHaveBeenCalledTimes(1)
+    await Promise.all([getIndex(), getIndex()])
+    // Both missed before either finished, so each loaded on its own...
+    expect(load).toHaveBeenCalledTimes(2)
+    // ...and the next lookup is served from the cache.
+    await getIndex()
+    expect(load).toHaveBeenCalledTimes(2)
   })
 
   it('stores the generation read before the load, so a save during the load is not masked', async () => {
