@@ -28,6 +28,31 @@ export const NAV_LINK_COMPONENT_PATH = `${PACKAGE_NAME}/admin/AssistantNavLink#A
 
 export const DEFAULT_MAX_STEPS = 10;
 
+/**
+ * Cloudflare's cap on one request: "A single request has a maximum of 32 Worker invocations, and
+ * each call to a Service binding counts towards this limit. Subsequent calls will throw an
+ * exception." (https://developers.cloudflare.com/workers/runtime-apis/bindings/service-bindings/#limits).
+ * Every MCP request of a run goes to `/api/mcp` through `ASSISTANT_SELF`, so it counts.
+ */
+export const WORKER_INVOCATIONS_PER_REQUEST = 32;
+
+/**
+ * The MCP requests one run may make, counted as if the whole chain shares the 32: the Worker that
+ * took the turn (1), the conversation's Durable Object (1), then everything the run sends to
+ * `/api/mcp`, with 2 spare. A run connects once (3 requests: `server/discover`,
+ * `subscriptions/listen`, `tools/list`) and each tool call is one more.
+ */
+export const MCP_REQUESTS_PER_RUN = WORKER_INVOCATIONS_PER_REQUEST - 4;
+
+/** MCP requests a run makes to connect, before its first tool call (measured: see the README). */
+export const MCP_SETUP_REQUESTS = 3;
+
+/** The most `maxToolCalls` can be: what fits in {@link MCP_REQUESTS_PER_RUN} after connecting. */
+export const MAX_TOOL_CALLS_LIMIT = MCP_REQUESTS_PER_RUN - MCP_SETUP_REQUESTS;
+
+/** Tool calls one run may make by default (an approved write, run in its resume, counts there). */
+export const DEFAULT_MAX_TOOL_CALLS = 20;
+
 /** Compaction budget (estimated tokens of the transcript sent to the model). */
 export const DEFAULT_MAX_CONTEXT_TOKENS = 64_000;
 

@@ -124,9 +124,25 @@ function isFinalRunFinished(chunk: StreamChunk): boolean {
   return (event.finishReason ?? event.metadata?.tanstack?.finishReason) !== "tool_calls";
 }
 
+/** Run lifecycle events: the ones that carry a `runId`. */
+const RUN_EVENTS = new Set(["RUN_STARTED", "RUN_FINISHED", "RUN_ERROR"]);
+
+/**
+ * The event with the server's run id (#116). The OpenRouter adapter mints its own id for each model
+ * call (`RUN_STARTED.runId` was the provider's, and every `RUN_FINISHED` another one), while stop,
+ * rejoin and the stored run all use the id the endpoint accepted (`X-Run-Id`). One id per run, the
+ * server's, so a script can take the first event's `runId`. `useChat` is unaffected: it attributes
+ * chunks to the run id of its own request, not to the event's.
+ */
+function withServerRunId(chunk: StreamChunk, runId: string): StreamChunk {
+  const event = chunk as { type: string; runId?: unknown };
+  if (!RUN_EVENTS.has(event.type) || event.runId === runId) return chunk;
+  return { ...chunk, runId } as StreamChunk;
+}
+
 /**
  * Pass a turn's stream through, rewriting every `RUN_ERROR` with {@link mapRunError} and turning
- * a thrown error into one. A run ends with exactly one of: its final `RUN_FINISHED`, or one `RUN_ERROR`.
+ * a thrown error into one. Every run event carries the server's run id ({@link withServerRunId}). A run ends with exactly one of: its final `RUN_FINISHED`, or one `RUN_ERROR`.
  * A run the user stopped, at any step, always ends with a `RUN_ERROR` whose code is `stopped`,
  * whatever `chat()` emitted for the abort (it returns silently), and anything after it is dropped.
  */
@@ -143,7 +159,7 @@ export async function* withAssistantErrors(
       const type = (chunk as { type: string }).type;
       if (type === "RUN_ERROR") {
         errored = true;
-        yield mapRunError(chunk as unknown as RunErrorLike, signal.aborted);
+        yield withServerRunId(mapRunError(chunk as unknown as RunErrorLike, signal.aborted), ids.runId);
         continue;
       }
       if (type === "RUN_FINISHED") {
@@ -156,7 +172,7 @@ export async function* withAssistantErrors(
         }
         if (final) finished = true;
       }
-      yield chunk;
+      yield withServerRunId(chunk, ids.runId);
     }
   } catch (error) {
     if (!errored && !finished) {

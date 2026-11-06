@@ -37,7 +37,7 @@ function richTextRules(slugs: string[]): string {
     "- findDocuments shows rich text fields as Markdown, never Lexical JSON.",
     `- To change one, call ${SET_RICH_TEXT_TOOL_NAME} with the document id, the field's data path from the document (e.g. \`layout.2.richText\`, \`layout.3.columns.0.content.1.richText\`, \`caption\`) and the field's whole new Markdown. Read the current value first and change only what was asked; keep the rest word for word.`,
     "- Never put rich text in updateDocument or createDocuments data: those take Lexical JSON. To create a document with rich text, create it without the rich text, then set each field with the Markdown tool.",
-    "- Markdown keeps paragraphs, headings, bold, italic and links to URLs (lists and quotes only where the field allows them). Underline, alignment, indentation, internal links to documents, new-tab links and embedded uploads or relationships are lost: if the tool says a field holds them, tell the editor what would be lost and only pass `allowFormattingLoss: true` once they agree.",
+    "- Markdown keeps paragraphs, headings, bold, italic and links to URLs (lists and quotes only where the field allows them). Links to the site's own documents (internal links) read and write as `[text](payload://<collection>/<id>)`, e.g. `[About us](payload://pages/12)`: keep them as they are, and use that form to link a document. Underline, alignment, indentation, new-tab links and embedded uploads or relationships are lost: if the tool says a field holds them, tell the editor what would be lost and only pass `allowFormattingLoss: true` once they agree.",
   ].join("\n");
 }
 

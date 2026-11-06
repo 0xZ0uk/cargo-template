@@ -128,10 +128,15 @@
     // namespaces, rate-limit counters and Analytics Engine dataset. `pnpm run deploy:staging`
     // builds with CLOUDFLARE_ENV=staging; see README > Deploying to staging. Wrangler doesn't
     // inherit bindings into an environment, so every binding above is repeated here (same
-    // binding names, `-staging` resources). `exports`, `triggers` and `observability` are inherited.
+    // binding names, `-staging` resources). `exports` and `observability` are inherited.
     "staging": {
       "name": "cargo-template-staging",
       "workers_dev": true,
+      // No scheduled jobs on staging (#116): `triggers` would be inherited, so the empty list
+      // overrides it, and a deploy clears any schedule the Worker had. Staging is for trying
+      // deploy-only behaviour by hand, and a cron would run the due Payload jobs on test data every
+      // 5 minutes. To try a scheduled job there, put the cron back for that deploy.
+      "triggers": { "crons": [] },
       "d1_databases": [
         {
           "binding": "D1",

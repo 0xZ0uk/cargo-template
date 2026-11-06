@@ -46,6 +46,7 @@ No collections, globals or injected fields. With `enabled: false` the config is 
 | `apiKey` | OpenRouter key. A missing key **warns and leaves the assistant unconfigured**: the endpoints (a turn answers 503 `not_configured`) and the view (a notice) are still registered, so the schema, import map and admin shape never depend on a secret. |
 | `instructions` | Added to the system prompt (what the site is, house style…), or `({ req }) => string`. See [System prompt](#system-prompt). |
 | `maxSteps` | Most model calls per run (each tool round trip is one): `maxIterations(maxSteps)`. Positive integer, default 10. |
+| `maxToolCalls` | Most tool calls per run, parallel calls included. Default 20, at most 25 (throws otherwise): each one is a Worker invocation, and Cloudflare allows 32 per request. See [Worker invocation limit](#worker-invocation-limit-116). |
 | `maxContextTokens` | Compaction budget, in estimated tokens of what is sent to the model: past it, old tool results are cleared, then the oldest turns dropped (the stored transcript is untouched). Default 64,000. |
 | `appTitle` | OpenRouter attribution (`X-OpenRouter-Title`). Default "Payload admin assistant". `HTTP-Referer` is the site's URL. |
 | `toolFilter(tool)` | Which MCP tools the model sees, after the built-in filter (auth tools and `getUploadInstructions` are always dropped). Gets the raw MCP tool (`name`, `description`, `annotations`). Default: all the rest. By name only: to hide deletes for one collection, use plugin-mcp's own `collections.<slug>.tools`. |
@@ -70,7 +71,7 @@ serialised request body, not the options object.
 | `./admin/AssistantView` | The admin view (a server component wrapped in `DefaultTemplate`; the import-map target). |
 | `./admin/AssistantNavLink` | The nav link (a server component that asks `access`; the import-map target). |
 | `./client` | The chat UI, client components only (`"use client"`): `AssistantChat`, `AssistantNavLinkClient`, `ApprovalCard` (the default), `ApprovalControl` (minimal), `pendingApprovalFrom`, `answerInterrupt`, the `PendingApproval` / `ApprovalRenderer` / `ApprovalDecision` types and the proposal types (`ApprovalProposal`, `FieldChange`…). Its CSS is `./client.css`, imported by `client.js`. |
-| `./mcp` | plugin-mcp items for rich text as Markdown (#67): `withMarkdownRichText`, `setRichTextFromMarkdownTool`, `richTextAsMarkdown`, `SET_RICH_TEXT_TOOL_NAME`, `markdownLosses`, `unsupportedMarkdown`, `RichTextPathError`. Needs `@payloadcms/plugin-mcp` (an optional peer: only this entry imports it). See [Rich text as Markdown](#rich-text-as-markdown-67). |
+| `./mcp` | plugin-mcp items for rich text as Markdown (#67): `withMarkdownRichText`, `setRichTextFromMarkdownTool`, `richTextAsMarkdown` (`findDocuments`), `richTextResultsAsMarkdown` (other results) and `richTextSchemaAsMarkdown` / `describeRichTextAsMarkdown` (`getCollectionSchema`, #116), `SET_RICH_TEXT_TOOL_NAME`, `markdownLosses`, `unsupportedMarkdown`, `RichTextPathError`, `internalLinkUrl` / `parseInternalLinkUrl` / `INTERNAL_LINK_SCHEME` (`payload://<collection>/<id>`). Needs `@payloadcms/plugin-mcp` (an optional peer: only this entry imports it). See [Rich text as Markdown](#rich-text-as-markdown-67). |
 | `./do` | The Durable Object classes `AssistantConversation` and `AssistantConversationIndex`, plus their stores. Workerd-only (`cloudflare:workers`): re-export them from the Worker entry, never import this entry from `payload.config.ts` or the admin bundle. |
 
 The endpoints load the AI runtime with `await import('./server/chat')`, and tsup code-splits it
@@ -178,7 +179,7 @@ object there is no Worker `req` and no `handleEndpoints`. Options:
 
 | | Auth / CSRF | Cost | Reconnect |
 | --- | --- | --- | --- |
-| **Service binding to the same Worker** (`ASSISTANT_SELF`) — recommended | Same path as an external MCP client: every POST re-authenticates from the forwarded `Cookie` (plugin-mcp runs `payload.auth()` per request) and Payload's CSRF check sees the admin's `Origin`. The cookie lives in the object's memory for the run only, never in storage. | No network hop and no public URL; a service-binding call is a subrequest (well within the 1,000 per object event) and isn't billed as a request. Runs in a Worker isolate that usually has Payload warm already. | Unaffected: the run lives in the object. |
+| **Service binding to the same Worker** (`ASSISTANT_SELF`) — recommended | Same path as an external MCP client: every POST re-authenticates from the forwarded `Cookie` (plugin-mcp runs `payload.auth()` per request) and Payload's CSRF check sees the admin's `Origin`. The cookie lives in the object's memory for the run only, never in storage. | No network hop and no public URL; a service-binding call is a subrequest and isn't billed as a request, but it is a **Worker invocation, and a request may make 32**: see [Worker invocation limit](#worker-invocation-limit-116). Runs in a Worker isolate that usually has Payload warm already. | Unaffected: the run lives in the object. |
 | Initialise Payload inside the object | Same auth via `handleEndpoints`, but the plugin would have to import the app's config (a cycle) or have it injected. | A second Payload init (D1, config, every collection) in the object's isolate: seconds of cold start and memory per object isolate. | Unaffected. |
 | `chat()` in the Worker, object only for storage + `waitUntil` | Simplest (the spike's in-process fetch). | Cheapest. | Broken for long runs: `waitUntil` ends 30 s after the response; the spike showed a mid-run disconnect killing the producer. Rejected by the owner. |
 
@@ -190,6 +191,35 @@ and `Origin` itself, so nothing upstream can swap the identity. **Prototype:**
 the test Worker's `/api/mcp` (gated like plugin-mcp + Payload `csrf`): with the admin's cookie and
 origin it lists and calls the tool and both headers arrive intact; without the cookie, or with a
 foreign origin, the server advertises no tools (`-32601`, the "not logged in" case #61 maps).
+
+### Worker invocation limit (#116)
+
+Cloudflare: "A single request has a maximum of 32 Worker invocations, and each call to a Service
+binding counts towards this limit. Subsequent calls will throw an exception."
+([Service bindings › Limits](https://developers.cloudflare.com/workers/runtime-apis/bindings/service-bindings/#limits)).
+Every MCP request of a run goes through `ASSISTANT_SELF`, so it is one. The docs don't say whether
+the request into a Durable Object starts a new count, so the plugin assumes the whole chain shares
+one: the Worker that took the turn (1), the conversation object (1), then the run's MCP requests.
+
+**What a run sends**, measured (`tests/integration/tools.test.ts`): one MCP session per run, opened
+on the first `tools()` and closed when the run ends. Connecting is 3 requests (`server/discover`,
+`subscriptions/listen`, `tools/list`); each tool call is 1 more; closing sends none. Tool calls
+never reconnect. So a run makes 2 + 3 + its tool calls invocations, and each POST to
+`/api/assistant/chat` (a turn, or an approval resume) is a new request with a new count.
+
+**The cap**, per run, in the tool source (`createPayloadToolSource`):
+
+- `maxToolCalls` (default 20, at most 25): parallel calls in one step count one each. Past it a call
+  sends nothing and returns a tool error: "Tool call limit reached: this turn already made 20 tool
+  calls… Do not call any more tools in this turn: answer with what you have, say what is left to
+  do, and tell the editor to send another message to continue." The model answers; the editor's
+  next message is a new run with a fresh count. The system prompt asks for few, broad reads.
+- `maxRequests` (`MCP_REQUESTS_PER_RUN`, 28 = 32 − the Worker and the object − 2 spare): every MCP
+  request, connecting included, so a reconnect or anything unexpected fails with a clear tool error
+  instead of the platform's exception.
+
+At the defaults a run stays at 2 + 3 + 20 = 25 invocations. `maxSteps` (10) bounds model calls,
+not tool calls: before the cap, 10 steps of 3 parallel calls were 2 + 3 + 30 = 35 invocations.
 
 ### The backend interface
 
@@ -277,7 +307,7 @@ Built on the Worker per turn (`buildSystemPrompt`, `src/server/instructions.ts`)
    with that tool (never Lexical JSON in create/update data), and what Markdown loses. Plus, among the
    conventions: read with `draft: true` when discussing or editing a draft (#116).
 5. The app's `instructions`.
-6. `payloadToolsSystemPrompt`: `getConfigInfo` for slugs, `select` + small `limit` + `depth: 0`, `_status`, approvals, access errors.
+6. `payloadToolsSystemPrompt`: `getConfigInfo` for slugs, `select` + small `limit` + `depth: 0`, few tool calls per turn (the cap), `_status`, approvals, access errors.
 
 ## Endpoints: the contract for the admin UI
 
@@ -349,12 +379,18 @@ Body: what `useChat`'s `fetchServerSentEvents(url)` sends (AG-UI `RunAgentInput`
 - Response: `200 text/event-stream`, headers `X-Run-Id`, `X-Thread-Id`. Each event is
   `id: <opaque offset>` + `data: <AG-UI chunk JSON>`; keep the last `id` to rejoin. The first event
   is TanStack's `CUSTOM run.accepted`.
+- **The run id** (#116): the body's `runId`, or one the server mints. It is `X-Run-Id`, and every
+  `RUN_STARTED` and `RUN_FINISHED` carries it (`withAssistantErrors` rewrites the provider's own
+  per-call id, which OpenRouter's adapter puts there), so a script can take it from the first
+  event as well as from the header. Stop (`POST /chat/stop`) and rejoin (`GET /chat?runId=`) take
+  that id. `RUN_ERROR` has no `runId` (AG-UI). `useChat` is unaffected either way: it attributes
+  chunks to its own request's run id.
 
 SSE events (AG-UI, as `@tanstack/ai` emits them; the ones the UI cares about):
 
 | `type` | |
 | --- | --- |
-| `RUN_STARTED` | `{ threadId, runId }`. |
+| `RUN_STARTED` | `{ threadId, runId }`. `runId` is the server's run id, the same as `X-Run-Id`: stop and rejoin take it (#116). |
 | `TEXT_MESSAGE_START` / `TEXT_MESSAGE_CONTENT` / `TEXT_MESSAGE_END` | The answer, `delta` by `delta`, per `messageId`. |
 | `TOOL_CALL_START` / `TOOL_CALL_ARGS` / `TOOL_CALL_END` | A tool call (`toolCallName`, streamed args). |
 | `TOOL_CALL_RESULT` | `{ toolCallId, content }`. An access denial is a result whose content is an error, not a failed run: an approved write can still come back denied. |
@@ -557,7 +593,7 @@ chat({
 
 | Export | |
 | --- | --- |
-| `createPayloadToolSource({ endpoint, headers, dispatch, toolFilter?, logger? })` | The source `chat({ mcp })` takes (`tools()` + `close()`). Connects lazily on the first `tools()`. Holds the user's credentials: one per run, never in module state. |
+| `createPayloadToolSource({ endpoint, headers, dispatch, toolFilter?, maxToolCalls?, maxRequests?, logger? })` | The source `chat({ mcp })` takes (`tools()` + `close()`). Connects lazily on the first `tools()`. Holds the user's credentials: one per run, never in module state. `maxToolCalls` / `maxRequests` cap the run (`AssistantToolCallLimitError`, `AssistantRequestLimitError`, read by the model as tool errors). |
 | `McpDispatch` | `(request: Request) => Promise<Response>`: how an MCP request reaches `/api/mcp`. The request already carries the auth headers; a dispatcher must not add or drop any. |
 | `inProcessDispatch(config, { payloadInstanceCacheKey? })` (`inProcess.ts`) | The dispatcher where Payload lives: `handleEndpoints({ config, path: '/api/mcp', request })`, no network hop. |
 | `authHeadersFrom(request)` | `cookie`, `authorization` and `origin` from the admin request; `origin` falls back to the request's own (Payload's CSRF check needs it once `serverURL`/`csrf` is set, and an internal request has no `Sec-Fetch-Site`). |
@@ -597,8 +633,9 @@ Anything else (endpoint down, 500, unreachable) → `AssistantToolDiscoveryError
 no tools.
 
 **Cost.** Each run connects once (`server/discover`, `subscriptions/listen`, `tools/list`: ~75 ms
-warm on workerd in the spike), and each tool call is another in-process POST that
-re-authenticates. plugin-mcp refuses the client's `subscriptions/listen` and logs an error for
+warm on workerd in the spike), and each tool call is another POST that re-authenticates. On
+Workers each one is a Worker invocation; `maxToolCalls` and `maxRequests` keep a run under
+Cloudflare's 32 ([Worker invocation limit](#worker-invocation-limit-116)). plugin-mcp refuses the client's `subscriptions/listen` and logs an error for
 it on every connection; harmless, upstream noise.
 
 ## Rich text as Markdown (#67)
@@ -647,21 +684,51 @@ markdown, draft?, locale?, allowFormattingLoss? }`.
 groups, tabs, arrays and blocks; Lexical found elsewhere, e.g. in populated relationships, with the
 root editor's), and the response text is rebuilt in plugin-mcp's format, since `findDocuments`
 prints the documents itself. A line tells the model to write rich text with the tool. **This changes
-the output for external MCP clients too**, on purpose (one tool layer, #58). Other tools
-(`updateDocument`'s result, versions) still return Lexical JSON; `getCollectionSchema` still
-describes rich text as Lexical JSON, so the system prompt carries the rule.
+the output for external MCP clients too**, on purpose (one tool layer, #58).
 
-**Fidelity.** Markdown keeps paragraphs, headings, bold, italic, links to URLs and, where the field's
-editor has them, lists, quotes, strikethrough and inline code. It can't keep underline,
-sub/superscript, highlight, text styles, alignment, indentation, internal links (to documents), links
-opening in a new tab, or upload/relationship/block nodes (`markdownLosses`). **Decision: refuse, not
-warn.** If the field holds any of them, the tool writes nothing and says what would be lost; the
-system prompt tells the model to tell the editor and call again with `allowFormattingLoss: true` only
-once they agree, and the card repeats it. A warning alone would only reach the model after the loss.
-The other direction: Markdown the field's editor doesn't support (a heading level, lists) is kept as
-literal text by Lexical; `unsupportedMarkdown` finds it in the converted state, and both the tool
-result and the card say so. Blocks embedded in rich text (`BlocksFeature`) are out of scope: no
-editor in `apps/web` enables it.
+**Other results and the schema (#116).** Every plugin-mcp built-in tool takes an `overrideResponse`
+per collection, so `withMarkdownRichText` sets one on each tool that prints documents:
+`richTextResultsAsMarkdown(slug)` on `updateDocument` (whose result is only `{ id }` unless
+`returning: true`), `createDocuments`, `duplicateDocument`, `deleteDocuments`, `findVersions`,
+`findVersionByID` and `restoreVersion`. It converts the documents in each fenced JSON block (a page's
+`docs`, a create result's `{ doc, index }` rows, a version's `version`), leaves the rest of the text
+and any "use this schema" block alone, and converts the internal `doc` and `structuredContent` too.
+`getCollectionSchema` gets `richTextSchemaAsMarkdown()`: each rich text field's Lexical JSON Schema
+(the `{ root: { type: "root", … } }` node and the `$defs` only it used) becomes
+`{ description: "Rich text, read as Markdown (findDocuments). Write it only with
+setRichTextFromMarkdown …, never in createDocuments or updateDocument data." }`. The field stays
+listed, so the model knows it exists; the schema shrinks (the Lexical node definitions were most of
+it). The system prompt keeps its rule as well. An entry's own `overrideResponse` on those tools is
+replaced; a tool disabled with `false` stays disabled. Globals aren't covered (`withMarkdownRichText`
+is per collection, and `apps/web` has no global with rich text).
+
+**Fidelity.** Markdown keeps paragraphs, headings, bold, italic, links to URLs, internal links (below)
+and, where the field's editor has them, lists, quotes, strikethrough and inline code. It can't keep
+underline, sub/superscript, highlight, text styles, alignment, indentation, links opening in a new
+tab, internal links with no target document, or upload/relationship/block nodes (`markdownLosses`).
+
+**Decision: refuse, not warn.** If the field holds any of them, the tool writes nothing and says
+what would be lost; the system prompt tells the model to tell the editor and call again with
+`allowFormattingLoss: true` only once they agree, and the card repeats it. A warning alone would only
+reach the model after the loss. The other direction: Markdown the field's editor doesn't support (a
+heading level, lists) is kept as literal text by Lexical; `unsupportedMarkdown` finds it in the
+converted state, and both the tool result and the card say so. Blocks embedded in rich text
+(`BlocksFeature`) are out of scope: no editor in `apps/web` enables it.
+
+**Internal links (#116)** read and write as `[text](payload://<collection>/<id>)`, e.g.
+`[About us](payload://pages/12)`. Payload's link transformer exports an internal link through the
+LinkFeature's `internalDocToHref` (an empty href without one: the target was lost) and sanitises
+any other URL it doesn't know to `https://`, while its import keeps a URL as written. So
+`convertersOf` wraps each field's converters: before export, every internal link with a target
+becomes a custom link to a placeholder anchor (`#payload-internal-link-<n>`, which the sanitiser
+accepts), replaced in the Markdown by its `payload://` URL; after import, a link to
+`payload://<collection>/<id>` becomes `{ linkType: "internal", doc: { relationTo, value } }` again
+(digits become a number id, as D1 ids are). Why a pseudo-URL rather than the document's site path:
+it's stable, needs no per-collection URL scheme, and maps back without a lookup. Every conversion
+goes through it (reads, the write tool, the approval card), so an edit keeps the links it didn't
+touch, and the model can add one. `setRichTextFromMarkdown` refuses (writes nothing) when a link
+names a collection that doesn't exist or a document the user can't read, and says which. In the
+chat, a `payload://` link the model writes in an answer opens that document's edit view.
 
 **Approval card.** `buildProposal` special-cases the tool: one `richText` change at the path's label
 (`Layout › 3 · Rich text › Rich Text`), before = the current value as Markdown, after = the proposed
@@ -729,6 +796,11 @@ The reply is over when the stream ends (`isLoading`), not at a `RUN_FINISHED` (o
 
 ### What it shows
 
+- **A new conversation** (`EmptyConversation`): "What can I help with?", what the assistant does,
+  and three example prompts (Payload `Button`s) that fill the composer without sending. Shown at
+  once for a thread the view just created: `ShimmerEffect` placeholders only while an existing
+  conversation loads (`chatBodyState`, #116), since a fresh id has nothing stored. No examples while
+  the assistant isn't configured.
 - **Text**: Markdown via `TextPart` from `@tanstack/ai-react/ui`, i.e. `@tanstack/markdown`
   0.0.13, which `ai-react` already depends on (no new package): raw HTML is escaped, executable
   URLs (`javascript:`, `data:`…) are dropped. Links to admin paths, or to admin URLs on this origin,

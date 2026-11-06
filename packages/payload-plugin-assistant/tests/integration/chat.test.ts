@@ -40,6 +40,21 @@ let homeId: number | string;
 let fake = fakeText();
 let settingsSeen: TurnSettings[] = [];
 let rateLimitAllows = true;
+/** Like OpenRouter: the adapter mints its own run id per model call, ignoring the server's. */
+let providerRunIds = false;
+const withProviderRunIds = <T extends object>(adapter: T): T =>
+  new Proxy(adapter, {
+    get(target, prop) {
+      const value = Reflect.get(target, prop, target) as unknown;
+      if (prop !== "chatStream" || typeof value !== "function") return typeof value === "function" ? value.bind(target) : value;
+      return async function* (options: unknown) {
+        const generation = `gen-${crypto.randomUUID()}`;
+        for await (const chunk of (value as (o: unknown) => AsyncIterable<Record<string, unknown>>).call(target, options)) {
+          yield "runId" in chunk ? { ...chunk, runId: generation } : chunk;
+        }
+      };
+    },
+  });
 const script = (steps: FakeResponseStep[], options: FakeTextOptions<string> = {}) => {
   fake = fakeText(options);
   fake.setResponses(steps);
@@ -72,7 +87,7 @@ const boot = async (extra: Partial<AssistantPluginOptions> = {}) => {
         {
           createAdapter: (settings) => {
             settingsSeen.push(settings);
-            return fake;
+            return providerRunIds ? withProviderRunIds(fake) : fake;
           },
           dispatch: (request) => inProcessDispatch(config, { payloadInstanceCacheKey: KEY })(request),
         }
@@ -134,6 +149,7 @@ afterAll(async () => {
 beforeEach(() => {
   settingsSeen = [];
   rateLimitAllows = true;
+  providerRunIds = false;
 });
 
 describe("checks before a turn", () => {
@@ -395,5 +411,36 @@ describe("a run outlives its viewer", () => {
     // Not live any more; and another user can't stop anything.
     expect((await (await call("POST", "/assistant/chat/stop", { body: { threadId, runId } })).json()).stopped).toBe(false);
     expect((await (await call("POST", "/assistant/chat/stop", { as: "other", body: { threadId, runId } })).json()).stopped).toBe(false);
+  });
+
+  it("run events carry the server's run id, so the first event's runId stops and rejoins (#116)", async () => {
+    providerRunIds = true;
+    const threadId = newThread();
+    script([{ toolCalls: [{ name: "getConfigInfo", arguments: {} }] }, { text: "word ".repeat(400) }], { tokensPerSecond: 100 });
+    const res = await send(threadId, "Look around, then write a lot"); // no runId: the server mints it
+    const events: Awaited<ReturnType<typeof readEvents>> = [];
+    const reader = (async () => {
+      for (const event of await readEvents(res)) events.push(event);
+    })();
+    // What a script sees first: RUN_STARTED, before any header is read.
+    const started = (await readEvents(await call("GET", `/assistant/chat?threadId=${threadId}&offset=-1&runId=${res.headers.get("X-Run-Id")}`), 1))[0]!.data;
+    expect(started.type).toBe("RUN_STARTED");
+    const runId = started.runId as string;
+    expect(runId).toBe(res.headers.get("X-Run-Id"));
+    expect(runId).not.toMatch(/^gen-/);
+
+    // Rejoin with it, then stop with it.
+    const rejoin = await call("GET", `/assistant/chat?threadId=${threadId}&offset=-1&runId=${runId}`);
+    expect(rejoin.status).toBe(200);
+    const rejoined = readEvents(rejoin);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect((await (await call("POST", "/assistant/chat/stop", { body: { threadId, runId } })).json()).stopped).toBe(true);
+    await reader;
+    const replay = await rejoined;
+    expect(replay.at(-1)!.data).toMatchObject({ type: "RUN_ERROR", code: "stopped" });
+    // RUN_STARTED and every RUN_FINISHED (one per model call) carry it; AG-UI's RUN_ERROR has no runId.
+    const runEvents = events.filter((e) => ["RUN_STARTED", "RUN_FINISHED"].includes(e.data.type as string));
+    expect(runEvents.map((e) => e.data.type)).toEqual(["RUN_STARTED", "RUN_FINISHED"]); // the tool step, then stopped
+    for (const e of runEvents) expect(e.data.runId).toBe(runId);
   });
 });

@@ -88,6 +88,10 @@ describe("assistantPlugin", () => {
     expect(run({ maxSteps: 0 })).toThrow(/maxSteps/);
     expect(run({ maxSteps: -1 })).toThrow(/maxSteps/);
     expect(run({ maxSteps: 1.5 })).toThrow(/maxSteps/);
+    // Cloudflare's 32 Worker invocations per request (#116): at most 25 tool calls per run.
+    expect(run({ maxToolCalls: 0 })).toThrow(/maxToolCalls/);
+    expect(run({ maxToolCalls: 26 })).toThrow(/from 1 to 25.*32 per request/);
+    expect(run({ maxToolCalls: 25 })).not.toThrow();
   });
 });
 
@@ -98,6 +102,7 @@ describe("normalizeOptions", () => {
       configured: true,
       defaultModel: "model/a",
       maxSteps: 10,
+      maxToolCalls: 20,
       conversations: { kind: "memory" },
     });
   });

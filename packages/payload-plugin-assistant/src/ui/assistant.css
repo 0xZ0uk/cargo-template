@@ -387,6 +387,16 @@
   text-align: center;
 }
 
+.assistant-chat__examples {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--spacer-1);
+  margin: var(--spacer-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
 .assistant-chat__approvals,
 .assistant-chat__notice {
   display: flex;

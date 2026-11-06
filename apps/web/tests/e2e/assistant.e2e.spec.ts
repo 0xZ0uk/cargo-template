@@ -62,6 +62,28 @@ test.describe('Assistant', () => {
     await cleanupTestUser()
   })
 
+  test('a new conversation shows the empty state at once, never placeholders (#116)', async () => {
+    // Record whether the loading placeholders ever appear, from the first paint on.
+    await page.addInitScript(() => {
+      const w = window as unknown as { __assistantLoadingSeen?: boolean }
+      w.__assistantLoadingSeen = false
+      new MutationObserver(() => {
+        if (document.querySelector('.assistant-chat__loading')) w.__assistantLoadingSeen = true
+      }).observe(document, { childList: true, subtree: true })
+    })
+    await page.goto('/admin/assistant')
+    await expect(page.getByRole('heading', { name: 'What can I help with?' })).toBeVisible()
+    await page.getByRole('button', { name: 'Which documents are still drafts?' }).click()
+    await expect(page.getByLabel('Message the assistant')).toHaveValue(
+      'Which documents are still drafts?',
+    )
+    expect(
+      await page.evaluate(
+        () => (window as unknown as { __assistantLoadingSeen?: boolean }).__assistantLoadingSeen,
+      ),
+    ).toBe(false)
+  })
+
   test('sends a message: a tool call row, then the answer', async () => {
     await expect(page.getByRole('link', { name: 'Chat' }).first()).toBeAttached()
     await send(

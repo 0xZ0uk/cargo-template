@@ -2,6 +2,7 @@ import { chat, maxIterations, type AnyTextAdapter, type StreamChunk } from "@tan
 import { clearToolResults, composeStrategies, evictOldest, withCompaction } from "@tanstack/ai-compaction";
 import { createOpenRouterText } from "@tanstack/ai-openrouter";
 import { withPersistence } from "@tanstack/ai-persistence";
+import { DEFAULT_MAX_TOOL_CALLS, MCP_REQUESTS_PER_RUN } from "../constants";
 import { OPENROUTER_PROVIDER } from "../utils/provider";
 import type { ChatTurnBody, TurnContext, TurnRunner, TurnSettings } from "../conversations/types";
 import { createPayloadToolSource, payloadToolsMcpOptions } from "../tools/payloadToolSource";
@@ -52,7 +53,9 @@ export const defaultAdapter: CreateAdapter = (settings) =>
  *   names the endpoint admitted. Write tools pause with an approval interrupt.
  * - History: the conversation's stored transcript (`withPersistence`); the body only adds the new
  *   user message, or `resume` decisions for pending approvals.
- * - Limits: `maxIterations(maxSteps)`, compaction past `maxContextTokens`, the stop signal.
+ * - Limits: `maxIterations(maxSteps)`, `maxToolCalls` tool calls and {@link MCP_REQUESTS_PER_RUN} MCP
+ *   requests (Cloudflare's 32 Worker invocations per request), compaction past `maxContextTokens`,
+ *   the stop signal.
  * - Provider routing is fixed: `{ requireParameters: true, dataCollection: 'deny' }`, camelCase.
  * - Policies (#68, `turnPolicyMiddleware`): each model call's usage goes to `recordUsage`, tool
  *   results lose the redacted fields (`settings.redact`) before the model sees them, and each
@@ -71,6 +74,9 @@ export function createTurnRunner(options: TurnRunnerOptions = {}): TurnRunner {
       endpoint: settings.mcpEndpoint,
       headers: { cookie: input.auth.cookie, origin: input.auth.origin },
       dispatch: (request) => mcpFetch(request),
+      // Cloudflare's 32 Worker invocations per request: every MCP request is one (README).
+      maxToolCalls: settings.maxToolCalls ?? DEFAULT_MAX_TOOL_CALLS,
+      maxRequests: MCP_REQUESTS_PER_RUN,
       ...(allowed ? { toolFilter: (tool) => allowed.has(tool.name) } : {}),
     });
 
