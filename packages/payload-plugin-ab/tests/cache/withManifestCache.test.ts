@@ -90,6 +90,37 @@ describe("withManifestCache", () => {
     expect(await cached.read("/a", payload)).toEqual(b);
   });
 
+  it.each(["write", "clear"] as const)(
+    "doesn't cache a read that began during a %s and returned the old value",
+    async (op) => {
+      const { storage, cached, rows } = setup({ "/a": a });
+      let releaseStorage!: () => void;
+      const held = new Promise<void>((r) => (releaseStorage = r));
+      storage.write.mockImplementationOnce(async (path: string, variants: V[]) => {
+        await held;
+        rows.set(path, variants);
+      });
+      storage.clear.mockImplementationOnce(async (path: string) => {
+        await held;
+        rows.delete(path);
+      });
+      let releaseRead!: () => void;
+      storage.read.mockImplementationOnce(async () => {
+        await new Promise<void>((r) => (releaseRead = r));
+        return a; // queried before the write committed, answered after it
+      });
+
+      const pending = op === "write" ? cached.write("/a", b, payload) : cached.clear("/a", payload);
+      const slowRead = cached.read("/a", payload);
+      releaseStorage();
+      await pending;
+      releaseRead();
+      expect(await slowRead).toEqual(a);
+      expect(await cached.read("/a", payload)).toEqual(op === "write" ? b : null);
+      expect(storage.read).toHaveBeenCalledTimes(1);
+    }
+  );
+
   it("doesn't cache a failed read, and falls back to storage when the cache throws", async () => {
     const { storage, cached } = setup({ "/a": a });
     storage.read.mockRejectedValueOnce(new Error("timeout"));

@@ -50,6 +50,8 @@ export function withManifestCache<TVariantData extends object>(
         await attempt(() => cache.delete(path));
         throw error;
       }
+      // Again once storage is done: a read that began during the write may hold the old value.
+      bump(path);
       await attempt(() => cache.set(path, variants, ttl));
     },
 
@@ -61,6 +63,7 @@ export function withManifestCache<TVariantData extends object>(
         await attempt(() => cache.delete(path));
         throw error;
       }
+      bump(path);
       await attempt(() => cache.set(path, null, ttl));
     },
   };
