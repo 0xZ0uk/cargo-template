@@ -914,35 +914,67 @@ conversation's Durable Object (or the Node process with the in-memory backend).
 ### Redaction
 
 - **Defaults.** Every auth collection of the config hides `DEFAULT_AUTH_REDACTIONS`: `email`,
-  `apiKey`, `apiKeyIndex`, `enableAPIKey`, `sessions`, `salt`, `hash`, `resetPasswordToken`,
-  `resetPasswordExpiration`, `_verificationToken`, `loginAttempts`, `lockUntil` (some of which
-  Payload strips already). `redact` adds to them. The endpoint resolves the map and sends it with
-  the turn (`settings.redact`).
+  `apiKey`, `apiKeyIndex`, `apiKeyLast4`, `enableAPIKey`, `sessions`, `salt`, `hash`,
+  `resetPasswordToken`, `resetPasswordExpiration`, `_verificationToken`, `loginAttempts`,
+  `lockUntil` (some of which Payload strips already). `redact` adds to them. The endpoint resolves
+  the policy from the running (sanitized) config, so auth collections added by later plugins count
+  too, and sends it with the turn (`settings.redact`, `settings.relations`).
 - **Paths.** Dotted field names (`profile.phone`); arrays and blocks rows are walked implicitly
-  (`layout.trackingId` drops it from every row). Documents are found at the top of a result and
-  inside `docs`, `doc`, `version` (the versions tools) and `result`. Copies, never mutations.
+  (`layout.trackingId` drops it from every row). Documents of the call's collection are found at
+  the top of a result and inside `docs`, `doc`, `version` and `parent` (the versions tools) and
+  `result`. Copies, never mutations.
+- **Populated relations.** A relationship, upload or join populated with `depth > 0` is redacted
+  with the paths of the collection it points to, not its parent's: Payload 4's `createdBy` /
+  `updatedBy` (on every collection, polymorphic `{ relationTo, value }` to the auth collections)
+  lose the user's email like a read of `users` would. `relationMapOf` reads every collection's and
+  global's relationship, upload and join fields from the sanitized config (through groups, named
+  tabs, arrays and blocks, inline or by reference; `relationTo` single, polymorphic or `hasMany`;
+  joins' `{ docs }`) and keeps those that lead to a redacted field, directly or through other
+  relations (a page's `hero` → `media` → `createdBy` → `users`). Nested documents are followed
+  recursively, at most 8 levels deep; a document past that is cut down to its id. Any polymorphic
+  `{ relationTo, value: {…} }` elsewhere (a Lexical relationship or upload node, a custom tool's
+  result, a tool without a `slug`) is redacted by its `relationTo` too.
+- **Queries on hidden fields are refused.** A call whose `where` (through `and` / `or`), `sort`,
+  `select` (fields turned on) or `findDistinct` `field` names a redacted field, directly or
+  through a relation (`createdBy.email`, `hero.createdBy.email`), doesn't run: `onBeforeToolCall`
+  answers with a tool error saying the field is hidden, so the model can't probe a value by
+  filtering, counting or ordering on it. `findDistinct` on a redacted field is refused rather
+  than answered with empty values, so the model doesn't conclude there are none (and its rows are
+  keyed by the literal dotted path, which the document walker wouldn't match). A write is checked
+  when it is applied, since `chat()` asks no hook before the approval: its card shows a notice
+  that it will be refused, and if approved anyway it is refused (and not audited).
 - **Tool results → model.** `onAfterToolCall` returns `replaceResult` with the redacted result, so
   the model, the stream (and its log) and the stored transcript all get the same redacted value.
   plugin-mcp answers in text, so every JSON object in the text (fenced or not; `findDocuments`
   with rich text as Markdown included) is parsed, redacted and written back; the text around it
-  is untouched. The paths are the ones of the call's `slug` argument.
+  is untouched. Checked against every plugin-mcp result shape: `findDocuments` (by id and by
+  `where`), `updateDocument` and `deleteDocuments` (by id and by `where`), `createDocuments`
+  (`{ docs: [{ doc }], errors }`), `duplicateDocument`, `findVersions`, `findVersionByID`,
+  `restoreVersion`, `updateGlobal` and `findDistinct` (`{ values }`).
 - **Stored messages.** The turn's message store also redacts every tool message on save
   (`redactedMessageStore`), whatever put it there.
 - **Approval cards.** The documents read for a diff (the current document, the version to
-  restore, the documents a `where` matches) lose the redacted fields first, so their current
-  values never show. Values the model proposes to write are shown: it authored them.
-- **Limits.** A relationship populated with `depth > 0` is redacted with its parent collection's
-  paths, not its own (the system prompt asks for `depth: 0`). A `where` on a redacted field still
-  runs (the model could probe a value by querying it).
+  restore, the documents a `where` matches) lose the redacted fields first, populated relations
+  included, so their current values never show. Values the model proposes to write are shown: it
+  authored them.
+- **Limits.** Free text is not redacted: an error message that quotes a value (a validation error
+  echoing what was sent) passes through, and so does a redacted value the user types into the chat.
 
 ### Audit log
 
-- **What.** One `AssistantAuditEvent` per successful call of a tool that needs approval (a write):
-  `userKey`, `userId`, `tool`, `collection` (the call's `slug`), `documentId` (the call's `id`, or
-  the created document's from the result; `""` for a write by `where`), `conversationId`, `runId`,
-  `model`, `timestamp`. No content: versions hold the history. Reads don't need approval; a rejected
-  approval never runs the tool (`chat()` calls no hook for it); a call that failed (an access error
-  at apply time) has `ok: false`. None of those are logged.
+- **What.** One `AssistantAuditEvent` per document a successful call of a tool that needs approval
+  (a write) changed: `userKey`, `userId`, `tool`, `collection` (the call's `slug`), `documentId`,
+  `conversationId`, `runId`, `model`, `timestamp`. No content: versions hold the history. Reads
+  don't need approval; a rejected approval never runs the tool (`chat()` calls no hook for it); a
+  call that failed (an access error at apply time) has `ok: false`; a call refused for a hidden
+  field never ran. None of those are logged.
+- **Document ids** (`auditDocumentIds`), never a wrong one: the call's `id` argument; for
+  `duplicateDocument` and `restoreVersion`, the document written (the copy, the restored
+  document), not the `id` argument (the source, the version); for a write by `where` or a create,
+  one event per id plugin-mcp lists in its result (`Updated documents:` / `Deleted documents:`, the
+  `docs` of `createDocuments`), ignoring its `Errors:` section (documents not changed). A write by
+  `where` that changed nothing ("Updated: 0 documents") gives no event. `""` for a global, or a
+  custom tool whose result has no ids.
 - **Where.** The sink is the app's: the plugin never reads `env`. With the Durable Objects, turns
   run in the conversation object, which has no plugin options, so the object asks its own
   `auditSink()` (default: none), and the app exports a subclass that returns one (see
@@ -978,8 +1010,11 @@ usage and audit helpers; `tests/integration/policies.test.ts` (#68): budgets rec
 402 before any model call, per user, reset at midnight UTC, recorded after a disconnect, approving
 refused but rejecting let through over the cap with one closing model call; one audit event per
 approved write and none for reads, rejections or failures, also past `maxToolCalls` (only the calls
-that ran); redacted fields absent from what the model sees, the stream, the stored transcript and
-the approval cards, including an `updateDocument` result with rich text as Markdown). `vitest.workerd.config.ts` runs `tests/workerd/` under workerd with
+that ran), one per document with its own id for updates and deletes by `where` and multi-document
+creates; redacted fields absent from what the model sees, the stream, the stored transcript and
+the approval cards, including an `updateDocument` result with rich text as Markdown and a page's
+populated `createdBy`; `findDistinct`, `where` and `sort` on a hidden field refused, directly and
+through a relation, and a write by such a `where` refused after approval and not audited). `vitest.workerd.config.ts` runs `tests/workerd/` under workerd with
 `@cloudflare/vitest-plugin` 1.4.11 (its Miniflare and Wrangler match the app's), against the test
 Worker in `tests/workerd/` (same bindings as the app wiring above): conformance of both objects,
 ownership, retention (alarm), reconnect after a mid-run disconnect, restart mid-run, and the MCP
@@ -987,5 +1022,5 @@ transport prototype, and the real turn in the object (`tests/workerd/chat.test.t
 approval resume, a reject reason reaching the model, disconnect + rejoin, stop;
 `tests/workerd/policies.test.ts`: usage in the index object per day and conversation, after a
 disconnect, atomic and pruned, the audit sink in the object, redaction in the stream, log and
-transcript). Storage is shared between the tests of a file there, so each test uses its own
+transcript, populated relations redacted by their collection, a hidden-field query refused). Storage is shared between the tests of a file there, so each test uses its own
 ids.
