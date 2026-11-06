@@ -2,9 +2,12 @@ import { expect, test, type Page } from '@playwright/test'
 import { login } from '../helpers/login'
 import { cleanupTestUser, seedTestUser, testUser } from '../helpers/seedUser'
 
-// The Socials plugin: the composer at /admin/socials and the Socials tab on Pages. It needs
-// SOCIALS_ENCRYPTION_KEY (the plugin is disabled, with no admin UI, without one); CI sets a
-// throwaway key. No platform is connected, so nothing here talks to a provider.
+// The Socials plugin: /admin/socials and the Socials tab on Pages. The admin is registered with
+// or without SOCIALS_ENCRYPTION_KEY (the import map doesn't depend on it); without one the plugin
+// is off and each surface says so, with one it is live (CI's e2e job sets a throwaway key). Both
+// modes are asserted below. No platform is connected, so nothing here talks to a provider.
+const socialsOn = Boolean(process.env.SOCIALS_ENCRYPTION_KEY)
+const OFF = 'Socials is turned off.'
 
 test.describe('Socials plugin', () => {
   let page: Page
@@ -42,12 +45,19 @@ test.describe('Socials plugin', () => {
     await cleanupTestUser()
   })
 
-  test('loads the composer at /admin/socials', async () => {
+  test('loads /admin/socials', async () => {
     await page.goto('/admin/socials')
 
     await expect(page).toHaveURL('/admin/socials')
     await expect(page.getByRole('heading', { level: 1, name: 'Socials' })).toBeVisible()
     await expect(page.getByText('Multi-platform organic publishing.')).toBeVisible()
+    if (socialsOn) {
+      await expect(page.getByRole('tab', { name: 'Compose' })).toBeVisible()
+      await expect(page.getByText(OFF)).toHaveCount(0)
+    } else {
+      await expect(page.getByText(OFF)).toBeVisible()
+      await expect(page.getByRole('tab', { name: 'Compose' })).toHaveCount(0)
+    }
   })
 
   test('adds a Socials tab to a page', async () => {
@@ -65,7 +75,12 @@ test.describe('Socials plugin', () => {
 
     await page.getByRole('tab', { name: 'Socials' }).click()
     await expect(page.getByRole('tab', { name: 'Socials' })).toHaveAttribute('aria-selected', 'true')
-    // CI enables no platform (no Pinterest credentials), so the tab says so instead of loading a composer.
-    await expect(page.getByRole('tabpanel', { name: 'Socials' }).getByText('No platform is enabled.')).toBeVisible()
+    const panel = page.getByRole('tabpanel', { name: 'Socials' })
+    if (socialsOn) {
+      // CI enables no platform (no Pinterest credentials), so the tab says so instead of loading a composer.
+      await expect(panel.getByText('No platform is enabled.')).toBeVisible()
+    } else {
+      await expect(panel.getByText(OFF)).toBeVisible()
+    }
   })
 })

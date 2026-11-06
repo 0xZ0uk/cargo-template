@@ -44,9 +44,10 @@ const pageSource: SourceContextResolver = async ({ id, payload, req }) => {
  * passes them to `normalizePluginOptions`, so both must see the same object).
  *
  * - Disabled until `SOCIALS_ENCRYPTION_KEY` is set. The plugin still registers `social-posts`,
- *   `social-templates` and the `socials-connections` global then (and the Socials tab is a UI
- *   field), so the schema, and the migration, are the same either way and can be created
- *   without secrets.
+ *   `social-templates` and the `socials-connections` global then, and the same admin components
+ *   (nav link, `/admin/socials`, dashboard widget, the Socials tab), which show a notice. The
+ *   schema, the migration and the import map are the same either way, so none of them needs
+ *   secrets.
  * - Pages only (`sources.page`), Pinterest only. Pinterest turns on with its app credentials
  *   and a `SITE_URL` to build the OAuth redirect from. Facebook, Instagram and Google Business
  *   Profile are left out (disabled).

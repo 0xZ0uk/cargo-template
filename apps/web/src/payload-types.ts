@@ -223,11 +223,6 @@ export interface Config {
       seoAuditContinue: TaskSeoAuditContinue;
       seoAlertsDigest: TaskSeoAlertsDigest;
       seoRetentionPurge: TaskSeoRetentionPurge;
-      socialPostPublish: SocialsPublishTaskInput;
-      socialPostRetry: SocialsRetryTaskInput;
-      socialInsightsRefresh: SocialsInsightsRefreshTaskInput;
-      socialConnectionRefresh: SocialsConnectionRefreshTaskInput;
-      socialPostSweep: SocialsSweepTaskInput;
       inline: {
         input: unknown;
         output: unknown;
@@ -1789,16 +1784,7 @@ export interface PayloadJob {
     | {
         executedAt: string;
         completedAt: string;
-        taskSlug:
-          | 'inline'
-          | 'seoAuditContinue'
-          | 'seoAlertsDigest'
-          | 'seoRetentionPurge'
-          | 'socialPostPublish'
-          | 'socialPostRetry'
-          | 'socialInsightsRefresh'
-          | 'socialConnectionRefresh'
-          | 'socialPostSweep';
+        taskSlug: 'inline' | 'seoAuditContinue' | 'seoAlertsDigest' | 'seoRetentionPurge';
         taskID: string;
         input:
           | {
@@ -1829,37 +1815,13 @@ export interface PayloadJob {
           | boolean
           | null;
         parent?: {
-          taskSlug?:
-            | (
-                | 'inline'
-                | 'seoAuditContinue'
-                | 'seoAlertsDigest'
-                | 'seoRetentionPurge'
-                | 'socialPostPublish'
-                | 'socialPostRetry'
-                | 'socialInsightsRefresh'
-                | 'socialConnectionRefresh'
-                | 'socialPostSweep'
-              )
-            | null;
+          taskSlug?: ('inline' | 'seoAuditContinue' | 'seoAlertsDigest' | 'seoRetentionPurge') | null;
           taskID?: string | null;
         };
         id?: string | null;
       }[]
     | null;
-  taskSlug?:
-    | (
-        | 'inline'
-        | 'seoAuditContinue'
-        | 'seoAlertsDigest'
-        | 'seoRetentionPurge'
-        | 'socialPostPublish'
-        | 'socialPostRetry'
-        | 'socialInsightsRefresh'
-        | 'socialConnectionRefresh'
-        | 'socialPostSweep'
-      )
-    | null;
+  taskSlug?: ('inline' | 'seoAuditContinue' | 'seoAlertsDigest' | 'seoRetentionPurge') | null;
   queue?: string | null;
   waitUntil?: string | null;
   processingUntil?: string | null;
@@ -2894,17 +2856,7 @@ export interface CollectionsWidget {
 export interface CollectionQueryWidget {
   data?: {
     title?: string | null;
-    relatedCollection:
-      | 'pages'
-      | 'sections'
-      | 'users'
-      | 'media'
-      | 'folders'
-      | 'tags'
-      | 'seo-settings'
-      | 'seo-redirects'
-      | 'social-posts'
-      | 'social-templates';
+    relatedCollection: 'pages' | 'sections' | 'users' | 'media' | 'folders' | 'tags' | 'seo-settings' | 'seo-redirects';
     where?:
       | {
           [k: string]: unknown;
@@ -2927,19 +2879,7 @@ export interface CollectionQueryWidget {
 export interface ActivityWidget {
   data?: {
     excludedCollections?:
-      | (
-          | 'pages'
-          | 'sections'
-          | 'users'
-          | 'media'
-          | 'folders'
-          | 'tags'
-          | 'seo-settings'
-          | 'seo-redirects'
-          | 'social-posts'
-          | 'social-templates'
-        )[]
-      | null;
+      ('pages' | 'sections' | 'users' | 'media' | 'folders' | 'tags' | 'seo-settings' | 'seo-redirects')[] | null;
   };
   width: 'small' | 'medium' | 'large' | 'x-large' | 'full';
 }
@@ -2974,46 +2914,6 @@ export interface TaskSeoAlertsDigest {
  * via the `definition` "TaskSeoRetentionPurge".
  */
 export interface TaskSeoRetentionPurge {
-  input?: unknown;
-  output?: unknown;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "SocialsPublishTaskInput".
- */
-export interface SocialsPublishTaskInput {
-  input?: unknown;
-  output?: unknown;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "SocialsRetryTaskInput".
- */
-export interface SocialsRetryTaskInput {
-  input?: unknown;
-  output?: unknown;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "SocialsInsightsRefreshTaskInput".
- */
-export interface SocialsInsightsRefreshTaskInput {
-  input?: unknown;
-  output?: unknown;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "SocialsConnectionRefreshTaskInput".
- */
-export interface SocialsConnectionRefreshTaskInput {
-  input?: unknown;
-  output?: unknown;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "SocialsSweepTaskInput".
- */
-export interface SocialsSweepTaskInput {
   input?: unknown;
   output?: unknown;
 }

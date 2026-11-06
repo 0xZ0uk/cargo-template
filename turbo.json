@@ -5,7 +5,7 @@
     "build": {
       "dependsOn": ["^build"],
       "outputs": ["dist/**"],
-      "env": ["PAYLOAD_SECRET", "SOCIALS_ENCRYPTION_KEY"]
+      "env": ["PAYLOAD_SECRET"]
     },
     "dev": {
       "dependsOn": ["^build"],

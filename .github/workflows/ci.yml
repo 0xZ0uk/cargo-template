@@ -19,9 +19,6 @@ env:
   # `apps/web/.env.schema` marks PAYLOAD_SECRET required, and varlock exits without it.
   # Nothing here talks to a real database or deploys, so a throwaway value is enough.
   PAYLOAD_SECRET: ci-only-not-a-real-secret
-  # The Socials plugin is disabled without a key, and then registers no admin components: the
-  # import map check below and the e2e specs need it enabled. Not a real key (32 bytes as hex).
-  SOCIALS_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
   TURBO_TELEMETRY_DISABLED: 1
 
 jobs:
@@ -151,6 +148,10 @@ jobs:
       # Starts `vite dev` itself (playwright.config.ts) on a fresh local D1.
       - name: Playwright
         run: pnpm web test:e2e
+        env:
+          # Enables the Socials plugin so its admin is functional (without a key it shows a
+          # notice, which socials.e2e.spec.ts also handles). Not a real key (32 bytes as hex).
+          SOCIALS_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 
       - name: Upload the Playwright report
         if: failure()
