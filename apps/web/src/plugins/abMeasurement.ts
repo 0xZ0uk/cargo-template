@@ -118,18 +118,26 @@ export function recordImpression(
 const sqlString = (value: string) => `'${value.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`
 
 /** `YYYY-MM-DD HH:MM:SS` in UTC, the format Analytics Engine's `toDateTime` takes. */
-const sqlDateTime = (iso: string) => {
+const sqlDateTime = (iso: string, name = 'startedAt') => {
   const date = new Date(iso)
-  if (Number.isNaN(date.getTime())) throw new Error(`Invalid startedAt: ${iso}`)
+  if (Number.isNaN(date.getTime())) throw new Error(`Invalid ${name}: ${iso}`)
   return date.toISOString().slice(0, 19).replace('T', ' ')
 }
 
-/** Counts per bucket and event for one experiment since it started. */
-export function abResultsQuery(experiment: string, startedAt: string): string {
+/**
+ * Counts per bucket and event for one run of an experiment: from `startedAt`, up to `endedAt`
+ * for a run that ended (exclusive, so the next run on the page, which starts later, never
+ * shares an event), or up to now for the current run.
+ */
+export function abResultsQuery(experiment: string, startedAt: string, endedAt?: string): string {
+  const window = [
+    `timestamp >= toDateTime(${sqlString(sqlDateTime(startedAt))})`,
+    ...(endedAt ? [`timestamp < toDateTime(${sqlString(sqlDateTime(endedAt, 'endedAt'))})`] : []),
+  ]
   return [
     `SELECT blob2 AS bucket, blob3 AS event, SUM(_sample_interval) AS count`,
     `FROM ${AB_DATASET}`,
-    `WHERE blob1 = ${sqlString(experiment)} AND timestamp >= toDateTime(${sqlString(sqlDateTime(startedAt))})`,
+    `WHERE blob1 = ${sqlString(experiment)} AND ${window.join(' AND ')}`,
     `GROUP BY bucket, event`,
     `FORMAT JSON`,
   ].join('\n')
@@ -156,12 +164,12 @@ export function mapAbResultRows(rows: SqlRow[]): AbBucketResult[] {
 export type AbSqlCredentials = { accountId?: string; apiToken?: string }
 
 /**
- * Reads an experiment's counts through the Analytics Engine SQL API. Without an account id
- * and token it reports measurement as not configured, without a request. The token stays
- * on the server; errors never include it.
+ * Reads the counts of one run of an experiment (to `endedAt` when it ended) through the
+ * Analytics Engine SQL API. Without an account id and token it reports measurement as not
+ * configured, without a request. The token stays on the server; errors never include it.
  */
 export async function getAbResults(
-  { experiment, startedAt }: { experiment: string; startedAt: string },
+  { experiment, startedAt, endedAt }: { experiment: string; startedAt: string; endedAt?: string },
   { accountId, apiToken }: AbSqlCredentials,
   fetchImpl: typeof fetch = fetch,
 ): Promise<AbResults> {
@@ -178,7 +186,7 @@ export async function getAbResults(
     {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiToken}`, 'Content-Type': 'text/plain' },
-      body: abResultsQuery(experiment, startedAt),
+      body: abResultsQuery(experiment, startedAt, endedAt),
     },
   )
   if (!res.ok) {
