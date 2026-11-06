@@ -126,7 +126,7 @@ When a variant wins, **Promote** (the check button on its row in the Variants pa
 
 If the original has unpublished changes of its own, the promoted draft replaces them, and the confirmation warns about it. **Deleting the variants is final.** The original's previous content, published or draft, stays in its version history, where it can be restored.
 
-Access: admin-panel users only (as for `GET /api/_ab/results`), with update access on the original (checked with Payload's `docAccessOperation` before anything is written). `docId` must be an original, and `variantId` one of its variants. Otherwise the endpoint answers 400.
+Access: admin-panel users only (as for `GET /api/_ab/results`), with update access on the original and delete access (both checked with Payload's `docAccessOperation` before anything is written; the variants are then deleted with the user's own access). `docId` must be an original, and `variantId` one of its variants. Otherwise the endpoint answers 400.
 
 The steps are ordered so a failure leaves things recoverable. If the copy fails, nothing is deleted. The response says which locales were copied (`step: 'copy'`, `copiedLocales`), and the original's earlier draft is in its versions. If a delete fails, the copy is complete and the response lists `deleted` and `failed` (`step: 'delete'`), so the remaining variants can be deleted from the panel. On success the panel reloads the document, so the form shows the promoted draft.
 

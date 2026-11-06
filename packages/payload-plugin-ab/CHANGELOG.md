@@ -4,7 +4,7 @@
 
 ### Added
 
-- Promote a variant: `POST /api/_ab/promote` (body `{ collectionSlug, docId, variantId }`) and a **Promote** button with a confirmation on each row of the Variants panel. It copies the variant's published content (what visitors were tested on; a never-published variant is refused) onto the original as a draft in every locale, then deletes the variants, which ends the run (it stays listed as a past experiment). The slug, `id`, timestamps, `createdBy`/`updatedBy`, `_status` and the A/B fields are never copied (`DEFAULT_PROMOTE_SKIP_FIELDS`); the new per-collection `promoteSkipFields` adds more. Admin-panel users with update access on the original only. A failed copy deletes nothing, and the response reports partial failures (`step`, `copiedLocales`, `deleted`, `failed`).
+- Promote a variant: `POST /api/_ab/promote` (body `{ collectionSlug, docId, variantId }`) and a **Promote** button with a confirmation on each row of the Variants panel. It copies the variant's published content (what visitors were tested on; a never-published variant is refused) onto the original as a draft in every locale, then deletes the variants, which ends the run (it stays listed as a past experiment). The slug, `id`, timestamps, `createdBy`/`updatedBy`, `_status` and the A/B fields are never copied (`DEFAULT_PROMOTE_SKIP_FIELDS`); the new per-collection `promoteSkipFields` adds more. Admin-panel users with update access on the original and delete access only; the variants are deleted with the user's own access. A failed copy deletes nothing, and the response reports partial failures (`step`, `copiedLocales`, `deleted`, `failed`).
 
 ### Changed
 

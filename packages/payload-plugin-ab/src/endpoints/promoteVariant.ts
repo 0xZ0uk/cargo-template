@@ -52,7 +52,8 @@ const messageOf = (err: unknown, fallback: string) => (err instanceof Error ? er
  *    manifest recompute clears the page's entry and ends the run (`endedAt`), which stays
  *    listed with its results as a past experiment.
  *
- * Admin-panel users only, with update access on the original. A failure in step 1 deletes
+ * Admin-panel users only, with update access on the original and delete access (the variants
+ * are deleted with the user's own access). A failure in step 1 deletes
  * nothing; the original's previous content stays in its version history either way.
  */
 export function buildPromoteVariantHandler<TVariantData extends object>(
@@ -105,6 +106,11 @@ export function buildPromoteVariantHandler<TVariantData extends object>(
     const permissions = await docAccessOperation({ collection, id: original.id as Id, req });
     if (!permissions.update) {
       return json({ error: "You can't update the original document" }, 403);
+    }
+    // Promoting deletes the variants with the user's own access: check it before copying, so a
+    // user who can't delete pages is refused up front rather than after the draft is written.
+    if (!permissions.delete) {
+      return json({ error: "You can't delete pages, and promoting deletes the variants" }, 403);
     }
 
     const variant = await find(variantId);
@@ -181,7 +187,7 @@ export function buildPromoteVariantHandler<TVariantData extends object>(
 
     // 2. End the experiment: delete the variants one at a time (each delete recomputes the
     // page's manifest entry, and parallel ones would race on it), the promoted one last so a
-    // failure leaves it in place. Access was checked on the original above.
+    // failure leaves it in place.
     const { docs: variants } = await req.payload.find({
       collection: slug,
       where: { [AB_VARIANT_OF_FIELD]: { equals: originalId } },
@@ -199,7 +205,9 @@ export function buildPromoteVariantHandler<TVariantData extends object>(
     let lastError: unknown;
     for (const id of ids) {
       try {
-        await req.payload.delete({ collection: slug, id, overrideAccess: true, req });
+        // The user's own delete access (checked up front); the afterDelete manifest and run
+        // updates elevate themselves.
+        await req.payload.delete({ collection: slug, id, overrideAccess: false, req });
         deleted.push(id);
       } catch (err) {
         req.payload.logger.error({ err, msg: `[payload-plugin-ab] promote: deleting variant ${id} failed` });

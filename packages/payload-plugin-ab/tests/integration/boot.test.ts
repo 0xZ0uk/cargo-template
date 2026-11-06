@@ -31,6 +31,8 @@ let token: string;
 let memberToken: string;
 let readonlyToken: string;
 const READONLY_EMAIL = "readonly@example.com";
+let nodeleteToken: string;
+const NODELETE_EMAIL = "nodelete@example.com";
 
 type Doc = Record<string, unknown> & { id: number | string };
 
@@ -105,6 +107,9 @@ beforeAll(async () => {
           read: () => true,
           // An admin-panel user who may read pages but not edit them.
           update: ({ req }) => Boolean(req.user) && (req.user as any).email !== READONLY_EMAIL,
+          // An editor who may edit pages but not delete them.
+          delete: ({ req }) =>
+            Boolean(req.user) && ![READONLY_EMAIL, NODELETE_EMAIL].includes((req.user as any).email),
         },
         versions: { drafts: true },
         fields: [
@@ -170,6 +175,17 @@ beforeAll(async () => {
     await payload.login({
       collection: "users" as never,
       data: { email: READONLY_EMAIL, password: "test-password" },
+    })
+  ).token!;
+  await payload.create({
+    collection: "users" as CollectionSlug,
+    data: { email: NODELETE_EMAIL, password: "test-password" } as never,
+    overrideAccess: true,
+  });
+  nodeleteToken = (
+    await payload.login({
+      collection: "users" as never,
+      data: { email: NODELETE_EMAIL, password: "test-password" },
     })
   ).token!;
 }, 60_000);
@@ -1333,12 +1349,14 @@ describe("POST /api/_ab/promote", () => {
     ]);
   });
 
-  it("is for admin-panel users with update access on the original", async () => {
+  it("is for admin-panel users with update and delete access", async () => {
     const { original, variant } = await experiment("promote-guarded");
     const body = { collectionSlug: "pages", docId: original.id, variantId: variant.id };
     expect((await promote(body, null)).status).toBe(401);
     expect((await promote(body, `JWT ${memberToken}`)).status).toBe(403);
     expect((await promote(body, `JWT ${readonlyToken}`)).status).toBe(403);
+    // Can update the original but not delete pages: refused before anything is copied.
+    expect((await promote(body, `JWT ${nodeleteToken}`)).status).toBe(403);
 
     // Nothing changed.
     expect((await findPage(original.id, { draft: true })).title).toBe("Original");
