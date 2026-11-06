@@ -40,6 +40,14 @@ export interface CollectionABConfig<TVariantData extends object = object> {
    */
   nameField?: string;
   /**
+   * Fields a promotion (`POST /api/_ab/promote`) doesn't copy from the variant onto the
+   * original, in addition to the defaults (`id`, `createdAt`, `updatedAt`, `createdBy`,
+   * `updatedBy`, `_status`, the A/B fields and `slugField`). Top-level names, or dot-notation
+   * paths into named groups and tabs (`meta.image`). The original keeps its own value for
+   * them. Use it for the host's own system fields (e.g. a publish date set by a hook).
+   */
+  promoteSkipFields?: string[];
+  /**
    * Maps a document to the URL path used as the manifest key.
    * Return null to skip writing the manifest for that document.
    * Called once per locale when localization is enabled.

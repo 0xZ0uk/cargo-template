@@ -2,7 +2,7 @@
 
 import type { VariantData } from "./VariantsField";
 
-import { EditIcon, TrashIcon, useDocumentDrawer } from "@payloadcms/ui";
+import { CheckIcon, EditIcon, TrashIcon, useDocumentDrawer } from "@payloadcms/ui";
 
 interface VariantRowProps {
   variant: VariantData;
@@ -11,6 +11,8 @@ interface VariantRowProps {
   onPercentageChange: (value: string) => void;
   onPercentageBlur: () => void;
   onDelete: () => void;
+  /** Opens the promote confirmation. */
+  onPromote: () => void;
   onSaved: () => void;
 }
 
@@ -21,6 +23,7 @@ export function VariantRow({
   onPercentageChange,
   onPercentageBlur,
   onDelete,
+  onPromote,
   onSaved,
 }: VariantRowProps) {
   const [DocumentDrawer, , { openDrawer, closeDrawer }] = useDocumentDrawer({
@@ -66,6 +69,17 @@ export function VariantRow({
         title="Edit variant"
       >
         <EditIcon />
+      </button>
+
+      <button
+        type="button"
+        onClick={onPromote}
+        className="ab-variant-row__icon-btn"
+        aria-label={`Promote ${title}`}
+        title="Promote: copy this variant onto the original and end the experiment"
+        data-testid="ab-variant-promote"
+      >
+        <CheckIcon />
       </button>
 
       <button

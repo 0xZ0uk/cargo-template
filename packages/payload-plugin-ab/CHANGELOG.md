@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Promote a variant: `POST /api/_ab/promote` (body `{ collectionSlug, docId, variantId }`) and a **Promote** button with a confirmation on each row of the Variants panel. It copies the variant's content onto the original as a draft in every locale, then deletes the variants, which ends the run (it stays listed as a past experiment). The slug, `id`, timestamps, `createdBy`/`updatedBy`, `_status` and the A/B fields are never copied (`DEFAULT_PROMOTE_SKIP_FIELDS`); the new per-collection `promoteSkipFields` adds more. Admin-panel users with update access on the original only. A failed copy deletes nothing, and the response reports partial failures (`step`, `copiedLocales`, `deleted`, `failed`).
+
 ### Changed
 
 - A run ends instead of being deleted: when a key's manifest entry is cleared, its open `ab-experiments` row gets the new `endedAt` field and stays (the next published variant starts a new row). Only open rows (`endedAt` empty) count as the current run, in the recompute, the conversion endpoint and the results endpoint. Deleting the original still deletes all its rows. Hosts need a migration adding the `ended_at` column.

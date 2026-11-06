@@ -90,13 +90,13 @@ export default buildConfig({
 
 The plugin injects into each configured collection:
 
-- the **Variants panel** (sidebar, on originals): variants with traffic % inputs, edit in a drawer, add, delete, clear all
+- the **Variants panel** (sidebar, on originals): variants with traffic % inputs, edit in a drawer, promote, add, delete, clear all
 - a read-only **"Variant of"** relationship (sidebar, on variants)
 - the hidden `_abVariantOf`, `_abPassPercentage` and (virtual, no column) `_abPendingPercentages` fields
 - `admin.baseFilter`, so variants don't show in the list view or link pickers
 - `beforeChange` / `afterChange` / `afterDelete` hooks
 
-and adds the `ab-manifest` and `ab-experiments` collections (both hidden unless `debug: true`) and `POST /api/_ab/duplicate` (plus the measurement endpoints with `measurement`, see [Measurement](#measurement)).
+and adds the `ab-manifest` and `ab-experiments` collections (both hidden unless `debug: true`), `POST /api/_ab/duplicate` and `POST /api/_ab/promote` (see [Promoting a variant](#promoting-a-variant); plus the measurement endpoints with `measurement`, see [Measurement](#measurement)).
 
 ### Traffic percentages
 
@@ -111,6 +111,24 @@ Editing percentages in the panel stages them in `_abPendingPercentages`, sent wi
 - Unpublishing a variant removes it from the split in those locales; unpublishing the original stops the experiment there until it's published again.
 
 Variants together take at most 99%, leaving the original at least 1%. A save that breaks this fails with a validation error.
+
+### Promoting a variant
+
+When a variant wins, **Promote** (the check button on its row in the Variants panel) makes it the page. A confirmation says what happens, then `POST /api/_ab/promote` (body `{ collectionSlug, docId, variantId }`):
+
+1. **Copies the variant onto the original as a draft**, in every locale. It reads the variant's latest draft (depth 0, without locale fallback) and saves it onto the original with `draft: true` and the user's own access, one locale after another. The live page doesn't change: an editor reviews the draft and publishes it. Every field that holds data is copied, page content and SEO meta included, except:
+   - the defaults (`DEFAULT_PROMOTE_SKIP_FIELDS`): `id`, `createdAt`, `updatedAt`, `createdBy`, `updatedBy`, `_status`, `_abVariantOf`, `_abPassPercentage`, `_abPendingPercentages`;
+   - the collection's `slugField`, so the URL stays;
+   - the collection's `promoteSkipFields` (top-level names or dot paths into named groups and tabs, e.g. `meta.image`), for the host's own system fields. `apps/web` adds `publishedAt`.
+
+   A skipped field keeps the original's value. A field the variant leaves empty is emptied on the original. Uploads and relationships are copied by id, not re-created. Array and block rows get new ids, the same in every locale (their localized fields are stored per row id). Blocks stored as JSON (`blocksAsJSON`) are copied like any other value.
+2. **Ends the experiment**: it deletes every variant of the original, one at a time, the promoted one last. Their deletes run the usual manifest recompute, which clears the page's entry and gives the run its `endedAt`. The run stays listed under Past experiments with its results, and the deleted variants show there as deleted.
+
+If the original has unpublished changes of its own, the promoted draft replaces them, and the confirmation warns about it. **Deleting the variants is final.** The original's previous content, published or draft, stays in its version history, where it can be restored.
+
+Access: admin-panel users only (as for `GET /api/_ab/results`), with update access on the original (checked with Payload's `docAccessOperation` before anything is written). `docId` must be an original, and `variantId` one of its variants. Otherwise the endpoint answers 400.
+
+The steps are ordered so a failure leaves things recoverable. If the copy fails, nothing is deleted. The response says which locales were copied (`step: 'copy'`, `copiedLocales`), and the original's earlier draft is in its versions. If a delete fails, the copy is complete and the response lists `deleted` and `failed` (`step: 'delete'`), so the remaining variants can be deleted from the panel. On success the panel reloads the document, so the form shows the promoted draft.
 
 ## Routing
 
@@ -252,6 +270,7 @@ interface CollectionABConfig<TVariantData> {
   slugField?: string   // default 'slug'; variants get `{slug}--{6 chars}`
   tenantField?: string // hidden on variants
   nameField?: string   // variant title in the panel; default: the collection's useAsTitle
+  promoteSkipFields?: string[] // not copied by a promotion, on top of the defaults (see Promoting a variant)
 }
 
 interface StorageAdapter<TVariantData extends object> {
@@ -309,7 +328,7 @@ Reads are cache-first, and a key with no experiment is cached as `null`, so page
 
 | Import path | Exports |
 | --- | --- |
-| `@cargo/payload-plugin-ab` | `abTestingPlugin`, `resolveAbCookieNames`, `pruneEndedExperimentRuns`, `AB_EXPERIMENTS_SLUG`, `AB_DIMENSION_PARAMS`, `AB_RUN_RETENTION_DAYS`, `DEFAULT_CONVERSION_COOKIE_PREFIX`, types (including `ManifestCache`, `AbMeasurementConfig`, `AbResults`, `AbResultsResponse`, `AbPastRun`) |
+| `@cargo/payload-plugin-ab` | `abTestingPlugin`, `resolveAbCookieNames`, `pruneEndedExperimentRuns`, `AB_EXPERIMENTS_SLUG`, `AB_DIMENSION_PARAMS`, `AB_RUN_RETENTION_DAYS`, `DEFAULT_CONVERSION_COOKIE_PREFIX`, `DEFAULT_PROMOTE_SKIP_FIELDS`, types (including `ManifestCache`, `AbMeasurementConfig`, `AbResults`, `AbResultsResponse`, `AbPastRun`, `AbPromoteResponse`, `AbPromoteFailure`) |
 | `@cargo/payload-plugin-ab/adapters/payload-collection` | `payloadCollectionAdapter`, `withManifestCache`, `createMemoryManifestCache`, types |
 | `@cargo/payload-plugin-ab/middleware` | `createResolveAbRewrite`, `parseCookieHeader`, `serializeAbCookie`, `bucketCookieName`, `resolveAbCookieNames`, types |
 | `@cargo/payload-plugin-ab/analytics` (also `/analytics/client`) | `ExperimentTracker`, `resolveAbCookieNames`, types |
@@ -323,7 +342,7 @@ pnpm --filter @cargo/payload-plugin-ab typecheck
 pnpm --filter @cargo/payload-plugin-ab build
 ```
 
-`tests/integration/boot.test.ts` boots Payload 4 with drafts and two locales and drives the endpoint and REST calls through Payload's own handler: duplicate auth, variant drafts, per-locale manifest entries, staged and published percentages (with an unpublished variant edit that must stay unpublished), unpublishing a variant or the original, deletes, the measurement endpoints (conversion cookies, dedupe and validation; results auth and key lookup), and the manifest storage (concurrent writes to different keys, a create race on one key, REST access with and without a session or credentials). `tests/cache/` covers the read cache. `tests/payload4Tokens.test.ts` keeps v3 admin tokens out of the styles.
+`tests/integration/boot.test.ts` boots Payload 4 with drafts and two locales and drives the endpoint and REST calls through Payload's own handler: duplicate auth, variant drafts, per-locale manifest entries, staged and published percentages (with an unpublished variant edit that must stay unpublished), unpublishing a variant or the original, deletes, promotions (fields copied and skipped, every locale, the original kept published with the promoted draft, the run ended and still listed, access), the measurement endpoints (conversion cookies, dedupe and validation; results auth and key lookup), and the manifest storage (concurrent writes to different keys, a create race on one key, REST access with and without a session or credentials). `tests/cache/` covers the read cache. `tests/payload4Tokens.test.ts` keeps v3 admin tokens out of the styles.
 
 ## License
 
