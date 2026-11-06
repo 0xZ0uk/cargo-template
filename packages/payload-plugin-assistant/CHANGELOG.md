@@ -4,6 +4,12 @@
 
 ### Added
 
+- Staging follow-ups (#116):
+  - `maxToolCalls` (default 20, at most 25) and a backstop of 28 MCP requests per run, because Cloudflare allows 32 Worker invocations per request and every `/api/mcp` call through `ASSISTANT_SELF` is one. Measured: a run already keeps one MCP session (3 requests to connect, 1 per tool call). Past the cap a call sends nothing and the model reads a tool error asking it to stop calling tools and answer. The system prompt asks for few, broad reads.
+  - Rich text as Markdown in the results of `updateDocument` (with `returning`), `createDocuments`, `duplicateDocument`, `deleteDocuments`, `findVersions`, `findVersionByID` and `restoreVersion` (`richTextResultsAsMarkdown`), and `getCollectionSchema` describes rich text fields as Markdown written with `setRichTextFromMarkdown` (`richTextSchemaAsMarkdown`), all set by `withMarkdownRichText`.
+  - Internal links round-trip through Markdown as `[text](payload://<collection>/<id>)`, so they are no longer a formatting loss; `setRichTextFromMarkdown` refuses a link to a missing collection or a document the user can't read. A `payload://` link in an answer opens the document in the admin.
+  - Example prompts in a new conversation's empty state.
+
 - Rich text as Markdown (#67), from a new entry `./mcp` (so the plugin never imports `@payloadcms/plugin-mcp`, now an optional peer): `setRichTextFromMarkdown`, a plugin-mcp collection tool (`defineCollectionTool`) that converts Markdown with the field's own editor (`field.editor.converters`) and writes it as the user, as a draft by default, after approval; data paths into groups, arrays and blocks (`layout.3.columns.0.content.1.richText`, blocks resolved by `blockType`), updating the top-level field with ids intact; clear errors that list the document's rich text paths. It refuses to drop formatting Markdown can't keep (underline, alignment, indentation, internal or new-tab links, upload/relationship/block nodes) unless `allowFormattingLoss: true`, and says when the field's editor kept some of the Markdown as plain text (a heading level or lists it doesn't allow). `richTextAsMarkdown(slug)`, an `overrideResponse` for `findDocuments` that returns rich text as Markdown (external MCP clients included). `withMarkdownRichText(slug, entry)` adds both to a collection's plugin-mcp entry.
 - The approval card of `setRichTextFromMarkdown`: the field's text before (current value as Markdown) and after (the proposed Markdown as the field will store it), with a notice for formatting that would be lost or Markdown the field doesn't support.
 - System prompt: rich text rules (read as Markdown, write only with the Markdown tool, never Lexical JSON in create/update, what is lost) when the app installed the tool; read drafts with `draft: true` when discussing or editing a draft (#116).
@@ -17,6 +23,8 @@
 
 ### Fixed
 
+- `RUN_STARTED` and `RUN_FINISHED` carry the server's run id (`X-Run-Id`), not the id OpenRouter's adapter mints per model call, so stop and rejoin work with the first event's `runId` (#116).
+- A new conversation shows its empty state at once instead of loading placeholders until the hydration request answers (#116).
 - Approval diffs of arrays and blocks (#113 review): rows pair by id (rows without one by position), a removed row is labelled `(removed)` with its position before so it can no longer share a path or label with a kept row, a new row with no values is still reported, and a reordered row shows a `Position` change instead of an empty diff.
 - "Approve all" and each Approve are disabled until every pending change has loaded, so nothing is approved unseen or without the `updatedAt` its diff was built from; a change whose diff couldn't be loaded asks "Approve anyway?" on its own card and blocks Approve all; after a stale refusal the old diff is replaced by a loading state until the fresh one arrives (#113 review).
 - A send refused before the run started (rate limited, `model_not_allowed`, not configured) no longer leaves its bubble in the transcript (#112 review).
