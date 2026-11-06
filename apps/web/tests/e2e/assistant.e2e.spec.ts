@@ -84,6 +84,12 @@ test.describe('Assistant', () => {
     await expect(page.getByLabel('Assistant').filter({ hasText: originalTitle })).not.toHaveCount(0)
     // The conversation is listed, titled from its first message.
     await expect(page.getByText('/tool findDocuments').first()).toBeVisible()
+    // The budget line (#68): today's allowance and what this conversation cost (the test model
+    // reports $1 per million tokens), and the cost in the list.
+    await expect(page.locator('.assistant-usage')).toContainText(
+      /of \$5\.00 left today · this conversation \$0\.\d+/,
+    )
+    await expect(page.locator('.assistant-sidebar__cost').first()).toHaveText(/^\$0\.\d+$/)
   })
 
   test('approves an update to a draft page: the card shows the diff, then it is saved', async () => {

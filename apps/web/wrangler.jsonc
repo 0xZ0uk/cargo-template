@@ -47,6 +47,14 @@
       "binding": "AB_ANALYTICS",
       "dataset": "cargo_ab",
     },
+    // The assistant's audit log (#68): one data point per write it applied (user, tool,
+    // collection, document id, conversation, model; no content). Written by the conversation
+    // Durable Object (src/server.ts) and, under Node, by the plugin's `audit` option. Query it
+    // with the SQL API: SELECT blob1 AS user, blob2 AS tool, … FROM cargo_assistant_audit.
+    {
+      "binding": "ASSISTANT_AUDIT",
+      "dataset": "cargo_assistant_audit",
+    },
   ],
   "r2_buckets": [
     {
@@ -138,7 +146,10 @@
           "remote": true,
         },
       ],
-      "analytics_engine_datasets": [{ "binding": "AB_ANALYTICS", "dataset": "cargo_ab_staging" }],
+      "analytics_engine_datasets": [
+        { "binding": "AB_ANALYTICS", "dataset": "cargo_ab_staging" },
+        { "binding": "ASSISTANT_AUDIT", "dataset": "cargo_assistant_audit_staging" },
+      ],
       "r2_buckets": [{ "binding": "R2", "bucket_name": "cargo-template-media-staging" }],
       // Same limits as production, on their own counters (namespace ids are account-wide).
       "ratelimits": [
