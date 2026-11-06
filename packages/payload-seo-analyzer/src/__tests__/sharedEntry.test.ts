@@ -33,7 +33,13 @@ function reachableSpecifiers(file: string, seen = new Set<string>()): string[] {
 
 describe('shared entry', () => {
   it('exports the frontend helpers', () => {
-    expect(Object.keys(shared).sort()).toEqual(['buildJsonLd', 'normalizeFromPath', 'serializeJsonLd', 'validateRedirectTarget'])
+    expect(Object.keys(shared).sort()).toEqual([
+      'FRONTEND_REDIRECTS_CACHE_BASE',
+      'buildJsonLd',
+      'normalizeFromPath',
+      'serializeJsonLd',
+      'validateRedirectTarget',
+    ])
   })
 
   it('imports no package (Payload, React, Node built-ins) at runtime', () => {

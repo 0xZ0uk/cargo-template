@@ -3,6 +3,10 @@ import { createServerFn } from '@tanstack/react-start'
 import type { RedirectIndex, ResolvedRedirect } from '@/utilities/redirects'
 
 import { buildRedirectIndex, matchRedirect } from '@/utilities/redirects'
+import { r2SeoCacheStore } from '@/plugins/seoCacheStore'
+import { FRONTEND_REDIRECTS_CACHE_BASE } from '@cargo/payload-seo-analyzer/shared'
+
+import { createRedirectIndexCache } from './redirectIndexCache'
 
 type ResolveRedirectInput = {
   /** The request's URL pathname. */
@@ -11,21 +15,16 @@ type ResolveRedirectInput = {
   search?: string
 }
 
-/** A new redirect applies on a warm isolate after at most this long. */
+/** Bounds the isolate's memory: the index is reloaded at least this often. */
 const CACHE_TTL_MS = 60_000
 /** After a failed read, serve "no redirect" this long before trying D1 again. */
 const FAILURE_TTL_MS = 10_000
 /** Bounds the isolate's memory; redirect lists are far smaller in practice. */
 const MAX_REDIRECTS = 5000
 
-type CacheEntry = { expiresAt: number; index: RedirectIndex }
+const GENERATION_KEY = `gen/${FRONTEND_REDIRECTS_CACHE_BASE}`
 
-// Per-isolate and best effort: it only saves D1 reads for repeated misses. Nothing in the UI
-// depends on it, and a cold isolate simply reads the table again.
-let cache: CacheEntry | undefined
-let inflight: Promise<CacheEntry> | undefined
-
-const loadIndex = async (): Promise<CacheEntry> => {
+const loadIndex = async (): Promise<{ index: RedirectIndex; ok: boolean }> => {
   const { getPayload } = await import('payload')
   const payload = await getPayload({ config: (await import('@payload-config')).default })
 
@@ -42,25 +41,41 @@ const loadIndex = async (): Promise<CacheEntry> => {
       sort: '-updatedAt',
     })
 
-    return { expiresAt: Date.now() + CACHE_TTL_MS, index: buildRedirectIndex(docs) }
+    return { index: buildRedirectIndex(docs), ok: true }
   } catch (error) {
     payload.logger.error({ err: error, msg: 'Failed to load seo-redirects' })
 
-    return { expiresAt: Date.now() + FAILURE_TTL_MS, index: new Map() }
+    return { index: new Map(), ok: false }
   }
 }
 
-const getIndex = async () => {
-  if (cache && cache.expiresAt > Date.now()) return cache.index
+/**
+ * The marker the plugin's redirect hooks bump (in the R2 cache store) on every create, update
+ * and delete, so a change reaches every isolate on its next lookup instead of after the TTL.
+ * A store without the marker yet (no redirect saved since it was added) reads as '0'.
+ */
+const readGeneration = async () => {
+  const { cloudflareEnv } = await import('#cloudflare-runtime')
 
-  // Concurrent misses share one read.
-  inflight ??= loadIndex().finally(() => {
-    inflight = undefined
-  })
-  cache = await inflight
-
-  return cache.index
+  return (await r2SeoCacheStore(cloudflareEnv.R2).get(GENERATION_KEY)) ?? '0'
 }
+
+const warnGenerationError = async (error: unknown) => {
+  const { getPayload } = await import('payload')
+  const payload = await getPayload({ config: (await import('@payload-config')).default })
+
+  payload.logger.warn({ err: error, msg: 'Failed to read the redirects generation; using the cached index' })
+}
+
+// Per-isolate: it saves D1 reads for repeated misses, and the shared generation keeps it
+// current. A cold isolate simply reads the table again.
+const getIndex = createRedirectIndexCache({
+  readGeneration,
+  load: loadIndex,
+  ttlMs: CACHE_TTL_MS,
+  failureTtlMs: FAILURE_TTL_MS,
+  onGenerationError: (error) => void warnGenerationError(error).catch(() => {}),
+})
 
 /**
  * Records the 404 in the SEO analyzer's 404 log (the admin's sitemap audit, 404 tab), in the

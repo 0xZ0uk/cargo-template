@@ -5,6 +5,8 @@
  * (via the afterChange hook in the plugin).
  */
 
+import { FRONTEND_REDIRECTS_CACHE_BASE } from './helpers/frontendRedirectsBase.js'
+
 interface CacheEntry<T> {
   data: T
   timestamp: number
@@ -147,6 +149,9 @@ export const PERSISTENT_CACHE_BASES = [
   'sitemap-images',
   'sitemap-video',
   'llms-txt',
+  // Holds no entries, only the generation at `gen/frontend-redirects`: the host's frontend keeps
+  // its own redirect table per isolate and compares this marker to know when to reload it.
+  FRONTEND_REDIRECTS_CACHE_BASE,
 ] as const
 
 /**
@@ -198,8 +203,13 @@ export const STALE_SERVABLE_BASES = ['audit'] as const
 /** In-memory mode: cap on kept last-good values (keys are per locale, so a handful in practice). */
 const MAX_LAST_GOOD = 50
 
-/** Caches that depend on the redirects collection. */
-export const REDIRECT_CACHE_BASES = ['sitemap-audit', 'link-graph', 'redirect-chains'] as const
+/** Caches that depend on the redirects collection, plus the frontend's generation marker. */
+export const REDIRECT_CACHE_BASES = [
+  'sitemap-audit',
+  'link-graph',
+  'redirect-chains',
+  FRONTEND_REDIRECTS_CACHE_BASE,
+] as const
 
 const STORE_FORMAT = 1
 
