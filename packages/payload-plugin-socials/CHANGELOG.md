@@ -10,6 +10,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Fixed
 
+- The Socials tab on a source document shows "No platform is enabled" when no platform is enabled, instead of loading a Pinterest composer whose requests fail with "platform is not enabled".
 - Composer channel chips: the checkbox sits inline with its label instead of stacking above it.
 
 ## [0.12.0-beta.0] - 2026-11-04
