@@ -14,12 +14,18 @@ import {
   recordConnectionError,
   saveCredentials,
 } from '../../services/connectionService.js'
-import { PlatformApiError } from '../../utilities/errors.js'
+import {
+  classifyRequestFailure,
+  PlatformApiError,
+  type PlatformRequestEffect,
+} from '../../utilities/errors.js'
 import { createPluginLogger } from '../../utilities/logger.js'
 import {
   isRetryableNetworkError,
   isSafeToRetryRequest,
   policyFetch,
+  resolveRequestEffect,
+  wasRequestNotSent,
 } from '../../utilities/requestPolicy.js'
 import { sleep } from '../../utilities/sleep.js'
 
@@ -320,23 +326,30 @@ const parseUsageHeader = (raw: null | string): null | Record<string, unknown> =>
   }
 }
 
-const isRetryableMetaError = (status: number, errorCode?: number): boolean => {
-  if (RETRYABLE_STATUS_CODES.has(status)) {
-    return true
-  }
-  if (errorCode === 4 || errorCode === 17 || errorCode === 32 || errorCode === 613) {
-    return true
-  }
+/**
+ * Meta's rate-limit codes (app, user, page, custom and BUC throttles). Meta
+ * documents throttled calls as rejected: the call is not processed.
+ */
+const isMetaThrottleCode = (errorCode?: number): boolean =>
+  errorCode === 4 ||
+  errorCode === 17 ||
+  errorCode === 32 ||
+  errorCode === 613 ||
   // 80000–80008 are BUC throttles.
-  if (errorCode !== undefined && errorCode >= 80000 && errorCode <= 80099) {
-    return true
-  }
-  return false
-}
+  (errorCode !== undefined && errorCode >= 80000 && errorCode <= 80099)
+
+const isRetryableMetaError = (status: number, errorCode?: number): boolean =>
+  RETRYABLE_STATUS_CODES.has(status) || isMetaThrottleCode(errorCode)
 
 export type MetaRequestOptions = {
   /** Use an explicitly scoped token (for example a Facebook Page token). */
   accessToken?: string
+  /**
+   * What the request does, for failure classification. Defaults from the
+   * method: `idempotent` for GET/PUT/DELETE…, `create` for POST. Pass
+   * `prepare` for a write that publishes nothing by itself.
+   */
+  effect?: PlatformRequestEffect
   /** Override the underlying fetch init. */
   init?: RequestInit
   /** Override retry count. Default = options.rateLimit.maxRetries. */
@@ -425,10 +438,13 @@ export const makeMetaRequest = async (
       }
       throw new PlatformApiError({
         message: `Meta ${path} failed before receiving a response`,
-        outcome: safeToRetry ? 'failed' : 'unknown',
+        ...classifyRequestFailure({
+          effect: resolveRequestEffect(requestOptions.init, requestOptions.effect),
+          retryableNetworkError: isRetryableNetworkError(error),
+          sent: !wasRequestNotSent(error),
+        }),
         platform,
         raw: error,
-        retryable: safeToRetry && isRetryableNetworkError(error),
         statusCode: 502,
         upstreamCode: error instanceof Error ? error.name : 'network_error',
         upstreamMessage: error instanceof Error ? error.message : String(error),
@@ -516,6 +532,24 @@ export const metaJson = async <T>(
     ...requestOptions,
     init,
   })
+  return readMetaJson<T>(response, {
+    effect: resolveRequestEffect(init, requestOptions?.effect),
+    path,
+    platform,
+  })
+}
+
+/**
+ * Read a Graph API response as JSON, or throw a `PlatformApiError` classified
+ * by `classifyRequestFailure`: a non-2xx, an error envelope inside a 2xx, or a
+ * 2xx that isn't JSON. For a `create` request only a 4xx (or a documented
+ * throttle) proves Meta did not apply it; anything else is `outcome: 'unknown'`.
+ */
+export const readMetaJson = async <T>(
+  response: Response,
+  args: { effect: PlatformRequestEffect; path: string; platform: MetaPlatform },
+): Promise<T> => {
+  const { effect, path, platform } = args
   let parsed: unknown
   let text = ''
   try {
@@ -529,38 +563,42 @@ export const metaJson = async <T>(
   const embeddedError = envelope.error
   if (!response.ok) {
     const error = embeddedError
-    const safeToRetry = isSafeToRetryRequest(init)
-    const outcome =
-      !safeToRetry && response.status !== 429 && isRetryableMetaError(response.status, error?.code)
-        ? 'unknown'
-        : 'failed'
     throw new PlatformApiError({
       message: `Meta ${path} failed: ${response.status}${error?.message ? ` — ${error.message}` : ''}`,
-      outcome,
+      ...classifyRequestFailure({
+        effect,
+        status: response.status,
+        throttled: isMetaThrottleCode(error?.code),
+      }),
       platform,
       raw: { ...envelope, fbtrace_id: error?.fbtrace_id },
-      retryable: outcome === 'failed' && isRetryableMetaError(response.status, error?.code),
       statusCode: response.status,
       upstreamCode: error?.code ?? response.status,
       upstreamMessage: error?.message ?? text,
     })
   }
   if (embeddedError) {
+    // A 2xx carrying an error: a throttle is a documented rejection; anything
+    // else on a `create` may have been applied.
     throw new PlatformApiError({
       message: `Meta ${path} returned an embedded error${embeddedError.message ? ` — ${embeddedError.message}` : ''}`,
+      ...classifyRequestFailure({
+        effect,
+        status: isMetaThrottleCode(embeddedError.code) ? 429 : response.status,
+      }),
       platform,
       raw: { ...envelope, fbtrace_id: embeddedError.fbtrace_id },
-      retryable: isRetryableMetaError(response.status, embeddedError.code),
       statusCode: 502,
       upstreamCode: embeddedError.code ?? 'embedded_error',
       upstreamMessage: embeddedError.message,
     })
   }
   if (parsed === undefined) {
+    // The platform answered 2xx: a `create` may well have been applied.
     throw new PlatformApiError({
       message: `Meta ${path} returned invalid JSON`,
+      ...classifyRequestFailure({ effect, status: response.status }),
       platform,
-      retryable: false,
       statusCode: 502,
       upstreamMessage: text,
     })

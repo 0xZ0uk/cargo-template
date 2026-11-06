@@ -11,11 +11,16 @@ import { SOCIAL_POSTS_SLUG } from '../../../constants.js'
 import { resolvePlatformImageUrl } from '../../assets/resolvePlatformImage.js'
 import { resolveConfiguredText } from '../../copy/resolveConfiguredCopy.js'
 import { persistPublicationAudit } from '../../services/publicationPersistence.js'
-import { PlatformApiError, ValidationError } from '../../utilities/errors.js'
+import {
+  classifyRequestFailure,
+  PlatformApiError,
+  type PlatformRequestEffect,
+  ValidationError,
+} from '../../utilities/errors.js'
 import { sha256Hex } from '../../utilities/hash.js'
 import { createPluginLogger } from '../../utilities/logger.js'
 import { resolvePublicationIdempotencyKey } from '../../utilities/publicationIdentity.js'
-import { makeMetaRequest } from '../_meta/api.js'
+import { makeMetaRequest, readMetaJson } from '../_meta/api.js'
 import { buildDefaultFacebookMessage } from './copy.js'
 import { getPageAccessToken } from './pages.js'
 
@@ -210,12 +215,20 @@ const fetchFacebookPermalinkUrl = async (
 // Per-format publish helpers (use Page access token explicitly)
 // ---------------------------------------------------------------------------
 
+/**
+ * POST with the Page token, read through `readMetaJson` so the failure is classified
+ * like every other Meta write (`classifyRequestFailure`): a 5xx, timeout or
+ * unreadable 2xx on a request that creates the post is `outcome: 'unknown'`
+ * and never repeated automatically. `effect: 'prepare'` is for uploads that
+ * publish nothing by themselves (unpublished photos for a multi-photo post).
+ */
 const postWithPageToken = async <T>(
   payload: Payload,
   options: NormalizedPluginOptions,
   path: string,
   body: Record<string, unknown>,
   pageAccessToken: string,
+  effect: PlatformRequestEffect = 'create',
 ): Promise<T> => {
   // Page publishing requires the derived Page token, not the parent user or
   // system token used for discovery.
@@ -234,34 +247,17 @@ const postWithPageToken = async <T>(
   }
 
   // Reuse the Meta client so Page-scoped calls retain retries, quota tracking,
-  // and appsecret_proof computed from the Page token.
+  // appsecret_proof computed from the Page token, and failure classification.
   const response = await makeMetaRequest(payload, options, 'facebook', path, {
     accessToken: pageAccessToken,
+    effect,
     init: {
       body: params.toString(),
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       method: 'POST',
     },
   })
-  if (!response.ok) {
-    const text = await response.text().catch(() => '')
-    let envelope: { error?: { code?: number; message?: string } } = {}
-    try {
-      envelope = JSON.parse(text) as typeof envelope
-    } catch {
-      /* keep raw */
-    }
-    throw new PlatformApiError({
-      message: `Facebook ${path} failed: ${response.status}${envelope.error?.message ? ` — ${envelope.error.message}` : ''}`,
-      platform: 'facebook',
-      raw: envelope,
-      retryable: response.status >= 500 || response.status === 429,
-      statusCode: response.status,
-      upstreamCode: envelope.error?.code ?? response.status,
-      upstreamMessage: envelope.error?.message ?? text,
-    })
-  }
-  return (await response.json()) as T
+  return readMetaJson<T>(response, { effect, path, platform: 'facebook' })
 }
 
 const publishLinkPost = async (
@@ -314,6 +310,7 @@ const uploadPhotoUnpublished = async (
     `/${encodeURIComponent(pageId)}/photos`,
     body,
     pageAccessToken,
+    'prepare',
   )
 }
 
@@ -592,11 +589,12 @@ export const publishFacebookPost = async (args: {
   }
 
   if (!externalId) {
+    // Meta answered 2xx: the post may exist even though no id came back.
     throw new PlatformApiError({
       message: 'Facebook publish returned no post id',
+      ...classifyRequestFailure({ effect: 'create', status: 200 }),
       platform: 'facebook',
       raw,
-      retryable: false,
       statusCode: 502,
     })
   }

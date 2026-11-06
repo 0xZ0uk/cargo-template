@@ -8,7 +8,11 @@ import {
   PINTEREST_VIDEO_MAX_BYTES,
 } from '../../../constants.js'
 import { fetchPinnedRemoteResponse } from '../../assets/safeRemoteImage.js'
-import { PlatformApiError, ValidationError } from '../../utilities/errors.js'
+import {
+  classifyRequestFailure,
+  PlatformApiError,
+  ValidationError,
+} from '../../utilities/errors.js'
 import { policyFetch } from '../../utilities/requestPolicy.js'
 import { sleep } from '../../utilities/sleep.js'
 import { pinterestJson } from './api.js'
@@ -81,6 +85,8 @@ const fetchVideoSource = async (
       message: `Pinterest could not fetch video source: HTTP ${response.status}`,
       platform: 'pinterest',
       retryable: response.status >= 500 || response.status === 429,
+      // A GET from the host's media origin: nothing reached Pinterest.
+      safeToRepeat: true,
       statusCode: 502,
       upstreamCode: response.status,
     })
@@ -183,17 +189,25 @@ const registerVideo = async (
   payload: Payload,
   options: NormalizedPluginOptions,
 ): Promise<Required<MediaRegistration>> => {
-  const registration = await pinterestJson<MediaRegistration>(payload, options, '/v5/media', {
-    body: JSON.stringify({ media_type: 'video' }),
-    headers: { 'Content-Type': 'application/json' },
-    method: 'POST',
-  })
+  // A media registration publishes nothing; the Pin is created afterwards.
+  const registration = await pinterestJson<MediaRegistration>(
+    payload,
+    options,
+    '/v5/media',
+    {
+      body: JSON.stringify({ media_type: 'video' }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    },
+    { effect: 'prepare' },
+  )
   if (!registration.media_id || !registration.upload_url || !registration.upload_parameters) {
     throw new PlatformApiError({
       message: 'Pinterest media registration returned an incomplete upload target',
       platform: 'pinterest',
       raw: registration,
       retryable: false,
+      safeToRepeat: true,
       statusCode: 502,
     })
   }
@@ -232,8 +246,9 @@ const transferVideo = async (
     const text = await response.text().catch(() => '')
     throw new PlatformApiError({
       message: `Pinterest media upload failed: HTTP ${response.status}`,
+      // Uploading the video file publishes nothing.
+      ...classifyRequestFailure({ effect: 'prepare', status: response.status }),
       platform: 'pinterest',
-      retryable: response.status >= 500 || response.status === 429,
       statusCode: 502,
       upstreamCode: response.status,
       upstreamMessage: text,
@@ -263,6 +278,7 @@ const waitForMedia = async (
         platform: 'pinterest',
         raw: status,
         retryable: false,
+        safeToRepeat: true,
         statusCode: 502,
       })
     }
@@ -271,6 +287,8 @@ const waitForMedia = async (
         message: `Pinterest media ${mediaId} did not finish processing within ${PINTEREST_MEDIA_POLL_TIMEOUT_MS}ms`,
         platform: 'pinterest',
         retryable: true,
+        // No Pin exists yet; the retry uploads the video again.
+        safeToRepeat: true,
         statusCode: 504,
         upstreamCode: 'media_timeout',
       })

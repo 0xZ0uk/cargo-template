@@ -9,13 +9,17 @@ import type {
 } from '../../../../types/index.js'
 
 import {
+  classifyRequestFailure,
+  isAutoRetrySafe,
   PlatformApiError,
   PublicationPersistenceError,
   ValidationError,
 } from '../../../utilities/errors.js'
 import { buildPublicationIdentity } from '../../../utilities/publicationIdentity.js'
 
-vi.mock('../../_meta/api.js', () => ({
+vi.mock('../../_meta/api.js', async (importOriginal) => ({
+  // The real response reader, so failures are classified as in production.
+  readMetaJson: (await importOriginal<typeof import('../../_meta/api.js')>()).readMetaJson,
   makeMetaRequest: vi.fn(),
   metaJson: vi.fn(),
 }))
@@ -93,7 +97,7 @@ const requestParams = (pathFragment: string): URLSearchParams => {
 
 const requestOpts = (
   pathFragment: string,
-): { accessToken?: string; skipAppsecretProof?: boolean } => {
+): { accessToken?: string; effect?: string; skipAppsecretProof?: boolean } => {
   const call = mockedRequest.mock.calls.find((c) => String(c[3]).includes(pathFragment))
   return call?.[4] as { skipAppsecretProof?: boolean }
 }
@@ -217,6 +221,98 @@ describe('publishFacebookPost — formats', () => {
         payload: asPayload(payload),
       }),
     ).rejects.toThrow(/2.*10/)
+  })
+
+  describe('a failure on the request that creates the post (no Payload retry)', () => {
+    /** Let `pathFragment` fail with `response` (or a rejection); everything else succeeds. */
+    const failOn = (pathFragment: string, failure: Response | PlatformApiError) => {
+      setupPublish()
+      const succeed = mockedRequest.getMockImplementation()!
+      mockedRequest.mockImplementation((...args) =>
+        String(args[3]).includes(pathFragment)
+          ? failure instanceof PlatformApiError
+            ? Promise.reject(failure)
+            : Promise.resolve(failure)
+          : succeed(...args),
+      )
+    }
+    const publishWith = (input: Record<string, unknown>) =>
+      publishFacebookPost({
+        ctx: ctx(),
+        input: { pageId: 'p1', ...input },
+        options,
+        payload: asPayload(payload),
+      }).catch((e: unknown) => e)
+
+    it.each([
+      ['LINK /feed', '/feed', { format: 'LINK' }],
+      ['PHOTO /photos', '/photos', { format: 'PHOTO', imageUrl: 'https://cdn/1.jpg' }],
+      ['VIDEO /videos', '/videos', { format: 'VIDEO', videoUrl: 'https://cdn/v.mp4' }],
+      [
+        'PHOTO_MULTI parent /feed',
+        '/feed',
+        { format: 'PHOTO_MULTI', imageUrls: ['https://cdn/1.jpg', 'https://cdn/2.jpg'] },
+      ],
+    ])('%s answering 500 is an unknown outcome', async (_label, path, input) => {
+      mockedResolve.mockImplementation(({ imageUrl }) =>
+        Promise.resolve({ converted: false, url: imageUrl } as never),
+      )
+      failOn(path, jsonResponse({ error: { code: 2, message: 'Service unavailable' } }, 500))
+      const err = await publishWith(input)
+      expect(err).toBeInstanceOf(PlatformApiError)
+      expect(err).toMatchObject({ outcome: 'unknown', retryable: false, safeToRepeat: false })
+      expect(isAutoRetrySafe(err)).toBe(false)
+      expect(payload.create).not.toHaveBeenCalled()
+    })
+
+    it('a timeout on /feed (classified by the Meta client) stays unknown', async () => {
+      failOn(
+        '/feed',
+        new PlatformApiError({
+          message: 'Meta /p1/feed failed before receiving a response',
+          ...classifyRequestFailure({ effect: 'create', retryableNetworkError: true }),
+          platform: 'facebook',
+        }),
+      )
+      const err = await publishWith({ format: 'LINK' })
+      expect(err).toMatchObject({ outcome: 'unknown' })
+      expect(isAutoRetrySafe(err)).toBe(false)
+    })
+
+    it('passes the creating effect to the Meta client for /feed', async () => {
+      setupPublish()
+      await publishWith({ format: 'LINK' })
+      expect(requestOpts('/feed')).toMatchObject({ accessToken: 'PAGE_TOKEN', effect: 'create' })
+    })
+
+    it('a 429 on /feed is a rejection Payload may retry', async () => {
+      failOn('/feed', jsonResponse({ error: { code: 4, message: 'throttled' } }, 429))
+      const err = await publishWith({ format: 'LINK' })
+      expect(err).toMatchObject({ outcome: 'failed', retryable: true, safeToRepeat: true })
+      expect(isAutoRetrySafe(err)).toBe(true)
+    })
+
+    it('a 500 on an unpublished PHOTO_MULTI upload publishes nothing: safe to retry', async () => {
+      mockedResolve.mockImplementation(({ imageUrl }) =>
+        Promise.resolve({ converted: false, url: imageUrl } as never),
+      )
+      failOn('/photos', jsonResponse({}, 500))
+      const err = await publishWith({
+        format: 'PHOTO_MULTI',
+        imageUrls: ['https://cdn/1.jpg', 'https://cdn/2.jpg'],
+      })
+      expect(err).toMatchObject({ outcome: 'failed', retryable: true, safeToRepeat: true })
+      expect(isAutoRetrySafe(err)).toBe(true)
+      expect(requestOpts('/photos')).toMatchObject({ effect: 'prepare' })
+      expect(mockedRequest.mock.calls.some((c) => String(c[3]).includes('/feed'))).toBe(false)
+    })
+
+    it('a 2xx without a post id is an unknown outcome', async () => {
+      setupPublish({})
+      const err = await publishWith({ format: 'LINK' })
+      expect(err).toMatchObject({ outcome: 'unknown' })
+      expect(isAutoRetrySafe(err)).toBe(false)
+    })
   })
 
   it('publishes a VIDEO via file_url', async () => {

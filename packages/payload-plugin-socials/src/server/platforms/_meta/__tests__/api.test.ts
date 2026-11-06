@@ -15,6 +15,11 @@ import {
   recordConnectionError,
   saveCredentials,
 } from '../../../services/connectionService.js'
+import {
+  hasUnknownPublicationOutcome,
+  isAutoRetrySafe,
+  PlatformApiError,
+} from '../../../utilities/errors.js'
 import { getMetaAccessToken, makeMetaRequest, metaJson } from '../api.js'
 
 const rateLimit = { baseRetryDelayMs: 0, jitterFactor: 0, maxRetries: 2, maxRetryDelayMs: 0 }
@@ -212,5 +217,104 @@ describe('metaJson', () => {
       statusCode: 502,
       upstreamCode: 100,
     })
+  })
+})
+
+describe('failures on a creating request (Facebook and Instagram)', () => {
+  const timeout = () => new DOMException('Request timed out', 'TimeoutError')
+  const post = { body: '{}', method: 'POST' }
+
+  it.each([
+    ['Instagram media_publish answers 500', 'instagram', '/ig_1/media_publish', [res(500, {})]],
+    ['Instagram media_publish answers 503', 'instagram', '/ig_1/media_publish', [res(503, {})]],
+    ['Facebook /feed answers 500', 'facebook', '/page_1/feed', [res(500, { error: { code: 2 } })]],
+    ['Facebook /videos answers 504', 'facebook', '/page_1/videos', [res(504, 'gateway')]],
+    ['Facebook /feed answers 2xx without JSON', 'facebook', '/page_1/feed', [res(200, '<html>')]],
+    [
+      'Facebook /photos answers 2xx with a non-throttle error',
+      'facebook',
+      '/page_1/photos',
+      [res(200, { error: { code: 1, message: 'oops' } })],
+    ],
+  ] as const)(
+    '%s → unknown, never retried by Payload',
+    async (_label, platform, path, responses) => {
+      queue = [...responses]
+      const err = await metaJson(payload, buildOptions(), platform, path, post, {
+        accessToken: 'PAGE',
+      }).catch((e: unknown) => e)
+      expect(err).toBeInstanceOf(PlatformApiError)
+      expect(err).toMatchObject({ outcome: 'unknown', retryable: false, safeToRepeat: false })
+      expect(isAutoRetrySafe(err)).toBe(false)
+      expect(hasUnknownPublicationOutcome(err)).toBe(true)
+      // Sent once: the client never replays a write that may have been applied.
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+    },
+  )
+
+  it.each([
+    ['Instagram media_publish', 'instagram', '/ig_1/media_publish'],
+    ['Facebook /feed', 'facebook', '/page_1/feed'],
+  ] as const)('%s times out → unknown, never retried', async (_label, platform, path) => {
+    fetchMock.mockImplementation(() => Promise.reject(timeout()))
+    const err = await metaJson(payload, buildOptions(), platform, path, post).catch(
+      (e: unknown) => e,
+    )
+    expect(err).toMatchObject({ outcome: 'unknown', retryable: false, safeToRepeat: false })
+    expect(isAutoRetrySafe(err)).toBe(false)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('a 429 on the creating request is a rejection Payload may retry', async () => {
+    queue = [res(429, {}), res(429, {}), res(429, {})]
+    const err = await metaJson(payload, buildOptions(), 'facebook', '/page_1/feed', post).catch(
+      (e: unknown) => e,
+    )
+    expect(err).toMatchObject({ outcome: 'failed', retryable: true, safeToRepeat: true })
+    expect(isAutoRetrySafe(err)).toBe(true)
+  })
+
+  it.each([4, 17, 32, 613, 80001])(
+    'a 400 with Meta throttle code %s is a rejection Payload may retry',
+    async (code) => {
+      queue = [res(400, { error: { code, message: 'throttled' } })]
+      const err = await metaJson(
+        payload,
+        buildOptions(),
+        'instagram',
+        '/ig_1/media_publish',
+        post,
+      ).catch((e: unknown) => e)
+      expect(isAutoRetrySafe(err)).toBe(true)
+    },
+  )
+
+  it('a validation 400 on the creating request fails without a retry', async () => {
+    queue = [res(400, { error: { code: 100, message: 'Invalid parameter' } })]
+    const err = await metaJson(payload, buildOptions(), 'facebook', '/page_1/feed', post).catch(
+      (e: unknown) => e,
+    )
+    expect(err).toMatchObject({ outcome: 'failed', retryable: false })
+    expect(isAutoRetrySafe(err)).toBe(false)
+  })
+
+  it('a 5xx on a preparatory write (a container) is safe for Payload to retry', async () => {
+    queue = [res(500, {})]
+    const err = await metaJson(payload, buildOptions(), 'instagram', '/ig_1/media', post, {
+      effect: 'prepare',
+    }).catch((e: unknown) => e)
+    expect(err).toMatchObject({ outcome: 'failed', retryable: true, safeToRepeat: true })
+    expect(isAutoRetrySafe(err)).toBe(true)
+  })
+
+  it('a request that was never sent is safe for Payload to retry', async () => {
+    const options = buildOptions()
+    ;(options.rateLimit as unknown as Record<string, unknown>).acquireRequestLease = () =>
+      Promise.reject(new Error('lease refused'))
+    const err = await metaJson(payload, options, 'facebook', '/page_1/feed', post).catch(
+      (e: unknown) => e,
+    )
+    expect(err).toMatchObject({ outcome: 'failed', retryable: true, safeToRepeat: true })
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })
