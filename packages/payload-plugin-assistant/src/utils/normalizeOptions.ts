@@ -46,7 +46,7 @@ function normalizeConversations(options: AssistantPluginOptions["conversations"]
 }
 
 export interface NormalizedAssistantOptions {
-  /** `false` when `apiKey` is missing: schema and admin shape stay the same, the assistant says "not configured". */
+  /** `false` when `apiKey` is missing (and `testModel` is off): schema and admin shape stay the same, the assistant says "not configured". */
   configured: boolean;
   access: AssistantAccess;
   models: AssistantModel[];
@@ -60,6 +60,8 @@ export interface NormalizedAssistantOptions {
   conversations: ConversationStorage;
   rateLimit: ((req: PayloadRequest) => boolean | Promise<boolean>) | undefined;
   openRouter: { provider: typeof OPENROUTER_PROVIDER };
+  /** Scripted test model for loopback requests (`usesTestModel`). */
+  testModel: boolean;
 }
 
 /**
@@ -109,14 +111,18 @@ export function normalizeOptions(options: AssistantPluginOptions): NormalizedAss
   }
 
   const apiKey = typeof options.apiKey === "string" ? options.apiKey.trim() : "";
-  if (!apiKey) {
+  const testModel = options.testModel === true;
+  if (testModel) {
+    console.warn(`${PREFIX} "testModel" is on: turns sent to localhost use a scripted test model, not OpenRouter. Tests only.`);
+  } else if (!apiKey) {
     console.warn(
       `${PREFIX} "apiKey" is missing: the assistant is not configured. The endpoint and the admin view stay registered and report that.`
     );
   }
 
   return {
-    configured: apiKey !== "",
+    // The view's notice. With `testModel` the endpoints still check per request (`configuredFor`).
+    configured: apiKey !== "" || testModel,
     access: options.access ?? defaultAccess,
     models,
     defaultModel,
@@ -129,5 +135,6 @@ export function normalizeOptions(options: AssistantPluginOptions): NormalizedAss
     conversations: normalizeConversations(options.conversations),
     rateLimit: options.rateLimit,
     openRouter: { provider: OPENROUTER_PROVIDER },
+    testModel,
   };
 }

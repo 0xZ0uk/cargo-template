@@ -8,6 +8,7 @@ import {
 } from "../constants";
 import type { ChatDeps } from "../server/chat";
 import type { NormalizedAssistantOptions } from "../utils/normalizeOptions";
+import { configuredFor, usesTestModel } from "../utils/testModel";
 
 type Handlers = typeof import("../server/chat");
 type Guard = { configured?: boolean; rateLimit?: boolean };
@@ -28,7 +29,7 @@ export function buildEndpoints(options: NormalizedAssistantOptions, deps: ChatDe
     async (req: PayloadRequest): Promise<Response> => {
       if (!req.user) return error(401, "unauthorized", "Unauthorized");
       if (!(await options.access({ user: req.user, req }))) return error(403, "forbidden", "Forbidden");
-      if (guard.configured && !options.configured) {
+      if (guard.configured && !configuredFor(options, req)) {
         return error(503, "not_configured", "not configured", { configured: false });
       }
       if (guard.rateLimit && options.rateLimit && !(await options.rateLimit(req))) {
@@ -41,9 +42,11 @@ export function buildEndpoints(options: NormalizedAssistantOptions, deps: ChatDe
     {
       path: CONFIG_ENDPOINT_PATH,
       method: "get",
-      handler: guarded({}, async () =>
+      handler: guarded({}, async (_handlers, req) =>
         Response.json({
-          configured: options.configured,
+          configured: configuredFor(options, req),
+          // Lets an end-to-end test check it talks to the scripted model, never OpenRouter.
+          ...(usesTestModel(options, req) ? { testModel: true } : {}),
           models: options.models,
           defaultModel: options.defaultModel,
           maxSteps: options.maxSteps,

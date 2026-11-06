@@ -5,6 +5,7 @@ import { PLUGIN_NAME } from "../constants";
 import { inProcessDispatch, payloadToolSourceForRequest } from "../tools/inProcess";
 import type { McpDispatch } from "../tools/payloadToolSource";
 import type { NormalizedAssistantOptions } from "../utils/normalizeOptions";
+import { usesTestModel } from "../utils/testModel";
 import { buildProposals, findStaleApprovals } from "./approvals";
 import { buildSystemPrompt, siteUrls } from "./instructions";
 import { createTurnRunner, type CreateAdapter } from "./turn";
@@ -118,6 +119,10 @@ export async function handleChat(req: PayloadRequest, options: NormalizedAssista
     req.payload.logger.error({ err: error, msg: `[${PLUGIN_NAME}] tool discovery for toolFilter failed` });
     return jsonError(502, "tools_unavailable", "the assistant could not list Payload's tools");
   }
+  const testModel = usesTestModel(options, req);
+  if (options.testModel && !testModel) {
+    req.payload.logger.error(`[${PLUGIN_NAME}] "testModel" is on but this request is not to localhost: using OpenRouter`);
+  }
   const settings: TurnSettings = {
     model,
     apiKey: options.apiKey,
@@ -128,6 +133,7 @@ export async function handleChat(req: PayloadRequest, options: NormalizedAssista
     ...(toolNames ? { toolNames } : {}),
     httpReferer: site || origin,
     appTitle: options.appTitle,
+    ...(testModel ? { testModel: true } : {}),
   };
   const body: ChatTurnBody = { messages, ...(resume ? { resume } : {}), settings };
   const runId = parsed.value.runId ?? crypto.randomUUID();
