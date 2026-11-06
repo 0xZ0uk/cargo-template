@@ -4,6 +4,7 @@
 import type { SeoCheck, SeoInput, AnalysisContext } from '../types.js'
 import { ALT_TEXT_MIN_RATIO, ALT_TEXT_MIN_LENGTH } from '../constants.js'
 import { getTranslations } from '../i18n.js'
+import { blockContentOf } from '../helpers/blockContent.js'
 
 // ---------------------------------------------------------------------------
 // Image metadata extraction helpers
@@ -51,7 +52,7 @@ function extractImageMeta(media: unknown): ImageMeta | null {
 }
 
 /** Collect all image metadata from input data */
-function collectImageMetas(input: SeoInput): ImageMeta[] {
+function collectImageMetas(input: SeoInput, ctx: AnalysisContext): ImageMeta[] {
   const metas: ImageMeta[] = []
 
   // Hero media
@@ -66,31 +67,10 @@ function collectImageMetas(input: SeoInput): ImageMeta[] {
     if (meta) metas.push(meta)
   }
 
-  // Block images
-  if (input.blocks && Array.isArray(input.blocks)) {
-    for (const block of input.blocks) {
-      if (!block || typeof block !== 'object') continue
-      const b = block as Record<string, unknown>
-
-      // MediaBlock
-      if ((b.blockType === 'mediaBlock' || b.blockType === 'media') && b.media) {
-        const meta = extractImageMeta(b.media)
-        if (meta) metas.push(meta)
-      }
-
-      // Content columns with media
-      if (b.columns && Array.isArray(b.columns)) {
-        for (const col of b.columns) {
-          if (col && typeof col === 'object') {
-            const colObj = col as Record<string, unknown>
-            if (colObj.media) {
-              const meta = extractImageMeta(colObj.media)
-              if (meta) metas.push(meta)
-            }
-          }
-        }
-      }
-    }
+  // Block images (populated uploads anywhere in the layout)
+  for (const media of blockContentOf(input, ctx).media) {
+    const meta = extractImageMeta(media)
+    if (meta) metas.push(meta)
   }
 
   return metas
@@ -254,7 +234,7 @@ export function checkImages(_input: SeoInput, ctx: AnalysisContext): SeoCheck[] 
   // ---------------------------------------------------------------------------
 
   if (imageStats.total > 0) {
-    const imageMetas = collectImageMetas(_input)
+    const imageMetas = collectImageMetas(_input, ctx)
 
     // 30. Image format check — flag non-WebP/AVIF
     if (imageMetas.length > 0) {

@@ -13,6 +13,7 @@
  */
 import type { SeoCheck, SeoInput, AnalysisContext } from '../types.js'
 import { extractListsFromLexical, countLongSections } from '../helpers.js'
+import { blockContentOf } from '../helpers/blockContent.js'
 
 const QUESTION_WORDS: readonly string[] = ['how', 'why', 'when', 'what', 'which', 'where', 'who', 'can', 'do', 'does', 'is', 'are', 'should']
 
@@ -67,24 +68,11 @@ function isQuestionHeading(text: string): boolean {
 }
 
 /** Gather Lexical roots from all input sources (hero, content, blocks, columns). */
-function collectLexicalSources(input: SeoInput): unknown[] {
+function collectLexicalSources(input: SeoInput, ctx: AnalysisContext): unknown[] {
   const sources: unknown[] = []
   if (input.heroRichText) sources.push(input.heroRichText)
   if (input.content) sources.push(input.content)
-  if (Array.isArray(input.blocks)) {
-    for (const b of input.blocks) {
-      if (!b || typeof b !== 'object') continue
-      const blk = b as Record<string, unknown>
-      if (blk.richText) sources.push(blk.richText)
-      if (Array.isArray(blk.columns)) {
-        for (const c of blk.columns) {
-          if (c && typeof c === 'object' && (c as Record<string, unknown>).richText) {
-            sources.push((c as Record<string, unknown>).richText)
-          }
-        }
-      }
-    }
-  }
+  sources.push(...blockContentOf(input, ctx).lexicalRoots)
   return sources
 }
 
@@ -139,7 +127,7 @@ export function checkGeo(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
   })
 
   // 3. Extractable structures — lists or tables
-  const sources = collectLexicalSources(input)
+  const sources = collectLexicalSources(input, ctx)
   const allLists = sources.flatMap((src) => extractListsFromLexical(src))
   const hasList = allLists.length > 0
   const hasTable = sources.some((src) => containsLexicalType(src, 'table'))
@@ -168,9 +156,10 @@ export function checkGeo(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
     group: 'geo',
   })
 
-  // 5. FAQ / HowTo structure — Q→A pairs (≥2 question headings) or a numbered
-  //    procedure. AI engines (ChatGPT, Perplexity) lift these formats verbatim.
-  const isFaq = questionHeadings >= FAQ_MIN_QUESTIONS
+  // 5. FAQ / HowTo structure — Q→A pairs (≥2 question headings, or an FAQ block whose
+  //    questions are body text, as `checkSchema` sees it) or a numbered procedure. AI
+  //    engines (ChatGPT, Perplexity) lift these formats verbatim.
+  const isFaq = questionHeadings >= FAQ_MIN_QUESTIONS || blockContentOf(input, ctx).hasFaq
   const hasHowToSteps = allLists.some((l) => l.listType === 'number' && l.items >= HOWTO_MIN_STEPS)
   const faqOrHowTo = isFaq || hasHowToSteps
   checks.push({

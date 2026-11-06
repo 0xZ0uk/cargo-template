@@ -18,6 +18,7 @@
 
 import type { PayloadHandler } from 'payload'
 import { defaultSeoSharedCache, type SeoSharedCache } from '../cache.js'
+import { extractBlocksContent } from '../helpers/blockContent.js'
 import { fetchAllDocs } from '../helpers/fetchAllDocs.js'
 import { checkLinks, type LinkCheckResult, type LinkCheckerOptions } from '../helpers/linkChecker.js'
 import { classifyLink, countLinkStates, LINK_STATES } from '../helpers/linkStatus.js'
@@ -129,24 +130,10 @@ export function extractDocExternalLinks(
     allLinks.push(...extractExternalLinks(doc.hero.richText))
   }
 
-  // Layout blocks
-  const blocks = Array.isArray(doc.layout) ? doc.layout : []
-  for (const block of blocks) {
-    if (!block || typeof block !== 'object') continue
-
-    // Direct richText on block
-    if (block.richText) {
-      allLinks.push(...extractExternalLinks(block.richText))
-    }
-
-    // Columns with richText
-    if (Array.isArray(block.columns)) {
-      for (const col of block.columns) {
-        if (col?.richText) {
-          allLinks.push(...extractExternalLinks(col.richText))
-        }
-      }
-    }
+  // Layout blocks: every Lexical value, `link` / `links` field and plain-URL link, by shape
+  for (const link of extractBlocksContent(doc.layout).links) {
+    const url = link.url.trim()
+    if (url.startsWith('http://') || url.startsWith('https://')) allLinks.push(url)
   }
 
   // Post content (Lexical richText)

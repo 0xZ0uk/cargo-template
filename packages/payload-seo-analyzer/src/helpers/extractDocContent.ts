@@ -11,6 +11,7 @@ import {
   extractHeadingsFromLexical,
   extractImagesFromLexical,
 } from '../helpers.js'
+import { extractBlocksContent } from './blockContent.js'
 
 export interface ExtractedContent {
   text: string
@@ -27,9 +28,9 @@ export interface ExtractedContent {
 
 /**
  * Extract all content from a Payload document (pages, posts, globals).
- * Handles: hero, layout/blocks (content, services, testimonials, callToAction,
- * banner, code, form, etc.), richText lexical, and plain text fields
- * (title, meta.description, etc.).
+ * Handles: hero, layout blocks (any block, via `extractBlocksContent`: section
+ * headings, item copy, links and every Lexical value), post `content`, and plain
+ * text fields (title, meta.description, etc.).
  *
  * @param doc - A Payload document (any collection)
  * @param maxDepth - Maximum Lexical tree traversal depth (default: 10)
@@ -72,78 +73,12 @@ export function extractDocContent(
     headings.push(...extractHeadingsFromLexical(hero.richText, maxDepth))
   }
 
-  // --- Layout blocks ---
-  const layout = doc.layout as unknown[] | undefined
-  if (layout && Array.isArray(layout)) {
-    for (const block of layout) {
-      if (!block || typeof block !== 'object') continue
-      const b = block as Record<string, unknown>
-
-      // Direct richText on block
-      if (b.richText) {
-        textParts.push(extractTextFromLexical(b.richText, maxDepth))
-        readabilityParts.push(extractTextFromLexical(b.richText, maxDepth, true))
-        links.push(...extractLinksFromLexical(b.richText, maxDepth))
-        headings.push(...extractHeadingsFromLexical(b.richText, maxDepth))
-      }
-
-      // Columns with richText
-      if (Array.isArray(b.columns)) {
-        for (const col of b.columns) {
-          if (col && typeof col === 'object') {
-            const colObj = col as Record<string, unknown>
-            if (colObj.richText) {
-              textParts.push(extractTextFromLexical(colObj.richText, maxDepth))
-              readabilityParts.push(extractTextFromLexical(colObj.richText, maxDepth, true))
-              links.push(...extractLinksFromLexical(colObj.richText, maxDepth))
-              headings.push(...extractHeadingsFromLexical(colObj.richText, maxDepth))
-            }
-          }
-        }
-      }
-
-      // Services block
-      if (b.blockType === 'services' && Array.isArray(b.services)) {
-        for (const svc of b.services) {
-          if (svc && typeof svc === 'object') {
-            const s = svc as Record<string, unknown>
-            if (typeof s.title === 'string') {
-              textParts.push(s.title)
-              readabilityParts.push(`${s.title}.`)
-            }
-            if (typeof s.description === 'string') {
-              textParts.push(s.description)
-              readabilityParts.push(`${s.description}.`)
-            }
-          }
-        }
-      }
-
-      // Testimonials block
-      if (b.blockType === 'testimonials' && Array.isArray(b.testimonials)) {
-        for (const t of b.testimonials) {
-          if (t && typeof t === 'object') {
-            const testimonial = t as Record<string, unknown>
-            if (typeof testimonial.quote === 'string') {
-              textParts.push(testimonial.quote)
-              readabilityParts.push(`${testimonial.quote}.`)
-            }
-          }
-        }
-      }
-
-      // Banner block
-      if (b.blockType === 'banner' && typeof b.content === 'string') {
-        textParts.push(b.content)
-        readabilityParts.push(b.content)
-      }
-
-      // CTA block text
-      if ((b.blockType === 'cta' || b.blockType === 'callToAction') && b.richText) {
-        // Already handled above via b.richText
-      }
-    }
-  }
+  // --- Layout blocks (shared walker: same shapes as the analyzer and the sidebar) ---
+  const blockContent = extractBlocksContent(doc.layout, maxDepth)
+  textParts.push(...blockContent.text)
+  readabilityParts.push(...blockContent.readability)
+  links.push(...blockContent.links)
+  headings.push(...blockContent.headings)
 
   // --- Post content (Lexical richText) ---
   if (doc.content && typeof doc.content === 'object' && !Array.isArray(doc.content)) {
@@ -160,17 +95,8 @@ export function extractDocContent(
       images.push({ src: '', alt })
     }
   }
-  if (layout && Array.isArray(layout)) {
-    for (const block of layout) {
-      if (!block || typeof block !== 'object') continue
-      const b = block as Record<string, unknown>
-      if (b.richText) {
-        const blockImgs = extractImagesFromLexical(b.richText, maxDepth)
-        for (const alt of blockImgs.altTexts) {
-          images.push({ src: '', alt })
-        }
-      }
-    }
+  for (const alt of blockContent.images.altTexts) {
+    images.push({ src: '', alt })
   }
   if (doc.content && typeof doc.content === 'object' && !Array.isArray(doc.content)) {
     const contentImgs = extractImagesFromLexical(doc.content, maxDepth)

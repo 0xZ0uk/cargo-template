@@ -17,7 +17,6 @@ import {
 } from '@payloadcms/ui'
 import {
   analyzeSeo,
-  extractTextFromLexical,
   type SeoAnalysis,
   type SeoCheck,
   type CheckCategory,
@@ -29,6 +28,7 @@ import { SeoSocialPreview } from './SeoSocialPreview.js'
 import { useDashboardT, useSeoFeature } from '../hooks/useSeoLocale.js'
 import { type DashboardTranslations } from '../dashboard-i18n.js'
 import { withSeoErrorBoundary } from './withSeoErrorBoundary.js'
+import { buildSidebarContentInput, sidebarContentText } from '../helpers/sidebarContent.js'
 import { Card, Checklist, cx, ScoreRing, statusTone, TonePill, type Tone } from '../ui/index.js'
 import { useAdminRoute, useSeoApi } from '../hooks/useSeoApi.js'
 import './SeoAnalyzer.css'
@@ -569,170 +569,9 @@ const SeoAnalyzerInner: React.FC = () => {
     const metaImage = getFieldValue('meta.image')
     const slug = getFieldValue('slug') as string | undefined
 
-    // Hero fields (Pages)
-    const heroRichText = getFieldValue('hero.richText')
-    const heroMedia = getFieldValue('hero.media')
-
-    // Hero CTA links (linkGroup: hero.links.N.link)
-    const heroLinks: Record<string, unknown>[] = []
-    let heroLinkIdx = 0
-    while (true) {
-      const linkType = getFieldValue(`hero.links.${heroLinkIdx}.link.type`) as string | undefined
-      if (linkType === undefined && heroLinkIdx > 0) break
-      if (linkType !== undefined) {
-        const linkUrl = getFieldValue(`hero.links.${heroLinkIdx}.link.url`) as string | undefined
-        const linkLabel = getFieldValue(`hero.links.${heroLinkIdx}.link.label`) as string | undefined
-        const linkRef = getFieldValue(`hero.links.${heroLinkIdx}.link.reference`)
-        heroLinks.push({ link: { type: linkType, url: linkUrl, label: linkLabel, reference: linkRef } })
-      }
-      heroLinkIdx++
-      if (heroLinkIdx > 10) break
-    }
-
-    // Post content (Lexical richText)
-    const content = getFieldValue('content')
-
-    // Detect if we're editing a post (content field present means post)
-    const isPost = !!content
-
-    // heroTitle: for posts = document title (rendered as <h1> by PostHero)
-    // for pages = not needed for H1 counting (allHeadings handles it)
-    const pageTitle = getFieldValue('title') as string | undefined
-    let heroTitle: string | undefined
-    if (isPost) {
-      heroTitle = pageTitle
-    } else if (heroRichText) {
-      const text = extractTextFromLexical(heroRichText)
-      if (text.trim()) heroTitle = text.trim().split('\n')[0]
-    }
-
-    // Layout blocks (Pages)
-    const blocks: unknown[] = []
-
-    // Collect blocks from layout — form state stores them as layout.0, layout.1, etc.
-    let blockIdx = 0
-    while (true) {
-      const blockType = getFieldValue(`layout.${blockIdx}.blockType`) as string | undefined
-      if (!blockType) break
-
-      const block: Record<string, unknown> = { blockType }
-
-      // For Content blocks with columns (+ enableLink/link for link extraction)
-      let colIdx = 0
-      const columns: Record<string, unknown>[] = []
-      while (true) {
-        const colRichText = getFieldValue(`layout.${blockIdx}.columns.${colIdx}.richText`)
-        if (colRichText === undefined && colIdx > 0) break
-        if (colRichText !== undefined) {
-          const enableLink = getFieldValue(`layout.${blockIdx}.columns.${colIdx}.enableLink`) as boolean | undefined
-          const colEntry: Record<string, unknown> = { richText: colRichText }
-          if (enableLink) {
-            colEntry.enableLink = true
-            const linkType = getFieldValue(`layout.${blockIdx}.columns.${colIdx}.link.type`) as string | undefined
-            const linkUrl = getFieldValue(`layout.${blockIdx}.columns.${colIdx}.link.url`) as string | undefined
-            const linkLabel = getFieldValue(`layout.${blockIdx}.columns.${colIdx}.link.label`) as string | undefined
-            const linkRef = getFieldValue(`layout.${blockIdx}.columns.${colIdx}.link.reference`)
-            colEntry.link = { type: linkType, url: linkUrl, label: linkLabel, reference: linkRef }
-          }
-          columns.push(colEntry)
-        }
-        colIdx++
-        if (colIdx > 20) break // safety
-      }
-      if (columns.length > 0) block.columns = columns
-
-      // For blocks with direct richText
-      const richText = getFieldValue(`layout.${blockIdx}.richText`)
-      if (richText) block.richText = richText
-
-      // MediaBlock
-      const media = getFieldValue(`layout.${blockIdx}.media`)
-      if (media) block.media = media
-
-      // Services block — extract titles, descriptions and links
-      if (blockType === 'services') {
-        const services: Record<string, unknown>[] = []
-        let svcIdx = 0
-        while (true) {
-          const svcTitle = getFieldValue(`layout.${blockIdx}.services.${svcIdx}.title`) as string | undefined
-          if (svcTitle === undefined && svcIdx > 0) break
-          if (svcTitle !== undefined) {
-            const svcDesc = getFieldValue(`layout.${blockIdx}.services.${svcIdx}.description`) as string | undefined
-            const svcLink = getFieldValue(`layout.${blockIdx}.services.${svcIdx}.link`) as string | undefined
-            services.push({ title: svcTitle, description: svcDesc || '', link: svcLink || '' })
-          }
-          svcIdx++
-          if (svcIdx > 50) break // safety
-        }
-        if (services.length > 0) block.services = services
-      }
-
-      // CTA block — extract linkGroup links
-      if (blockType === 'cta' || blockType === 'callToAction') {
-        const links: Record<string, unknown>[] = []
-        let linkIdx = 0
-        while (true) {
-          const linkType = getFieldValue(`layout.${blockIdx}.links.${linkIdx}.link.type`) as string | undefined
-          if (linkType === undefined && linkIdx > 0) break
-          if (linkType !== undefined) {
-            const linkUrl = getFieldValue(`layout.${blockIdx}.links.${linkIdx}.link.url`) as string | undefined
-            const linkLabel = getFieldValue(`layout.${blockIdx}.links.${linkIdx}.link.label`) as string | undefined
-            const linkRef = getFieldValue(`layout.${blockIdx}.links.${linkIdx}.link.reference`)
-            links.push({ link: { type: linkType, url: linkUrl, label: linkLabel, reference: linkRef } })
-          }
-          linkIdx++
-          if (linkIdx > 10) break
-        }
-        if (links.length > 0) block.links = links
-      }
-
-      // LatestPosts block — extract CTA link
-      if (blockType === 'latestPosts') {
-        const ctaLink = getFieldValue(`layout.${blockIdx}.ctaLink`) as string | undefined
-        const ctaLabel = getFieldValue(`layout.${blockIdx}.ctaLabel`) as string | undefined
-        if (ctaLink) {
-          block.ctaLink = ctaLink
-          block.ctaLabel = ctaLabel || ''
-        }
-      }
-
-      // Portfolio block — extract project links
-      if (blockType === 'portfolio') {
-        const projects: Record<string, unknown>[] = []
-        let projIdx = 0
-        while (true) {
-          const projTitle = getFieldValue(`layout.${blockIdx}.projects.${projIdx}.title`) as string | undefined
-          if (projTitle === undefined && projIdx > 0) break
-          if (projTitle !== undefined) {
-            const projLink = getFieldValue(`layout.${blockIdx}.projects.${projIdx}.link`) as string | undefined
-            projects.push({ title: projTitle, link: projLink || '' })
-          }
-          projIdx++
-          if (projIdx > 50) break
-        }
-        if (projects.length > 0) block.projects = projects
-      }
-
-      // Testimonials block — extract quotes for word count
-      if (blockType === 'testimonials') {
-        const testimonials: Record<string, unknown>[] = []
-        let tIdx = 0
-        while (true) {
-          const quote = getFieldValue(`layout.${blockIdx}.testimonials.${tIdx}.quote`) as string | undefined
-          if (quote === undefined && tIdx > 0) break
-          if (quote !== undefined) {
-            testimonials.push({ quote })
-          }
-          tIdx++
-          if (tIdx > 20) break // safety
-        }
-        if (testimonials.length > 0) block.testimonials = testimonials
-      }
-
-      blocks.push(block)
-      blockIdx++
-      if (blockIdx > 100) break // safety
-    }
+    // Content (hero, layout blocks, post content): form state reduced to a document and
+    // read by the same walker as /validate, so every block type counts.
+    const contentInput = buildSidebarContentInput(formFields)
 
     const result = analyzeSeo(
       {
@@ -742,13 +581,7 @@ const SeoAnalyzerInner: React.FC = () => {
         slug,
         focusKeyword,
         focusKeywords: focusKeywords.length > 0 ? focusKeywords : undefined,
-        heroTitle,
-        heroRichText,
-        heroLinks: heroLinks.length > 0 ? heroLinks : undefined,
-        heroMedia: heroMedia || undefined,
-        blocks: blocks.length > 0 ? blocks : undefined,
-        content: content || undefined,
-        isPost,
+        ...contentInput,
         isCornerstone: !!isCornerstone,
         updatedAt: updatedAt || undefined,
         contentLastReviewed: contentLastReviewed || undefined,
@@ -793,40 +626,8 @@ const SeoAnalyzerInner: React.FC = () => {
   // Internal linking — extract text content for suggestions
   const textContentForLinks = useMemo(() => {
     if (!formFields) return ''
-    const parts: string[] = []
-
-    // Hero richText
-    const heroRichText = getFieldValue('hero.richText')
-    if (heroRichText) parts.push(extractTextFromLexical(heroRichText))
-
-    // Layout blocks
-    let blockIdx = 0
-    while (blockIdx < 100) {
-      const blockType = getFieldValue(`layout.${blockIdx}.blockType`) as string | undefined
-      if (!blockType) break
-
-      // RichText blocks
-      const richText = getFieldValue(`layout.${blockIdx}.richText`)
-      if (richText) parts.push(extractTextFromLexical(richText))
-
-      // Columns
-      let colIdx = 0
-      while (colIdx < 20) {
-        const colRichText = getFieldValue(`layout.${blockIdx}.columns.${colIdx}.richText`)
-        if (colRichText === undefined && colIdx > 0) break
-        if (colRichText) parts.push(extractTextFromLexical(colRichText))
-        colIdx++
-      }
-
-      blockIdx++
-    }
-
-    // Post content
-    const content = getFieldValue('content')
-    if (content) parts.push(extractTextFromLexical(content))
-
-    return parts.join(' ')
-  }, [formFields, getFieldValue])
+    return sidebarContentText(buildSidebarContentInput(formFields))
+  }, [formFields])
 
   // Detect collection from current URL
   const currentCollection = useMemo(() => {
@@ -923,30 +724,8 @@ const SeoAnalyzerInner: React.FC = () => {
     try {
       const title = getFieldValue('title') as string || ''
       const slug = getFieldValue('slug') as string || ''
-      const content = getFieldValue('content')
-      const heroRichTextVal = getFieldValue('hero.richText')
-
-      // Extract text from content for the AI endpoint
-      let textContent = ''
-      if (content) textContent += extractTextFromLexical(content)
-      if (heroRichTextVal) textContent += ' ' + extractTextFromLexical(heroRichTextVal)
-
-      // Also extract from layout blocks
-      let blockIdx = 0
-      while (blockIdx < 100) {
-        const blockType = getFieldValue(`layout.${blockIdx}.blockType`) as string | undefined
-        if (!blockType) break
-        const rt = getFieldValue(`layout.${blockIdx}.richText`)
-        if (rt) textContent += ' ' + extractTextFromLexical(rt)
-        let colIdx = 0
-        while (colIdx < 20) {
-          const colRt = getFieldValue(`layout.${blockIdx}.columns.${colIdx}.richText`)
-          if (colRt === undefined && colIdx > 0) break
-          if (colRt) textContent += ' ' + extractTextFromLexical(colRt)
-          colIdx++
-        }
-        blockIdx++
-      }
+      // Extract text from the page content (hero, layout blocks, post content) for the AI endpoint
+      const textContent = sidebarContentText(buildSidebarContentInput(formFields))
 
       const res = await fetch(seoApi('/ai-generate'), {
         method: 'POST',
