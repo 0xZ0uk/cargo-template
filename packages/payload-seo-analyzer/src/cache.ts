@@ -119,8 +119,10 @@ export type SeoWaitUntil = (promise: Promise<unknown>) => void
 /**
  * Cache bases persisted in the `cacheStore` when one is configured. These are the caches
  * the admin UI polls or re-reads across requests (dashboard audit, indexation audit,
- * sitemap audit, redirect chains, external links, Core Web Vitals), so a per-isolate copy would show stale or missing data. Every other
- * base stays in the per-isolate in-memory cache (bounded by its TTL).
+ * sitemap audit, redirect chains, external links, Core Web Vitals) plus the public, anonymous
+ * documents that are expensive to build (the four sitemaps and `llms.txt`), so a per-isolate
+ * copy would show stale or missing data, or rebuild the same document once per isolate.
+ * Every other base stays in the per-isolate in-memory cache (bounded by its TTL).
  */
 export const PERSISTENT_CACHE_BASES = [
   'audit',
@@ -136,6 +138,15 @@ export const PERSISTENT_CACHE_BASES = [
   // strict, so the result must outlive an isolate. Not in CONTENT_CACHE_BASES: saving a page
   // doesn't change what real users measured, so it is never invalidated, only expires.
   'core-web-vitals',
+  // The rendered public documents: sitemap.xml, the news/image/video sitemaps and llms.txt. All
+  // are in CONTENT_CACHE_BASES, so a save bumps their generation and every isolate rebuilds on
+  // its next request (a plain rebuild on miss, no stale-while-revalidate: a few concurrent
+  // requests right after a save may each rebuild once, which the `select` projections keep cheap).
+  'sitemap-xml',
+  'sitemap-news',
+  'sitemap-images',
+  'sitemap-video',
+  'llms-txt',
 ] as const
 
 /**
@@ -170,6 +181,8 @@ export const CONTENT_CACHE_BASES = [
   'sitemap-news',
   'sitemap-images',
   'sitemap-video',
+  // Rendered llms.txt — see endpoints/llmsTxt.ts. Public and anonymous like the sitemaps.
+  'llms-txt',
 ] as const
 
 /**
@@ -282,6 +295,56 @@ export function hashConfig(value: unknown): string {
   return (h >>> 0).toString(36)
 }
 
+/** The slice of a request the best-effort cache helpers need: only the logger. */
+interface CacheLogReq {
+  payload?: { logger?: { warn?: (message: string) => void } }
+}
+
+/** A lookup that came back from a failing store (read as a miss); `set` is skipped for it. */
+export interface SafeCacheLookup<T> extends CacheLookup<T> {
+  storeFailed?: boolean
+}
+
+/**
+ * Best-effort `lookup` for the public documents (sitemaps, llms.txt): a store read error is
+ * logged and treated as a cache miss, so the caller builds and serves the document instead of
+ * failing a request from Googlebot over an R2 blip. Admin endpoints keep calling `lookup` directly.
+ */
+export async function safeLookup<T>(
+  cache: SeoSharedCache,
+  base: string,
+  key: string,
+  req: CacheLogReq,
+): Promise<SafeCacheLookup<T>> {
+  try {
+    return await cache.lookup<T>(base, key)
+  } catch (e) {
+    req.payload?.logger?.warn?.(`[seo] cache read failed for ${base}: ${e instanceof Error ? e.message : 'unknown'}`)
+    return { data: null, gen: '', storeFailed: true }
+  }
+}
+
+/**
+ * Best-effort `set` for the public documents: a store write error is logged and swallowed,
+ * the freshly built document is still returned. Skipped when the lookup already failed (the
+ * store is unreachable and there is no valid generation to stamp the entry with).
+ */
+export async function safeSet<T>(
+  cache: SeoSharedCache,
+  base: string,
+  key: string,
+  data: T,
+  lookup: SafeCacheLookup<unknown>,
+  req: CacheLogReq,
+): Promise<void> {
+  if (lookup.storeFailed) return
+  try {
+    await cache.set(base, key, data, lookup.gen)
+  } catch (e) {
+    req.payload?.logger?.warn?.(`[seo] cache write failed for ${base}: ${e instanceof Error ? e.message : 'unknown'}`)
+  }
+}
+
 /**
  * Cache layer used by the endpoints and hooks whose results the admin UI depends on.
  *
@@ -303,7 +366,10 @@ export function hashConfig(value: unknown): string {
  *   both, so there's nothing extra to store or expire. In-memory mode mirrors this with a
  *   local generation counter and a last-good map.
  * - There is deliberately no in-memory L1 for these bases: one parallel pair of store
- *   reads per request keeps every isolate consistent, and these are admin-only endpoints.
+ *   reads per request keeps every isolate consistent. That includes the public sitemaps and
+ *   `llms.txt`, which crawlers hit anonymously: two small R2 reads per request is the price of
+ *   a publish showing up in every isolate at once, and it is far cheaper than the whole-site
+ *   query each isolate used to run on a miss.
  * - Build coordination (audit): `build/<key>` holds `{ buildingSince, lastBuildAt, pausedAt }`.
  *   It is a best-effort cross-isolate single-flight (two isolates can race between the
  *   read and the write and both build — harmless, just duplicate work), with a staleness
