@@ -4,8 +4,41 @@
 import type { SeoCheck, SeoInput, AnalysisContext } from '../types.js'
 import { getGenericAnchors } from '../constants.js'
 import { getTranslations } from '../i18n.js'
+import { analyzeKeyphrase, getContentWords } from '../helpers.js'
+import { buildDocPath, DEFAULT_COLLECTION_ROUTES } from '../helpers/docUrl.js'
 
-export function checkLinking(_input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
+/** Lowercase path of a link without query, fragment or surrounding slashes. */
+function linkPath(url: string): string {
+  return url
+    .trim()
+    .replace(/[?#].*$/s, '')
+    .replace(/^\/+|\/+$/g, '')
+    .toLowerCase()
+}
+
+/**
+ * Paths under which this page can be reached: its canonical URL, and its slug
+ * under every configured collection route (the collection is not part of the input).
+ */
+function selfPaths(input: SeoInput, ctx: AnalysisContext): Set<string> {
+  const paths = new Set<string>()
+  if (input.canonicalUrl) {
+    try {
+      paths.add(linkPath(new URL(input.canonicalUrl, 'http://self.invalid').pathname))
+    } catch {
+      /* unparsable canonical: ignore */
+    }
+  }
+  if (input.slug !== undefined) {
+    const routes = ctx.config.collectionRoutes
+    for (const collection of ['', ...Object.keys({ ...DEFAULT_COLLECTION_ROUTES, ...routes })]) {
+      paths.add(linkPath(buildDocPath(input.slug, collection || undefined, routes)))
+    }
+  }
+  return paths
+}
+
+export function checkLinking(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
   const checks: SeoCheck[] = []
   const r = getTranslations().rules.linking
   const { allLinks } = ctx
@@ -139,6 +172,52 @@ export function checkLinking(_input: SeoInput, ctx: AnalysisContext): SeoCheck[]
       weight: 2,
       group: 'linking',
     })
+  }
+
+  // 34. Competing anchors: an internal link to ANOTHER page whose anchor text is
+  // just the focus keyphrase (same content words, nothing else) makes that page
+  // compete with this one for the phrase. Focus keyphrase only.
+  if (ctx.normalizedKeyword) {
+    const keyphraseWords = new Set(analyzeKeyphrase(ctx.normalizedKeyword).contentWords)
+    if (keyphraseWords.size > 0) {
+      const self = selfPaths(input, ctx)
+      const competing = internalLinks.filter((link) => {
+        const url = link.url.trim()
+        // Empty links are `linking-empty`'s job; `#fragment` and self links can't compete.
+        if (!url || url.startsWith('#') || self.has(linkPath(url))) return false
+        const anchorWords = new Set(getContentWords(link.text))
+        return (
+          anchorWords.size === keyphraseWords.size &&
+          [...keyphraseWords].every((w) => anchorWords.has(w))
+        )
+      })
+      const keyphrase = (input.focusKeyword || ctx.normalizedKeyword).trim()
+
+      if (competing.length > 0) {
+        const urls = [...new Set(competing.map((link) => link.url.trim()))]
+        const shown = urls.slice(0, 3).join(', ') + (urls.length > 3 ? `, +${urls.length - 3} more` : '')
+        checks.push({
+          id: 'linking-competing-anchors',
+          label: r.competingLabel,
+          status: 'fail',
+          message: r.competingFail(keyphrase, shown),
+          category: 'important',
+          weight: 2,
+          group: 'linking',
+          tip: r.competingTip,
+        })
+      } else if (allLinks.length > 0) {
+        checks.push({
+          id: 'linking-competing-anchors',
+          label: r.competingLabel,
+          status: 'pass',
+          message: r.competingPass(keyphrase),
+          category: 'important',
+          weight: 2,
+          group: 'linking',
+        })
+      }
+    }
   }
 
   return checks

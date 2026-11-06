@@ -110,6 +110,15 @@ export interface RuleTranslations {
     stopwordsPass: string
   }
   content: {
+    keyphraseLengthLabel: string
+    keyphraseLengthPass: (count: number) => string
+    keyphraseLengthWarn: (count: number) => string
+    keyphraseLengthFail: (count: number) => string
+    keyphraseLengthTip: string
+    keyphraseFunctionWordsLabel: string
+    keyphraseFunctionWordsPass: string
+    keyphraseFunctionWordsFail: (keyphrase: string) => string
+    keyphraseFunctionWordsTip: string
     wordcountLabel: string
     wordcountFail: (count: number, minLabel: string) => string
     wordcountFailTip: string
@@ -209,6 +218,10 @@ export interface RuleTranslations {
     emptyLinksFail: (count: number) => string
     emptyLinksPassLabel: string
     emptyLinksPass: string
+    competingLabel: string
+    competingFail: (keyphrase: string, urls: string) => string
+    competingTip: string
+    competingPass: (keyphrase: string) => string
   }
   cornerstone: {
     wordcountLabel: string
@@ -630,6 +643,15 @@ const rulesEn: RuleTranslations = {
     stopwordsPass: 'The slug does not contain unnecessary stop words.',
   },
   content: {
+    keyphraseLengthLabel: 'Keyphrase length',
+    keyphraseLengthPass: (count) => `The keyphrase has ${count} content word(s) — Focused enough to target.`,
+    keyphraseLengthWarn: (count) => `The keyphrase has ${count} content words — Long phrases are harder to match; aim for 4 or fewer.`,
+    keyphraseLengthFail: (count) => `The keyphrase has ${count} content words — Too long to be a realistic search query.`,
+    keyphraseLengthTip: 'Shorten the focus keyphrase to its core topic (1 to 4 content words) and move the rest into secondary keywords.',
+    keyphraseFunctionWordsLabel: 'Keyphrase content words',
+    keyphraseFunctionWordsPass: 'The keyphrase contains meaningful content words.',
+    keyphraseFunctionWordsFail: (keyphrase) => `The keyphrase "${keyphrase}" has only function words (such as "the", "of", "how", "best") — It is too generic to target.`,
+    keyphraseFunctionWordsTip: 'Choose a keyphrase that names the actual topic, for example "coffee grinder" instead of "the best".',
     wordcountLabel: 'Content volume',
     wordcountFail: (count, minLabel) => `Only ${count} words — Aim for at least ${minLabel} for good SEO.`,
     wordcountFailTip: 'Add sections with H2 subheadings, concrete examples, an FAQ or testimonials.',
@@ -728,6 +750,11 @@ const rulesEn: RuleTranslations = {
     emptyLinksFail: (count) => `${count} empty link(s) detected (href="" or href="#") — Add valid destinations.`,
     emptyLinksPassLabel: 'Valid links',
     emptyLinksPass: 'No empty link detected.',
+    competingLabel: 'Competing anchors',
+    competingFail: (keyphrase, urls) =>
+      `Internal link(s) use the focus keyphrase "${keyphrase}" as their anchor text (${urls}) — They compete with this page for that phrase.`,
+    competingTip: 'Reword the anchor text of these links (e.g. add context) or point them at this page, so only this page targets the keyphrase.',
+    competingPass: (keyphrase) => `No internal link to another page uses "${keyphrase}" as its anchor text.`,
   },
   cornerstone: {
     wordcountLabel: 'Pillar content length',

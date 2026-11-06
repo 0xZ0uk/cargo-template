@@ -9,6 +9,7 @@ import {
   LOCAL_SEO_SLUGS,
   LEGAL_SLUGS_MAP,
   MAX_RECURSION_DEPTH,
+  FUNCTION_WORDS,
 } from './constants'
 
 // ---------------------------------------------------------------------------
@@ -26,6 +27,50 @@ export function normalizeForComparison(text: string): string {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .trim()
+}
+
+const FUNCTION_WORDS_SET: ReadonlySet<string> = new Set(FUNCTION_WORDS)
+
+/** Surrounding straight or curly double quotes mark an exact-match keyphrase. */
+const QUOTED_PHRASE_RE = /^["\u201c\u201d](.+)["\u201c\u201d]$/s
+
+/**
+ * Split text into lowercase, accent-free words. Apostrophes are dropped
+ * ("don't" → "dont"); every other non-letter/digit character separates words.
+ */
+export function tokenizeWords(text: string): string[] {
+  return normalizeForComparison(text)
+    .replace(/['\u2019]/g, '')
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean)
+}
+
+/** Whether a (normalized) word is an English function word. */
+export function isFunctionWord(word: string): boolean {
+  return FUNCTION_WORDS_SET.has(word)
+}
+
+/** Content words of a text: its words minus function words. */
+export function getContentWords(text: string): string[] {
+  return tokenizeWords(text).filter((w) => !isFunctionWord(w))
+}
+
+/**
+ * Analyse a focus keyphrase: its content words and how many words count toward
+ * its length. A keyphrase wrapped in double quotes is an exact match, so every
+ * word counts (function words included); otherwise only content words count.
+ */
+export function analyzeKeyphrase(keyphrase: string): {
+  quoted: boolean
+  contentWords: string[]
+  lengthWords: number
+} {
+  const trimmed = keyphrase.trim()
+  const inner = QUOTED_PHRASE_RE.exec(trimmed)?.[1]
+  const quoted = inner !== undefined
+  const text = quoted ? inner : trimmed
+  const contentWords = getContentWords(text)
+  return { quoted, contentWords, lengthWords: quoted ? tokenizeWords(text).length : contentWords.length }
 }
 
 /**
