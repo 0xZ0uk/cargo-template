@@ -170,10 +170,8 @@ describe('payloadPluginSocials curried factory', () => {
     it('fails fast without options, a key or a payload', async () => {
       for (const task of disabled) {
         // No registered plugin options and no `req`: the handler must not need either.
-        await expect(task.handler({ input: {} } as never)).resolves.toEqual({
-          errorMessage: expect.stringContaining('socials is disabled'),
-          state: 'failed',
-        })
+        // Thrown, not returned: Payload 4 logs a returned `{ state: 'failed' }` as succeeded.
+        await expect(task.handler({ input: {} } as never)).rejects.toThrow('socials is disabled')
       }
     })
 

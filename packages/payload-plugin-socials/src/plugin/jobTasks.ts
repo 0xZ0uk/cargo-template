@@ -110,7 +110,7 @@ export const applyJobEnhancements = (config: Config, options: NormalizedPluginOp
   return config
 }
 
-/** The error a disabled task returns. Payload marks the job failed and does not retry it. */
+/** The error a disabled task throws. Payload records the job as failed (after its retries). */
 export const DISABLED_TASK_ERROR_MESSAGE =
   'payload-plugin-socials: socials is disabled (no encryption key), so this task did not run'
 
@@ -121,11 +121,14 @@ export const DISABLED_TASK_ERROR_MESSAGE =
  * options) is the same with and without the encryption key.
  *
  * The tasks have no `schedule` and a handler that needs neither plugin options nor
- * the key and touches no platform: it returns a failed state. A failure rather than
- * a silent no-op, because nothing queues these tasks while the plugin is disabled
- * (no endpoints, hooks or scheduling), so a job that does exist was queued by hand
- * or left over from an enabled deploy, and "succeeded" would hide that its post was
- * never published. `failed` is final: Payload does not retry a returned failure.
+ * the key and touches no platform: it throws. A failure rather than a silent no-op,
+ * because nothing queues these tasks while the plugin is disabled (no endpoints,
+ * hooks or scheduling), so a job that does exist was queued by hand or left over
+ * from an enabled deploy, and "succeeded" would hide that its post was never
+ * published. It throws rather than returning `{ state: 'failed' }` because Payload 4
+ * reads only `output` from a handler's result and logs anything returned as
+ * succeeded; only a thrown error marks the task failed. Payload retries it up to the
+ * task's `retries`, and each attempt fails at once.
  */
 export const applyDisabledJobEnhancements = (config: Config): Config => {
   registerTasks(config, (taskConfig) => {
@@ -134,10 +137,9 @@ export const applyDisabledJobEnhancements = (config: Config): Config => {
   return config
 }
 
-export const disabledTaskHandler = async (): Promise<{
-  errorMessage: string
-  state: 'failed'
-}> => ({ errorMessage: DISABLED_TASK_ERROR_MESSAGE, state: 'failed' })
+export const disabledTaskHandler = async (): Promise<never> => {
+  throw new Error(DISABLED_TASK_ERROR_MESSAGE)
+}
 
 type MutableTaskConfig = { handler?: unknown; schedule?: unknown; slug: string }
 
