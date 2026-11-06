@@ -1,14 +1,13 @@
 "use client";
 
-import { Banner, Button, useConfig } from "@payloadcms/ui";
-import { formatAdminURL } from "payload/shared";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { Banner, Button } from "@payloadcms/ui";
+import React, { useCallback, useEffect, useState } from "react";
 import type { ApprovalRenderer } from "./ApprovalControl";
 import { ApprovalCard } from "./approvals/ApprovalCard";
-import type { AssistantClientConfig, ConversationSummary, UsageResponse } from "./api";
+import { useAssistantAdminContext } from "./adminContext";
+import type { ConversationSummary, UsageResponse } from "./api";
 import {
   deleteConversation,
-  fetchAssistantConfig,
   fetchUsage,
   isValidThreadId,
   listConversations,
@@ -19,7 +18,6 @@ import { ChatPanel } from "./ChatPanel";
 import { ConversationList } from "./ConversationList";
 import type { AssistantNotice } from "./errors";
 import { noticeForClientError } from "./errors";
-import type { DocumentRef, EntitySlugs } from "./tools";
 import { UsageSummary } from "./UsageSummary";
 
 export interface AssistantChatProps {
@@ -33,7 +31,6 @@ export interface AssistantChatProps {
 }
 
 const THREAD_PARAM = "thread";
-const MODEL_STORAGE_KEY = "cargo-assistant:model";
 
 function readThreadFromUrl(): string | undefined {
   if (typeof window === "undefined") return undefined;
@@ -50,22 +47,6 @@ function writeThreadToUrl(threadId: string | undefined) {
   window.history.replaceState(window.history.state, "", url);
 }
 
-function readStoredModel(): string | undefined {
-  try {
-    return window.localStorage.getItem(MODEL_STORAGE_KEY) ?? undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function storeModel(model: string) {
-  try {
-    window.localStorage.setItem(MODEL_STORAGE_KEY, model);
-  } catch {
-    // Private mode or blocked storage: the picker still works for this page.
-  }
-}
-
 /**
  * The assistant's admin view: the conversation list and the open conversation. Talks only to
  * `/api/assistant/*` (README, "Endpoints").
@@ -74,12 +55,7 @@ export function AssistantChat({
   configured: configuredProp = true,
   ApprovalComponent = ApprovalCard,
 }: AssistantChatProps) {
-  const { config } = useConfig();
-  const apiRoute = config.routes?.api ?? "/api";
-  const adminRoute = config.routes?.admin ?? "/admin";
-
-  const [clientConfig, setClientConfig] = useState<AssistantClientConfig | null>(null);
-  const [loadNotice, setLoadNotice] = useState<AssistantNotice | null>(null);
+  const { apiRoute, adminRoute, slugs, hrefFor, clientConfig, loadNotice, model, onModelChange } = useAssistantAdminContext();
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [listLoading, setListLoading] = useState(true);
   const [listNotice, setListNotice] = useState<AssistantNotice | null>(null);
@@ -88,7 +64,6 @@ export function AssistantChat({
   const [threadId, setThreadId] = useState<string | null>(null);
   // The thread this view minted and hasn't sent yet: there is nothing stored to load.
   const [newThread, setNewThread] = useState<string | null>(null);
-  const [model, setModel] = useState<string>("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [usage, setUsage] = useState<UsageResponse | null>(null);
 
@@ -98,23 +73,6 @@ export function AssistantChat({
     setThreadId(id);
     if (!fromUrl) setNewThread(id);
   }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetchAssistantConfig(apiRoute)
-      .then((body) => {
-        if (cancelled) return;
-        setClientConfig(body);
-        const stored = readStoredModel();
-        setModel(stored && body.models.some((m) => m.id === stored) ? stored : body.defaultModel);
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) setLoadNotice(noticeForClientError(error));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [apiRoute]);
 
   const refreshList = useCallback(async () => {
     try {
@@ -192,31 +150,6 @@ export function AssistantChat({
       await refreshList();
     },
     [apiRoute, refreshList, startNew, threadId]
-  );
-
-  const onModelChange = useCallback((next: string) => {
-    setModel(next);
-    storeModel(next);
-  }, []);
-
-  const slugs: EntitySlugs = useMemo(
-    () => ({
-      collections: new Set((config.collections ?? []).map((c) => c.slug)),
-      globals: new Set((config.globals ?? []).map((g) => g.slug)),
-    }),
-    [config.collections, config.globals]
-  );
-
-  const hrefFor = useCallback(
-    (ref: DocumentRef) =>
-      formatAdminURL({
-        adminRoute,
-        path:
-          ref.kind === "global"
-            ? `/globals/${encodeURIComponent(ref.slug)}`
-            : `/collections/${encodeURIComponent(ref.slug)}/${encodeURIComponent(ref.id ?? "")}`,
-      }),
-    [adminRoute]
   );
 
   const configured = configuredProp && (clientConfig?.configured ?? true);

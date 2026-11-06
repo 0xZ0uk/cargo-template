@@ -1,6 +1,7 @@
 import type { AnyTextAdapter, ModelMessage } from "@tanstack/ai";
 import { fakeText, type FakeResponse } from "@tanstack/ai/testing";
 import type { TurnSettings } from "../conversations/types";
+import { REFERENCE_NOTE_OPEN, withoutReferenceNote } from "../references";
 
 /**
  * The test model (`testModel: true`): a scripted `fakeText()` adapter, so end-to-end tests run
@@ -13,6 +14,8 @@ import type { TurnSettings } from "../conversations/types";
  *   rejected the change, `The change was rejected. Nothing was written.`
  * - Anything else gets `Test model: you said "<message>".`
  * - Each call reports a cost of $1 per million (estimated) tokens, like OpenRouter's `usage.cost`.
+ * - A message with document references (#69) is read without its note, and the answer to plain
+ *   text adds ` Documents: <the note's lines>`, so a test sees what the model was told.
  *
  * Stateless (it reads the request's messages), so it survives a restarted object.
  */
@@ -66,7 +69,9 @@ export function answer(messages: ModelMessage[]): FakeResponse {
     return { text: `Tool ${name} finished: ${cut}` };
   }
 
-  const said = textOf(last).trim();
+  const full = textOf(last);
+  const said = withoutReferenceNote(full).trim();
+  const note = full.includes(REFERENCE_NOTE_OPEN) ? full.slice(full.lastIndexOf(REFERENCE_NOTE_OPEN)) : "";
   const command = TOOL_COMMAND.exec(said);
   if (command) {
     const [, name, rawArgs] = command;
@@ -81,5 +86,10 @@ export function answer(messages: ModelMessage[]): FakeResponse {
     // Explicit ids: the fake's default ids restart with the isolate, and a conversation outlives it.
     return { toolCalls: [{ name: name!, input, id: `call_${crypto.randomUUID().replaceAll("-", "")}` }] };
   }
-  return { text: `Test model: you said "${said}".` };
+  return { text: `Test model: you said "${said}".${note ? ` Documents: ${noteLines(note)}` : ""}` };
+}
+
+/** The note's lines without its tags, on one line. */
+function noteLines(note: string): string {
+  return note.split("\n").slice(1, -1).join(" ");
 }

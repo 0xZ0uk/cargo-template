@@ -12,8 +12,12 @@ import type { AssistantNotice } from "./errors";
 import { noticeForClientError, noticeForRunError } from "./errors";
 import type { MessageLike } from "./MessageView";
 import { collectToolResults, MessageView } from "./MessageView";
-import { chatBodyState, EmptyConversation } from "./EmptyConversation";
+import { chatBodyState, DOCUMENT_EXAMPLE_PROMPTS, EmptyConversation } from "./EmptyConversation";
+import type { DocumentReference, DocumentReferenceInput } from "../references";
+import { MESSAGE_METADATA_KEY } from "../references";
+import { searchDocuments } from "./api";
 import type { DocumentRef, EntitySlugs, ToolCallLike, ToolResultLike } from "./tools";
+import { appliedWrites } from "./tools";
 
 /** The text of a user message's parts. */
 function userTextOf(message: MessageLike): string {
@@ -40,7 +44,22 @@ export interface ChatPanelProps {
   ApprovalComponent: ApprovalRenderer;
   /** A run started or ended: the conversation list may have changed (a new title). */
   onActivity: () => void;
+  /**
+   * The document this conversation is about (the edit view's drawer, #69): sent with the first
+   * message, which the server resolves and stores; the model is told to read it first.
+   */
+  context?: DocumentReference;
+  /**
+   * A write tool's result arrived in this view (an approved change was applied), once per call;
+   * never for calls already in the transcript when it loaded.
+   */
+  onAppliedWrite?: (call: ToolCallLike, result: ToolResultLike) => void;
+  /** `@` mentions in the composer (default on). */
+  mentions?: boolean;
 }
+
+const toInput = (ref: DocumentReference): DocumentReferenceInput =>
+  ref.kind === "global" ? { kind: "global", slug: ref.slug } : { kind: "collection", slug: ref.slug, id: ref.id ?? "" };
 
 /**
  * One conversation, through `useChat` over SSE. Mount it with `key={threadId}`: the hook binds a
@@ -67,12 +86,16 @@ export function ChatPanel({
   hrefFor,
   ApprovalComponent,
   onActivity,
+  context,
+  onAppliedWrite,
+  mentions = true,
 }: ChatPanelProps) {
   const recorder = useMemo(() => recordingFetch(), []);
   const modelRef = useRef(model);
   modelRef.current = model;
   const [runNotice, setRunNotice] = useState<AssistantNotice | null>(null);
   const [draft, setDraft] = useState("");
+  const [references, setReferences] = useState<DocumentReference[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const stickToBottom = useRef(true);
@@ -115,6 +138,26 @@ export function ChatPanel({
   const messages = chat.messages as unknown as ReadonlyArray<MessageLike>;
   const body = chatBodyState({ isHydrating: chat.isHydrating, isNew, messageCount: messages.length });
   const results = useMemo(() => collectToolResults(messages), [messages]);
+
+  // Applied writes (#69): report each new one once. Calls already in the transcript when it
+  // finished loading are history, not news.
+  const onAppliedWriteRef = useRef(onAppliedWrite);
+  onAppliedWriteRef.current = onAppliedWrite;
+  const reportedWrites = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    if (chat.isHydrating) return;
+    const writes = appliedWrites(messages, results);
+    if (!reportedWrites.current) {
+      reportedWrites.current = new Set(isNew ? [] : writes.map(({ call }) => call.id));
+    }
+    for (const { call, result } of writes) {
+      if (reportedWrites.current.has(call.id)) continue;
+      reportedWrites.current.add(call.id);
+      onAppliedWriteRef.current?.(call, result);
+    }
+  }, [chat.isHydrating, messages, results, isNew]);
+
+  const search = useCallback((query: string, signal: AbortSignal) => searchDocuments(apiRoute, query, signal), [apiRoute]);
 
   const documentHref = useCallback(
     (slug: string, id: string) => (slugs.collections.has(slug) ? hrefFor({ kind: "collection", slug, id, label: id }) : undefined),
@@ -179,16 +222,36 @@ export function ChatPanel({
   const send = useCallback(async () => {
     const text = draft.trim();
     if (!text) return;
+    // The document of an edit view's conversation goes with its first message only: it is stored
+    // there, so the model keeps seeing it in the transcript.
+    const about = context && messages.length === 0 ? context : undefined;
+    const mentioned = references;
     setDraft("");
+    setReferences([]);
     setRunNotice(null);
     recorder.reset();
     stickToBottom.current = true;
-    await chat.sendMessage(text);
+    if (about || mentioned.length) {
+      // The server resolves the addresses (`forwardedProps`) and stores its own titles; the
+      // metadata here only shows the chips until the transcript is reloaded.
+      await chat.sendMessage(
+        {
+          content: text,
+          metadata: {
+            [MESSAGE_METADATA_KEY]: { ...(about ? { context: about } : {}), ...(mentioned.length ? { references: mentioned } : {}) },
+          },
+        },
+        { body: { ...(about ? { context: toInput(about) } : {}), ...(mentioned.length ? { references: mentioned.map(toInput) } : {}) } }
+      );
+    } else {
+      await chat.sendMessage(text);
+    }
     if (recorder.lastError()) {
       setDraft((current) => current || text);
+      setReferences((current) => (current.length ? current : mentioned));
       setRefused(text);
     }
-  }, [chat, draft, recorder]);
+  }, [chat, draft, recorder, context, messages.length, references]);
 
   const stop = useCallback(() => {
     chat.stop();
@@ -230,6 +293,12 @@ export function ChatPanel({
           </div>
         ) : body === "empty" ? (
           <EmptyConversation
+            {...(context
+              ? {
+                  prompts: DOCUMENT_EXAMPLE_PROMPTS,
+                  description: `Ask about “${context.title}”: what it says, what is missing, or a change to draft. The assistant reads the saved version; every change waits for your approval.`,
+                }
+              : {})}
             examples={configured && !budgetExceeded}
             onPick={(prompt) => {
               setDraft(prompt);
@@ -326,6 +395,7 @@ export function ChatPanel({
         onStop={stop}
         streaming={streaming}
         value={draft}
+        {...(mentions ? { references, onReferencesChange: setReferences, searchDocuments: search } : {})}
       />
     </section>
   );

@@ -1,5 +1,6 @@
 import type { ModelMessage, RunAgentResumeItem } from "@tanstack/ai";
 import { MAX_REJECT_REASON_CHARS, REJECTED_TOOL_RESULT } from "../approvals/types";
+import { MAX_REFERENCES, parseReferenceInput, type DocumentReferenceInput } from "../references";
 
 /** Thread and run ids: what a UUID, a nanoid or a TanStack id looks like. Nothing that could break a header. */
 const ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
@@ -18,6 +19,10 @@ export type ValidChatRequest = {
   resume: RunAgentResumeItem[] | undefined;
   /** Approvals sent with the `updatedAt` their card showed: checked for a change since (409 `stale`). */
   seen: SeenApproval[];
+  /** The document the conversation is about (sent from an edit view), unresolved. */
+  context: DocumentReferenceInput | undefined;
+  /** Documents mentioned with `@`, unresolved. */
+  references: DocumentReferenceInput[];
 };
 
 export interface SeenApproval {
@@ -127,6 +132,29 @@ export function validateChatBody(raw: unknown, headerRunId: string | null): Vali
   const resume = resumeItems(body.resume);
   if (!resume.ok) return resume;
 
+  // Document references (#69): `context` and `references`, top level (scripts) or in
+  // `forwardedProps` (what `useChat` sends). Shape only here; the endpoint resolves them as the user.
+  // AG-UI's own top-level `context` is an array (agent context entries), never a document: skip it.
+  const rawContext = forwarded.context ?? (Array.isArray(body.context) ? undefined : body.context);
+  const rawReferences = forwarded.references ?? body.references;
+  let context: DocumentReferenceInput | undefined;
+  const references: DocumentReferenceInput[] = [];
+  if (rawContext !== undefined && rawContext !== null) {
+    context = parseReferenceInput(rawContext);
+    if (!context) return fail('"context" must be { kind: "collection", slug, id } or { kind: "global", slug }');
+  }
+  if (rawReferences !== undefined && rawReferences !== null) {
+    if (!Array.isArray(rawReferences) || rawReferences.length > MAX_REFERENCES) {
+      return fail(`"references" must be an array of at most ${MAX_REFERENCES} documents`);
+    }
+    for (const raw of rawReferences) {
+      const ref = parseReferenceInput(raw);
+      if (!ref) return fail('every "references" entry must be { kind: "collection", slug, id } or { kind: "global", slug }');
+      references.push(ref);
+    }
+  }
+  if (resume.value && (context || references.length)) return fail('"context" and "references" go with a message, not a resume');
+
   let messages: ModelMessage[] = [];
   if (!resume.value) {
     let id: string | undefined;
@@ -161,6 +189,8 @@ export function validateChatBody(raw: unknown, headerRunId: string | null): Vali
       messages,
       resume: resume.value?.items,
       seen: resume.value?.seen ?? [],
+      context,
+      references,
     },
   };
 }

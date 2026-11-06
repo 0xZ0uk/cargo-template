@@ -45,6 +45,7 @@ export default defineConfig([
     entry: {
       "admin/AssistantView": "src/admin/AssistantView.tsx",
       "admin/AssistantNavLink": "src/admin/AssistantNavLink.tsx",
+      "admin/AssistantDocumentControls": "src/admin/AssistantDocumentControls.tsx",
     },
     splitting: false,
     clean: false,

@@ -172,4 +172,22 @@ describe("the chat turn in the Durable Object", () => {
     expect(replay.at(-1)!.data).toMatchObject({ type: "RUN_ERROR", code: "stopped" });
     expect((await hydrate(conversations, user, threadId)).activeRun).toBeNull();
   });
+
+  it("document references (#69): stored with the message in the object's SQLite, named to the model only", async () => {
+    const conversations = backend();
+    const [user, threadId] = [newId("users"), newId("thread")];
+    const references = { assistant: { references: [{ kind: "collection", slug: "pages", id: "1", title: "Home" }] } };
+    const start = turn(user, threadId, {
+      mode: "chat",
+      messages: [{ role: "user", content: "Hello", id: newId("msg"), metadata: references }],
+      settings: { ...settings, testModel: true },
+    });
+    const events = await readEvents(await conversations.startTurn(start));
+    expect(textOf(events)).toBe('Test model: you said "Hello". Documents: The editor mentioned: `pages` id 1 "Home". Read the ones you need with findDocuments (by id, draft: true) or findGlobal before you answer about them.');
+
+    const hydrated = await hydrate(conversations, user, threadId);
+    const stored = hydrated.messages[0];
+    expect(stored.metadata).toMatchObject(references);
+    expect(JSON.stringify(stored.parts)).not.toContain("document-references");
+  });
 });

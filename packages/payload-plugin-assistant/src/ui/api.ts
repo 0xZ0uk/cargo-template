@@ -8,6 +8,7 @@ import type { ApprovalProposal, ApprovalsResponse } from "../approvals/types";
 import type { UsageResponse } from "../usage";
 
 export type { UsageResponse };
+import type { DocumentReference } from "../references";
 
 export interface AssistantModelOption {
   id: string;
@@ -167,4 +168,32 @@ export function recordingFetch(): {
       last = undefined;
     },
   };
+}
+
+/** The `@` search (`GET /documents?q=`): addresses and titles of documents the user can read. */
+export async function searchDocuments(apiRoute: string, query: string, signal?: AbortSignal): Promise<DocumentReference[]> {
+  const body = await request<{ documents?: DocumentReference[] }>(
+    `${assistantUrl(apiRoute, "/documents")}?q=${encodeURIComponent(query)}`,
+    signal ? { signal } : {}
+  );
+  return Array.isArray(body.documents) ? body.documents : [];
+}
+
+/**
+ * The saved document as the edit view loads it (Payload's `getDocumentData`): `depth=0`, the
+ * latest draft, no locale fallback. For reloading the form after the assistant changed it.
+ */
+export async function fetchSavedDocument(
+  apiRoute: string,
+  ref: { kind: "collection" | "global"; slug: string; id?: string },
+  locale?: string
+): Promise<Record<string, unknown>> {
+  const params = new URLSearchParams({ depth: "0", draft: "true", "fallback-locale": "none" });
+  if (locale) params.set("locale", locale);
+  const base = apiRoute.replace(/\/+$/, "");
+  const path =
+    ref.kind === "global"
+      ? `/globals/${encodeURIComponent(ref.slug)}`
+      : `/${encodeURIComponent(ref.slug)}/${encodeURIComponent(ref.id ?? "")}`;
+  return request<Record<string, unknown>>(`${base}${path}?${params}`);
 }

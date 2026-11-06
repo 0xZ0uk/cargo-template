@@ -13,6 +13,8 @@ import { isId, validateChatBody } from "./validate";
 import { budgetExceeded, formatUsd, usageResponse, utcDay } from "../usage";
 import type { RedactionPolicy } from "../redaction";
 import { redactionPolicyOf, type ConfigLike } from "../redactionSchema";
+import { MESSAGE_METADATA_KEY } from "../references";
+import { MAX_SEARCH_CHARS, resolveMessageReferences, searchDocuments } from "./references";
 
 /**
  * The assistant's endpoints, behind the checks in `endpoints/index.ts` (signed in, `access`…).
@@ -110,13 +112,22 @@ export async function handleChat(req: PayloadRequest, options: NormalizedAssista
   }
   const parsed = validateChatBody(raw, req.headers.get("X-Run-Id"));
   if (!parsed.ok) return jsonError(400, "invalid_body", parsed.error);
-  const { threadId, messages, resume, seen } = parsed.value;
+  const { threadId, messages, resume, seen, context, references } = parsed.value;
 
   const model = parsed.value.model ?? options.defaultModel;
   if (!options.models.some((allowed) => allowed.id === model)) {
     return jsonError(400, "model_not_allowed", `model "${model}" is not in the assistant's allowlist`, {
       models: options.models.map((allowed) => allowed.id),
     });
+  }
+
+  // What the message is about (#69), resolved as the user: a document they can't read is refused,
+  // and the stored message keeps the server's titles, never the client's. No content is added.
+  if (context || references.length) {
+    const resolved = await resolveMessageReferences(req, { ...(context ? { context } : {}), references });
+    if (!resolved.ok) return jsonError(resolved.status, resolved.code, resolved.error);
+    const message = messages[0];
+    if (message) message.metadata = { ...message.metadata, [MESSAGE_METADATA_KEY]: resolved.value };
   }
 
   const backend = backendFor(req, options, deps);
@@ -230,6 +241,23 @@ export async function handleStop(req: PayloadRequest, options: NormalizedAssista
   if (!isId(body?.threadId) || !isId(body?.runId)) return jsonError(400, "invalid_body", '"threadId" and "runId" are required');
   const stopped = await backendFor(req, options, deps).stop(userOf(req), body.threadId, body.runId);
   return Response.json({ stopped });
+}
+
+/**
+ * `GET /api/assistant/documents?q=`: the `@` search. Documents (and globals) whose title contains
+ * `q`, read through plugin-mcp as the caller: `{ documents: [{ kind, slug, id?, title }] }`, at
+ * most 8, never their content.
+ */
+export async function handleSearchDocuments(req: PayloadRequest, options: NormalizedAssistantOptions, deps: ChatDeps = {}): Promise<Response> {
+  const q = requestUrl(req).searchParams.get("q") ?? "";
+  if (q.length > MAX_SEARCH_CHARS) return jsonError(400, "invalid_query", `"q" is longer than ${MAX_SEARCH_CHARS} characters`);
+  try {
+    const documents = await searchDocuments(req, options, q, { dispatch: dispatchFor(req, deps) });
+    return Response.json({ documents });
+  } catch (error) {
+    req.payload.logger.error({ err: error, msg: `[${PLUGIN_NAME}] document search failed` });
+    return jsonError(502, "tools_unavailable", "the assistant could not search the documents");
+  }
 }
 
 /** What the conversation list shows, per conversation. */

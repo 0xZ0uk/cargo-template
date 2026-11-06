@@ -11,6 +11,8 @@ with one Durable Object per conversation. Plan: [#58](https://github.com/0xZ0uk/
 > [Approvals](#approvals-diff-cards)). Registered in `apps/web` (#66, see [App wiring](#app-wiring-66));
 > the deployed-Worker checks of #66 are still to do. Per-user daily budgets, the audit log and field
 > redaction are in (#68, see [Budgets, audit log and redaction](#budgets-audit-log-and-redaction-68)).
+> Asking from a document's edit view and `@` mentions (#69): see
+> [From an edit view](#from-an-edit-view-and-mentions-69).
 
 ```ts
 import { assistantPlugin } from '@cargo/payload-plugin-assistant'
@@ -32,6 +34,7 @@ assistantPlugin({
 | `/api/assistant/*` | The chat turn, rejoin, stop, the conversation list and the usage: see [Endpoints](#endpoints-the-contract-for-the-admin-ui). Every endpoint: signed in (401), `access` (403). |
 | `/admin/assistant` | The chat view, registered through `admin.components.views`. Anonymous visitors go to login, users `access` refuses to `admin.routes.unauthorized`. |
 | Nav link | "Assistant › Chat" in the admin sidebar (`admin.components.afterNavLinks`), shown only to users `access` admits. |
+| "Ask the assistant" | In the edit view of every collection and global plugin-mcp exposes (`admin.components.edit.beforeDocumentControls`), shown only to users `access` admits and only once a collection document is saved. Opens the chat in a drawer. See [From an edit view](#from-an-edit-view-and-mentions-69). |
 
 No collections, globals or injected fields. With `enabled: false` the config is returned untouched.
 
@@ -70,7 +73,8 @@ serialised request body, not the options object.
 | `.` | The plugin and option types (server), plus the pure #68 helpers: `analyticsEngineAuditSink`, `DEFAULT_AUTH_REDACTIONS`, `DEFAULT_BUDGET` and their types (`AssistantAuditEvent`, `AssistantAuditSink`, `AssistantBudget`, `RedactionMap`, `UsageResponse`…). |
 | `./admin/AssistantView` | The admin view (a server component wrapped in `DefaultTemplate`; the import-map target). |
 | `./admin/AssistantNavLink` | The nav link (a server component that asks `access`; the import-map target). |
-| `./client` | The chat UI, client components only (`"use client"`): `AssistantChat`, `AssistantNavLinkClient`, `ApprovalCard` (the default), `ApprovalControl` (minimal), `pendingApprovalFrom`, `answerInterrupt`, the `PendingApproval` / `ApprovalRenderer` / `ApprovalDecision` types and the proposal types (`ApprovalProposal`, `FieldChange`…). Its CSS is `./client.css`, imported by `client.js`. |
+| `./admin/AssistantDocumentControls` | "Ask the assistant" in edit views (a server component that asks `access`; the import-map target). |
+| `./client` | The chat UI, client components only (`"use client"`): `AssistantChat`, `AssistantNavLinkClient`, `ApprovalCard` (the default), `ApprovalControl` (minimal), `AskAssistant` (the edit view's button and drawer), `useDocumentRefresh`, `ReferenceChips`, `pendingApprovalFrom`, `answerInterrupt`, the `PendingApproval` / `ApprovalRenderer` / `ApprovalDecision` types and the proposal types (`ApprovalProposal`, `FieldChange`…). Its CSS is `./client.css`, imported by `client.js`. |
 | `./mcp` | plugin-mcp items for rich text as Markdown (#67): `withMarkdownRichText`, `setRichTextFromMarkdownTool`, `richTextAsMarkdown` (`findDocuments`), `richTextResultsAsMarkdown` (other results) and `richTextSchemaAsMarkdown` / `describeRichTextAsMarkdown` (`getCollectionSchema`, #116), `SET_RICH_TEXT_TOOL_NAME`, `markdownLosses`, `unsupportedMarkdown`, `RichTextPathError`, `internalLinkUrl` / `parseInternalLinkUrl` / `INTERNAL_LINK_SCHEME` (`payload://<collection>/<id>`). Needs `@payloadcms/plugin-mcp` (an optional peer: only this entry imports it). See [Rich text as Markdown](#rich-text-as-markdown-67). |
 | `./do` | The Durable Object classes `AssistantConversation` and `AssistantConversationIndex`, plus their stores. Workerd-only (`cloudflare:workers`): re-export them from the Worker entry, never import this entry from `payload.config.ts` or the admin bundle. |
 
@@ -322,6 +326,8 @@ All under Payload's API route (`/api`), authenticated by the admin session cooki
 | 429 | `rate_limited` | `rateLimit(req)` returned `false` (`POST /chat` only). |
 | 402 | `budget_exceeded` | The user's daily budget is used up (`POST /chat` only: sends, and resumes that approve anything; checked after the body and model, before anything that costs). A resume that only rejects or cancels is not refused. The body adds `usage` (the `GET /usage` body). |
 | 400 | `invalid_body` / `invalid_query` / `model_not_allowed` | Bad request; `model_not_allowed` also lists `models`. |
+| 400 | `invalid_reference` | `POST /chat`: a `context` or `references` entry names a collection or global the assistant doesn't reach. |
+| 404 | `reference_not_found` | `POST /chat`: a referenced document doesn't exist **or the caller can't read it**. |
 | 404 | `not_found` | The conversation (or run) doesn't exist **or isn't the caller's**: the two are indistinguishable. |
 | 409 | `run_id_used` | A turn reused a run id: rejoin it instead. |
 | 502 | `tools_unavailable` | Only with a `toolFilter`: the Worker could not list the tools. |
@@ -350,6 +356,11 @@ Body: what `useChat`'s `fetchServerSentEvents(url)` sends (AG-UI `RunAgentInput`
   "model": "deepseek/deepseek-v4.1-flash", // optional (or forwardedProps.model); default: defaultModel
   "messages": [/* …, */ { "id": "msg_…", "role": "user", "content": "Which pages have no meta description?" }],
   // or "message": "Which pages…" (scripts, curl)
+  // Optional, with a message (#69), in forwardedProps (what useChat sends) or at the top level:
+  "forwardedProps": {
+    "context": { "kind": "collection", "slug": "pages", "id": "12" },      // the document the conversation is about
+    "references": [{ "kind": "global", "slug": "header" }]                 // @ mentions, at most 10
+  },
   // or, to answer approvals (no message):
   "resume": [
     { "interruptId": "approval_call_a", "status": "resolved", "payload": { "approved": true, "seenUpdatedAt": "2026-11-06T…" } },
@@ -362,6 +373,13 @@ Body: what `useChat`'s `fetchServerSentEvents(url)` sends (AG-UI `RunAgentInput`
   the user's (text, or `[{ type: "text", text }]` parts; at most 32,000 characters). Earlier
   messages, assistant messages and tool results from the client are ignored: the stored transcript
   is the history. A message without an `id` gets one, so hydration ids are stable.
+- **Document references** (#69): `context` (the edit view's document, sent with a drawer
+  conversation's first message) and `references` (`@` mentions) are addresses only. The endpoint
+  resolves each as the caller (`overrideAccess: false`, `depth: 0`, the latest draft, only the
+  title field) before anything runs, refuses the turn with 400 `invalid_reference` / 404
+  `reference_not_found`, and stores the result on the user message as `metadata.assistant`
+  (`{ context?, references? }`, each `{ kind, slug, id?, title }` with the server's title). AG-UI's
+  own top-level `context` array is not this and is ignored. Not allowed with `resume`.
 - **Resume**: one entry **per pending interrupt of the run** (TanStack validates the whole batch
   before any tool runs; a partial batch ends in `RUN_ERROR` and nothing is written),
   `status: "resolved"` with `payload: { approved: true, seenUpdatedAt? }` or
@@ -418,6 +436,18 @@ stays in `rawEvent`.
 `{ approvals: ApprovalProposal[] }` (types in `src/approvals/types.ts`), oldest first, built from
 the stored interrupts and read **as the caller** (`overrideAccess: false`, `depth: 0`, drafts).
 404 when the conversation isn't the caller's. See [Approvals](#approvals-diff-cards).
+
+### `GET /api/assistant/documents?q=…`: the `@` search (#69)
+
+`{ documents: [{ kind: "collection", slug, id, title } | { kind: "global", slug, title }] }`, at
+most 8: documents whose title field (`admin.useAsTitle`; collections without one are skipped)
+contains `q` (`like`), in every collection the assistant reaches, newest first and interleaved
+across collections, plus readable globals whose label or slug contains it. An empty `q` lists
+recent ones. Every read goes through plugin-mcp's `findDocuments` / `findGlobal` as the caller (one
+in-process MCP session, the app's `toolFilter` applied), so a collection or global the caller can't
+read gives nothing, and drafts and `?locale=` behave as they do for the model. Never returns field
+values other than the title. `q` is at most 100 characters (400 `invalid_query`). Not rate limited
+(a read); the composer debounces it.
 
 ### `GET /api/assistant/chat?threadId=…`: rejoin a run, or load a conversation
 
@@ -735,6 +765,21 @@ chat, a `payload://` link the model writes in an answer opens that document's ed
 Markdown as the field will store it (converted and back), plus a notice for formatting that would be
 lost or Markdown the field doesn't support. Stale checks work as for `updateDocument`.
 
+Document references (#69) are not in the system prompt (it stays the cached prefix): a user
+message with `metadata.assistant` gets a short note after its text in what the model receives
+(`withReferenceNotes`, the last middleware, on `providerMessages` only), e.g.
+
+```
+<document-references>
+The editor opened this conversation from the edit view of `pages` id 12 "Home": "this document", "this page" and the like mean it. Read it with findDocuments (slug `pages`, id 12, draft: true) before you answer about it or change it. The editor's unsaved changes in the form are not included: you see the saved version.
+The editor mentioned: `pages` id 13 "About us"; global `header` "Header". Read the ones you need with findDocuments (by id, draft: true) or findGlobal before you answer about them.
+</document-references>
+```
+
+Titles are JSON-quoted. The stored transcript keeps the user's own words, and the note stays with
+its message in later turns. The test model reads a message without its note and, for plain text,
+answers `Test model: you said "…". Documents: <the note>`.
+
 ## Admin UI
 
 `/admin/assistant`: the conversation list on the left (a toggle above the chat on narrow screens),
@@ -821,6 +866,51 @@ The reply is over when the stream ends (`isLoading`), not at a `RUN_FINISHED` (o
   text back in the composer and takes its bubble out of the transcript (the server never stored it).
 - **Narrow screens**: under 600px the composer puts the model picker and Send on one row and the
   hint under them.
+
+### From an edit view, and mentions (#69)
+
+**The button.** `AssistantDocumentControls` (server) asks `access` like the nav link, then renders
+`AskAssistant` (client), which hides itself on a collection's create view (`useDocumentInfo().id`
+is empty). It opens a Payload `Drawer` (`assistant-<kind>-<slug>-<editDepth>`) with **the same
+`ChatPanel`** as `/admin/assistant` (the shared setup, routes, links, config and model choice, is
+`useAssistantAdminContext`), on a new thread about the document; closing and reopening the drawer
+keeps that conversation until "New conversation", and "Open in the assistant" moves to the full
+view. The drawer is portalled out of the document's `<form>`, but React events still bubble to it,
+so the drawer body stops `submit` (the composer's Send must not save the document).
+
+**Context.** `ChatPanel`'s `context` prop (`{ kind, slug, id, title }`) goes with the first
+message only (`sendMessage({ content, metadata }, { body: { context } })`), and is shown as an
+"About" chip on it. The server resolves and stores it (above); unsaved form state is never sent.
+
+**Mentions.** In any chat, `@` at the start or after a space opens a list above the composer
+(debounced 200 ms, `GET /documents?q=`). The textarea is an ARIA combobox (`aria-expanded`,
+`aria-controls`, `aria-activedescendant`): Up/Down move, Enter or Tab pick, Escape closes the list, and the mouse picks on `mousedown` so focus stays. Picking replaces `@query`
+with the title and adds a chip (Payload `Pill`, removable); a mentioned document isn't offered
+again; at most 10. On send the chips go as `references`, and a refused send puts them back. Stored
+messages show "About" and "Mentioned" chips linking to the edit views.
+
+**Keeping the form in step.** `ChatPanel`'s `onAppliedWrite(call, result)` reports each write
+tool call whose result arrived and succeeded, once (calls already in the transcript when it loaded
+are not reported). `writeTouches` matches the open document: the same global, or the same
+collection with its id in the input or in the documents the result returned (an update by
+`where`); a delete doesn't count. Then `useDocumentRefresh`:
+
+- **No unsaved edits** (`useFormModified()` false): fetch the saved document as the edit view loads
+  it (`GET /api/<slug>/<id>?depth=0&draft=true&fallback-locale=none&locale=`), set it as the
+  document info's `data` (so the edit view's stale-data check takes the new `updatedAt` and doesn't
+  show "Document modified"), then `useForm().reset(doc)`, which rebuilds the form state on the
+  server (`getFormState`) and clears `modified`; rich text fields re-render from the new initial
+  value. A toast says so.
+- **Unsaved edits**: Payload's `ConfirmationModal`: "Reload and lose my edits" or "Keep editing".
+  The reload runs after the dialog has closed (run while it was still open, the form came back
+  with the values the page was first rendered with). Keeping the edits (or closing the dialog)
+  shows a danger `Banner`, fixed at the bottom of the edit view and in the drawer: saving will
+  overwrite the assistant's change (Payload has no optimistic concurrency for saves). It offers
+  the reload again and goes away once the form is saved.
+
+Collections with **autosave** (`apps/web`'s pages) save edits within a second, so the form is
+rarely modified when a change lands; an autosave that fires after the assistant's write still
+overwrites it with the form's values, as any later save would.
 
 ### Approvals: diff cards
 
@@ -1029,7 +1119,13 @@ that ran), one per document with its own id for updates and deletes by `where` a
 creates; redacted fields absent from what the model sees, the stream, the stored transcript and
 the approval cards, including an `updateDocument` result with rich text as Markdown and a page's
 populated `createdBy`; `findDistinct`, `where` and `sort` on a hidden field refused, directly and
-through a relation, and a write by such a `where` refused after approval and not audited). `vitest.workerd.config.ts` runs `tests/workerd/` under workerd with
+through a relation, and a write by such a `where` refused after approval and not audited); `tests/integration/references.test.ts`:
+the context and mentions resolved as the user (unreadable, missing and unreachable documents and
+globals refused), stored on the message and named to the model without content, the `@` search's
+access and fields, and where the edit-view control is added; `tests/references.test.ts`: the note,
+the middleware, mentions parsing, which writes touch the open document; `tests/ui/documents.test.tsx`:
+the `@` keyboard flow and chips, chips on stored messages, the button's visibility and the reload,
+ask and keep-editing paths). `vitest.workerd.config.ts` runs `tests/workerd/` under workerd with
 `@cloudflare/vitest-plugin` 1.4.11 (its Miniflare and Wrangler match the app's), against the test
 Worker in `tests/workerd/` (same bindings as the app wiring above): conformance of both objects,
 ownership, retention (alarm), reconnect after a mid-run disconnect, restart mid-run, and the MCP
@@ -1037,5 +1133,6 @@ transport prototype, and the real turn in the object (`tests/workerd/chat.test.t
 approval resume, a reject reason reaching the model, disconnect + rejoin, stop;
 `tests/workerd/policies.test.ts`: usage in the index object per day and conversation, after a
 disconnect, atomic and pruned, the audit sink in the object, redaction in the stream, log and
-transcript, populated relations redacted by their collection, a hidden-field query refused). Storage is shared between the tests of a file there, so each test uses its own
+transcript, populated relations redacted by their collection, a hidden-field query refused; references stored in the object's SQLite and named to
+the model). Storage is shared between the tests of a file there, so each test uses its own
 ids.

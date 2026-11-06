@@ -72,7 +72,9 @@ async function* mcpTurn({ input, mcpFetch }: TurnContext): AsyncIterable<StreamC
  * `fakeText()` model instead of OpenRouter: the script travels in the test's turn body.
  */
 const chatTurn: TurnRunner = (context) => {
-  const { script, tokensPerSecond } = context.input.body as { script: FakeResponseStep[]; tokensPerSecond?: number };
+  const { script, tokensPerSecond } = context.input.body as { script?: FakeResponseStep[]; tokensPerSecond?: number };
+  // No script: the default adapter, i.e. the plugin's test model when `settings.testModel` is set.
+  if (!script) return createTurnRunner()(context);
   return createTurnRunner({
     createAdapter: () => {
       const model = fakeText(tokensPerSecond ? { tokensPerSecond } : {});

@@ -13,6 +13,8 @@ export const CONVERSATIONS_ENDPOINT_PATH = "/assistant/conversations";
 export const APPROVALS_ENDPOINT_PATH = "/assistant/approvals";
 /** The caller's usage today and the budget (#68): `GET /api/assistant/usage?threadId=`. */
 export const USAGE_ENDPOINT_PATH = "/assistant/usage";
+/** The `@` search: `GET /api/assistant/documents?q=`. */
+export const DOCUMENTS_ENDPOINT_PATH = "/assistant/documents";
 /** What the admin UI needs first: `GET /api/assistant/config`. */
 export const CONFIG_ENDPOINT_PATH = "/assistant/config";
 
@@ -25,6 +27,9 @@ export const VIEW_COMPONENT_PATH = `${PACKAGE_NAME}/admin/AssistantView#Assistan
 
 /** Import-map path of the nav link (`admin.components.afterNavLinks`), a server component. */
 export const NAV_LINK_COMPONENT_PATH = `${PACKAGE_NAME}/admin/AssistantNavLink#AssistantNavLink`;
+
+/** Import-map path of the edit view's "Ask the assistant" control (`beforeDocumentControls`), a server component. */
+export const DOCUMENT_CONTROLS_COMPONENT_PATH = `${PACKAGE_NAME}/admin/AssistantDocumentControls#AssistantDocumentControls`;
 
 export const DEFAULT_MAX_STEPS = 10;
 
