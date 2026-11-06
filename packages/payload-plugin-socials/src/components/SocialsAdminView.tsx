@@ -1,6 +1,5 @@
 import type { AdminViewServerProps } from 'payload'
 
-import { Gutter } from '@payloadcms/ui'
 import { DefaultTemplate } from '@payloadcms/ui/rsc'
 import React from 'react'
 
@@ -8,11 +7,12 @@ import type { AuthorizeFn } from '../types/index.js'
 
 import { evaluateAuthorize } from '../server/utilities/access.js'
 import { SocialsAdminViewClient } from './SocialsAdminViewClientRef.js'
+import { ViewBody, ViewHeader } from './ui/primitives.js'
 
 /**
  * Server-rendered shell for the `/admin/socials` route. The header bits use
- * Payload's `DefaultTemplate` so the page feels native; the content is a
- * client island with two tabs: Compose and Connections.
+ * Payload's `DefaultTemplate` and list-header markup so the page feels native;
+ * the content is a client island with two tabs: Compose and Connections.
  *
  * Gated server-side: a user the host `authorize` rejects for the `publisher`
  * scope is redirected to `/admin` before anything renders, so the route is
@@ -57,15 +57,13 @@ export const SocialsAdminView: React.FC<{ title?: string } & AdminViewServerProp
         globals: initPageResult.visibleEntities?.globals,
       }}
     >
-      <Gutter>
-        <header style={{ marginBottom: '1rem' }}>
-          <h1 className="socials-heading socials-heading--large">{title}</h1>
-          <p style={{ color: 'var(--color-text-secondary)' }}>
-            Multi-platform organic publishing. Compose posts or manage connections.
-          </p>
-        </header>
+      <ViewHeader
+        description="Multi-platform organic publishing. Compose posts or manage connections."
+        title={title}
+      />
+      <ViewBody>
         <SocialsAdminViewClient enabledPlatforms={enabledPlatforms} />
-      </Gutter>
+      </ViewBody>
     </DefaultTemplate>
   )
 }

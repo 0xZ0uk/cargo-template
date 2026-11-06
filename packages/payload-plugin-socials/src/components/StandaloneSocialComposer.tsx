@@ -1,6 +1,6 @@
 'use client'
 
-import { Button, toast, useConfig, useListDrawer } from '@payloadcms/ui'
+import { Banner, Button, toast, useConfig, useListDrawer } from '@payloadcms/ui'
 import React, { useCallback, useEffect, useState } from 'react'
 
 import type { PlatformId } from '../constants.js'
@@ -28,7 +28,9 @@ import {
   platformFormats,
 } from './socialComposerViewModel.js'
 import { VideoTile } from './SocialMediaPreview.js'
+import { Card, Check, cx, Field, Fieldset } from './ui/primitives.js'
 import { useSocialsAccess } from './useSocialsAccess.js'
+import './ui/styles.css'
 import './socials.css'
 
 type Destination = ComposerDestination
@@ -253,229 +255,215 @@ const StandaloneComposerAuthorized: React.FC = () => {
   }
 
   return (
-    <section className="socials-composer">
-      <header className="socials-composer__header">
-        <div>
-          <h2 className="socials-heading">Standalone composer</h2>
-          <p>Compose one post from scratch and publish it to multiple channels at once.</p>
-        </div>
-      </header>
+    <Card
+      description="Compose one post from scratch and publish it to multiple channels at once."
+      headingLevel="h2"
+      title="Standalone composer"
+    >
+      <Field label="Title *">
+        <input
+          aria-label="Post title"
+          className="socials-input"
+          onChange={(event) => setState((s) => ({ ...s, title: event.target.value }))}
+          required
+          value={state.title}
+        />
+      </Field>
 
-      <div className="socials-composer__fields" style={{ marginTop: '1.5rem' }}>
-        <label>
-          Title *
-          <input
-            aria-label="Post title"
-            onChange={(event) => setState((s) => ({ ...s, title: event.target.value }))}
-            required
-            value={state.title}
-          />
-        </label>
+      <Field label="Body">
+        <textarea
+          aria-label="Post body"
+          className="socials-textarea"
+          onChange={(event) => setState((s) => ({ ...s, body: event.target.value }))}
+          rows={6}
+          value={state.body}
+        />
+      </Field>
 
-        <label>
-          Body
-          <textarea
-            aria-label="Post body"
-            onChange={(event) => setState((s) => ({ ...s, body: event.target.value }))}
-            rows={6}
-            value={state.body}
-          />
-        </label>
+      <Field label="Link (optional)">
+        <input
+          aria-label="Post link"
+          className="socials-input"
+          onChange={(event) => setState((s) => ({ ...s, link: event.target.value }))}
+          type="url"
+          value={state.link}
+        />
+      </Field>
 
-        <label>
-          Link (optional)
-          <input
-            aria-label="Post link"
-            onChange={(event) => setState((s) => ({ ...s, link: event.target.value }))}
-            type="url"
-            value={state.link}
-          />
-        </label>
-
-        <fieldset className="socials-composer__media">
-          <legend>Media {mediaReorderable ? '(drag to order 2-10)' : ''}</legend>
-          {state.media.length > 0 && (
-            <div className="socials-composer__media-grid" role="list">
-              {state.media.map((asset, index) => (
-                // Drag reorder is a progressive enhancement; the per-tile arrow
-                // buttons provide the keyboard/touch-accessible path.
-                <div
-                  className={[
-                    'socials-composer__asset',
-                    'socials-composer__asset--selected',
-                    mediaReorderable && 'socials-composer__asset--draggable',
-                  ]
-                    .filter(Boolean)
-                    .join(' ')}
-                  draggable={mediaReorderable}
-                  key={asset.url}
-                  onDragEnd={() => setDragFrom(null)}
-                  onDragOver={mediaReorderable ? (event) => event.preventDefault() : undefined}
-                  onDragStart={
-                    mediaReorderable
-                      ? (event) => {
-                          setDragFrom(index)
-                          event.dataTransfer.effectAllowed = 'move'
+      <Fieldset legend={`Media ${mediaReorderable ? '(drag to order 2-10)' : ''}`}>
+        {state.media.length > 0 && (
+          <div className="socials-media__grid" role="list">
+            {state.media.map((asset, index) => (
+              // Drag reorder is a progressive enhancement; the per-tile arrow
+              // buttons provide the keyboard/touch-accessible path.
+              <div
+                className={cx(
+                  'socials-media__asset',
+                  'socials-media__asset--selected',
+                  mediaReorderable && 'socials-media__asset--draggable',
+                )}
+                draggable={mediaReorderable}
+                key={asset.url}
+                onDragEnd={() => setDragFrom(null)}
+                onDragOver={mediaReorderable ? (event) => event.preventDefault() : undefined}
+                onDragStart={
+                  mediaReorderable
+                    ? (event) => {
+                        setDragFrom(index)
+                        event.dataTransfer.effectAllowed = 'move'
+                      }
+                    : undefined
+                }
+                onDrop={
+                  mediaReorderable
+                    ? (event) => {
+                        event.preventDefault()
+                        if (dragFrom !== null) {
+                          moveMedia(dragFrom, index)
                         }
-                      : undefined
-                  }
-                  onDrop={
-                    mediaReorderable
-                      ? (event) => {
-                          event.preventDefault()
-                          if (dragFrom !== null) {
-                            moveMedia(dragFrom, index)
-                          }
-                          setDragFrom(null)
-                        }
-                      : undefined
-                  }
-                  role="listitem"
-                >
-                  {asset.type === 'image' ? (
-                    <img alt={asset.altText ?? ''} src={asset.url} />
-                  ) : (
-                    <VideoTile asset={asset} />
-                  )}
-                  {mediaReorderable && (
-                    <span className="socials-composer__asset-order">{index + 1}</span>
-                  )}
-                  {mediaReorderable && (
-                    <div className="socials-composer__asset-arrows">
-                      <button
-                        aria-label="Move media earlier"
-                        disabled={index <= 0}
-                        onClick={() => moveMedia(index, index - 1)}
-                        type="button"
-                      >
-                        ‹
-                      </button>
-                      <button
-                        aria-label="Move media later"
-                        disabled={index >= state.media.length - 1}
-                        onClick={() => moveMedia(index, index + 1)}
-                        type="button"
-                      >
-                        ›
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-          <div className="socials-composer__add-media">
-            <Button onClick={openDrawer} size="medium">
-              Media library
-            </Button>
-            <div className="socials-composer__add-media-url">
-              <input
-                aria-label="Media URL"
-                onChange={(event) => setUrlInput(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault()
-                    handleAddByUrl()
-                  }
-                }}
-                placeholder="https://..."
-                type="url"
-                value={urlInput}
-              />
-              <select
-                aria-label="URL media type"
-                onChange={(event) => setUrlTypeOverride(event.target.value as 'image' | 'video')}
-                value={urlTypeOverride}
+                        setDragFrom(null)
+                      }
+                    : undefined
+                }
+                role="listitem"
               >
-                <option value="image">Image</option>
-                <option value="video">Video</option>
-              </select>
-              <Button disabled={!urlInput.trim()} onClick={handleAddByUrl} size="medium">
-                Add URL
-              </Button>
-            </div>
-          </div>
-        </fieldset>
-
-        <fieldset
-          style={{ border: '1px solid var(--socials-border)', borderRadius: 6, padding: '0.75rem' }}
-        >
-          <legend>Channels</legend>
-          <div className="socials-composer__channels">
-            {enabledPlatforms.map((platform) => (
-              <label
-                className={[
-                  'socials-composer__channel-chip',
-                  state.channels.includes(platform) && 'socials-composer__channel-chip--active',
-                ]
-                  .filter(Boolean)
-                  .join(' ')}
-                key={platform}
-              >
-                <input
-                  aria-label={PLATFORM_LABELS[platform]}
-                  checked={state.channels.includes(platform)}
-                  onChange={() => toggleChannel(platform)}
-                  type="checkbox"
-                />
-                {PLATFORM_LABELS[platform]}
-              </label>
+                {asset.type === 'image' ? (
+                  <img alt={asset.altText ?? ''} src={asset.url} />
+                ) : (
+                  <VideoTile asset={asset} />
+                )}
+                {mediaReorderable && <span className="socials-media__order">{index + 1}</span>}
+                {mediaReorderable && (
+                  <div className="socials-media__arrows">
+                    <button
+                      aria-label="Move media earlier"
+                      disabled={index <= 0}
+                      onClick={() => moveMedia(index, index - 1)}
+                      type="button"
+                    >
+                      ‹
+                    </button>
+                    <button
+                      aria-label="Move media later"
+                      disabled={index >= state.media.length - 1}
+                      onClick={() => moveMedia(index, index + 1)}
+                      type="button"
+                    >
+                      ›
+                    </button>
+                  </div>
+                )}
+              </div>
             ))}
           </div>
+        )}
+        <div className="socials-row">
+          <Button buttonStyle="secondary" margin={false} onClick={openDrawer} size="medium">
+            Media library
+          </Button>
+          <div className="socials-media__add-url">
+            <input
+              aria-label="Media URL"
+              className="socials-input"
+              onChange={(event) => setUrlInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  handleAddByUrl()
+                }
+              }}
+              placeholder="https://..."
+              type="url"
+              value={urlInput}
+            />
+            <select
+              aria-label="URL media type"
+              className="socials-select socials-select--inline"
+              onChange={(event) => setUrlTypeOverride(event.target.value as 'image' | 'video')}
+              value={urlTypeOverride}
+            >
+              <option value="image">Image</option>
+              <option value="video">Video</option>
+            </select>
+            <Button
+              buttonStyle="secondary"
+              disabled={!urlInput.trim()}
+              margin={false}
+              onClick={handleAddByUrl}
+              size="medium"
+            >
+              Add URL
+            </Button>
+          </div>
+        </div>
+      </Fieldset>
 
-          {state.channels.map((platform) => (
-            <div key={platform} style={{ marginTop: '0.75rem' }}>
-              <div className="socials-composer__row">
-                <label>
-                  {PLATFORM_LABELS[platform]} destination
-                  <select
-                    onChange={(event) =>
-                      setState((s) => ({
-                        ...s,
-                        destinations: { ...s.destinations, [platform]: event.target.value },
-                      }))
-                    }
-                    value={state.destinations[platform] ?? ''}
-                  >
-                    <option value="">Select…</option>
-                    {(destinations[platform] ?? []).map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  {PLATFORM_LABELS[platform]} format
-                  <select
-                    onChange={(event) =>
-                      setPerChannelFormat((f) => ({ ...f, [platform]: event.target.value }))
-                    }
-                    value={perChannelFormat[platform] ?? ''}
-                  >
-                    <option value="">Default</option>
-                    {platformFormats[platform].map((f) => (
-                      <option key={f.value} value={f.value}>
-                        {f.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-            </div>
+      <Fieldset legend="Channels">
+        <div className="socials-chips">
+          {enabledPlatforms.map((platform) => (
+            <Check
+              aria-label={PLATFORM_LABELS[platform]}
+              checked={state.channels.includes(platform)}
+              className={cx(
+                'socials-chip',
+                state.channels.includes(platform) && 'socials-chip--active',
+              )}
+              key={platform}
+              label={PLATFORM_LABELS[platform]}
+              onChange={() => toggleChannel(platform)}
+            />
           ))}
-        </fieldset>
+        </div>
 
-        {results.length > 0 && (
-          <ul className="socials-composer__results">
-            {results.map((r) => (
-              <li
-                className={`socials-composer__result-item ${r.ok ? 'socials-composer__result-ok' : 'socials-composer__result-err'}`}
-                key={r.platform}
+        {state.channels.map((platform) => (
+          <div className="socials-pair" key={platform}>
+            <Field label={`${PLATFORM_LABELS[platform]} destination`}>
+              <select
+                className="socials-select"
+                onChange={(event) =>
+                  setState((s) => ({
+                    ...s,
+                    destinations: { ...s.destinations, [platform]: event.target.value },
+                  }))
+                }
+                value={state.destinations[platform] ?? ''}
               >
-                <strong>{PLATFORM_LABELS[r.platform]}</strong>
+                <option value="">Select…</option>
+                {(destinations[platform] ?? []).map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label={`${PLATFORM_LABELS[platform]} format`}>
+              <select
+                className="socials-select"
+                onChange={(event) =>
+                  setPerChannelFormat((f) => ({ ...f, [platform]: event.target.value }))
+                }
+                value={perChannelFormat[platform] ?? ''}
+              >
+                <option value="">Default</option>
+                {platformFormats[platform].map((f) => (
+                  <option key={f.value} value={f.value}>
+                    {f.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+        ))}
+      </Fieldset>
+
+      {results.length > 0 && (
+        <ul aria-label="Publish results" className="socials-list">
+          {results.map((r) => (
+            <li key={r.platform}>
+              <Banner type={r.ok ? 'success' : 'danger'}>
+                <strong>{PLATFORM_LABELS[r.platform]}</strong>{' '}
                 {r.ok ? (
-                  <span className="socials-composer__success">
+                  <span>
                     Published
                     {r.publishedRef?.externalUrl && (
                       <>
@@ -487,15 +475,19 @@ const StandaloneComposerAuthorized: React.FC = () => {
                     )}
                   </span>
                 ) : (
-                  <span className="socials-composer__error">{r.error ?? 'Failed'}</span>
+                  <span>{r.error ?? 'Failed'}</span>
                 )}
-              </li>
-            ))}
-          </ul>
-        )}
+              </Banner>
+            </li>
+          ))}
+        </ul>
+      )}
 
+      <div className="socials-row">
         <Button
+          buttonStyle="primary"
           disabled={loading || state.channels.length === 0 || !state.title.trim()}
+          margin={false}
           onClick={() => {
             void publish()
           }}
@@ -505,7 +497,7 @@ const StandaloneComposerAuthorized: React.FC = () => {
       </div>
 
       <ListDrawer onSelect={handleLibrarySelect as never} />
-    </section>
+    </Card>
   )
 }
 
