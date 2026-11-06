@@ -1,5 +1,5 @@
 import type { PayloadRequest } from "payload";
-import { DEFAULT_MAX_STEPS, DEFAULT_RETENTION_DAYS, PLUGIN_NAME } from "../constants";
+import { DEFAULT_APP_TITLE, DEFAULT_MAX_CONTEXT_TOKENS, DEFAULT_MAX_STEPS, DEFAULT_RETENTION_DAYS, PLUGIN_NAME } from "../constants";
 import type {
   AssistantAccess,
   AssistantContext,
@@ -10,21 +10,11 @@ import type {
   ConversationNamespace,
 } from "../types/options";
 import { resolveCaps, type ConversationCaps } from "../conversations/caps";
+import { OPENROUTER_PROVIDER } from "./provider";
 
 const PREFIX = `[${PLUGIN_NAME}]`;
 
-/**
- * OpenRouter provider routing, applied to every request: drafts reach the model, so providers
- * that log or train on prompts are excluded and the model's parameters must be honoured.
- *
- * The keys MUST be camelCase. The SDK serialises them to `require_parameters` and
- * `data_collection`; the snake_case spelling is silently dropped by its schema, which would
- * send drafts to any provider. (#63 asserts the serialised request body.)
- */
-export const OPENROUTER_PROVIDER = {
-  requireParameters: true,
-  dataCollection: "deny",
-} as const;
+export { OPENROUTER_PROVIDER };
 
 export type ConversationStorage =
   | { kind: "memory"; retentionMs: number; caps: ConversationCaps }
@@ -64,6 +54,8 @@ export interface NormalizedAssistantOptions {
   apiKey: string;
   instructions: string | ((context: AssistantContext) => string | Promise<string>) | undefined;
   maxSteps: number;
+  maxContextTokens: number;
+  appTitle: string;
   toolFilter: ((tool: AssistantToolInfo) => boolean) | undefined;
   conversations: ConversationStorage;
   rateLimit: ((req: PayloadRequest) => boolean | Promise<boolean>) | undefined;
@@ -111,6 +103,11 @@ export function normalizeOptions(options: AssistantPluginOptions): NormalizedAss
     throw new Error(`${PREFIX} "maxSteps" must be a positive integer (got ${String(maxSteps)}).`);
   }
 
+  const maxContextTokens = options.maxContextTokens ?? DEFAULT_MAX_CONTEXT_TOKENS;
+  if (!Number.isInteger(maxContextTokens) || maxContextTokens < 1000) {
+    throw new Error(`${PREFIX} "maxContextTokens" must be an integer of at least 1000 (got ${String(maxContextTokens)}).`);
+  }
+
   const apiKey = typeof options.apiKey === "string" ? options.apiKey.trim() : "";
   if (!apiKey) {
     console.warn(
@@ -126,6 +123,8 @@ export function normalizeOptions(options: AssistantPluginOptions): NormalizedAss
     apiKey,
     instructions: options.instructions,
     maxSteps,
+    maxContextTokens,
+    appTitle: options.appTitle?.trim() || DEFAULT_APP_TITLE,
     toolFilter: options.toolFilter,
     conversations: normalizeConversations(options.conversations),
     rateLimit: options.rateLimit,

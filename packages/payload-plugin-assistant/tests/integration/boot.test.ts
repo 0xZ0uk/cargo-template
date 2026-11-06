@@ -166,10 +166,10 @@ describe("POST /api/assistant/chat", () => {
     expect((await post(app, "/assistant/chat", { as: null })).status).toBe(401);
   });
 
-  it("answers 501 to an admin user until the turn is implemented", async () => {
+  it("validates an admin user's body (the turns themselves are in chat.test.ts)", async () => {
     const res = await post(app, "/assistant/chat");
-    expect(res.status).toBe(501);
-    expect(await res.json()).toEqual({ error: "not implemented" });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ code: "invalid_body" });
   });
 
   it("refuses a user of another auth collection by default", async () => {

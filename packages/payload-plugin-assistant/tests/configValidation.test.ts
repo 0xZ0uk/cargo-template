@@ -2,7 +2,7 @@ import { DEFAULT_CONVERSATION_CAPS } from "../src/conversations/caps";
 import type { Config, PayloadRequest } from "payload";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { assistantPlugin } from "../src/plugin";
-import { buildChatHandler } from "../src/endpoints/chat";
+import { buildEndpoints } from "../src/endpoints";
 import { normalizeOptions, OPENROUTER_PROVIDER } from "../src/utils/normalizeOptions";
 import type { AssistantPluginOptions } from "../src/types/options";
 
@@ -36,7 +36,17 @@ describe("assistantPlugin", () => {
       endpoints: [{ path: "/other", method: "get", handler: () => new Response() }],
       admin: { components: { views: { existing: { Component: "x", path: "/x" } } } },
     } as unknown as Config);
-    expect(config.endpoints?.map((e) => `${e.method} ${e.path}`)).toEqual(["get /other", "post /assistant/chat"]);
+    expect(config.endpoints?.map((e) => `${e.method} ${e.path}`)).toEqual([
+      "get /other",
+      "get /assistant/config",
+      "post /assistant/chat",
+      "get /assistant/chat",
+      "post /assistant/chat/stop",
+      "get /assistant/conversations",
+      "get /assistant/conversations/:threadId",
+      "patch /assistant/conversations/:threadId",
+      "delete /assistant/conversations/:threadId",
+    ]);
     const views = config.admin?.components?.views as Record<string, any>;
     expect(Object.keys(views)).toEqual(["existing", "assistant"]);
     expect(views.assistant.path).toBe("/assistant");
@@ -129,7 +139,8 @@ describe("normalizeOptions", () => {
 
 describe("chat endpoint access", () => {
   const handler = (options: Partial<AssistantPluginOptions> = {}) =>
-    buildChatHandler(normalizeOptions({ ...valid, ...options }));
+    buildEndpoints(normalizeOptions({ ...valid, ...options })).find((e) => e.path === "/assistant/chat" && e.method === "post")!
+      .handler as (req: PayloadRequest) => Promise<Response>;
 
   it("denies an anonymous request", async () => {
     expect((await handler()(reqFor(null))).status).toBe(401);
@@ -158,10 +169,12 @@ describe("chat endpoint access", () => {
     expect(await res.json()).toMatchObject({ error: "not configured" });
   });
 
-  it("answers 429 when rateLimit refuses, and 501 from the stub otherwise", async () => {
-    expect((await handler({ rateLimit: () => false })(reqFor(admin))).status).toBe(429);
-    const ok = await handler({ rateLimit: async () => true })(reqFor(admin));
-    expect(ok.status).toBe(501);
-    expect(await ok.json()).toEqual({ error: "not implemented" });
+  it("answers 429 when rateLimit refuses, with the user's request", async () => {
+    const rateLimit = vi.fn(() => false);
+    const req = reqFor(admin);
+    const res = await handler({ rateLimit })(req);
+    expect(res.status).toBe(429);
+    expect(await res.json()).toEqual({ error: "Too many requests", code: "rate_limited" });
+    expect(rateLimit).toHaveBeenCalledWith(req);
   });
 });

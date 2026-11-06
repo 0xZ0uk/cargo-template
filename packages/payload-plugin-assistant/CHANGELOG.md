@@ -4,6 +4,20 @@
 
 ### Added
 
+- The chat turn (#63), `createTurnRunner()` in `src/server/turn.ts`: `chat()` on OpenRouter (`createOpenRouterText(model, apiKey, { appTitle, httpReferer })`, SDK retries off) with plugin-mcp's tools as the admin, the conversation's stores (`withPersistence`), compaction past `maxContextTokens` (old tool results first, then the oldest turns), `maxIterations(maxSteps)`, prompt caching (`session_id` = thread, Anthropic cache markers) and the camelCase provider routing. Tests assert the serialised request body (`provider: { require_parameters, data_collection: "deny" }`).
+- `AssistantConversation` runs that turn by default (the 501 stub is gone). The Worker endpoint authenticates, validates, resolves the turn's settings (model, key, system prompt, limits, `toolFilter` names) and hands the turn to the object, proxying its SSE. A closed tab doesn't stop a run.
+- Stop: `POST /api/assistant/chat/stop` / `ConversationBackend.stop()`. The run's `chat()` is aborted, the stream ends with `RUN_ERROR { code: "stopped" }` (in the log too, so a rejoin sees it) and the run is `aborted`. Deleting a conversation still cuts its run at once (`RunControl`).
+- Endpoints for the admin UI (#64), contract in the README: `POST /api/assistant/chat` (turn or approval resume, `useChat`-compatible body), `GET /api/assistant/chat` (rejoin with `Last-Event-ID`/`?offset`, or the `hydrate()` transcript), `POST /api/assistant/chat/stop`, `GET|PATCH|DELETE /api/assistant/conversations[/:threadId]`, `GET /api/assistant/config`. JSON errors carry a `code`.
+- System prompt built on the Worker: the site, its collections and globals with the descriptions given to plugin-mcp, drafts-first and never publish unless asked, `getCollectionSchema` before writing, small targeted updates, a link to the admin page after a change, then the app's `instructions` and `payloadToolsSystemPrompt`.
+- OpenRouter errors mapped to `RUN_ERROR` codes with user-facing messages: `openrouter_invalid_key` (401), `openrouter_out_of_credits` (402), `openrouter_rate_limited` (429), `model_unavailable` (404/502/503, "no endpoints"), plus `context_overflow`, `not_signed_in`, `tools_unavailable`, `stopped`, `run_failed`.
+- The transcript is server-authoritative: only the request's newest user message is used (text only, 32,000 characters at most, given a stable id); earlier or non-user messages from the client are ignored. A new conversation is titled from its first message. Hydration includes `runs` (`completed` / `aborted` / `failed`).
+- Options: `maxContextTokens` (default 64,000) and `appTitle` (OpenRouter attribution).
+
+### Changed
+
+- `inProcessDispatch`, `mcpEndpointFor` and `payloadToolSourceForRequest` moved to `src/tools/inProcess.ts`, so the Durable Object bundle never imports `payload`.
+- `rateLimit(req)` is called for chat turns (send and resume) only; reads, rejoins, stop and the conversation endpoints aren't rate limited.
+
 - Payload tools (#61), `src/tools/payloadToolSource.ts`: `createPayloadToolSource({ endpoint, headers, dispatch, toolFilter })` gives `chat({ mcp })` plugin-mcp's tools as the signed-in user, through an MCP client that forwards the admin's `Cookie`/`Authorization`/`Origin` to `POST /api/mcp`. The dispatcher is injectable (`McpDispatch`): `inProcessDispatch(config)` runs the request through `handleEndpoints` in the same isolate; a Durable Object can pass a service-binding fetch instead. `payloadToolSourceForRequest(req)` wires it for a `PayloadRequest`.
 - Tool rules: plugin-mcp's auth tools and `getUploadInstructions` (the model can't upload bytes) are never offered; `toolFilter` applies on top. Tools not annotated `readOnlyHint: true` need approval. Access denials reach the model as tool errors, not retries.
 - Discovery fails loudly: `AssistantNotSignedInError` when `/api/mcp` doesn't accept the session (`-32601` from `tools/list`), `AssistantToolDiscoveryError` otherwise; `payloadToolsMcpOptions(source)` rethrows them from `onDiscoveryError`, so a run never goes ahead with no tools.

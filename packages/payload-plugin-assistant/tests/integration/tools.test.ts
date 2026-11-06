@@ -17,13 +17,13 @@ import {
   AssistantToolDiscoveryError,
   authHeadersFrom,
   createPayloadToolSource,
-  inProcessDispatch,
   needsApproval,
   payloadToolsMcpOptions,
   payloadToolsSystemPrompt,
   type PayloadToolSource,
   type PayloadToolSourceOptions,
 } from "../../src/tools/payloadToolSource";
+import { inProcessDispatch } from "../../src/tools/inProcess";
 
 /**
  * Real Payload 4 on SQLite with plugin-mcp, MCP requests going through Payload's router in

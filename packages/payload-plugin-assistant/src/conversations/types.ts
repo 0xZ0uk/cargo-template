@@ -1,4 +1,4 @@
-import type { ModelMessage, RunRecord, StreamChunk } from "@tanstack/ai";
+import type { ModelMessage, RunAgentResumeItem, RunRecord, StreamChunk } from "@tanstack/ai";
 import type {
   ChatWithInterruptsPersistence,
   InterruptRecord,
@@ -15,13 +15,50 @@ export function userKeyOf(user: { collection?: string; id: string | number }): s
   return `${user.collection ?? "users"}:${String(user.id)}`;
 }
 
+/**
+ * Everything a turn needs that only the Worker knows, resolved per request by the endpoint and
+ * sent along with the turn: plain data, because the turn runs in another object (the
+ * conversation's Durable Object) that has neither the plugin's options nor `req`.
+ */
+export interface TurnSettings {
+  /** OpenRouter model id, already checked against the allowlist. */
+  model: string;
+  /** The OpenRouter key. Held in memory for the run only; never stored or logged. */
+  apiKey: string;
+  /** The full system prompt (site, collections, conventions, the app's `instructions`). */
+  systemPrompt: string;
+  /** Most model calls in the run (`maxIterations`). */
+  maxSteps: number;
+  /** Compaction budget: older turns are cleared or dropped past this many (estimated) tokens. */
+  maxContextTokens: number;
+  /** Absolute URL of plugin-mcp's `POST /api/mcp`. */
+  mcpEndpoint: string;
+  /**
+   * The tools the app's `toolFilter` admitted, by name, when it has one (evaluated on the Worker,
+   * where the function lives). Absent: every tool after the built-in filter.
+   */
+  toolNames?: string[];
+  /** OpenRouter attribution headers (`HTTP-Referer`, `X-OpenRouter-Title`). */
+  httpReferer: string;
+  appTitle: string;
+}
+
+/** The body of a turn, as the endpoint validated it. `TurnInput.body` carries this. */
+export interface ChatTurnBody {
+  /** The new user message (one), or none on a resume. The stored transcript is the history. */
+  messages: ModelMessage[];
+  /** Approval decisions: `{ interruptId, status: 'resolved', payload: { approved } }` per interrupt. */
+  resume?: RunAgentResumeItem[];
+  settings: TurnSettings;
+}
+
 /** What the Worker endpoint (#63) hands to the conversation for one turn. */
 export interface TurnInput {
   threadId: string;
   /** Client-chosen (`X-Run-Id`) or minted by the endpoint. */
   runId: string;
   userKey: string;
-  /** The request body as #63 defines it: new messages, `resume` decisions, the model id… */
+  /** The turn as #63 defines it: a {@link ChatTurnBody} (test runners may pass anything). */
   body: Record<string, unknown>;
   /**
    * The admin's `Cookie` and the admin request's `Origin`, forwarded to `POST /api/mcp` so every
@@ -29,6 +66,8 @@ export interface TurnInput {
    * the run only; never stored.
    */
   auth: { cookie: string; origin: string };
+  /** The conversation's title when this turn creates it (the first message, cut). */
+  title?: string;
 }
 
 /** What a turn runner gets inside the conversation (Durable Object, or the in-memory fallback). */
@@ -71,8 +110,8 @@ export type ClaimResult = { ok: true; created: boolean } | { ok: false };
  * alone is never access. A conversation another user owns answers like a missing one.
  */
 export interface ConversationBackend {
-  /** Open (first writer becomes the owner) or re-open a conversation. */
-  claim(userKey: string, threadId: string): Promise<ClaimResult>;
+  /** Open (first writer becomes the owner) or re-open a conversation. `title` is used when it is created. */
+  claim(userKey: string, threadId: string, title?: string): Promise<ClaimResult>;
   /** The transcript, or `null` when the conversation is missing or not the caller's. */
   transcript(userKey: string, threadId: string): Promise<ConversationTranscript | null>;
   /**
@@ -85,6 +124,19 @@ export interface ConversationBackend {
    * Never starts a model call or an MCP client. 404 when not owned.
    */
   join(userKey: string, threadId: string, request: Request): Promise<Response>;
+  /**
+   * Stop a live run (the user pressed Stop): its `chat()` is aborted, it ends with a `RUN_ERROR`
+   * whose `code` is `"stopped"`, and its run record is `aborted`. `false` when the run isn't
+   * live here or the conversation isn't the caller's. A closed tab never stops a run; this does.
+   */
+  stop(userKey: string, threadId: string, runId: string): Promise<boolean>;
+  /**
+   * The conversation for the admin UI, as TanStack's `reconstructChat` builds it (the body
+   * `useChat`'s `hydrate()` expects): `{ messages: UIMessage[], activeRun, interrupts, page? }`.
+   * `request` carries the optional `?limit=` / `?before=` paging. A missing conversation, or one
+   * another user owns, answers the empty transcript (200), like a new conversation.
+   */
+  hydrate(userKey: string, threadId: string, request: Request): Promise<Response>;
   /** The caller's conversations, newest first. */
   list(userKey: string, options?: Pick<SessionIndexListOptions, "limit" | "cursor" | "search" | "withArchived">): Promise<SessionIndexPage>;
   /** Set the title. `false` when not owned. */
@@ -93,6 +145,9 @@ export interface ConversationBackend {
   remove(userKey: string, threadId: string): Promise<boolean>;
 }
 
+
+/** The hydration body of a conversation that doesn't exist (or isn't the caller's): a new conversation. */
+export const EMPTY_HYDRATION = { messages: [], activeRun: null, interrupts: null } as const;
 
 /** Headers of the Worker → Durable Object protocol (internal; the stub is only reachable from the Worker). */
 export const DO_HEADERS = {
@@ -105,4 +160,5 @@ export const DO_HEADERS = {
 export const DO_ROUTES = {
   turn: "https://assistant.internal/turn",
   join: "https://assistant.internal/join",
+  hydrate: "https://assistant.internal/hydrate",
 } as const;

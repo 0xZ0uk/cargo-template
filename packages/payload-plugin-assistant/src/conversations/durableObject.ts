@@ -34,6 +34,7 @@ export interface ConversationStubLike {
   claim(input: any): Promise<any>;
   transcript(userKey: string): Promise<any>;
   destroy(userKey: string): Promise<any>;
+  stop(userKey: string, runId: string): Promise<any>;
   store(name: any, method: string, args: unknown[]): Promise<any>;
 }
 
@@ -131,15 +132,15 @@ export function durableObjectConversations(options: DurableObjectConversationsOp
   const { conversations, retentionMs, caps } = options;
   const sessions = durableSessionIndexStore(options.index);
   const stub = (threadId: string) => conversations.get(conversations.idFromName(threadId));
-  const claim = (userKey: string, threadId: string): Promise<ClaimResult> =>
-    stub(threadId).claim({ threadId, userKey, retentionMs, caps });
+  const claim = (userKey: string, threadId: string, title?: string): Promise<ClaimResult> =>
+    stub(threadId).claim({ threadId, userKey, retentionMs, caps, ...(title ? { title } : {}) });
 
   return {
     claim,
     transcript: (userKey, threadId) => stub(threadId).transcript(userKey) as Promise<ConversationTranscript | null>,
     async startTurn(input: TurnInput) {
-      const claimed = await claim(input.userKey, input.threadId);
-      if (!claimed.ok) return Response.json({ error: "Not found" }, { status: 404 });
+      const claimed = await claim(input.userKey, input.threadId, input.title);
+      if (!claimed.ok) return Response.json({ error: "Not found", code: "not_found" }, { status: 404 });
       // The object answers with the run's SSE stream; returning it proxies the stream as is.
       return stub(input.threadId).fetch(DO_ROUTES.turn, {
         method: "POST",
@@ -167,6 +168,17 @@ export function durableObjectConversations(options: DurableObjectConversationsOp
         if (value !== null) headers[name] = value;
       }
       return stub(threadId).fetch(target.toString(), { method: "GET", headers, signal: request.signal }) as Promise<Response>;
+    },
+    stop: (userKey, threadId, runId) => stub(threadId).stop(userKey, runId) as Promise<boolean>,
+    hydrate(userKey, threadId, request) {
+      const target = new URL(DO_ROUTES.hydrate);
+      for (const [key, value] of new URL(request.url).searchParams) {
+        if (key === "limit" || key === "before") target.searchParams.set(key, value);
+      }
+      return stub(threadId).fetch(target.toString(), {
+        method: "GET",
+        headers: { [DO_HEADERS.user]: userKey, [DO_HEADERS.thread]: threadId },
+      }) as Promise<Response>;
     },
     list: (userKey, listOptions = {}) =>
       sessions.list({ ...listOptions, tenantId: userKey, memberId: userKey, parentThreadId: null }),

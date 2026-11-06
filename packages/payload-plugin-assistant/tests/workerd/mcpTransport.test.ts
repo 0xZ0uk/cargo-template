@@ -20,7 +20,7 @@ async function mcpResult(auth: { cookie: string; origin: string }) {
 describe("MCP transport from inside the Durable Object (service binding to the same Worker)", () => {
   it("lists and calls tools as the admin: Cookie and Origin arrive intact", async () => {
     const result = await mcpResult({ cookie: GOOD_COOKIE, origin: ADMIN_ORIGIN });
-    expect(result.tools).toEqual(["whoami"]);
+    expect(result.tools).toEqual(expect.arrayContaining(["whoami", "findDocuments", "updateDocument"]));
     expect(JSON.parse(result.call.content[0].text)).toEqual({ cookie: GOOD_COOKIE, origin: ADMIN_ORIGIN });
   });
 
