@@ -61,6 +61,80 @@ test.describe('SEO analyzer: page sidebar', () => {
     return doc.id as number
   }
 
+  const mediaIds: Array<number | string> = []
+  const sectionIds: Array<number | string> = []
+
+  /**
+   * A page whose content is partly behind IDs in the form: an upload (Media block and meta
+   * image), a `reference` link to another page and a reusable section. The sidebar has the
+   * server populate them, like `/validate` reads the saved page.
+   */
+  const seedPageWithRelations = async () => {
+    const stamp = Date.now()
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      'base64',
+    )
+    const mediaResponse = await page.request.post('/api/media', {
+      multipart: {
+        file: { name: `e2e-espresso-${stamp}.png`, mimeType: 'image/png', buffer: png },
+        _payload: JSON.stringify({ alt: 'Espresso shot pouring into a cup' }),
+      },
+    })
+    expect(mediaResponse.ok(), await mediaResponse.text()).toBe(true)
+    const media = (await mediaResponse.json()).doc
+    mediaIds.push(media.id)
+
+    const sectionResponse = await page.request.post('/api/sections', {
+      data: {
+        title: `E2E roastery ${stamp}`,
+        layout: [
+          {
+            blockType: 'richText',
+            richText: lexicalParagraphs('Our roastery opens every Saturday for tastings and brewing classes.'),
+          },
+        ],
+      },
+    })
+    expect(sectionResponse.ok(), await sectionResponse.text()).toBe(true)
+    const section = (await sectionResponse.json()).doc
+    sectionIds.push(section.id)
+
+    const target = await seedPage()
+    const response = await page.request.post('/api/pages?draft=true', {
+      data: {
+        title: `E2E espresso relations ${stamp}`,
+        _status: 'draft',
+        meta: { image: media.id },
+        layout: [
+          {
+            blockType: 'richText',
+            richText: lexicalParagraphs('Espresso is brewed by forcing hot water through finely ground coffee.'),
+          },
+          { blockType: 'mediaBlock', media: media.id },
+          {
+            blockType: 'cta',
+            title: 'Learn to brew',
+            links: [
+              {
+                link: {
+                  type: 'reference',
+                  reference: { relationTo: 'pages', value: target },
+                  label: 'Read the brewing guide',
+                },
+              },
+            ],
+          },
+          { blockType: 'globalSection', reusableSection: section.id },
+        ],
+      },
+    })
+    expect(response.ok(), await response.text()).toBe(true)
+    const { doc } = await response.json()
+    pageIds.push(doc.id)
+    return doc.id as number
+  }
+
   const sidebar = () => page.locator('.seo-analyzer')
   const readScore = async () => Number(await page.locator('.seo-analyzer__ring-value').textContent())
   const readWords = async () => Number((await sidebar().getByText(/^\d+ words$/).textContent())?.match(/\d+/)?.[0])
@@ -106,6 +180,8 @@ test.describe('SEO analyzer: page sidebar', () => {
       expect([200, 404]).toContain(response.status())
       await deleteScoreHistory('pages', id)
     }
+    for (const id of sectionIds) await page.request.delete(`/api/sections/${id}`)
+    for (const id of mediaIds) await page.request.delete(`/api/media/${id}`)
     await cleanupTestUser()
   })
 
@@ -152,5 +228,23 @@ test.describe('SEO analyzer: page sidebar', () => {
     const score = await readScore()
     expect(score).toBeGreaterThan(0)
     expect(score).toBeLessThanOrEqual(100)
+  })
+
+  test('counts uploads, reference links and reusable sections like /validate', async () => {
+    const id = await seedPageWithRelations()
+
+    const validate = await page.request.post('/api/seo-plugin/validate', { data: { id, collection: 'pages' } })
+    expect(validate.ok(), await validate.text()).toBe(true)
+    const { checks } = (await validate.json()) as { checks: Array<{ id: string; message: string }> }
+    const message = (checkId: string) => checks.find((c) => c.id === checkId)?.message ?? ''
+    const validateWords = Number(message('content-wordcount').match(/(\d+)\s*words/)?.[1])
+    expect(message('images-present')).toMatch(/^2 image/) // Media block + meta image
+
+    await page.goto(`/admin/collections/pages/${id}`)
+    await expect(page.locator('#field-title')).toBeEnabled()
+    // The reusable section's words count, and the uploads' alt texts.
+    await expect(sidebar().getByText(`${validateWords} words`, { exact: true })).toBeVisible()
+    await expect(sidebar().getByText(message('images-present'), { exact: true })).toBeVisible()
+    await expect(sidebar().getByText(message('images-alt'), { exact: true })).toBeVisible()
   })
 })
