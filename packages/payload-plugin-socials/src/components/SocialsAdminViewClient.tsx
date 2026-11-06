@@ -1,10 +1,11 @@
 'use client'
 
-import { toast } from '@payloadcms/ui'
-import React, { useEffect, useState } from 'react'
+import { Tabs, toast } from '@payloadcms/ui'
+import React, { useEffect, useId, useState } from 'react'
 
 import { SocialsDashboardWidget } from './SocialsDashboardWidget.js'
 import { SocialPublishPanelClient } from './SourceSocialsPanelClient.js'
+import './ui/styles.css'
 import './socials.css'
 
 type Props = {
@@ -20,6 +21,9 @@ type Tab = 'compose' | 'connections'
  */
 export const SocialsAdminViewClient: React.FC<Props> = ({ enabledPlatforms }) => {
   const [activeTab, setActiveTab] = useState<Tab>('compose')
+  const uid = useId()
+  const tabId = (tab: Tab) => `${uid}-tab-${tab}`
+  const panelId = `${uid}-panel`
 
   // Consume the one-shot OAuth callback marker without replaying it on reload.
   useEffect(() => {
@@ -43,27 +47,20 @@ export const SocialsAdminViewClient: React.FC<Props> = ({ enabledPlatforms }) =>
   }, [])
 
   return (
-    <div>
-      <div aria-label="Socials view" className="socials-admin__tabs" role="tablist">
-        <button
-          aria-selected={activeTab === 'compose'}
-          onClick={() => setActiveTab('compose')}
-          role="tab"
-          type="button"
-        >
-          Compose
-        </button>
-        <button
-          aria-selected={activeTab === 'connections'}
-          onClick={() => setActiveTab('connections')}
-          role="tab"
-          type="button"
-        >
-          Connections
-        </button>
+    <div className="socials-stack">
+      {/* Payload's Tabs takes no aria-label, so the group carries it (see #34). */}
+      <div aria-label="Socials view" role="group">
+        <Tabs<Tab>
+          onChange={setActiveTab}
+          tabs={[
+            { id: tabId('compose'), label: 'Compose', panelID: panelId, value: 'compose' },
+            { id: tabId('connections'), label: 'Connections', panelID: panelId, value: 'connections' },
+          ]}
+          value={activeTab}
+        />
       </div>
 
-      <div role="tabpanel">
+      <div aria-labelledby={tabId(activeTab)} id={panelId} role="tabpanel">
         {activeTab === 'compose' && <SocialPublishPanelClient mode="standalone" />}
         {activeTab === 'connections' && (
           <SocialsDashboardWidget enabledPlatforms={enabledPlatforms} />

@@ -1,6 +1,6 @@
 'use client'
 
-import { toast, useConfig } from '@payloadcms/ui'
+import { Button, Pill, toast, useConfig } from '@payloadcms/ui'
 import React, { useCallback, useEffect, useState } from 'react'
 
 import type { ConnectionState } from '../types/index.js'
@@ -8,7 +8,10 @@ import type { ConnectionState } from '../types/index.js'
 import { PLATFORM_IDS, PLATFORM_LABELS, type PlatformId } from '../constants.js'
 import { resolveSocialsEndpointBase } from './accessModel.js'
 import { connectionButtonLabel, describeConnectionRow } from './connectionRowModel.js'
+import { Card, Dot, LoadingState } from './ui/index.js'
 import { useSocialsAccess } from './useSocialsAccess.js'
+import './ui/styles.css'
+import './socials.css'
 
 type Props = {
   enabledPlatforms?: string[]
@@ -110,19 +113,16 @@ const SocialsDashboardWidgetInner: React.FC<Props> = ({ enabledPlatforms }) => {
   }
 
   return (
-    <section style={styles.container}>
-      <h3 className="socials-heading" style={{ marginTop: 0 }}>
-        Social connections
-      </h3>
-      <p style={styles.muted}>
-        Tokens remain server-side and encrypted. OAuth redirects open in this tab.
-      </p>
+    <Card
+      description="Tokens remain server-side and encrypted. OAuth redirects open in this tab."
+      title="Social connections"
+    >
       {loading ? (
-        <p style={styles.muted}>Loading connection status…</p>
+        <LoadingState label="Loading connection status…" />
       ) : enabled.size === 0 ? (
-        <p style={styles.muted}>No platforms are enabled.</p>
+        <p className="socials-text--secondary">No platforms are enabled.</p>
       ) : (
-        <ul style={styles.list}>
+        <ul className="socials-list">
           {PLATFORM_IDS.filter((id) => enabled.has(id)).map((id) => {
             const row = describeConnectionRow(connections[id])
             const isPending = pending === id
@@ -133,25 +133,31 @@ const SocialsDashboardWidgetInner: React.FC<Props> = ({ enabledPlatforms }) => {
             if (row.action !== 'none') {
               if (confirmingDisconnect === id) {
                 affordance = (
-                  <>
-                    <button
+                  <div className="socials-row">
+                    <Button
+                      buttonStyle="destructive"
+                      margin={false}
                       onClick={() => {
                         void disconnect(id)
                       }}
-                      style={{ color: 'var(--color-text-danger)' }}
-                      type="button"
                     >
                       Confirm disconnect
-                    </button>
-                    <button onClick={() => setConfirmingDisconnect(undefined)} type="button">
+                    </Button>
+                    <Button
+                      buttonStyle="ghost"
+                      margin={false}
+                      onClick={() => setConfirmingDisconnect(undefined)}
+                    >
                       Cancel
-                    </button>
-                  </>
+                    </Button>
+                  </div>
                 )
               } else {
                 affordance = (
-                  <button
+                  <Button
+                    buttonStyle="secondary"
                     disabled={isPending}
+                    margin={false}
                     onClick={() => {
                       if (row.action === 'disconnect') {
                         setConfirmingDisconnect(id)
@@ -159,31 +165,22 @@ const SocialsDashboardWidgetInner: React.FC<Props> = ({ enabledPlatforms }) => {
                         void connect(id)
                       }
                     }}
-                    type="button"
                   >
                     {connectionButtonLabel(row.action, isPending)}
-                  </button>
+                  </Button>
                 )
               }
             }
 
             return (
-              <li key={id} style={styles.row}>
-                <span
-                  aria-hidden="true"
-                  style={{
-                    ...styles.dot,
-                    backgroundColor: row.connected
-                      ? 'var(--color-icon-success)'
-                      : 'var(--color-icon-tertiary)',
-                  }}
-                />
-                <span style={{ flex: 1 }}>
+              <li className="socials-list__item" key={id}>
+                <Dot tone={row.connected ? 'success' : 'neutral'} />
+                <span className="socials-list__main">
                   <strong>{PLATFORM_LABELS[id]}</strong>
-                  <small style={{ ...styles.muted, display: 'block' }}>{row.statusText}</small>
+                  <span className="socials-text--secondary">{row.statusText}</span>
                 </span>
                 {row.showManagedBadge ? (
-                  <span style={styles.badge}>Managed by server configuration</span>
+                  <Pill size="small">Managed by server configuration</Pill>
                 ) : null}
                 {affordance}
               </li>
@@ -191,29 +188,6 @@ const SocialsDashboardWidgetInner: React.FC<Props> = ({ enabledPlatforms }) => {
           })}
         </ul>
       )}
-    </section>
+    </Card>
   )
-}
-
-const styles: Record<string, React.CSSProperties> = {
-  badge: {
-    backgroundColor: 'var(--color-bg-tertiary)',
-    border: 'var(--stroke-width-small) solid var(--color-border)',
-    borderRadius: 4,
-    color: 'var(--color-text-secondary)',
-    fontSize: '0.7rem',
-    padding: '0.15rem 0.45rem',
-    whiteSpace: 'nowrap',
-  },
-  container: {
-    backgroundColor: 'var(--color-bg-secondary)',
-    border: 'var(--stroke-width-small) solid var(--color-border)',
-    borderRadius: 6,
-    marginBlock: '1rem',
-    padding: '1rem',
-  },
-  dot: { borderRadius: '50%', display: 'inline-block', height: 8, width: 8 },
-  list: { display: 'grid', gap: '0.5rem', listStyle: 'none', padding: 0 },
-  muted: { color: 'var(--color-text-secondary)', marginTop: 0 },
-  row: { alignItems: 'center', display: 'flex', gap: '0.75rem', paddingBlock: '0.35rem' },
 }

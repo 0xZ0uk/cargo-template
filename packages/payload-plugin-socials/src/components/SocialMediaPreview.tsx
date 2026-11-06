@@ -1,5 +1,6 @@
 'use client'
 
+import { Button } from '@payloadcms/ui'
 import React, { useEffect, useState } from 'react'
 
 import type { SocialDraftMedia } from '../types/index.js'
@@ -9,7 +10,7 @@ import { filenameFromUrl } from './socialComposerModel.js'
 const VideoGlyph: React.FC = () => (
   <svg
     aria-hidden="true"
-    className="socials-composer__video-glyph"
+    className="socials-media__video-glyph"
     fill="none"
     viewBox="0 0 24 24"
     xmlns="http://www.w3.org/2000/svg"
@@ -23,16 +24,16 @@ const VideoPlaceholderBody: React.FC<{ asset: SocialDraftMedia }> = ({ asset }) 
   asset.posterUrl ? (
     <img alt={asset.altText ?? ''} src={asset.posterUrl} />
   ) : (
-    <div className="socials-composer__video-placeholder">
+    <div className="socials-media__video-placeholder">
       <VideoGlyph />
-      <span className="socials-composer__video-filename">{filenameFromUrl(asset.url)}</span>
+      <span className="socials-media__video-filename">{filenameFromUrl(asset.url)}</span>
     </div>
   )
 
 export const VideoTile: React.FC<{ asset: SocialDraftMedia }> = ({ asset }) => (
   <>
     <VideoPlaceholderBody asset={asset} />
-    <span className="socials-composer__asset-kind">Video</span>
+    <span className="socials-media__kind">Video</span>
   </>
 )
 
@@ -50,15 +51,16 @@ export const VideoPreviewPane: React.FC<{ asset: SocialDraftMedia; label: string
     )
   }
   return (
-    <div className="socials-composer__video-loadable">
+    <div className="socials-media__video-loadable">
       <VideoPlaceholderBody asset={asset} />
-      <button
-        className="socials-composer__video-load"
+      <Button
+        buttonStyle="secondary"
+        className="socials-media__video-load"
+        margin={false}
         onClick={() => setLoaded(true)}
-        type="button"
       >
         Load video preview
-      </button>
+      </Button>
     </div>
   )
 }
