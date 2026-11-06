@@ -67,6 +67,16 @@ export type { FetchedDoc, FetchAllDocsOptions, DocSourceType } from './helpers/f
 // Re-export endpoint utilities
 export { buildSeoInputFromDoc } from './endpoints/validate.js'
 
+// Content extraction: the block walker and the `extractContent` option's types
+export { extractBlocksContent } from './helpers/blockContent.js'
+export type { BlocksContent } from './helpers/blockContent.js'
+export { extractDocBlocks } from './helpers/contentExtractor.js'
+export type {
+  SeoContentExtractor,
+  SeoContentExtractorArgs,
+  SeoContentExtractors,
+} from './helpers/contentExtractor.js'
+
 // Frontend SEO render helpers (SEO 2026) — produce the actual <head> metadata + JSON-LD,
 // not just analyze it. Pure functions, safe to call in Next.js generateMetadata / Server Components.
 export { buildSeoMetadata } from './helpers/buildMetadata.js'
@@ -300,8 +310,9 @@ function buildContext(data: SeoInput, config: SeoConfig): AnalysisContext {
   }
 
   // Extract from layout blocks (Pages): one shared walker, also used by the sidebar,
-  // the rules that look at blocks and extractDocContent.
-  const blockContent = extractBlocksContent(blocks, maxDepth)
+  // the rules that look at blocks and extractDocContent. A caller that already extracted
+  // the body (a collection's `extractContent`, the sidebar's server read) passes it in.
+  const blockContent = data.blockContent ?? extractBlocksContent(blocks, maxDepth)
   if (blockContent.text.length > 0) {
     fullText += blockContent.text.join(' ') + ' '
     readabilityText += blockContent.readability.join(' ') + ' '

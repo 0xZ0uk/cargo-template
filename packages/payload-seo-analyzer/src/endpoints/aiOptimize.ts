@@ -222,7 +222,7 @@ export async function optimizeDocMeta(
   }
 
   // 1. SCAN
-  const seoInput = buildSeoInputFromDoc(doc, collection)
+  const seoInput = buildSeoInputFromDoc(doc, collection, { extractors: payload })
   const analysis = analyzeSeo(seoInput, mergedConfig)
   const metaGroups = new Set(['title', 'meta-description', 'content', 'url', 'headings'])
   const issues = analysis.checks
@@ -235,7 +235,7 @@ export async function optimizeDocMeta(
   const currentFocusKeyword = (doc.focusKeyword as string) || ''
   const currentMetaTitle = seoInput.metaTitle || ''
   const currentMetaDescription = seoInput.metaDescription || ''
-  const content = extractDocContent(doc).text
+  const content = extractDocContent(doc, undefined, { collection, extractors: payload }).text
 
   // 2. PROPOSE — the LLM if configured, else heuristic fallback
   const apiKey = opts.apiKey

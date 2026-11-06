@@ -1,82 +1,58 @@
 /**
- * The sidebar's content input: Payload form state reduced to a document
- * (`reduceFieldsToValues`, as the admin form itself does on submit), mapped to the same
- * `SeoInput` content fields `buildSeoInputFromDoc` reads. The blocks then go through the
- * shared walker in `buildContext`, so the live score sees what `/validate` sees.
+ * The sidebar's content input. Payload form state is reduced to a document
+ * (`reduceFieldsToValues`, as the admin form itself does on submit) and mapped by
+ * `contentInputFromDoc`, the same mapping `buildSeoInputFromDoc` uses for `/validate`.
  *
- * Uploads stay IDs in form state, so image checks only see populated media (follow-up).
+ * In form state, uploads, `reference` links and reusable sections are IDs, and a
+ * collection's `extractContent` function only exists on the server. So the sidebar posts
+ * the reduced document to `/sidebar-content`, which populates it like `/validate` reads a
+ * saved document (`depth: 1`, the user's access) and maps it on the server
+ * (`useSidebarContent`). The local mapping below is only the first paint, and the fallback
+ * when that request fails.
  */
 import type { FormState } from 'payload'
 import { reduceFieldsToValues } from 'payload/shared'
 
 import { extractTextFromLexical } from '../helpers.js'
-import type { SeoInput } from '../types.js'
 import { extractBlocksContent } from './blockContent.js'
+import {
+  contentInputFromDoc,
+  DOC_CONTENT_INPUT_KEYS,
+  type DocContentInput,
+  robotsMetaFromDoc,
+} from './docContentInput.js'
 
-export type SidebarContentInput = Pick<
-  SeoInput,
-  'heroTitle' | 'heroRichText' | 'heroLinks' | 'heroMedia' | 'blocks' | 'content' | 'isPost' | 'robotsMeta'
->
+export { robotsMetaFromDoc }
 
-/**
- * Robots directives from the same field locations `/validate` reads: a raw `robots`
- * string wins, else the `noindex` / `nofollow` checkboxes (top level or in `meta`).
- * Lets the sidebar show `robots-noindex` as soon as "Hide from search engines" is ticked.
- */
-export function robotsMetaFromDoc(doc: Record<string, unknown>): string | undefined {
-  const meta = asRecord(doc.meta)
-  const rawRobots =
-    (typeof meta.robots === 'string' && meta.robots) || (typeof doc.robots === 'string' && doc.robots) || ''
-  if (rawRobots) return rawRobots
-  const directives: string[] = []
-  if (doc.noindex === true || meta.noindex === true) directives.push('noindex')
-  if (doc.nofollow === true || meta.nofollow === true) directives.push('nofollow')
-  return directives.length > 0 ? directives.join(', ') : undefined
+export type SidebarContentInput = DocContentInput
+
+/** Form state reduced to the document the form would save. */
+export function formStateToDoc(formFields: unknown): Record<string, unknown> {
+  const doc = reduceFieldsToValues((formFields ?? {}) as FormState, true)
+  return doc && typeof doc === 'object' && !Array.isArray(doc) ? (doc as Record<string, unknown>) : {}
 }
 
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {}
+/** The content input of the form as it stands, without populating anything (IDs stay IDs). */
+export function buildSidebarContentInput(formFields: unknown, collection = ''): SidebarContentInput {
+  return contentInputFromDoc(formStateToDoc(formFields), collection)
 }
 
-export function buildSidebarContentInput(formFields: unknown): SidebarContentInput {
-  const doc = asRecord(reduceFieldsToValues(formFields as FormState, true))
-  const hero = asRecord(doc.hero)
-
-  const heroRichText = hero.richText || undefined
-  const content = doc.content || undefined
-  // Editing a post when the form has a `content` field (posts render `title` as the h1).
-  const isPost = !!content
-
-  let heroTitle: string | undefined
-  if (isPost) {
-    heroTitle = typeof doc.title === 'string' ? doc.title : undefined
-  } else if (heroRichText) {
-    const text = extractTextFromLexical(heroRichText).trim()
-    if (text) heroTitle = text.split('\n')[0]
+/** Keeps only the content-input keys of a `/sidebar-content` response. */
+export function pickDocContentInput(value: unknown): SidebarContentInput | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const source = value as Record<string, unknown>
+  const out: Record<string, unknown> = {}
+  for (const key of DOC_CONTENT_INPUT_KEYS) {
+    if (source[key] !== undefined && source[key] !== null) out[key] = source[key]
   }
-
-  const heroLinks = Array.isArray(hero.links) && hero.links.length > 0 ? hero.links : undefined
-  const blocks = Array.isArray(doc.layout) && doc.layout.length > 0 ? doc.layout : undefined
-
-  return {
-    heroTitle,
-    heroRichText,
-    heroLinks,
-    heroMedia: hero.media || undefined,
-    blocks,
-    content,
-    isPost,
-    robotsMeta: robotsMetaFromDoc(doc),
-  }
+  return out as SidebarContentInput
 }
 
-/** Plain text of the page's content, for the internal-link suggestions. */
+/** Plain text of the page's content, for the internal-link suggestions and AI prompts. */
 export function sidebarContentText(input: SidebarContentInput): string {
   const parts: string[] = []
   if (input.heroRichText) parts.push(extractTextFromLexical(input.heroRichText))
-  parts.push(...extractBlocksContent(input.blocks).text)
+  parts.push(...(input.blockContent ?? extractBlocksContent(input.blocks)).text)
   if (input.content) parts.push(extractTextFromLexical(input.content))
   return parts.join(' ')
 }

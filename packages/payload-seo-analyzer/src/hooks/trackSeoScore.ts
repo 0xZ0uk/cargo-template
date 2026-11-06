@@ -52,12 +52,14 @@ export function createTrackSeoScoreHook(seoConfig?: SeoConfig, options: TrackSeo
 
         // Build SEO input and run analysis with the dashboard's config: SeoSettings
         // merged in, or the history drifts from the scores shown everywhere else.
-        const seoInput = buildSeoInputFromDoc(doc, collectionSlug)
+        const seoInput = buildSeoInputFromDoc(doc, collectionSlug, { extractors: req.payload })
         const { config: mergedConfig } = await loadMergedConfig(req.payload, seoConfig)
         const analysis = analyzeSeo(seoInput, mergedConfig)
 
         // Compute word count using shared extraction helper
-        const wordCount = countWords(extractDocContent(doc).text)
+        const wordCount = countWords(
+          extractDocContent(doc, undefined, { collection: collectionSlug, extractors: req.payload }).text,
+        )
 
         // Compute checks summary
         const checksSummary = {

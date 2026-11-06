@@ -7,7 +7,7 @@
  */
 
 import { extractLinksFromLexical } from '../helpers.js'
-import { extractBlocksContent } from './blockContent.js'
+import { type ContentExtractorSource, extractDocBlocks } from './contentExtractor.js'
 import { extractPayloadLink } from './payloadLink.js'
 
 export { extractPayloadLink }
@@ -79,11 +79,15 @@ export function resolveToDocSlug(
 
 // ---------------------------------------------------------------------------
 // Extract all internal links from a Payload document
-// Handles hero, layout blocks (via `extractBlocksContent`) and post content (Lexical richText).
+// Handles hero, layout blocks (the block walker, or the collection's `extractContent`) and post
+// content (Lexical richText).
 // ---------------------------------------------------------------------------
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function extractAllInternalLinks(doc: any): Array<{ url: string; slug: string; text: string }> {
+export function extractAllInternalLinks(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  doc: any,
+  options: { collection?: string; extractors?: ContentExtractorSource } = {},
+): Array<{ url: string; slug: string; text: string }> {
   const allLinks: Array<{ url: string; text: string }> = []
 
   // 1. Hero richText
@@ -104,7 +108,7 @@ export function extractAllInternalLinks(doc: any): Array<{ url: string; slug: st
 
   // 3. Layout blocks: the shared walker reads every block by shape (link / links fields,
   //    nested Columns content, rich text, plain-URL links), so no block type is special-cased.
-  allLinks.push(...extractBlocksContent(doc.layout).links)
+  allLinks.push(...extractDocBlocks(doc, options).links)
 
   // 4. Post content (Lexical richText)
   if (doc.content && typeof doc.content === 'object' && !Array.isArray(doc.content)) {

@@ -30,6 +30,8 @@ Two endpoint families, two rationales:
    - `globalSlug` must be in `targetGlobals` (else 403) — the IDOR fix in `generate.ts` and `validate.ts`.
    The user is editing/optimizing that document, so `overrideAccess` is acceptable within that restricted scope.
 
+3. **`POST /sidebar-content`** is the exception: it never overrides access. It populates the relation IDs in values the *client* posts (the edit form), so with `overrideAccess: true` a panel user could name any ID and read that document's text back through the extracted content. It runs Payload's `afterRead` traversal with `overrideAccess: false` and the caller's `user`, so a relation the editor can't read stays an ID (it counts as nothing in the sidebar, where `/validate` without `SEO_STRICT_READ_ACCESS` would count it). Same collection allowlist and panel-user gate as `/validate`.
+
 > For maximum hardening (field-level ACL on single-doc reads), switching these reads to `overrideAccess: false, user: req.user` is possible but **degrades** the analysis when the host hides fields from the user — not enabled by default, to avoid regressions for the published plugin.
 
 ## Open redirect

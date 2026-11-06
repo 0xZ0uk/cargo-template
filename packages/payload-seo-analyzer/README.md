@@ -38,7 +38,7 @@ It lives in the Cargo monorepo (`packages/payload-seo-analyzer`). `apps/web` con
 ## Features
 
 - **Offline analysis:** 113 rule ids across 20 groups (title, meta description, URL, headings, content, images, linking, social, schema, readability, quality, secondary keywords, cornerstone, freshness, technical, accessibility, e-commerce, E-E-A-T, GEO, hreflang).
-- **Live editor score:** a sidebar field analyses the document as you type: the post `content`, and every block in `layout`, read by shape rather than block type, so new blocks count without changes. A block's `title` is a heading (`h1` in a `hero` or `pageHeader` block, `h2` otherwise), copy fields such as `eyebrow`, `description`, `question` or `quote` count as text, every Lexical field counts as rich text, and `link` / `links` fields as links. The sidebar and `/validate` use the same extractor; the form holds uploads, `reference` links and reusable sections as IDs, so in the sidebar image checks skip unpopulated uploads, internal-link checks don't see `reference` links (only custom URLs and Lexical links), and an embedded reusable section adds nothing. `/validate` and the audit load the document with `depth: 1` and see all three. It gives a 0–100 score plus an AI-readiness indicator built from the GEO, E-E-A-T and schema checks.
+- **Live editor score:** a sidebar field analyses the document as you type: the post `content`, and every block in `layout`, read by shape rather than block type, so new blocks count without changes. A block's `title` is a heading (`h1` in a `hero` or `pageHeader` block, `h2` otherwise), copy fields such as `eyebrow`, `description`, `question` or `quote` count as text, every Lexical field counts as rich text, and `link` / `links` fields as links. The sidebar and `/validate` read the same content: the form holds uploads, `reference` links and reusable sections as IDs, so the sidebar posts its values to `/sidebar-content`, which populates them on the server as `/validate` reads a saved document (`depth: 1`, with the editor's access) and maps them the same way. Image alt texts, linked page URLs and reusable section text count in both. The dashboard audit reads at `depth: 0` by default (`SEO_AUDIT_DEPTH`), so it sees fewer. An app can replace the block walker per collection with [`extractContent`](#custom-content-extractors). It gives a 0–100 score plus an AI-readiness indicator built from the GEO, E-E-A-T and schema checks.
 - **Admin views:** site audit with CSV/PDF export and bulk actions, sitemap and link audit, settings, redirect manager, Search Console performance, cannibalization, keyword research, schema builder and link graph. Each one follows its feature flag.
 - **Generated output:**
   - `robots.txt`, `sitemap.xml`, news/image/video sitemaps and an opt-in `llms.txt`.
@@ -234,6 +234,7 @@ Every field of `SeoPluginConfig`. All are optional.
 | `collectionRoutes` | `Record<string, string>` | `{ posts: 'posts' }` | Public route prefix per collection, used by every URL the plugin generates. `''` serves at `/<slug>`. |
 | `excludeDocs` | `(doc, collectionSlug) => boolean` | — | Leaves the documents it returns `true` for out of every whole-site list, scan and output: the sitemaps, llms.txt, the dashboard, indexation and sitemap audits, IndexNow, link graph, cannibalization, keyword research, duplicate content, link suggestions, external links and the focus-keyword check. The sidebar still scores them. E.g. A/B test variants: `(doc) => doc._abVariantOf != null`. |
 | `excludeDocsFields` | `string[]` | — | The fields `excludeDocs` reads (dotted paths). Scans that read only a few fields add them to their projection; without them, those scans read whole documents. |
+| `extractContent` | `Record<string, SeoContentExtractor>` | — | Your own content extractor per collection, in place of the block walker. See [Custom content extractors](#custom-content-extractors). |
 | `knownRoutes` | `string[]` | `[]` | Routes with no matching document slug, so they aren't reported as broken links or orphans. |
 | `features` | `SeoFeatures` | see below | Per-feature switches. |
 | `disabledRules` | `RuleGroup[]` | `[]` | Rule groups to skip. |
@@ -263,6 +264,47 @@ Every field of `SeoPluginConfig`. All are optional.
 | `fields` | `({ defaultFields }) => Field[]` | — | Rewrites the contents of the `meta` group. |
 | `tabbedUI` | `boolean` | `false` | Wraps collection fields in "Content" and "SEO" tabs. |
 | `interfaceName` | `string` | — | TypeScript interface name for the `meta` group. |
+
+### Custom content extractors
+
+By default the analyzer reads a document's body from its `layout` blocks, by shape: block titles are headings, copy fields are text, every Lexical value is rich text, `link` / `links` fields are links, populated uploads are images and question/answer items are an FAQ (`extractBlocksContent`). The upstream `hero` group and the post `content` field are read as well.
+
+A collection whose content lives elsewhere, or that needs a block read differently, can supply its own extractor. It gets the document and returns the walker's shape, `BlocksContent`. Fields it leaves out count as empty, and `defaultExtract(value)` runs the built-in walker on any part of the document:
+
+```ts
+import { seoAnalyzerPlugin, type SeoContentExtractor } from '@cargo/payload-seo-analyzer'
+
+// `docs` stores its body as `sections: [{ heading, body, link }]`.
+const docsContent: SeoContentExtractor = ({ doc, defaultExtract }) => {
+  const sections = (doc.sections as Array<{ heading?: string; body?: string; link?: string }>) ?? []
+  const blocks = defaultExtract(doc.layout) // the built-in walker, for a `layout` field
+  return {
+    ...blocks,
+    text: [...blocks.text, ...sections.flatMap((s) => [s.heading ?? '', s.body ?? ''])],
+    headings: [
+      ...blocks.headings,
+      ...sections.filter((s) => s.heading).map((s) => ({ tag: 'h2', text: s.heading as string })),
+    ],
+    links: [
+      ...blocks.links,
+      ...sections.filter((s) => s.link).map((s) => ({ url: s.link as string, text: s.heading ?? '' })),
+    ],
+    // Questions with an answer become the FAQPage's entries (and turn on the FAQ checks).
+    faqPairs: sections
+      .filter((s) => s.heading?.endsWith('?') && s.body)
+      .map((s) => ({ question: s.heading as string, answer: s.body as string })),
+  }
+}
+
+seoAnalyzerPlugin({
+  collections: ['pages', 'docs'],
+  extractContent: { docs: docsContent },
+})
+```
+
+`BlocksContent` fields: `text` (word count and keyword density), `readability` (the same parts with sentence ends; defaults to `text`), `headings` (`{ tag, text }`), `links` (`{ url, text }`), `images` (`{ total, withAlt, altTexts }`), `media` (populated upload documents, for the filename, size and format checks), `lexicalRoots` (Lexical values, for the list and structure checks), `hasFaq` and `faqPairs`. Leave the upstream `hero` and post `content` fields out: the analyzer reads those itself.
+
+The extractor replaces the walker everywhere a document's content is read: the score (`/validate`, the dashboard audit, score history, indexation audit), the sidebar, the link graph and sitemap audit, the external-links scan, keyword research, duplicate content, content grade, the AI endpoints and the FAQPage builder (`/schema-generator`; pass `extractors` in `buildJsonLd` options to use it in your frontend). It is a plain function on the server: the sidebar runs it through `/sidebar-content`, never in the browser. It gets the document as the caller read it, which is `depth: 1` for the score and the sidebar, so uploads and relations are populated there. Collections without an entry keep the walker.
 
 ### Feature flags
 
@@ -397,6 +439,7 @@ Paths are relative to `/api/seo-plugin` (`endpointBasePath`). "Authenticated" me
 | Method | Path | Access | Purpose |
 |---|---|---|---|
 | `GET` `POST` | `/validate` | Authenticated | Full analysis of one document or global |
+| `POST` | `/sidebar-content` | Authenticated | The sidebar's content: populates the form's values (`{ collection, data }`) like a `depth: 1` read, with the caller's access, and maps them like `/validate` (including `extractContent`) |
 | `GET` | `/check-keyword` | Authenticated | Whether a focus keyword is used elsewhere (returns document ids) |
 | `POST` | `/generate` | Authenticated | Runs your `generate*` functions |
 | `POST` | `/suggest-links` | Authenticated | Internal-link suggestions |

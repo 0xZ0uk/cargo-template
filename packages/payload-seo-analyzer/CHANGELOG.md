@@ -5,6 +5,30 @@ All notable changes to `@consilioweb/payload-seo-analyzer` will be documented in
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] (Cargo fork)
+
+No schema change: nothing to migrate.
+
+### Added
+
+- **`extractContent` option: your own content extractor per collection** (cargo-template #47).
+  It returns the block walker's shape (`BlocksContent`) and replaces the walker everywhere a
+  document's content is read: the score (`/validate`, audit, score history), the sidebar, the
+  link graph, the external-links scan and the FAQPage builder. Collections without one keep the
+  walker. `extractBlocksContent`, `extractDocBlocks` and the extractor types are exported.
+- **`POST /sidebar-content`.** Populates the edit form's values like a `depth: 1` read (Payload's
+  own `afterRead` traversal, with the caller's access) and maps them like `/validate`.
+
+### Fixed
+
+- **The sidebar scores the same content as `/validate`.** Uploads, `reference` links and reusable
+  sections are IDs in the form, so the live score skipped image alt texts, linked page URLs and
+  reusable section text, and the meta image. The sidebar now reads its content through
+  `/sidebar-content` (debounced, cached per form session) and maps it with the same function as
+  `buildSeoInputFromDoc`, so posts and pages also agree on `isPost`, the h1 and robots directives.
+- **The audit's `SEO_AUDIT_DEPTH` comment** said depth 0 gave parity with the sidebar. It sees
+  less: uploads, reference links and reusable sections stay IDs.
+
 ## [4.2.2] - 2026-09-29
 
 No change to options or schema: nothing to migrate.

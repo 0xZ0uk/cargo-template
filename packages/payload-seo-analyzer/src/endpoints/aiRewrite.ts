@@ -12,6 +12,7 @@ import type { PayloadHandler } from 'payload'
 import type { SeoConfig } from '../types.js'
 import { readAccessOpts } from '../helpers/readAccess.js'
 import { extractDocContent as extractDocContentHelper } from '../helpers/extractDocContent.js'
+import type { ContentExtractorSource } from '../helpers/contentExtractor.js'
 import { parseJsonBody } from '../helpers/parseBody.js'
 import { aiApiKey, aiChat, aiModel } from '../helpers/aiClient.js'
 import {
@@ -61,8 +62,8 @@ Generate the optimized ${fieldLabel}:`
 // Extract text content from a document (delegates to shared helper)
 // ---------------------------------------------------------------------------
 
-function extractDocContent(doc: Record<string, unknown>): string {
-  return extractDocContentHelper(doc).text
+function extractDocContent(doc: Record<string, unknown>, collection: string, extractors: ContentExtractorSource): string {
+  return extractDocContentHelper(doc, undefined, { collection, extractors }).text
 }
 
 // ---------------------------------------------------------------------------
@@ -119,7 +120,7 @@ export function createAiRewriteHandler(targetCollections?: string[], seoConfig?:
       const title = (doc.title as string) || ''
       const slug = (doc.slug as string) || ''
       const focusKeyword = (doc.focusKeyword as string) || ''
-      const pageContent = extractDocContent(doc)
+      const pageContent = extractDocContent(doc, collection, req.payload)
 
       const heuristic = (): string =>
         field === 'title'

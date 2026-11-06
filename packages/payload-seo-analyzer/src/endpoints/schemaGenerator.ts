@@ -70,6 +70,7 @@ export function createSchemaGeneratorHandler(
         siteUrl: resolveSiteUrl(seoConfig?.siteUrl, requestOrigin(req)),
         collectionRoutes: seoConfig?.collectionRoutes,
         siteName: config.siteName,
+        extractors: req.payload,
       })
 
       return Response.json({

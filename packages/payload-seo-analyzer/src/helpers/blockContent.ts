@@ -12,7 +12,10 @@
  * - `link` / `links` (Payload link fields) as links; populated uploads as images;
  * - `question` + `answer` items (or an FAQ `blockType`) as an FAQ.
  *
- * Uploads must be populated (`depth >= 1`) to count: in form state they are IDs.
+ * Uploads, `reference` links and reusable sections must be populated (`depth >= 1`) to
+ * count. In form state they are IDs, so the sidebar has the server populate them first
+ * (`/sidebar-content`). An app can replace this walker per collection with the
+ * `extractContent` plugin option (`contentExtractor.ts`).
  */
 import {
   extractHeadingsFromLexical,
@@ -49,8 +52,25 @@ interface HasBlockContent {
  * read it from the context. A context built by hand (tests, custom callers) falls back to a
  * walk.
  */
-export function blockContentOf(input: { blocks?: unknown }, ctx: HasBlockContent): BlocksContent {
-  return ctx.blockContent ?? extractBlocksContent(input.blocks)
+export function blockContentOf(
+  input: { blocks?: unknown; blockContent?: BlocksContent },
+  ctx: HasBlockContent,
+): BlocksContent {
+  return ctx.blockContent ?? input.blockContent ?? extractBlocksContent(input.blocks)
+}
+
+export function emptyBlocksContent(): BlocksContent {
+  return {
+    text: [],
+    readability: [],
+    headings: [],
+    links: [],
+    images: { total: 0, withAlt: 0, altTexts: [] },
+    media: [],
+    lexicalRoots: [],
+    hasFaq: false,
+    faqPairs: [],
+  }
 }
 
 /** Block types whose `title` is the page's `h1` (rendered with `SectionHeading as="h1"`). */
@@ -115,17 +135,7 @@ function withBoundary(text: string): string {
 }
 
 export function extractBlocksContent(blocks: unknown, maxDepth = 10): BlocksContent {
-  const out: BlocksContent = {
-    text: [],
-    readability: [],
-    headings: [],
-    links: [],
-    images: { total: 0, withAlt: 0, altTexts: [] },
-    media: [],
-    lexicalRoots: [],
-    hasFaq: false,
-    faqPairs: [],
-  }
+  const out = emptyBlocksContent()
   if (!Array.isArray(blocks)) return out
 
   const addText = (value: string) => {

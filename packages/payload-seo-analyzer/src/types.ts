@@ -77,6 +77,11 @@ export interface SeoInput {
   heroLinks?: unknown[] // Hero CTA links (linkGroup items)
   heroMedia?: unknown // Hero background/media image (populated media object)
   blocks?: unknown[] // layout blocks array
+  /**
+   * The body content, already extracted (the collection's `extractContent` extractor, or
+   * the block walker over a populated document). When set, `blocks` is not walked.
+   */
+  blockContent?: BlocksContent
   /** For posts — the Lexical content field */
   content?: unknown
   /** Whether the content is a post (for word count thresholds) */

@@ -6,7 +6,7 @@
  * dashboard previews is byte-for-byte what the site renders.
  */
 
-import { extractBlocksContent } from './blockContent.js'
+import { type ContentExtractorSource, extractDocBlocks } from './contentExtractor.js'
 import { buildDocPath, type CollectionRoutes } from './docUrl.js'
 import { resolveDocTitle } from './docTitle.js'
 import { resolveSiteUrl } from './siteUrl.js'
@@ -99,12 +99,16 @@ function looksLikeArticle(doc: Record<string, unknown>): boolean {
  * 6. A publication date and an author → `Article`.
  * 7. Anything else → `WebPage`.
  */
-export function detectSchemaType(collection: string, doc: Record<string, unknown>): SchemaType {
+export function detectSchemaType(
+  collection: string,
+  doc: Record<string, unknown>,
+  extractors?: ContentExtractorSource,
+): SchemaType {
   if (ARTICLE_COLLECTION.test(collection)) return 'Article'
 
   if (buildDocPath((doc.slug as string) || '') === '') return 'WebPage'
 
-  if (extractFaqPairs(doc).length > 0) return 'FAQPage'
+  if (extractFaqPairs(doc, collection, extractors).length > 0) return 'FAQPage'
 
   if (doc.price !== undefined || doc.sku !== undefined || collection === 'products') {
     return 'Product'
@@ -347,19 +351,27 @@ function buildBreadcrumbSchema(
  * detection as `checkSchema` (the block walker), so the check and the generated FAQPage agree;
  * items missing either half are skipped.
  */
-function extractFaqPairs(doc: Record<string, unknown>): Array<Record<string, unknown>> {
-  return extractBlocksContent(doc.layout).faqPairs.map(({ question, answer }) => ({
+function extractFaqPairs(
+  doc: Record<string, unknown>,
+  collection: string | undefined,
+  extractors: ContentExtractorSource,
+): Array<Record<string, unknown>> {
+  return extractDocBlocks(doc, { collection, extractors }).faqPairs.map(({ question, answer }) => ({
     '@type': 'Question',
     name: question,
     acceptedAnswer: { '@type': 'Answer', text: answer },
   }))
 }
 
-function buildFAQSchema(doc: Record<string, unknown>): Record<string, unknown> {
+function buildFAQSchema(
+  doc: Record<string, unknown>,
+  collection: string | undefined,
+  extractors: ContentExtractorSource,
+): Record<string, unknown> {
   return {
     '@context': 'https://schema.org',
     '@type': 'FAQPage',
-    mainEntity: extractFaqPairs(doc),
+    mainEntity: extractFaqPairs(doc, collection, extractors),
   }
 }
 
@@ -521,6 +533,11 @@ export interface BuildJsonLdOptions {
    * of its own and its `meta.title` is used as the name.
    */
   siteName?: string
+  /**
+   * The `extractContent` extractors (the map, or the Payload instance), so a collection's
+   * own extractor supplies the FAQ pairs of a `FAQPage`. Omitted: the block walker.
+   */
+  extractors?: ContentExtractorSource
 }
 
 export interface BuildJsonLdResult {
@@ -543,11 +560,11 @@ export function buildJsonLd(
   // Names come from the document's own title, never from `meta.title`'s "| Site name" suffix.
   const doc: Record<string, unknown> = { ...rawDoc, title: resolveDocTitle(rawDoc, options.siteName) }
   const warnings: string[] = []
-  let schemaType = options.type || detectSchemaType(options.collection || '', doc)
+  let schemaType = options.type || detectSchemaType(options.collection || '', doc, options.extractors)
   // An FAQPage without a question and an answer has an empty `mainEntity`, which Google
   // rejects. Detection never picks FAQPage in that case, so only an explicit one lands here.
-  if (schemaType === 'FAQPage' && extractFaqPairs(doc).length === 0) {
-    schemaType = detectSchemaType(options.collection || '', doc)
+  if (schemaType === 'FAQPage' && extractFaqPairs(doc, options.collection, options.extractors).length === 0) {
+    schemaType = detectSchemaType(options.collection || '', doc, options.extractors)
     warnings.push(
       `No question and answer pairs found in this document, so a FAQPage would have an empty mainEntity, which Google rejects. Generated ${schemaType} instead.`,
     )
@@ -572,7 +589,7 @@ export function buildJsonLd(
       jsonLd = buildBreadcrumbSchema(doc, siteUrl, docPath, options.homeLabel ?? 'Home')
       break
     case 'FAQPage':
-      jsonLd = buildFAQSchema(doc)
+      jsonLd = buildFAQSchema(doc, options.collection, options.extractors)
       break
     case 'Product':
       jsonLd = buildProductSchema(doc, siteUrl, docUrl)

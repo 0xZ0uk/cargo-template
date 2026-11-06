@@ -357,7 +357,10 @@ export function createLinkGraphHandler(
         })
 
         // Extract internal links and deduplicate by target slug
-        const internalLinks = extractAllInternalLinks(d)
+        const internalLinks = extractAllInternalLinks(d, {
+          collection: isGlobal ? undefined : sourceSlug,
+          extractors: req.payload,
+        })
         const seen = new Set<string>()
         const dedupedLinks: Array<{ slug: string; text: string }> = []
         for (const link of internalLinks) {

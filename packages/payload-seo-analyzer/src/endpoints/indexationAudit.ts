@@ -475,7 +475,7 @@ export function createIndexationAuditHandler(
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const inspect = (doc: any, collection: string, isGlobal = false): void => {
-        const input = buildSeoInputFromDoc(doc, collection, { isGlobal })
+        const input = buildSeoInputFromDoc(doc, collection, { isGlobal, extractors: req.payload })
         const analysis = analyzeSeo(technicalOnlyInput(input), mergedConfig)
         const issues: IndexationIssue[] = analysis.checks
           .filter(

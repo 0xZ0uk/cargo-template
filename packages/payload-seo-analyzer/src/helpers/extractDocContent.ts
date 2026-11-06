@@ -11,7 +11,7 @@ import {
   extractHeadingsFromLexical,
   extractImagesFromLexical,
 } from '../helpers.js'
-import { extractBlocksContent } from './blockContent.js'
+import { type ContentExtractorSource, extractDocBlocks } from './contentExtractor.js'
 
 export interface ExtractedContent {
   text: string
@@ -34,10 +34,13 @@ export interface ExtractedContent {
  *
  * @param doc - A Payload document (any collection)
  * @param maxDepth - Maximum Lexical tree traversal depth (default: 10)
+ * @param options - The document's collection and the `extractContent` extractors (the map,
+ *   or `req.payload`): a collection with its own extractor replaces the `layout` walk.
  */
 export function extractDocContent(
   doc: Record<string, unknown>,
   maxDepth = 10,
+  options: { collection?: string; extractors?: ContentExtractorSource } = {},
 ): ExtractedContent {
   const textParts: string[] = []
   // Parallel parts WITH sentence boundaries at block ends — readability metrics only.
@@ -73,8 +76,8 @@ export function extractDocContent(
     headings.push(...extractHeadingsFromLexical(hero.richText, maxDepth))
   }
 
-  // --- Layout blocks (shared walker: same shapes as the analyzer and the sidebar) ---
-  const blockContent = extractBlocksContent(doc.layout, maxDepth)
+  // --- Layout blocks (shared walker, or the collection's extractor: same as the analyzer) ---
+  const blockContent = extractDocBlocks(doc, { ...options, maxDepth })
   textParts.push(...blockContent.text)
   readabilityParts.push(...blockContent.readability)
   links.push(...blockContent.links)
