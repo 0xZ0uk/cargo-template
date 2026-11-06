@@ -17,6 +17,7 @@ import type { SeoConfig } from '../types.js'
 import { defaultSeoSharedCache, hashConfig, safeLookup, safeSet, type SeoSharedCache } from '../cache.js'
 import { sha256Hex } from '../helpers/sha256.js'
 import { buildSelect } from '../helpers/buildSelect.js'
+import { docExclusion } from '../helpers/excludeDocs.js'
 import { fetchAllDocs } from '../helpers/fetchAllDocs.js'
 import { requestOrigin, resolveSiteUrl } from '../helpers/siteUrl.js'
 
@@ -144,6 +145,7 @@ export function createLlmsTxtHandler(
         maxDocs: 1000,
         // Only what the entries below read — never the layout blocks / Lexical trees.
         select: buildSelect(req.payload, targetCollections, LLMS_TXT_SELECT_PATHS),
+        exclude: docExclusion(seoConfig),
       })
 
       // Group indexable docs by collection → one section per collection.

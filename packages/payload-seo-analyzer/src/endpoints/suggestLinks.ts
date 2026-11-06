@@ -14,7 +14,9 @@ import {
   normalizeForComparison,
 } from '../helpers.js'
 import { parseJsonBody } from '../helpers/parseBody.js'
+import { docExclusion } from '../helpers/excludeDocs.js'
 import { fetchAllDocs } from '../helpers/fetchAllDocs.js'
+import type { SeoConfig } from '../types.js'
 import { buildSelect } from '../helpers/buildSelect.js'
 import { seoCache } from '../cache.js'
 import { isSeoPanelUser } from '../helpers/isAdmin.js'
@@ -48,7 +50,11 @@ interface IndexEntry {
 /** Cache base — must stay in sync with CACHE_BASES in hooks/trackSeoScore.ts. */
 export const SUGGEST_LINKS_CACHE_BASE = 'suggest-links-index'
 
-export function createSuggestLinksHandler(collections: string[], globals: string[] = []): PayloadHandler {
+export function createSuggestLinksHandler(
+  collections: string[],
+  globals: string[] = [],
+  seoConfig?: SeoConfig,
+): PayloadHandler {
   return async (req) => {
     try {
       if (!isSeoPanelUser(req)) {
@@ -85,6 +91,7 @@ export function createSuggestLinksHandler(collections: string[], globals: string
           globals,
           depth: 0,
           select: buildSelect(req.payload, collections, SUGGEST_LINKS_SELECT_PATHS),
+          exclude: docExclusion(seoConfig),
         })
 
         index = []

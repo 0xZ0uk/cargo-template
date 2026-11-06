@@ -232,6 +232,8 @@ Every field of `SeoPluginConfig`. All are optional.
 | `siteUrl` | `string` | `SITE_URL`, then the request origin | Base URL for canonicals, sitemaps, JSON-LD and the GSC redirect URI. Scheduled jobs have no request, so the rank snapshot needs this or `SITE_URL`. |
 | `siteName` | `string` | — | Used by the "brand duplicated in title" check. |
 | `collectionRoutes` | `Record<string, string>` | `{ posts: 'posts' }` | Public route prefix per collection, used by every URL the plugin generates. `''` serves at `/<slug>`. |
+| `excludeDocs` | `(doc, collectionSlug) => boolean` | — | Leaves the documents it returns `true` for out of every whole-site list, scan and output: the sitemaps, llms.txt, the dashboard, indexation and sitemap audits, IndexNow, link graph, cannibalization, keyword research, duplicate content, link suggestions, external links and the focus-keyword check. The sidebar still scores them. E.g. A/B test variants: `(doc) => doc._abVariantOf != null`. |
+| `excludeDocsFields` | `string[]` | — | The fields `excludeDocs` reads (dotted paths). Scans that read only a few fields add them to their projection; without them, those scans read whole documents. |
 | `knownRoutes` | `string[]` | `[]` | Routes with no matching document slug, so they aren't reported as broken links or orphans. |
 | `features` | `SeoFeatures` | see below | Per-feature switches. |
 | `disabledRules` | `RuleGroup[]` | `[]` | Rule groups to skip. |

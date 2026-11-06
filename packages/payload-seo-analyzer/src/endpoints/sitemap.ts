@@ -9,6 +9,7 @@ import type { SeoConfig } from '../types.js'
 import { buildDocPath } from '../helpers/docUrl.js'
 import { requestOrigin, resolveSiteUrl } from '../helpers/siteUrl.js'
 import { buildSelect } from '../helpers/buildSelect.js'
+import { docExclusion } from '../helpers/excludeDocs.js'
 import { fetchAllDocs } from '../helpers/fetchAllDocs.js'
 import { defaultSeoSharedCache, hashConfig, safeLookup, safeSet, type SeoSharedCache } from '../cache.js'
 import { sha256Hex } from '../helpers/sha256.js'
@@ -137,6 +138,7 @@ export function createSitemapHandler(
         maxDocs: sitemapMaxDocs(),
         // Only what the loop below reads — never the layout blocks / Lexical trees.
         select: buildSelect(req.payload, targetCollections, SITEMAP_SELECT_PATHS),
+        exclude: docExclusion(seoConfig),
       })
 
       const urls: SitemapUrl[] = []

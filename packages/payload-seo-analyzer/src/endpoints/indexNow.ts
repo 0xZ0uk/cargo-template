@@ -13,6 +13,7 @@ import type { CollectionAfterChangeHook, PayloadHandler } from 'payload'
 import type { SeoConfig } from '../types.js'
 import { resolveGscSiteUrl } from '../helpers/gscClient.js'
 import { buildDocUrl, type CollectionRoutes } from '../helpers/docUrl.js'
+import { docExclusion, isExcludedDoc } from '../helpers/excludeDocs.js'
 
 import { isSeoAdminRequest as isAdmin } from '../helpers/isAdmin.js'
 import { payloadApiRoute } from '../helpers/seoApiUrl.js'
@@ -94,11 +95,14 @@ export function createIndexNowSubmitHandler(
 
       // Collect published URLs across target collections (bounded).
       const urls: string[] = []
+      const exclusion = docExclusion(seoConfig)
       for (const collection of targetCollections) {
         try {
           const res = await req.payload.find({ collection, limit: 1000, depth: 0, overrideAccess: true })
           for (const d of res.docs as Array<Record<string, unknown>>) {
             if (d._status === 'draft') continue
+            // The host's exclusion (A/B variants…): never ping a URL it keeps out of the sitemap.
+            if (isExcludedDoc(exclusion, d, collection)) continue
             urls.push(docToUrl((d.slug as string) || '', siteUrl, collection, seoConfig?.collectionRoutes))
           }
         } catch {
@@ -131,6 +135,8 @@ export function createIndexNowHook(basePath: string, seoConfig?: SeoConfig): Col
       // Only ping for published content.
       const status = (doc as { _status?: string })?._status
       if (status && status !== 'published') return doc
+      // The host's exclusion (A/B variants…): never ping a URL it keeps out of the sitemap.
+      if (collection?.slug && isExcludedDoc(docExclusion(seoConfig), doc, collection.slug)) return doc
       const slug = ((doc as { slug?: string })?.slug as string) || ''
       const url = docToUrl(slug, siteUrl, collection?.slug, seoConfig?.collectionRoutes)
       // Fire-and-forget — never block the save on an external ping.
