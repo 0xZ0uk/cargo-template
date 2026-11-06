@@ -14,7 +14,7 @@ import {
   PLACEHOLDER_PATTERNS,
 } from '../constants.js'
 import { getTranslations } from '../i18n.js'
-import { extractBlocksContent } from '../helpers/blockContent.js'
+import { blockContentOf } from '../helpers/blockContent.js'
 
 export function checkContent(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
   const checks: SeoCheck[] = []
@@ -216,7 +216,7 @@ export function checkContent(input: SeoInput, ctx: AnalysisContext): SeoCheck[] 
     if (input.content) {
       allLists.push(...extractListsFromLexical(input.content))
     }
-    for (const root of extractBlocksContent(input.blocks).lexicalRoots) {
+    for (const root of blockContentOf(input, ctx).lexicalRoots) {
       allLists.push(...extractListsFromLexical(root))
     }
 

@@ -20,7 +20,7 @@ import {
   extractLinksFromLexical,
   extractTextFromLexical,
 } from '../helpers.js'
-import { extractPayloadLink } from './linkExtractor.js'
+import { extractPayloadLink } from './payloadLink.js'
 
 export interface BlocksContent {
   /** Text parts for word count and keyword density. */
@@ -35,6 +35,22 @@ export interface BlocksContent {
   /** Every Lexical value found, in document order (lists, paragraphs, sections). */
   lexicalRoots: unknown[]
   hasFaq: boolean
+  /** Question/answer pairs with both halves filled in (what a `FAQPage` is built from). */
+  faqPairs: Array<{ question: string; answer: string }>
+}
+
+/** The minimal slice of an `AnalysisContext` the walker output is cached on. */
+interface HasBlockContent {
+  blockContent?: BlocksContent
+}
+
+/**
+ * The block content of an analysis: `buildContext` walks `input.blocks` once and the rules
+ * read it from the context. A context built by hand (tests, custom callers) falls back to a
+ * walk.
+ */
+export function blockContentOf(input: { blocks?: unknown }, ctx: HasBlockContent): BlocksContent {
+  return ctx.blockContent ?? extractBlocksContent(input.blocks)
 }
 
 /** Block types whose `title` is the page's `h1` (rendered with `SectionHeading as="h1"`). */
@@ -108,6 +124,7 @@ export function extractBlocksContent(blocks: unknown, maxDepth = 10): BlocksCont
     media: [],
     lexicalRoots: [],
     hasFaq: false,
+    faqPairs: [],
   }
   if (!Array.isArray(blocks)) return out
 
@@ -149,6 +166,18 @@ export function extractBlocksContent(blocks: unknown, maxDepth = 10): BlocksCont
     if (data) out.links.push(data)
   }
 
+  /** Both halves of a Q/A item, as text (an answer may be a Lexical tree). */
+  const addFaqPair = (question: unknown, answer: unknown) => {
+    const q = typeof question === 'string' ? question.trim() : ''
+    const a =
+      typeof answer === 'string'
+        ? answer.trim()
+        : isRecord(answer)
+          ? extractTextFromLexical(answer, maxDepth).trim()
+          : ''
+    if (q && a) out.faqPairs.push({ question: q, answer: a })
+  }
+
   const visit = (value: unknown, depth: number): void => {
     if (depth > MAX_BLOCK_DEPTH) return
     if (Array.isArray(value)) {
@@ -158,7 +187,10 @@ export function extractBlocksContent(blocks: unknown, maxDepth = 10): BlocksCont
     if (!isRecord(value)) return
     if (isLexical(value)) return addLexical(value)
     if (isUpload(value)) return addUpload(value)
-    if (typeof value.question === 'string' && value.answer) out.hasFaq = true
+    if (typeof value.question === 'string' && value.answer) {
+      out.hasFaq = true
+      addFaqPair(value.question, value.answer)
+    }
     visitFields(value, depth)
   }
 
@@ -207,7 +239,20 @@ export function extractBlocksContent(blocks: unknown, maxDepth = 10): BlocksCont
       }
       addText(title)
     }
-    if (typeof block.question === 'string' && block.answer) out.hasFaq = true
+    if (typeof block.question === 'string' && block.answer) {
+      out.hasFaq = true
+      addFaqPair(block.question, block.answer)
+    }
+    if (FAQ_BLOCK_TYPES.has(blockType)) {
+      // An FAQ block's items may name the question `title` instead of `question`.
+      for (const key of ['items', 'questions', 'faqs']) {
+        const items = block[key]
+        if (!Array.isArray(items)) continue
+        for (const item of items) {
+          if (isRecord(item) && typeof item.question !== 'string') addFaqPair(item.title, item.answer)
+        }
+      }
+    }
     visitFields(block, 0, 'title')
   }
 

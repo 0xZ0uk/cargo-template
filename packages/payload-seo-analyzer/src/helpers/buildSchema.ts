@@ -6,7 +6,7 @@
  * dashboard previews is byte-for-byte what the site renders.
  */
 
-import { extractTextFromLexical } from '../helpers.js'
+import { extractBlocksContent } from './blockContent.js'
 import { buildDocPath, type CollectionRoutes } from './docUrl.js'
 import { resolveDocTitle } from './docTitle.js'
 import { resolveSiteUrl } from './siteUrl.js'
@@ -46,9 +46,6 @@ export function getSchemaImageUrl(
 
 /** Collections whose documents are articles by nature (a blog, a news section…). */
 const ARTICLE_COLLECTION = /^(posts?|articles?|blogs?|blog-posts?|news|stories)$/i
-
-const isFaqBlock = (block: Record<string, unknown>): boolean =>
-  block.blockType === 'faq' || block.blockType === 'FAQ' || block.blockType === 'faqBlock'
 
 const hasContent = (value: unknown): boolean =>
   Array.isArray(value) ? value.length > 0 : typeof value === 'string' ? value.trim().length > 0 : !!value
@@ -345,44 +342,17 @@ function buildBreadcrumbSchema(
   }
 }
 
-/** Question / answer pairs of the document's FAQ blocks; items missing either half are skipped. */
+/**
+ * Question / answer pairs of the document's blocks, as `Question` entities. Uses the same
+ * detection as `checkSchema` (the block walker), so the check and the generated FAQPage agree;
+ * items missing either half are skipped.
+ */
 function extractFaqPairs(doc: Record<string, unknown>): Array<Record<string, unknown>> {
-  const layout = Array.isArray(doc.layout) ? (doc.layout as unknown[]) : []
-  const questions: Array<Record<string, unknown>> = []
-
-  for (const block of layout) {
-    if (!block || typeof block !== 'object') continue
-    const b = block as Record<string, unknown>
-    if (!isFaqBlock(b)) continue
-
-    const items = (b.items || b.questions || b.faqs) as unknown[] | undefined
-    if (!Array.isArray(items)) continue
-    for (const item of items) {
-      if (!item || typeof item !== 'object') continue
-      const q = item as Record<string, unknown>
-      const question = ((q.question as string) || (q.title as string) || '').trim()
-      // A rich-text answer arrives as a Lexical tree, not a string.
-      const answer =
-        typeof q.answer === 'string'
-          ? q.answer.trim()
-          : q.answer && typeof q.answer === 'object'
-            ? extractTextFromLexical(q.answer, 10).trim()
-            : ''
-
-      if (question && answer) {
-        questions.push({
-          '@type': 'Question',
-          name: question,
-          acceptedAnswer: {
-            '@type': 'Answer',
-            text: answer,
-          },
-        })
-      }
-    }
-  }
-
-  return questions
+  return extractBlocksContent(doc.layout).faqPairs.map(({ question, answer }) => ({
+    '@type': 'Question',
+    name: question,
+    acceptedAnswer: { '@type': 'Answer', text: answer },
+  }))
 }
 
 function buildFAQSchema(doc: Record<string, unknown>): Record<string, unknown> {

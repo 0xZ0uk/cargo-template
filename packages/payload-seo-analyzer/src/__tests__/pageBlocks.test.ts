@@ -6,13 +6,22 @@
  * The fixture mirrors the block `example`s in `apps/web/src/blocks/<Name>/meta.ts`
  * (hand-written: the plugin never imports from the app).
  */
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+
+// Pass-through spy: counts the walks without changing them.
+vi.mock('../helpers/blockContent', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('../helpers/blockContent')>()
+  return { ...mod, extractBlocksContent: vi.fn(mod.extractBlocksContent) }
+})
 
 import { analyzeSeo } from '../index'
 import { buildSeoInputFromDoc } from '../endpoints/validate'
 import { extractDocContent } from '../helpers/extractDocContent'
 import { extractBlocksContent } from '../helpers/blockContent'
 import { buildSidebarContentInput } from '../helpers/sidebarContent'
+import { buildJsonLd } from '../helpers/buildSchema'
+import { extractAllInternalLinks } from '../helpers/linkExtractor'
+import { extractDocExternalLinks } from '../endpoints/externalLinks'
 
 const text = (value: string) => ({ type: 'text', text: value, version: 1 })
 const paragraph = (value: string) => ({ type: 'paragraph', children: [text(value)], version: 1 })
@@ -273,5 +282,94 @@ describe('page-builder blocks: sidebar parity', () => {
     expect(sidebar.blocks).toHaveLength(blockPage.layout.length)
     expect(pick(fromSidebar)).toEqual(pick(fromValidate))
     expect(fromSidebar.checks.find((c) => c.id === 'h1-missing')).toBeUndefined()
+  })
+})
+
+describe('page-builder blocks: link graph, external links, FAQPage, GEO', () => {
+  it('extractAllInternalLinks reads hero links, Columns nested links and CTA links', () => {
+    const urls = extractAllInternalLinks(blockPage).map((l) => l.url)
+    expect(urls).toEqual(expect.arrayContaining(['/signup', '/pricing', '/reports']))
+    // The external hero link is not internal.
+    expect(urls).not.toContain('https://cal.example.com')
+    // Nested Columns content is reached through `columns[].content`, not `columns[].richText`.
+    expect(extractAllInternalLinks(blockPage).find((l) => l.url === '/pricing')?.text).toBe('See pricing')
+  })
+
+  it('extractAllInternalLinks keeps the upstream block shapes', () => {
+    const urls = extractAllInternalLinks({
+      layout: [
+        { blockType: 'services', services: [{ title: 'Web', link: '/web' }] },
+        { blockType: 'latestPosts', ctaLink: '/blog', ctaLabel: 'All posts' },
+        { blockType: 'banner', link: { type: 'custom', url: '/promo', label: 'Promo' } },
+        { columns: [{ richText: richText('x'), enableLink: true, link: { type: 'custom', url: '/col' } }] },
+      ],
+    }).map((l) => l.url)
+    expect(urls).toEqual(['/web', '/blog', '/promo', '/col'])
+  })
+
+  it('extractDocExternalLinks reads block link and links fields', () => {
+    const urls = extractDocExternalLinks(blockPage)
+    expect(urls).toContain('https://cal.example.com')
+    expect(urls).not.toContain('/signup')
+    expect(
+      extractDocExternalLinks({
+        layout: [{ blockType: 'banner', link: { type: 'custom', url: 'https://b.example/', label: 'B' } }],
+      }),
+    ).toEqual(['https://b.example/'])
+  })
+
+  it('builds a FAQPage from a faq block, with the pairs checkSchema detects', () => {
+    const { jsonLd } = buildJsonLd(blockPage as Record<string, unknown>, { type: 'FAQPage' })
+    expect(jsonLd['@type']).toBe('FAQPage')
+    expect(jsonLd.mainEntity).toEqual([
+      {
+        '@type': 'Question',
+        name: 'How does billing work?',
+        acceptedAnswer: { '@type': 'Answer', text: 'Northwind is billed per workspace, monthly or yearly.' },
+      },
+      {
+        '@type': 'Question',
+        name: 'Can I cancel at any time?',
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: 'Yes. Cancel from your account settings whenever you like.',
+        },
+      },
+    ])
+    // Detection picks FAQPage on its own when the page has nothing else to say.
+    expect(extractBlocksContent(blockPage.layout).faqPairs).toHaveLength(2)
+  })
+
+  it('builds the FAQPage from Q/A items in any block, and still reads a `title` question in an faq block', () => {
+    const nested = extractBlocksContent([
+      { blockType: 'columns', columns: [{ content: [{ blockType: 'questions', items: [{ question: 'Why?', answer: 'Because.' }] }] }] },
+      { blockType: 'faq', items: [{ title: 'Where?', answer: 'Here.' }, { question: 'Skipped?' }] },
+    ])
+    expect(nested.faqPairs).toEqual([
+      { question: 'Why?', answer: 'Because.' },
+      { question: 'Where?', answer: 'Here.' },
+    ])
+  })
+
+  it('geo-faq-howto passes on a page with a faq block, and warns without one', () => {
+    // GEO checks need 150+ words.
+    const filler = {
+      blockType: 'richText',
+      richText: richText(paragraph('Planning software helps teams. '.repeat(40))),
+    }
+    const geo = (layout: unknown[]) =>
+      analyzeSeo(
+        buildSeoInputFromDoc({ ...blockPage, slug: 'planning-software', layout: [...layout, filler] }, 'pages'),
+      ).checks.find((c) => c.id === 'geo-faq-howto')
+    // The faq block alone (its heading is not a question), then the page without it.
+    const faq = blockPage.layout.filter((b) => b.blockType === 'faq')
+    expect(geo(faq)?.status).toBe('pass')
+    expect(geo(blockPage.layout.filter((b) => b.blockType === 'features'))?.status).toBe('warning')
+  })
+
+  it('walks the blocks once per analysis', () => {
+    vi.mocked(extractBlocksContent).mockClear()
+    analyzeSeo(buildSeoInputFromDoc({ ...blockPage, slug: 'planning-software' }, 'pages'))
+    expect(extractBlocksContent).toHaveBeenCalledTimes(1)
   })
 })

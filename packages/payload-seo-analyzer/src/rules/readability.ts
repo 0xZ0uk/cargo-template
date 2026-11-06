@@ -20,7 +20,7 @@ import {
   LONG_SECTION_THRESHOLD,
 } from '../constants.js'
 import { getTranslations } from '../i18n.js'
-import { extractBlocksContent } from '../helpers/blockContent.js'
+import { blockContentOf } from '../helpers/blockContent.js'
 
 export function checkReadability(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
   const checks: SeoCheck[] = []
@@ -107,7 +107,7 @@ export function checkReadability(input: SeoInput, ctx: AnalysisContext): SeoChec
   const sources = [
     input.heroRichText,
     input.content,
-    ...extractBlocksContent(input.blocks).lexicalRoots,
+    ...blockContentOf(input, ctx).lexicalRoots,
   ].filter(Boolean)
 
   // Check for paragraphs > 150 words

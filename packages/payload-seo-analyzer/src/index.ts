@@ -406,6 +406,7 @@ function buildContext(data: SeoInput, config: SeoConfig): AnalysisContext {
       ? 'blog'
       : detectPageType(data.slug || '', undefined, config.localSeoSlugs),
     config,
+    blockContent,
   }
 }
 

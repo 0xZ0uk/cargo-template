@@ -4,7 +4,7 @@
 import type { SeoCheck, SeoInput, AnalysisContext } from '../types.js'
 import { ALT_TEXT_MIN_RATIO, ALT_TEXT_MIN_LENGTH } from '../constants.js'
 import { getTranslations } from '../i18n.js'
-import { extractBlocksContent } from '../helpers/blockContent.js'
+import { blockContentOf } from '../helpers/blockContent.js'
 
 // ---------------------------------------------------------------------------
 // Image metadata extraction helpers
@@ -52,7 +52,7 @@ function extractImageMeta(media: unknown): ImageMeta | null {
 }
 
 /** Collect all image metadata from input data */
-function collectImageMetas(input: SeoInput): ImageMeta[] {
+function collectImageMetas(input: SeoInput, ctx: AnalysisContext): ImageMeta[] {
   const metas: ImageMeta[] = []
 
   // Hero media
@@ -68,7 +68,7 @@ function collectImageMetas(input: SeoInput): ImageMeta[] {
   }
 
   // Block images (populated uploads anywhere in the layout)
-  for (const media of extractBlocksContent(input.blocks).media) {
+  for (const media of blockContentOf(input, ctx).media) {
     const meta = extractImageMeta(media)
     if (meta) metas.push(meta)
   }
@@ -234,7 +234,7 @@ export function checkImages(_input: SeoInput, ctx: AnalysisContext): SeoCheck[] 
   // ---------------------------------------------------------------------------
 
   if (imageStats.total > 0) {
-    const imageMetas = collectImageMetas(_input)
+    const imageMetas = collectImageMetas(_input, ctx)
 
     // 30. Image format check — flag non-WebP/AVIF
     if (imageMetas.length > 0) {

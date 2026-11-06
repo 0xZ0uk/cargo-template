@@ -19,7 +19,7 @@ import {
   evaluateRequiredProperties,
   type SchemaTypeKey,
 } from './schema-requirements.js'
-import { extractBlocksContent } from '../helpers/blockContent.js'
+import { blockContentOf } from '../helpers/blockContent.js'
 
 
 /**
@@ -37,14 +37,6 @@ const SCHEMA_REQUIRED_STRINGS = {
     `${type} schema: all Google-required properties are derivable from CMS data.`,
   tip: 'Fill the required properties (e.g. author, datePublished, image) — they gate rich-result eligibility and strongly help AI answer engines.',
 } as const
-
-/**
- * Detect whether the page carries an FAQ (FAQPage markup is generatable): an FAQ block type,
- * or question/answer items in any block.
- */
-function hasFaqBlock(blocks: unknown): boolean {
-  return extractBlocksContent(blocks).hasFaq
-}
 
 /**
  * Determine the PRIMARY schema type expected for this page.
@@ -65,7 +57,8 @@ export function checkSchema(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
   const checks: SeoCheck[] = []
   const r = getTranslations().rules.schema
 
-  const faqPresent = hasFaqBlock(input.blocks)
+  // FAQPage markup is generatable: an FAQ block type, or Q/A items in any block.
+  const faqPresent = blockContentOf(input, ctx).hasFaq
 
   // Which required schema fields are derivable from CMS data available to the analyzer.
   const present: Record<string, boolean> = {
