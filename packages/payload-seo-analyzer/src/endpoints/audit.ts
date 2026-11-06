@@ -19,6 +19,7 @@ import {
 } from '../helpers.js'
 import { defaultSeoSharedCache, hashConfig, seoCache, type SeoSharedCache } from '../cache.js'
 import { auditMaxDocs } from '../helpers/auditLimits.js'
+import { docExclusion, isExcludedDoc } from '../helpers/excludeDocs.js'
 import { loadMergedConfig } from '../helpers/loadMergedConfig.js'
 import { extractDocContent } from '../helpers/extractDocContent.js'
 import { isSeoAdminRequest, isSeoPanelUser } from '../helpers/isAdmin.js'
@@ -220,6 +221,8 @@ async function scanAuditDocs(
   const DEPTH = Number.isNaN(rawDepth) ? 0 : Math.min(2, Math.max(0, rawDepth))
 
   const MAX_DOCS = auditMaxDocs()
+  // The host's exclusion (A/B variants…) leaves documents out of the site-wide audit.
+  const exclusion = docExclusion(mergedConfig)
   const stepStart = Date.now()
   let stepDocs = 0
 
@@ -245,6 +248,7 @@ async function scanAuditDocs(
           // Skip drafts — the site-wide audit scores PUBLISHED content (collections without a
           // draft system have no _status, so they pass through unchanged).
           if ((doc as { _status?: string })._status === 'draft') continue
+          if (isExcludedDoc(exclusion, doc, collectionSlug)) continue
           if (progress.results.length >= MAX_DOCS) {
             progress.capped = true
             payload.logger.warn(

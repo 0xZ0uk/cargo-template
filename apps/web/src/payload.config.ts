@@ -178,6 +178,12 @@ export default buildConfig({
     seoAnalyzerPlugin({
       collections: ['pages'],
       collectionRoutes: { pages: '' },
+      // A/B variants (`_abVariantOf`) are reached through their original's URL, never their
+      // own: leave them out of the sitemaps, llms.txt, IndexNow and the whole-site scans. The
+      // sidebar still scores a variant an editor opens. Not `noindex` on the variant: its meta
+      // is what a visitor bucketed into it gets at the original's URL.
+      excludeDocs: (doc) => doc._abVariantOf != null,
+      excludeDocsFields: ['_abVariantOf'],
       siteName,
       siteUrl: process.env.SITE_URL || cloudflare.SITE_URL || undefined,
       uploadsCollection: 'media',

@@ -9,8 +9,16 @@
 
 import type { PayloadHandler, Where } from 'payload'
 import { isSeoPanelUser } from '../helpers/isAdmin.js'
+import { docExclusion, isExcludedDoc } from '../helpers/excludeDocs.js'
+import type { SeoConfig } from '../types.js'
 
-export function createCheckKeywordHandler(collections: string[], globals: string[] = []): PayloadHandler {
+export function createCheckKeywordHandler(
+  collections: string[],
+  globals: string[] = [],
+  seoConfig?: SeoConfig,
+): PayloadHandler {
+  // The host's exclusion (A/B variants share their original's keyword by design).
+  const exclusion = docExclusion(seoConfig)
   return async (req) => {
     try {
       if (!isSeoPanelUser(req)) {
@@ -46,6 +54,7 @@ export function createCheckKeywordHandler(collections: string[], globals: string
 
           for (const doc of primaryResult.docs) {
             const d = doc as Record<string, unknown>
+            if (isExcludedDoc(exclusion, d, collectionSlug)) continue
             results.push({
               id: d.id as string | number,
               title: (d.title as string) || (d.slug as string) || 'Untitled',
@@ -72,6 +81,7 @@ export function createCheckKeywordHandler(collections: string[], globals: string
 
             for (const doc of secondaryResult.docs) {
               const d = doc as Record<string, unknown>
+              if (isExcludedDoc(exclusion, d, collectionSlug)) continue
               // Avoid duplicates (doc might match both primary and secondary)
               const slug = (d.slug as string) || ''
               if (!results.some((r) => r.collection === collectionSlug && r.id === d.id)) {

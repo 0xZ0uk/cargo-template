@@ -22,7 +22,7 @@
  */
 
 import type { Config, Field, Plugin } from 'payload'
-import type { SeoConfig, SeoFeatures, RuleGroup, SeoThresholds } from './types.js'
+import type { SeoConfig, SeoExcludeDocs, SeoFeatures, RuleGroup, SeoThresholds } from './types.js'
 import { seoFields } from './fields.js'
 import { metaFields } from './metaFields.js'
 import { createValidateHandler } from './endpoints/validate.js'
@@ -194,6 +194,17 @@ export interface SeoPluginConfig {
    * host (`hooks.slack.com` → slack, `discord.com/api/webhooks/` → discord, else json).
    */
   alertWebhookFormat?: AlertWebhookFormat
+  /**
+   * Leaves the documents it returns `true` for out of every whole-site list, scan and output
+   * (sitemaps, llms.txt, audits, IndexNow, link graph, cannibalization…), e.g. A/B test
+   * variants: `(doc) => doc._abVariantOf != null`. The sidebar still scores them.
+   */
+  excludeDocs?: SeoExcludeDocs
+  /**
+   * The fields `excludeDocs` reads (dotted paths, e.g. `['_abVariantOf']`). Scans that read
+   * only a few fields add these; without them, those scans read whole documents.
+   */
+  excludeDocsFields?: string[]
   /** Collection slug for uploads/media (used for meta.image relationTo). Default: 'media' */
   uploadsCollection?: string
   /** Auto-create meta fields (title, description, image) on target collections. Default: true */
@@ -311,6 +322,8 @@ function buildSeoConfig(pluginConfig: SeoPluginConfig): SeoConfig {
     ...(pluginConfig.overrideWeights && { overrideWeights: pluginConfig.overrideWeights }),
     ...(pluginConfig.thresholds && { thresholds: pluginConfig.thresholds }),
     ...(pluginConfig.collectionRoutes && { collectionRoutes: pluginConfig.collectionRoutes }),
+    ...(pluginConfig.excludeDocs && { excludeDocs: pluginConfig.excludeDocs }),
+    ...(pluginConfig.excludeDocsFields && { excludeDocsFields: pluginConfig.excludeDocsFields }),
   }
 }
 
@@ -728,7 +741,7 @@ export const seoAnalyzerPlugin =
       {
         path: `${basePath}/check-keyword`,
         method: 'get',
-        handler: createCheckKeywordHandler(targetCollections, targetGlobals),
+        handler: createCheckKeywordHandler(targetCollections, targetGlobals, seoConfig),
       },
       // Generate meta values via custom functions — always active (used by meta field UI)
       {
@@ -772,7 +785,7 @@ export const seoAnalyzerPlugin =
         {
           path: `${basePath}/sitemap-audit`,
           method: 'get',
-          handler: withRateLimit(createSitemapAuditHandler(targetCollections, redirectsSlug, pluginConfig.knownRoutes || [], sharedCache)),
+          handler: withRateLimit(createSitemapAuditHandler(targetCollections, redirectsSlug, pluginConfig.knownRoutes || [], sharedCache, seoConfig)),
         },
         {
           path: `${basePath}/sitemap-config`,
@@ -799,7 +812,7 @@ export const seoAnalyzerPlugin =
         // this call to one every 2 s while typing, so the 10/min expensive
         // limiter would 429 a legitimate writer (the mistake already made once on
         // the audit endpoint). 120/min fits sustained editing and still caps abuse.
-        handler: withRateLimit(createSuggestLinksHandler(targetCollections, targetGlobals), auditPollLimiter),
+        handler: withRateLimit(createSuggestLinksHandler(targetCollections, targetGlobals, seoConfig), auditPollLimiter),
       },
       {
         path: `${basePath}/breadcrumb`,
@@ -839,7 +852,7 @@ export const seoAnalyzerPlugin =
       pluginEndpoints.push({
         path: `${basePath}/cannibalization`,
         method: 'get',
-        handler: withRateLimit(createCannibalizationHandler(targetCollections, targetGlobals)),
+        handler: withRateLimit(createCannibalizationHandler(targetCollections, targetGlobals, seoConfig)),
       })
     }
 
@@ -917,7 +930,7 @@ export const seoAnalyzerPlugin =
       pluginEndpoints.push({
         path: `${basePath}/keyword-research`,
         method: 'get',
-        handler: withRateLimit(createKeywordResearchHandler(targetCollections, targetGlobals)),
+        handler: withRateLimit(createKeywordResearchHandler(targetCollections, targetGlobals, seoConfig)),
       })
     }
 
@@ -926,7 +939,7 @@ export const seoAnalyzerPlugin =
       pluginEndpoints.push({
         path: `${basePath}/link-graph`,
         method: 'get',
-        handler: withRateLimit(createLinkGraphHandler(targetCollections, targetGlobals)),
+        handler: withRateLimit(createLinkGraphHandler(targetCollections, targetGlobals, seoConfig)),
       })
     }
 
@@ -953,7 +966,7 @@ export const seoAnalyzerPlugin =
       pluginEndpoints.push({
         path: `${basePath}/duplicate-content`,
         method: 'get',
-        handler: withRateLimit(createDuplicateContentHandler(targetCollections)),
+        handler: withRateLimit(createDuplicateContentHandler(targetCollections, seoConfig)),
       })
     }
 

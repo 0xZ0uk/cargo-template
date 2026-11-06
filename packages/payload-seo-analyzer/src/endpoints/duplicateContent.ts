@@ -12,6 +12,8 @@ import { seoCache } from '../cache.js'
 import { extractDocContent } from '../helpers/extractDocContent.js'
 import { isSeoAdminRequest, isSeoPanelUser } from '../helpers/isAdmin.js'
 import { safeCacheLocale } from '../helpers/safeCacheLocale.js'
+import { docExclusion, isExcludedDoc } from '../helpers/excludeDocs.js'
+import type { SeoConfig } from '../types.js'
 
 interface PageInfo {
   id: string | number
@@ -75,7 +77,8 @@ function extractDocText(doc: Record<string, unknown>): string {
 const MAX_DOCS = 200
 const SIMILARITY_THRESHOLD = 0.7
 
-export function createDuplicateContentHandler(collections: string[]): PayloadHandler {
+export function createDuplicateContentHandler(collections: string[], seoConfig?: SeoConfig): PayloadHandler {
+  const exclusion = docExclusion(seoConfig)
   return async (req) => {
     try {
       if (!isSeoPanelUser(req)) {
@@ -116,6 +119,8 @@ export function createDuplicateContentHandler(collections: string[]): PayloadHan
 
           for (const doc of result.docs) {
             if (allDocs.length >= MAX_DOCS) break
+            // The host's exclusion (A/B variants are near-copies of their original by design).
+            if (isExcludedDoc(exclusion, doc, collectionSlug)) continue
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const d = doc as any
             const text = extractDocText(d)

@@ -23,6 +23,7 @@ import { fetchAllDocs } from '../helpers/fetchAllDocs.js'
 import { checkLinks, type LinkCheckResult, type LinkCheckerOptions } from '../helpers/linkChecker.js'
 import { classifyLink, countLinkStates, LINK_STATES } from '../helpers/linkStatus.js'
 import type { SeoConfig } from '../types.js'
+import { docExclusion } from '../helpers/excludeDocs.js'
 import { resolveSiteUrl } from '../helpers/siteUrl.js'
 import { parseJsonBody } from '../helpers/parseBody.js'
 import { isSeoAdminRequest, isSeoPanelUser } from '../helpers/isAdmin.js'
@@ -218,6 +219,7 @@ export function createExternalLinksHandler(
         collections,
         globals,
         depth: 0,
+        exclude: docExclusion(seoConfig),
       })
 
       for (const { doc, sourceType, sourceSlug } of allFetched) {

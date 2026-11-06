@@ -28,12 +28,15 @@ const compact = (node: JsonLdNode): JsonLdNode =>
  * `<script>` element.
  *
  * @param siteUrl - absolute origin without a trailing slash
+ * @param options.slug - the slug URLs are built from (the canonical slug), when it isn't the
+ *   page's own: an A/B variant is described at its original's URL
  */
 export const buildPageJsonLd = async (
   page: PageForJsonLd,
   siteUrl: string,
+  options: { slug?: string } = {},
 ): Promise<string[]> => {
-  const slug = page.slug ?? 'home'
+  const slug = options.slug ?? page.slug ?? 'home'
   const isHome = slug === 'home'
   const origin = siteUrl.replace(/\/+$/, '')
   const url = `${origin}${isHome ? '/' : pagePath(slug)}`

@@ -4,6 +4,7 @@
  */
 
 import type { Payload, SelectType } from 'payload'
+import { isExcludedDoc, withExclusionSelect, type DocExclusion } from './excludeDocs.js'
 
 export type DocSourceType = 'collection' | 'global'
 
@@ -35,6 +36,11 @@ export interface FetchAllDocsOptions {
    * Applied best-effort — see the select-less retry below.
    */
   select?: SelectType
+  /**
+   * The host's exclusion (`docExclusion(seoConfig)`): matching collection documents are left
+   * out (they don't count against `maxDocs`), and `select` is widened to the fields it reads.
+   */
+  exclude?: DocExclusion
 }
 
 /** Page size for the internal paginated reads. */
@@ -52,7 +58,7 @@ export async function fetchAllDocs(
   payload: Payload,
   options: FetchAllDocsOptions,
 ): Promise<FetchedDoc[]> {
-  const { collections, globals = [], depth = 1, select } = options
+  const { collections, globals = [], depth = 1, exclude } = options
   const maxDocs = options.maxDocs ?? options.limit ?? (Number(process.env.SEO_FETCH_MAX_DOCS) || 5000)
   const results: FetchedDoc[] = []
   let reachedCap = false
@@ -60,6 +66,7 @@ export async function fetchAllDocs(
   // Fetch from collections (paginated)
   for (const collectionSlug of collections) {
     if (reachedCap) break
+    const select = withExclusionSelect(payload, [collectionSlug], options.select, exclude)
     try {
       let page = 1
       let hasNextPage = true
@@ -108,6 +115,7 @@ export async function fetchAllDocs(
           break
         }
         for (const doc of result.docs) {
+          if (isExcludedDoc(exclude, doc, collectionSlug)) continue
           results.push({ doc, sourceType: 'collection', sourceSlug: collectionSlug })
           if (results.length >= maxDocs) {
             reachedCap = true

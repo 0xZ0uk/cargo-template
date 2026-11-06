@@ -165,7 +165,7 @@ The loader also runs as a server-function call on client-side navigation; the br
 Things the host decides:
 
 - **Caching.** A response that depends on the visitor's bucket must not be shared from a cache keyed only by URL. That includes visitors already in the original bucket, for whom the resolver returns `null` (as it does for a page without an experiment), so decide from the manifest (`storage.read(key)` has variants), not from the resolver's result. `apps/web` reads the manifest once and runs the resolver on it (`routeAb` in `src/plugins/abTesting.ts`).
-- **SEO.** Variant pages are ordinary published pages at their own slug (`/about--4ji9qa`). Point their canonical URL at the original, and leave them out of the sitemap.
+- **SEO.** Variant pages are ordinary published pages at their own slug (`/about--4ji9qa`). Point their canonical URL at the original, and leave them out of the sitemap. `apps/web` redirects (302) a visitor who asks for a variant at its own URL, builds the canonical URL from the requested slug, and excludes `_abVariantOf` documents with the SEO analyzer's `excludeDocs` option.
 
 ### Cookies
 

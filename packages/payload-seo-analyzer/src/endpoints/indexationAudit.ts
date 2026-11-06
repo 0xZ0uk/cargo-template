@@ -25,6 +25,7 @@ import type { PayloadHandler } from 'payload'
 import { analyzeSeo } from '../index.js'
 import type { RuleGroup, SeoConfig, SeoCheck, SeoInput } from '../types.js'
 import { buildSeoInputFromDoc } from './validate.js'
+import { docExclusion, isExcludedDoc } from '../helpers/excludeDocs.js'
 import { loadMergedConfig } from '../helpers/loadMergedConfig.js'
 import { isSeoAdminRequest, isSeoPanelUser } from '../helpers/isAdmin.js'
 import { indexationMaxDocs } from '../helpers/auditLimits.js'
@@ -464,6 +465,8 @@ export function createIndexationAuditHandler(
         disabledRules: [...new Set([...(baseConfig.disabledRules ?? []), ...NON_TECHNICAL_GROUPS])],
       }
       const maxDocs = indexationMaxDocs()
+      // The host's exclusion (A/B variants…) leaves documents out of the scan.
+      const exclusion = docExclusion(seoConfig)
       let capped = false
 
       const entries: IndexationEntry[] = []
@@ -524,6 +527,7 @@ export function createIndexationAuditHandler(
             })
             for (const doc of result.docs) {
               if (ignoredSlugs.includes(doc.slug as string)) continue
+              if (isExcludedDoc(exclusion, doc, collectionSlug)) continue
               if (allRecords.length >= maxDocs) {
                 capped = true
                 break collectionsLoop

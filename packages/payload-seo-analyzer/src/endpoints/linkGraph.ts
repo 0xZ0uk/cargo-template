@@ -11,7 +11,9 @@
 import type { PayloadHandler } from 'payload'
 import { seoCache } from '../cache.js'
 import { extractAllInternalLinks, normalizeToSlug, resolveToDocSlug } from '../helpers/linkExtractor.js'
+import { docExclusion } from '../helpers/excludeDocs.js'
 import { fetchAllDocs } from '../helpers/fetchAllDocs.js'
+import type { SeoConfig } from '../types.js'
 import { isSeoAdminRequest, isSeoPanelUser } from '../helpers/isAdmin.js'
 import { safeCacheLocale } from '../helpers/safeCacheLocale.js'
 
@@ -287,7 +289,11 @@ export function computeUnderLinked(
 // Endpoint handler factory
 // ---------------------------------------------------------------------------
 
-export function createLinkGraphHandler(targetCollections: string[], globals: string[] = []): PayloadHandler {
+export function createLinkGraphHandler(
+  targetCollections: string[],
+  globals: string[] = [],
+  seoConfig?: SeoConfig,
+): PayloadHandler {
   return async (req) => {
     try {
       if (!isSeoPanelUser(req)) {
@@ -322,6 +328,7 @@ export function createLinkGraphHandler(targetCollections: string[], globals: str
         collections: targetCollections,
         globals,
         depth: 1,
+        exclude: docExclusion(seoConfig),
       })
 
       let processed = 0

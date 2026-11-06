@@ -73,6 +73,21 @@ describe('buildPageJsonLd', () => {
     expect(webPage?.url).toBe('https://example.com/a%20b')
   })
 
+  it('builds URLs from the canonical slug when one is given (an A/B variant)', async () => {
+    const nodes = parse(
+      await buildPageJsonLd({ slug: 'about--4ji9qa', title: 'About' }, 'https://example.com', {
+        slug: 'about',
+      }),
+    )
+
+    expect(nodes[0]?.url).toBe('https://example.com/about')
+    expect(nodes[1]?.itemListElement).toEqual([
+      { '@type': 'ListItem', item: 'https://example.com/', name: 'Home', position: 1 },
+      { '@type': 'ListItem', item: 'https://example.com/about', name: 'About', position: 2 },
+    ])
+    expect(JSON.stringify(nodes)).not.toContain('4ji9qa')
+  })
+
   it('makes media URLs absolute', async () => {
     const [webPage] = parse(
       await buildPageJsonLd(
@@ -93,6 +108,8 @@ describe('pageHead', () => {
       jsonLd: ['{"a":1}', '{"b":2}'],
       origin: 'https://example.com',
       page: { layout: [], slug: 'about', title: 'About' } as never,
+      canonicalSlug: 'about',
+      siteUrl: 'https://example.com',
     })
 
     expect(head).toHaveProperty('scripts', [
@@ -109,10 +126,43 @@ describe('pageHead', () => {
         jsonLd: [],
         origin: 'https://example.com',
         page: { layout: [], noindex, slug: 'thank-you', title: 'Thank you' } as never,
+        canonicalSlug: 'thank-you',
+        siteUrl: 'https://example.com',
       }).meta
 
     expect(head(true)).toContainEqual({ name: 'robots', content: 'noindex' })
     expect(head(false)).not.toContainEqual(expect.objectContaining({ name: 'robots' }))
     expect(head(undefined)).not.toContainEqual(expect.objectContaining({ name: 'robots' }))
+  })
+
+  it('emits the canonical link and og:url from the canonical slug, on the public origin', () => {
+    const head = pageHead({
+      canonicalSlug: 'about',
+      draft: false,
+      livePreview: false,
+      jsonLd: [],
+      origin: 'http://localhost:3000',
+      // An A/B variant served at the original's URL.
+      page: { layout: [], slug: 'about--4ji9qa', title: 'About' } as never,
+      siteUrl: 'https://example.com',
+    })
+
+    expect(head).toHaveProperty('links', [{ rel: 'canonical', href: 'https://example.com/about' }])
+    expect(head.meta).toContainEqual({ property: 'og:url', content: 'https://example.com/about' })
+    expect(JSON.stringify(head)).not.toContain('4ji9qa')
+  })
+
+  it('canonicalises the home page to the site root', () => {
+    const head = pageHead({
+      canonicalSlug: 'home',
+      draft: false,
+      livePreview: false,
+      jsonLd: [],
+      origin: 'https://example.com',
+      page: { layout: [], slug: 'home', title: 'Home' } as never,
+      siteUrl: 'https://example.com',
+    })
+
+    expect(head).toHaveProperty('links', [{ rel: 'canonical', href: 'https://example.com/' }])
   })
 })

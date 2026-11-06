@@ -13,7 +13,9 @@ import { seoCache } from '../cache.js'
 import { normalizeForComparison, countWords } from '../helpers.js'
 import { getStopWords as getBaseStopWords } from '../constants.js'
 import { extractDocContent } from '../helpers/extractDocContent.js'
+import { docExclusion } from '../helpers/excludeDocs.js'
 import { fetchAllDocs } from '../helpers/fetchAllDocs.js'
+import type { SeoConfig } from '../types.js'
 import { isSeoAdminRequest, isSeoPanelUser } from '../helpers/isAdmin.js'
 import { safeCacheLocale } from '../helpers/safeCacheLocale.js'
 
@@ -143,7 +145,11 @@ function extractDocText(doc: any): string {
 // Handler
 // ---------------------------------------------------------------------------
 
-export function createKeywordResearchHandler(targetCollections: string[], globals: string[] = []): PayloadHandler {
+export function createKeywordResearchHandler(
+  targetCollections: string[],
+  globals: string[] = [],
+  seoConfig?: SeoConfig,
+): PayloadHandler {
   return async (req) => {
     try {
       if (!isSeoPanelUser(req)) {
@@ -170,6 +176,7 @@ export function createKeywordResearchHandler(targetCollections: string[], global
         collections: targetCollections,
         globals,
         depth: 1,
+        exclude: docExclusion(seoConfig),
       })
 
       let kProcessed = 0

@@ -11,7 +11,9 @@
 import type { PayloadHandler } from 'payload'
 import { defaultSeoSharedCache, hashConfig, type SeoSharedCache } from '../cache.js'
 import { extractAllInternalLinks, normalizeToSlug, resolveToDocSlug } from '../helpers/linkExtractor.js'
+import { docExclusion } from '../helpers/excludeDocs.js'
 import { fetchAllDocs } from '../helpers/fetchAllDocs.js'
+import type { SeoConfig } from '../types.js'
 import { isSeoAdminRequest, isSeoPanelUser } from '../helpers/isAdmin.js'
 import { safeCacheLocale } from '../helpers/safeCacheLocale.js'
 
@@ -51,10 +53,19 @@ export function createSitemapAuditHandler(
   redirectsCollection = 'seo-redirects',
   knownRoutes: string[] = [],
   cache: SeoSharedCache = defaultSeoSharedCache,
+  seoConfig?: Pick<SeoConfig, 'excludeDocs' | 'excludeDocsFields'>,
 ): PayloadHandler {
+  const exclude = docExclusion(seoConfig)
   // Persisted entries outlive deploys: scope them by the config that shapes the result.
+  // The exclusion is hashed only when set, so existing keys stay valid without one.
   const configSuffix = cache.persistent
-    ? `:${hashConfig({ v: 1, collections, redirectsCollection, knownRoutes })}`
+    ? `:${hashConfig({
+        v: 1,
+        collections,
+        redirectsCollection,
+        knownRoutes,
+        ...(exclude && { excludeDocs: exclude.test, excludeDocsFields: exclude.fields ?? null }),
+      })}`
     : ''
   return async (req) => {
     try {
@@ -127,6 +138,7 @@ export function createSitemapAuditHandler(
       const allFetched = await fetchAllDocs(req.payload, {
         collections,
         depth: 1,
+        exclude,
       })
 
       let processed = 0

@@ -215,6 +215,43 @@ test.describe('A/B testing', () => {
     await ctx.close()
   })
 
+  test("a published variant's own URL redirects (302) to the original", async ({ request }) => {
+    const response = await request.get(`/${variantSlug}?utm_source=e2e`, { maxRedirects: 0 })
+    expect(response.status()).toBe(302)
+    expect(response.headers().location).toMatch(new RegExp(`/${slug}\\?utm_source=e2e$`))
+  })
+
+  test('sitemap.xml lists the original and no variant', async ({ request }) => {
+    const response = await request.get('/sitemap.xml')
+    expect(response.ok()).toBe(true)
+    const xml = await response.text()
+    expect(xml).toMatch(new RegExp(`<loc>[^<]*/${slug}</loc>`))
+    expect(xml).not.toContain(variantSlug)
+  })
+
+  test("a visitor served the variant gets the original's canonical URL", async ({ browser }) => {
+    const { ctx, page } = await visitor(browser, { [bucketCookie(slug)]: variantSlug })
+    await page.goto(`/${slug}`)
+    await expect(page.getByText(VARIANT)).toBeVisible()
+    const canonical = await page.locator('link[rel="canonical"]').getAttribute('href')
+    expect(canonical).toMatch(new RegExp(`/${slug}$`))
+    const ogUrl = await page.locator('meta[property="og:url"]').getAttribute('content')
+    expect(ogUrl).toBe(canonical)
+    const jsonLd = await page.locator('script[type="application/ld+json"]').allTextContents()
+    expect(jsonLd.join('')).not.toContain(variantSlug)
+    await ctx.close()
+  })
+
+  test('the admin can still open the variant at its own URL in draft mode', async () => {
+    const response = await admin.goto(`/${variantSlug}?draft=true`)
+    expect(response?.status()).toBe(200)
+    expect(admin.url()).toMatch(new RegExp(`/${variantSlug}\\?draft=true$`))
+    await expect(admin.getByText(VARIANT)).toBeVisible()
+    // Canonicalised to the original.
+    const canonical = await admin.locator('link[rel="canonical"]').getAttribute('href')
+    expect(canonical).toMatch(new RegExp(`/${slug}$`))
+  })
+
   test('"Edit on page" shows on the original and is hidden on the variant', async () => {
     await admin.goto(`/admin/collections/pages/${originalId}`)
     await expect(admin.getByTestId('onpage-edit-on-page')).toBeVisible()

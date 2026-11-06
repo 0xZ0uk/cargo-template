@@ -170,7 +170,25 @@ export interface SeoConfig {
    * served flat at `/<slug>`.
    */
   collectionRoutes?: CollectionRoutes
+  /**
+   * Leaves documents out of every whole-site list, scan and output: sitemap.xml and its
+   * news/image/video extensions, llms.txt, the dashboard, indexation and sitemap audits,
+   * IndexNow, the link graph, cannibalization, keyword research, duplicate content, link
+   * suggestions and external links. Return `true` to exclude. The per-document sidebar
+   * still analyzes an excluded document when an editor opens it.
+   *
+   * Scans that read only a few fields add `excludeDocsFields` to what they read; without
+   * it they read whole documents, so declare the fields the predicate looks at.
+   *
+   * @example `excludeDocs: (doc) => doc._abVariantOf != null, excludeDocsFields: ['_abVariantOf']`
+   */
+  excludeDocs?: SeoExcludeDocs
+  /** Dotted field paths `excludeDocs` reads (e.g. `['_abVariantOf']`). */
+  excludeDocsFields?: string[]
 }
+
+/** See `SeoConfig.excludeDocs`. */
+export type SeoExcludeDocs = (doc: Record<string, unknown>, collectionSlug: string) => boolean
 
 /**
  * Granular feature flags for the SEO plugin.

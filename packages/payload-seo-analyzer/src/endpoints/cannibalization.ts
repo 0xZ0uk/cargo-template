@@ -11,7 +11,9 @@
 import type { PayloadHandler } from 'payload'
 import { getSeoDataStore, seoDatasetEnabled } from '../store/index.js'
 import { seoCache } from '../cache.js'
+import { docExclusion } from '../helpers/excludeDocs.js'
 import { fetchAllDocs } from '../helpers/fetchAllDocs.js'
+import type { SeoConfig } from '../types.js'
 import { isSeoAdminRequest, isSeoPanelUser } from '../helpers/isAdmin.js'
 import { safeCacheLocale } from '../helpers/safeCacheLocale.js'
 
@@ -46,7 +48,11 @@ interface Conflict {
   pages: PageEntry[]
 }
 
-export function createCannibalizationHandler(collections: string[], globals: string[] = []): PayloadHandler {
+export function createCannibalizationHandler(
+  collections: string[],
+  globals: string[] = [],
+  seoConfig?: SeoConfig,
+): PayloadHandler {
   return async (req) => {
     try {
       if (!isSeoPanelUser(req)) {
@@ -73,6 +79,7 @@ export function createCannibalizationHandler(collections: string[], globals: str
         collections,
         globals,
         depth: 0,
+        exclude: docExclusion(seoConfig),
       })
 
       for (const { doc, sourceType, sourceSlug } of allFetched) {

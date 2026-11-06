@@ -21,6 +21,7 @@
  */
 import type { Payload, PayloadHandler } from 'payload'
 import { buildDocPath } from '../helpers/docUrl.js'
+import { docExclusion, isExcludedDoc } from '../helpers/excludeDocs.js'
 import { defaultSeoSharedCache, hashConfig, safeLookup, safeSet, type SeoSharedCache } from '../cache.js'
 import { sha256Hex } from '../helpers/sha256.js'
 import type { SeoConfig } from '../types.js'
@@ -117,8 +118,10 @@ async function eachPublishedDoc(
   payload: Payload,
   collections: string[],
   depth: number,
+  seoConfig: SeoConfig | undefined,
   onDoc: (doc: Record<string, unknown>, collection: string) => void,
 ): Promise<void> {
+  const exclusion = docExclusion(seoConfig)
   const BATCH = Math.min(100, Math.max(1, parseInt(process.env.SEO_SITEMAP_BATCH_SIZE || '50', 10) || 50))
   const MAX = Math.max(1, parseInt(process.env.SEO_SITEMAP_MAX_DOCS || '5000', 10) || 5000)
   let count = 0
@@ -141,6 +144,8 @@ async function eachPublishedDoc(
           // Same noindex filter as sitemap.xml / llms.txt: news, image and video
           // sitemaps are public too.
           if (doc.noindex === true || (doc.meta as Record<string, unknown> | undefined)?.noindex === true) continue
+          // The host's exclusion (A/B variants…).
+          if (isExcludedDoc(exclusion, doc, collection)) continue
           onDoc(doc, collection)
         }
         hasMore = res.hasNextPage
@@ -193,7 +198,7 @@ export function createNewsSitemapHandler(
       const entries: string[] = []
 
       const language = escapeXml(newsLanguage(req.payload.config))
-      await eachPublishedDoc(req.payload, targetCollections, 0, (doc, collection) => {
+      await eachPublishedDoc(req.payload, targetCollections, 0, seoConfig, (doc, collection) => {
         const dateStr =
           (typeof doc.publishedAt === 'string' && doc.publishedAt) ||
           (typeof doc.date === 'string' && doc.date) ||
@@ -238,7 +243,7 @@ export function createImageSitemapHandler(
 
       const entries: string[] = []
 
-      await eachPublishedDoc(req.payload, targetCollections, 1, (doc, collection) => {
+      await eachPublishedDoc(req.payload, targetCollections, 1, seoConfig, (doc, collection) => {
         const urls = new Set<string>()
         collectMediaUrls(doc, 'image/', siteUrl, urls)
         if (urls.size === 0) return
@@ -278,7 +283,7 @@ export function createVideoSitemapHandler(
 
       const entries: string[] = []
 
-      await eachPublishedDoc(req.payload, targetCollections, 1, (doc, collection) => {
+      await eachPublishedDoc(req.payload, targetCollections, 1, seoConfig, (doc, collection) => {
         const meta = (doc.meta || {}) as Record<string, unknown>
         const videoUrls = new Set<string>()
         collectMediaUrls(doc, 'video/', siteUrl, videoUrls)

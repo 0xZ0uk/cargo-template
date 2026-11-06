@@ -10,6 +10,7 @@
 
 import type { PayloadHandler } from 'payload'
 import type { SeoConfig } from '../types.js'
+import { docExclusion } from '../helpers/excludeDocs.js'
 import { buildDocPath } from '../helpers/docUrl.js'
 import { fetchAllDocs } from '../helpers/fetchAllDocs.js'
 import { isSeoPanelUser } from '../helpers/isAdmin.js'
@@ -119,6 +120,7 @@ export function createSitemapConfigHandler(
       const allFetched = await fetchAllDocs(req.payload, {
         collections: targetCollections,
         depth: 0,
+        exclude: docExclusion(seoConfig),
       })
 
       for (const { doc, sourceSlug: collectionSlug } of allFetched) {
