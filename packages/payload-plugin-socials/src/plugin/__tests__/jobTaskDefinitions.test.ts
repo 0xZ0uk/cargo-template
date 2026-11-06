@@ -19,6 +19,7 @@ import { getCredentials, saveCredentials } from '../../server/services/connectio
 import { resolveSourceContext } from '../../server/sources/registry.js'
 import { queueSocialPostPublish } from '../jobQueue.js'
 import {
+  SocialsTaskFailure,
   buildConnectionRefreshTaskConfig,
   buildInsightsRefreshTaskConfig,
   buildPublishTaskConfig,
@@ -58,11 +59,17 @@ beforeEach(() => {
   vi.clearAllMocks()
 })
 
+/** A handled failure: Payload marks the job failed without applying `retries`. */
+const expectHandledFailure = async (promise: Promise<unknown>, message: string) => {
+  const error = await promise.catch((e: unknown) => e)
+  expect(error).toBeInstanceOf(SocialsTaskFailure)
+  expect((error as Error).message).toBe(message)
+}
+
 describe('socialPostPublish handler', () => {
   it('fails when the post is missing', async () => {
     const req = mkReq({ findByID: vi.fn().mockRejectedValue(new Error('nf')) })
-    const result = await publish({ input: { postId: 1 }, req })
-    expect(result).toEqual({ errorMessage: 'social-posts/1 not found', state: 'failed' })
+    await expectHandledFailure(publish({ input: { postId: 1 }, req }), 'social-posts/1 not found')
   })
 
   it('is a no-op when already published', async () => {
@@ -75,10 +82,7 @@ describe('socialPostPublish handler', () => {
 
   it('fails a cancelled post', async () => {
     const req = mkReq({ findByID: vi.fn().mockResolvedValue({ id: 1, status: 'cancelled' }) })
-    expect(await publish({ input: { postId: 1 }, req })).toEqual({
-      errorMessage: 'post is cancelled',
-      state: 'failed',
-    })
+    await expectHandledFailure(publish({ input: { postId: 1 }, req }), 'post is cancelled')
   })
 
   it('fails and marks the post when queuedInput is missing', async () => {
@@ -87,8 +91,10 @@ describe('socialPostPublish handler', () => {
       findByID: vi.fn().mockResolvedValue({ id: 1, meta: {}, status: 'queued' }),
       update,
     })
-    const result = await publish({ input: { postId: 1 }, req })
-    expect(result.state).toBe('failed')
+    await expectHandledFailure(
+      publish({ input: { postId: 1 }, req }),
+      'social-posts/1.meta.queuedInput missing',
+    )
     expect(update).toHaveBeenCalled()
   })
 
@@ -144,9 +150,7 @@ describe('socialPostPublish handler', () => {
       }),
       update,
     })
-    const result = await publish({ input: { postId: 1 }, req })
-    expect(result.state).toBe('failed')
-    expect(result.errorMessage).toBe('no resolver')
+    await expectHandledFailure(publish({ input: { postId: 1 }, req }), 'no resolver')
     expect(update).toHaveBeenCalled()
   })
 
@@ -172,7 +176,7 @@ describe('socialPostPublish handler', () => {
     expect(adapterPublish).toHaveBeenCalled()
   })
 
-  it('marks the post failed when the adapter publish throws', async () => {
+  it('marks the post failed when the adapter publish throws, without a task retry', async () => {
     vi.mocked(resolveSourceContext).mockResolvedValue({ images: [] } as never)
     vi.mocked(getPlatformAdapter).mockReturnValue({
       publish: vi.fn().mockRejectedValue(new Error('upstream 500')),
@@ -189,10 +193,40 @@ describe('socialPostPublish handler', () => {
       }),
       update,
     })
-    const result = await publish({ input: { postId: 1 }, req })
-    expect(result.state).toBe('failed')
-    expect(result.errorMessage).toBe('upstream 500')
-    expect(update).toHaveBeenCalled()
+    await expectHandledFailure(publish({ input: { postId: 1 }, req }), 'upstream 500')
+    expect(update).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ lastError: 'upstream 500', status: 'failed' }),
+      }),
+    )
+  })
+
+  it('throws a retryable error when the provider rejected the publish retryably', async () => {
+    vi.mocked(resolveSourceContext).mockResolvedValue({ images: [] } as never)
+    vi.mocked(getPlatformAdapter).mockReturnValue({
+      publish: vi.fn().mockRejectedValue(
+        new PlatformApiError({ message: 'throttled', platform: 'pinterest', retryable: true }),
+      ),
+    } as never)
+    const update = vi.fn().mockResolvedValue({ docs: [{ id: 1 }], errors: [] })
+    const req = mkReq({
+      findByID: vi.fn().mockResolvedValue({
+        id: 1,
+        meta: { queuedInput: { boardId: 'b' } },
+        platform: 'pinterest',
+        sourceId: 's',
+        sourceKind: 'product',
+        status: 'queued',
+      }),
+      update,
+    })
+    const error = await publish({ input: { postId: 1 }, req }).catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(Error)
+    expect(error).not.toBeInstanceOf(SocialsTaskFailure)
+    expect((error as Error).message).toBe('payload-plugin-socials: throttled')
+    expect(update).toHaveBeenLastCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'failed' }) }),
+    )
   })
 
   it('records an unknown provider outcome and suppresses automatic task retry', async () => {
@@ -218,9 +252,10 @@ describe('socialPostPublish handler', () => {
       }),
       update,
     })
-    expect(await publish({ input: { postId: 1 }, req })).toEqual({
-      output: { outcomeUnknown: true, postId: 1 },
-    })
+    await expectHandledFailure(
+      publish({ input: { postId: 1 }, req }),
+      'social-posts/1: publish outcome unknown; reconcile before retrying',
+    )
     expect(update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ status: 'unknown' }),
@@ -255,9 +290,10 @@ describe('socialPostPublish handler', () => {
       update,
     })
 
-    expect(await publish({ input: { postId: 1 }, req })).toEqual({
-      output: { outcomeUnknown: true, postId: 1 },
-    })
+    await expectHandledFailure(
+      publish({ input: { postId: 1 }, req }),
+      'social-posts/1: publish outcome unknown; reconcile before retrying',
+    )
     expect(update).toHaveBeenLastCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ externalId: 'pin_created', status: 'unknown' }),
@@ -314,7 +350,18 @@ describe('socialPostPublish handler', () => {
 describe('socialPostRetry handler', () => {
   it('fails when the post is missing', async () => {
     const req = mkReq({ findByID: vi.fn().mockResolvedValue(null) })
-    expect((await retry({ input: { postId: 1 }, req })).state).toBe('failed')
+    await expectHandledFailure(retry({ input: { postId: 1 }, req }), 'social-posts/1 not found')
+  })
+
+  it('throws a retryable error when the row cannot be re-queued', async () => {
+    const req = mkReq({
+      findByID: vi.fn().mockResolvedValue({ id: 4, status: 'failed' }),
+      update: vi.fn().mockRejectedValue(new Error('db down')),
+    })
+    const error = await retry({ input: { postId: 4 }, req }).catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(Error)
+    expect(error).not.toBeInstanceOf(SocialsTaskFailure)
+    expect(queueSocialPostPublish).not.toHaveBeenCalled()
   })
 
   it('is a no-op when already published', async () => {
@@ -357,6 +404,31 @@ describe('socialInsightsRefresh handler', () => {
       { failed: 0, platform: 'pinterest', refreshed: 1, skipped: 1 },
     ])
     expect(update).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps a partial refresh a success and throws when nothing refreshed', async () => {
+    const getInsights = vi
+      .fn()
+      .mockResolvedValueOnce({ impressions: 5 })
+      .mockRejectedValueOnce(new Error('upstream 500'))
+    vi.mocked(getPlatformAdapter).mockReturnValue({ getInsights } as never)
+    const find = vi.fn().mockResolvedValue({
+      docs: [
+        { id: 1, externalId: 'pin_1' },
+        { id: 2, externalId: 'pin_2' },
+      ],
+    })
+    const req = mkReq({ find, update: vi.fn().mockResolvedValue({}) })
+    const partial = await insights({ input: { platform: 'pinterest' }, req })
+    expect(partial.output.summaries[0]).toMatchObject({ failed: 1, refreshed: 1 })
+
+    getInsights.mockReset().mockRejectedValue(new Error('upstream 500'))
+    const error = await insights({ input: { platform: 'pinterest' }, req }).catch(
+      (e: unknown) => e,
+    )
+    expect(error).toBeInstanceOf(Error)
+    expect(error).not.toBeInstanceOf(SocialsTaskFailure)
+    expect((error as Error).message).toContain('2 failed, 0 refreshed')
   })
 
   it('skips a platform whose adapter has no getInsights', async () => {
@@ -402,6 +474,20 @@ describe('socialConnectionRefresh handler', () => {
     expect(refreshToken).toHaveBeenCalledWith(expect.objectContaining({ refreshToken: 'RT' }))
   })
 
+  it('throws a retryable error when a token refresh fails', async () => {
+    vi.mocked(getCredentials).mockResolvedValue({ refreshToken: 'RT' } as never)
+    vi.mocked(getPlatformAdapter).mockReturnValue({
+      refreshToken: vi.fn().mockRejectedValue(new Error('oauth 503')),
+    } as never)
+    const error = await connectionRefresh({
+      input: { platform: 'pinterest' },
+      req: mkReq({}),
+    }).catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(Error)
+    expect(error).not.toBeInstanceOf(SocialsTaskFailure)
+    expect((error as Error).message).toBe('connection refresh failed: pinterest: oauth 503')
+  })
+
   it('reports not-refreshed when there are no credentials', async () => {
     vi.mocked(getCredentials).mockResolvedValue(null)
     const result = await connectionRefresh({ input: { platform: 'gbp' }, req: mkReq({}) })
@@ -415,5 +501,21 @@ describe('socialPostSweep handler', () => {
     const result = await sweep({ input: {}, req: mkReq({ find }) })
     expect(result.output).toEqual({ queued: 2, scanned: 2 })
     expect(queueSocialPostPublish).toHaveBeenCalledTimes(2)
+  })
+
+  it('reports partial queue failures and throws when none could be queued', async () => {
+    const find = vi.fn().mockResolvedValue({ docs: [{ id: 1 }, { id: 2 }] })
+    vi.mocked(queueSocialPostPublish)
+      .mockResolvedValueOnce(10)
+      .mockRejectedValueOnce(new Error('db down'))
+    expect((await sweep({ input: {}, req: mkReq({ find }) })).output).toEqual({
+      failed: 1,
+      queued: 1,
+      scanned: 2,
+    })
+    vi.mocked(queueSocialPostPublish).mockRejectedValue(new Error('db down'))
+    await expect(sweep({ input: {}, req: mkReq({ find }) })).rejects.toThrow(
+      'sweep could not queue any of 2 due posts',
+    )
   })
 })

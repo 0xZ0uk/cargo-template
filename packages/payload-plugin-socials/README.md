@@ -364,6 +364,32 @@ Scheduling uses a per-revision token, rechecks the due time in the task, and can
 
 Facebook's `scheduledPublishTime` is provider-native scheduling. The generic source-publish `scheduledAt` is plugin scheduling. Accepted GBP posts and native Facebook schedules remain pending until reconciliation confirms the provider state; sweep jobs provide the backstop.
 
+### Job failures and retries
+
+Payload 4 reads only `output` from a task handler's result and logs anything returned as succeeded; only a thrown error marks a job failed. So every task failure throws, and the kind of error decides who retries it:
+
+- **Payload retries** (a plain `Error`): the failure is transient and re-running the task cannot post twice. Payload applies the task's `retries` and records each attempt in the job's `log`; after the last one the job has `hasError: true`.
+- **No Payload retry** (`SocialsTaskFailure`, a subclass of Payload's `JobCancelledError`): the `social-posts` row already records the failure (`status`, `lastError`), or there is nothing to retry. Payload marks the job `hasError: true` with `error: { cancelled: true, message }` and does not apply `retries`. Publishing the post again is an operator decision: `POST /api/socials/internal/posts/{postId}/retry` (the `socialPostRetry` task) or, for `unknown`, `POST /api/socials/posts/{postId}/resolve` first.
+
+| Task (`retries`) | Failure | Post row | Job |
+| --- | --- | --- | --- |
+| `socialPostPublish` (3) | Provider rejected the request and says it is retryable (`PlatformApiError` with `outcome: 'failed'`, `retryable: true`: throttling, a 5xx on a safe request, an Instagram container timeout) | `failed`, `lastError` | Payload retries; each retry re-claims the `failed` row |
+| | Any other publish error (validation, auth, non-retryable rejection, an error from outside the transport) | `failed`, `lastError` | Failed, no Payload retry |
+| | Outcome unknown (`PlatformApiError` with `outcome: 'unknown'`, `PublicationPersistenceError`) | `unknown`, provider id captured when known | Failed, no Payload retry |
+| | Source context cannot be resolved; `meta.queuedInput` missing; scheduled Facebook post without `meta.pageId` | `failed`, `lastError` | Failed, no Payload retry |
+| | Facebook / GBP reconciliation read failed | `failed`, `lastError` | Failed, no Payload retry (the post already has an `externalId`; a re-run would publish it again) |
+| | Post not found; post `cancelled` | unchanged | Failed, no Payload retry |
+| | Already published; claimed by another worker; stale schedule token; not due yet | unchanged | Succeeded (handled no-op) |
+| `socialPostRetry` (1) | Post not found | none | Failed, no Payload retry |
+| | Flipping the row back to `queued`, or queueing the publish job, failed | unchanged or `queued` | Payload retries |
+| `socialInsightsRefresh` (1) | Nothing refreshed and at least one post or platform failed | unchanged | Payload retries (read-only on the platform) |
+| | Some posts refreshed, some failed | refreshed rows updated | Succeeded; `output.summaries[].failed` and `output.failedPlatforms` count the failures |
+| `socialConnectionRefresh` (1) | A platform's token refresh failed | none | Payload retries (a platform refreshed in the first attempt is skipped once its token is outside the window) |
+| `socialPostSweep` (0) | The due-post query failed, or no due post could be queued | unchanged (`queued`) | Failed; the next sweep picks the posts up |
+| | Some due posts could not be queued | unchanged (`queued`) | Succeeded; `output.failed` counts them |
+
+Double posting is prevented by three fences: Payload retries only publish failures the provider transport classifies as not accepted; every publish attempt (first run or retry) must atomically claim the row from `queued` or `failed`, so an `unknown`, `publishing` or `published` row is never published by a job; and an unknown outcome stays `unknown` until an operator resolves it.
+
 ## Image safety
 
 With preflight enabled, remote image inspection is HTTPS-only, redirect-bounded, time-bounded, and streamed under a processing cap (`assets.maxSourceImageBytes`, 25 MiB by default). Every redirect hostname is resolved and validated, and on Node the HTTPS connection is pinned to that validated address while preserving the hostname for TLS SNI and certificate verification (on Workers it can't be pinned: see [Cloudflare Workers](#cloudflare-workers)). DNS names resolving to local, private, link-local, documentation, or otherwise non-public IP ranges are rejected. `trustedRemoteHosts` is an explicit exact-host bypass for a host-controlled private media origin and should normally remain empty; those connections are still DNS-pinned.
