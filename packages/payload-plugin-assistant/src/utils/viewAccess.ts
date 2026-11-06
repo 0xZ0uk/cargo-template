@@ -32,3 +32,20 @@ export async function assistantViewRedirectTarget(
   if (!(await access({ user: req.user, req }))) return adminPath(root, unauthorized);
   return null;
 }
+
+/**
+ * Whether `req.user` may see the assistant (the nav link). Fails closed: no user, a refusal or an
+ * `access` that throws all hide it.
+ */
+export async function canSeeAssistant(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  req: any,
+  access: AssistantAccess = defaultAccess
+): Promise<boolean> {
+  if (!req?.user) return false;
+  try {
+    return Boolean(await access({ user: req.user, req }));
+  } catch {
+    return false;
+  }
+}

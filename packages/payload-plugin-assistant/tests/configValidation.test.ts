@@ -53,6 +53,16 @@ describe("assistantPlugin", () => {
     expect(views.assistant.Component.path).toBe("@cargo/payload-plugin-assistant/admin/AssistantView#AssistantView");
   });
 
+  it("adds the nav link after existing ones, in any shape Payload accepts", () => {
+    const nav = (afterNavLinks: unknown) =>
+      (assistantPlugin(valid)({ ...incoming, admin: { components: { afterNavLinks } } } as unknown as Config).admin?.components
+        ?.afterNavLinks ?? []) as unknown as Array<string | { path: string }>;
+    const ours = { path: "@cargo/payload-plugin-assistant/admin/AssistantNavLink#AssistantNavLink", serverProps: { access: expect.any(Function) } };
+    expect(nav(undefined)).toEqual([ours]);
+    expect(nav(["a"])).toEqual(["a", ours]);
+    expect(nav("b")).toEqual(["b", ours]);
+  });
+
   it("registers the same shape without an API key, and warns once", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const keyed = assistantPlugin(valid)(incoming);

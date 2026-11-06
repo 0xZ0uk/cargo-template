@@ -133,6 +133,8 @@ describe("error mapping", () => {
     [429, "Rate limit exceeded", "openrouter_rate_limited", /Too many requests/],
     [404, "No endpoints found that support tool use", "model_unavailable", /not available/],
     [503, "No available model provider", "model_unavailable", /not available/],
+    // A retired or misspelled id in the allowlist: OpenRouter answers 400.
+    [400, "example/gone is not a valid model ID", "model_unavailable", /not available/],
     [500, "Internal Server Error", "run_failed", /failed/],
   ])("OpenRouter %i → %s", async (status, providerMessage, code, message) => {
     const { chunks } = await runTurn({ respond: error(status, providerMessage) });

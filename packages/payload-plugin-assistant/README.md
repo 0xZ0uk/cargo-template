@@ -4,10 +4,11 @@ An admin assistant for Payload 4 on Cloudflare Workers: chat with your content t
 [`@payloadcms/plugin-mcp`](https://payloadcms.com/docs) tools, using TanStack AI and OpenRouter,
 with one Durable Object per conversation. Plan: [#58](https://github.com/0xZ0uk/cargo-template/issues/58).
 
-> **Status: the chat turn works; the UI is pending.** The Payload tool source (#61), conversations
-> in Durable Objects (#62) and the chat turn on OpenRouter with its endpoints (#63, see
-> [Endpoints](#endpoints-the-contract-for-the-admin-ui)) are in. The admin view is still a
-> placeholder (#64, approval cards #65). Not registered in the app yet (#66).
+> **Status: the chat works end to end in the admin.** The Payload tool source (#61), conversations
+> in Durable Objects (#62), the chat turn on OpenRouter with its endpoints (#63, see
+> [Endpoints](#endpoints-the-contract-for-the-admin-ui)) and the chat view (#64, see
+> [Admin UI](#admin-ui)) are in. Approvals use a minimal approve/reject control until the diff
+> cards (#65). Not registered in the app yet (#66).
 
 ```ts
 import { assistantPlugin } from '@cargo/payload-plugin-assistant'
@@ -25,7 +26,8 @@ assistantPlugin({
 | | |
 | --- | --- |
 | `/api/assistant/*` | The chat turn, rejoin, stop and the conversation list: see [Endpoints](#endpoints-the-contract-for-the-admin-ui). Every endpoint: signed in (401), `access` (403). |
-| `/admin/assistant` | Placeholder view, registered through `admin.components.views`. Anonymous visitors go to login, users `access` refuses to `admin.routes.unauthorized`. |
+| `/admin/assistant` | The chat view, registered through `admin.components.views`. Anonymous visitors go to login, users `access` refuses to `admin.routes.unauthorized`. |
+| Nav link | "Assistant › Chat" in the admin sidebar (`admin.components.afterNavLinks`), shown only to users `access` admits. |
 
 No collections, globals or injected fields. With `enabled: false` the config is returned untouched.
 
@@ -58,6 +60,8 @@ serialised request body, not the options object.
 | --- | --- |
 | `.` | The plugin and option types (server). |
 | `./admin/AssistantView` | The admin view (a server component wrapped in `DefaultTemplate`; the import-map target). |
+| `./admin/AssistantNavLink` | The nav link (a server component that asks `access`; the import-map target). |
+| `./client` | The chat UI, client components only (`"use client"`): `AssistantChat`, `AssistantNavLinkClient`, `ApprovalControl`, `pendingApprovalFrom` and the `PendingApproval` / `ApprovalRenderer` types. Its CSS is `./client.css`, imported by `client.js`. |
 | `./do` | The Durable Object classes `AssistantConversation` and `AssistantConversationIndex`, plus their stores. Workerd-only (`cloudflare:workers`): re-export them from the Worker entry, never import this entry from `payload.config.ts` or the admin bundle. |
 
 The endpoints load the AI runtime with `await import('./server/chat')`, and tsup code-splits it
@@ -500,8 +504,88 @@ it on every connection; harmless, upstream noise.
 
 ## Admin UI
 
-Follow [`packages/payload-seo-analyzer/src/ui/README.md`](../payload-seo-analyzer/src/ui/README.md):
-Payload 4 tokens, `@payloadcms/ui` components first.
+`/admin/assistant`: the conversation list on the left (a toggle above the chat on narrow screens),
+the open conversation on the right. Styling follows
+[`packages/payload-seo-analyzer/src/ui/README.md`](../payload-seo-analyzer/src/ui/README.md):
+`@payloadcms/ui` components (`Banner`, `Button`, `Collapsible`, `Pill`, `ConfirmationModal`,
+`Link`, `NavGroup`, `ShimmerEffect`), Payload 4 tokens only (`src/ui/assistant.css`), so light and
+dark mode follow the admin theme.
+
+### Entries and the client boundary
+
+| File | Runs | |
+| --- | --- | --- |
+| `src/admin/AssistantView.tsx` | Server (RSC) | `access` gate (redirects), `DefaultTemplate`, then `<AssistantChat configured />`. |
+| `src/admin/AssistantNavLink.tsx` | Server (RSC) | Asks `access`; renders `AssistantNavLinkClient` or nothing. |
+| `src/client.ts` → `dist/client.js` | Browser | Everything under `src/ui/`. tsup prepends `"use client"` and the CSS import (`addClientBanner`, as in `payload-plugin-ab`). |
+
+The server components import the client entry **by package path**
+(`@cargo/payload-plugin-assistant/client`, external in tsup, mapped to the source by `tsconfig`
+`paths` and the vitest alias), so the host bundler sees a client boundary. The client bundle
+imports only `@payloadcms/ui`, `payload/shared`, React and `@tanstack/ai-react`: no Payload server
+runtime, `@tanstack/ai` server code, stores or `cloudflare:workers`.
+
+**The nav link and `access`.** Payload renders `afterNavLinks` as server components with `payload`,
+`user`, `i18n` and `locale`, but no request. The link calls `access({ user, req })` with a request
+built from those (no headers, cookies or URL). The default `access` only reads
+`req.payload.config`, so it gives the same answer as on the view; a custom `access` that reads
+headers must cope with their absence. If it throws, the link is hidden (fails closed); the view and
+the endpoints always ask with the real request.
+
+### How it talks to the endpoints
+
+One `useChat` (`@tanstack/ai-react` 1.0.2) per open conversation (`ChatPanel`, mounted with
+`key={threadId}`):
+
+```ts
+useChat({
+  threadId,                       // minted in the browser: thread_<uuid>; in the URL as ?thread=
+  persistence: true,              // hydrate on mount, restore approvals, rejoin a live run
+  connection: fetchServerSentEvents(`/api/assistant/chat?threadId=${threadId}`, () => ({
+    body: { model },              // → forwardedProps.model
+    fetchClient: recordingFetch,  // keeps the { error, code } body of a refused request
+    cancelUrl: '/api/assistant/chat/stop',
+  })),
+  onChunk,                        // RUN_STARTED / RUN_ERROR → notices, list refresh
+})
+```
+
+| User action | Request |
+| --- | --- |
+| Open the view or a conversation | `GET /api/assistant/config` (models, configured), `GET /api/assistant/conversations`, then `useChat`'s hydrate: `GET /api/assistant/chat?threadId=` |
+| Reload mid-reply | Hydrate says `activeRun` → `useChat` joins it: `GET /api/assistant/chat?threadId=&runId=&offset=-1` (then `Last-Event-ID` on reconnects) |
+| Send | `POST /api/assistant/chat?threadId=` (AG-UI body; the server uses only the last user message) |
+| Stop | `POST /api/assistant/chat/stop` `{ threadId, runId }` (closing the tab does not stop a run) |
+| Approve / reject | A resume: `POST /api/assistant/chat` with `resume: [{ interruptId, status: "resolved", payload: { approved } }]` |
+| Rename / delete | `PATCH` / `DELETE /api/assistant/conversations/:threadId` |
+
+The reply is over when the stream ends (`isLoading`), not at a `RUN_FINISHED` (one per model call).
+
+### What it shows
+
+- **Text**: Markdown via `TextPart` from `@tanstack/ai-react/ui`, i.e. `@tanstack/markdown`
+  0.0.13, which `ai-react` already depends on (no new package): raw HTML is escaped, executable
+  URLs (`javascript:`, `data:`…) are dropped. Links to admin paths, or to admin URLs on this origin,
+  navigate in place (Payload's `Link`); others open in a new tab with `rel="noopener noreferrer"`.
+  Plain text is never turned into links. The user's own messages render as plain text.
+- **Reasoning**: a closed `Collapsible`.
+- **Tool calls**: one row each: tool, collection (`input.slug`), status (`Running`, `Waiting for
+  approval`, `Done`, `Failed`, `Rejected`, `Cancelled`); the result in a closed `Collapsible`,
+  pretty-printed and cut at 4,000 characters. Documents the call returned or touched (plugin-mcp's
+  fenced JSON, `docs`, `doc`, or `input.id`) link to their edit view, at most 10, and only for a
+  collection or global in the admin config.
+- **Approvals**: `ApprovalControl` per pending interrupt (tool, target, id, the input collapsed,
+  Approve / Reject); sending is disabled until they are answered. The browser has no definitions of
+  the server's MCP tools, so `@tanstack/ai-client` binds the server's `tool-approval` interrupt as
+  `generic`, answered with its response schema's `{ approved }`; `pendingApprovalFrom` handles both
+  kinds. #65 replaces the control: `<AssistantChat ApprovalComponent={DiffCard} />`, where the card
+  gets a `PendingApproval` (`toolName`, `target`, `input` = what the tool would write, `approve()`,
+  `reject()`, `canAnswer`). Expect an approved call that then fails on access: it shows as `Failed`.
+- **Errors** (`src/ui/errors.ts`), inline as `Banner`s: `RUN_ERROR` codes and HTTP `{ code }`
+  bodies map to not configured (warning, names `OPENROUTER_API_KEY`), invalid key, out of credits,
+  rate limited, model unavailable (also `model_not_allowed`), context overflow, signed out,
+  forbidden, tools unavailable, not found, stopped. A send refused before the run started puts the
+  text back in the composer.
 
 ## Development
 
@@ -511,7 +595,10 @@ pnpm --filter @cargo/payload-plugin-assistant test       # Node suite, then the 
 pnpm --filter @cargo/payload-plugin-assistant typecheck  # tsconfig.json + tsconfig.do.json (Workers types)
 ```
 
-`vitest.config.ts` is the Node suite (options, boot, caps, the in-memory fallback and its
+`vitest.config.ts` is the Node suite (`tests/ui/`: the chat UI under jsdom with `@payloadcms/ui`
+stubbed, Markdown safety, tool rows, composer keys, approvals, the conversation list, and the
+error/result/link helpers; options, boot (the view's redirects and the nav link's `access` gate
+against real Payload), caps, the in-memory fallback and its
 conformance; `tests/integration/chat.test.ts`: every endpoint through Payload's router against real
 Payload + plugin-mcp, turns with `fakeText()`; `tests/turn.test.ts`: the real OpenRouter adapter with
 its `httpClient` replaced, asserting the serialised request and the error mapping). `vitest.workerd.config.ts` runs `tests/workerd/` under workerd with

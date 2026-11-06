@@ -13,7 +13,9 @@
     "cloudflare-workers"
   ],
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "*.css"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -23,6 +25,15 @@
       "types": "./dist/admin/AssistantView.d.ts",
       "default": "./dist/admin/AssistantView.js"
     },
+    "./admin/AssistantNavLink": {
+      "types": "./dist/admin/AssistantNavLink.d.ts",
+      "default": "./dist/admin/AssistantNavLink.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "default": "./dist/client.js"
+    },
+    "./client.css": "./dist/client.css",
     "./do": {
       "types": "./dist/do/index.d.ts",
       "default": "./dist/do/index.js"
@@ -64,9 +75,11 @@
     "@payloadcms/db-sqlite": "catalog:",
     "@payloadcms/plugin-mcp": "catalog:",
     "@payloadcms/ui": "catalog:",
+    "@testing-library/react": "16.3.3",
     "@types/node": "24.12.3",
     "@types/react": "catalog:",
     "graphql": "^16.8.1",
+    "jsdom": "29.1.1",
     "payload": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",

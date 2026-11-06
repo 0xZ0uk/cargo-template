@@ -1,13 +1,14 @@
 import type { Config, Plugin } from "payload";
 import { buildEndpoints } from "./endpoints";
-import { VIEW_COMPONENT_PATH, VIEW_KEY, VIEW_PATH } from "./constants";
+import { NAV_LINK_COMPONENT_PATH, VIEW_COMPONENT_PATH, VIEW_KEY, VIEW_PATH } from "./constants";
 import type { ChatDeps } from "./server/chat";
 import type { AssistantPluginOptions } from "./types/options";
 import { normalizeOptions } from "./utils/normalizeOptions";
 
 /**
  * The admin assistant. `enabled: false` returns the config untouched. Otherwise it adds the
- * `/api/assistant/*` endpoints (chat, rejoin, stop, conversations) and the `/admin/assistant` view, with or without an API key: the
+ * `/api/assistant/*` endpoints (chat, rejoin, stop, conversations), the `/admin/assistant` view and its nav
+ * link, with or without an API key: the
  * view's import-map entry and the endpoint must not depend on a secret (as with the socials
  * plugin), so a missing key only makes both report "not configured".
  */
@@ -24,6 +25,7 @@ export const assistantPluginWith =
     if (pluginOptions.enabled === false) return incomingConfig;
 
     const options = normalizeOptions(pluginOptions);
+    const afterNavLinks = incomingConfig.admin?.components?.afterNavLinks;
 
     return {
       ...incomingConfig,
@@ -35,6 +37,12 @@ export const assistantPluginWith =
         ...incomingConfig.admin,
         components: {
           ...incomingConfig.admin?.components,
+          // A server component: it asks the same `access` as the view and renders nothing for
+          // users it refuses, so the link and the view always agree.
+          afterNavLinks: [
+            ...(Array.isArray(afterNavLinks) ? afterNavLinks : afterNavLinks ? [afterNavLinks] : []),
+            { path: NAV_LINK_COMPONENT_PATH, serverProps: { access: options.access } },
+          ],
           views: {
             ...incomingConfig.admin?.components?.views,
             [VIEW_KEY]: {

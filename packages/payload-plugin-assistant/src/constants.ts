@@ -19,6 +19,9 @@ export const VIEW_PATH = "/assistant";
 /** Import-map path of the admin view. Same whether or not the plugin is configured. */
 export const VIEW_COMPONENT_PATH = `${PACKAGE_NAME}/admin/AssistantView#AssistantView`;
 
+/** Import-map path of the nav link (`admin.components.afterNavLinks`), a server component. */
+export const NAV_LINK_COMPONENT_PATH = `${PACKAGE_NAME}/admin/AssistantNavLink#AssistantNavLink`;
+
 export const DEFAULT_MAX_STEPS = 10;
 
 /** Compaction budget (estimated tokens of the transcript sent to the model). */

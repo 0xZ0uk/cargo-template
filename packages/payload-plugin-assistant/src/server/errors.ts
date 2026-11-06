@@ -70,7 +70,7 @@ export function classifyRunError(event: RunErrorLike, stopped: boolean): Assista
   if (status === 402) return ASSISTANT_ERROR_CODES.outOfCredits;
   if (status === 429) return ASSISTANT_ERROR_CODES.rateLimited;
   const text = `${String(event.message ?? "")} ${String(event.error?.message ?? "")}`;
-  if (status === 404 || status === 502 || status === 503 || /no endpoints found|no (available )?(model )?provider|model .*(not|isn't) (found|available)/i.test(text)) {
+  if (status === 404 || status === 502 || status === 503 || /no endpoints found|no (available )?(model )?provider|model .*(not|isn't) (found|available)|not a valid model/i.test(text)) {
     return ASSISTANT_ERROR_CODES.modelUnavailable;
   }
   if (/not signed in/i.test(text)) return ASSISTANT_ERROR_CODES.notSignedIn;

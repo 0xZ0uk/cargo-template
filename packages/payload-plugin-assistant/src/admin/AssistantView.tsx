@@ -1,6 +1,6 @@
 import type { AdminViewServerProps } from "payload";
-import { Banner } from "@payloadcms/ui";
 import { DefaultTemplate } from "@payloadcms/ui/rsc";
+import { AssistantChat } from "@cargo/payload-plugin-assistant/client";
 import type { AssistantAccess } from "../types/options";
 import { assistantViewRedirectTarget } from "../utils/viewAccess";
 
@@ -12,10 +12,11 @@ interface AssistantViewProps extends AdminViewServerProps {
 }
 
 /**
- * Placeholder for `/admin/assistant`. Server component, because `DefaultTemplate` is: Payload 4
- * renders custom root views without the admin template, so the view wraps itself. The chat UI
- * (a client component) arrives with #64. Styling rules: see
- * `packages/payload-seo-analyzer/src/ui/README.md`.
+ * `/admin/assistant`. Server component, because `DefaultTemplate` is: Payload 4 renders custom
+ * root views without the admin template, so the view wraps itself. It gates on `access` and
+ * renders the chat, a client component from the package's `./client` entry (imported by package
+ * path, so the bundler keeps the client boundary and none of this file reaches the browser).
+ * Styling rules: see `packages/payload-seo-analyzer/src/ui/README.md`.
  */
 export const AssistantView = async ({
   initPageResult,
@@ -50,16 +51,7 @@ export const AssistantView = async ({
         globals: visibleEntities?.globals,
       }}
     >
-      <div className="gutter--left gutter--right">
-        <h1>Assistant</h1>
-        {configured ? (
-          <Banner type="default">The assistant is not wired up yet.</Banner>
-        ) : (
-          <Banner type="warning">
-            The assistant is not configured: no OpenRouter API key is set.
-          </Banner>
-        )}
-      </div>
+      <AssistantChat configured={configured} />
     </DefaultTemplate>
   );
 };
