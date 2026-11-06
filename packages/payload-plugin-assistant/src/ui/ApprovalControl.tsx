@@ -81,7 +81,7 @@ export function pendingApprovalFrom(interrupt: unknown): PendingApproval | null 
     toolName?: string;
     toolCallId?: string;
     originalArgs?: unknown;
-    metadata?: { kind?: unknown; input?: unknown; toolName?: unknown };
+    metadata?: { kind?: unknown; input?: unknown; toolName?: unknown; "tanstack:interruptBinding"?: { toolCallId?: unknown } };
     status?: string;
     canResolve?: boolean;
     resolveInterrupt?: (answer: unknown) => void;
@@ -98,13 +98,23 @@ export function pendingApprovalFrom(interrupt: unknown): PendingApproval | null 
   return {
     id: i.id ?? i.toolCallId ?? toolName,
     toolName,
-    toolCallId: i.toolCallId ?? "",
+    toolCallId: toolCallIdOf(i),
     input,
     target: toolTarget({ id: "", name: toolName, input }),
     canAnswer: i.canResolve !== false && (i.status === undefined || i.status === "pending" || i.status === "error"),
     approve: () => answer(true),
     reject: (reason?: string) => answer(false, reason),
   };
+}
+
+/**
+ * The tool call an approval interrupt belongs to. A `generic` snapshot from `@tanstack/ai-client`
+ * doesn't carry the descriptor's `toolCallId`; the interrupt binding in `metadata` does.
+ */
+function toolCallIdOf(i: { toolCallId?: string; metadata?: { "tanstack:interruptBinding"?: { toolCallId?: unknown } } }): string {
+  if (i.toolCallId) return i.toolCallId;
+  const bound = i.metadata?.["tanstack:interruptBinding"]?.toolCallId;
+  return typeof bound === "string" ? bound : "";
 }
 
 /**

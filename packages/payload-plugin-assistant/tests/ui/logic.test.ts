@@ -268,6 +268,22 @@ describe("approvals", () => {
     expect(answers).toEqual([{ approved: true }, { approved: false }]);
   });
 
+  it("finds the tool call of a generic snapshot (which has no toolCallId) in its binding; a reject carries the reason", () => {
+    const answers: unknown[] = [];
+    // The shape @tanstack/ai-client gives a generic interrupt: the descriptor's toolCallId is dropped.
+    const approval = pendingApprovalFrom({
+      id: "approval_call_9",
+      kind: "generic",
+      status: "pending",
+      canResolve: true,
+      metadata: { kind: "approval", toolName: "updateDocument", input, "tanstack:interruptBinding": { kind: "tool-approval", toolCallId: "call_9" } },
+      resolveInterrupt: (answer: unknown) => answers.push(answer),
+    })!;
+    expect(approval.toolCallId).toBe("call_9");
+    approval.reject("Not now");
+    expect(answers).toEqual([{ approved: false, reason: "Not now" }]);
+  });
+
   it("answers a tool-approval-bound interrupt with a boolean", () => {
     const answers: unknown[] = [];
     const approval = pendingApprovalFrom({

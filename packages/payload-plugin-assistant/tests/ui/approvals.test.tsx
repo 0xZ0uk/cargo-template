@@ -242,8 +242,8 @@ const interrupt = (id: string, toolCallId: string, input: Record<string, unknown
   kind: "generic",
   status: "pending",
   canResolve: true,
-  metadata: { kind: "approval", toolName: "updateDocument", input },
-  toolCallId,
+  // As @tanstack/ai-client snapshots a generic interrupt: no toolCallId, it's in the binding.
+  metadata: { kind: "approval", toolName: "updateDocument", input, "tanstack:interruptBinding": { toolCallId } },
   resolveInterrupt: () => {},
 });
 
