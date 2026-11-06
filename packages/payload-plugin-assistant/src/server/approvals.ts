@@ -245,7 +245,9 @@ export async function buildProposal(req: PayloadRequest, record: PendingInterrup
     return { changes: result.changes, ...(result.omitted ? { omittedChanges: result.omitted } : {}) };
   };
   const data = isRecord(input.data) ? input.data : {};
-  const asDocument = (doc: Doc) => (global ? { ...documentOf(doc, undefined), id: "", title: base.target?.label ?? slug ?? "" } : documentOf(doc, useAsTitle));
+  // The card's title never comes from a redacted field (a user's email): hidden first, whatever read the document.
+  const asDocument = (doc: Doc) =>
+    global ? { ...documentOf(doc, undefined), id: "", title: base.target?.label ?? slug ?? "" } : documentOf(hide(doc), useAsTitle);
 
   if (slug && !entity) {
     return { ...base, notice: `“${slug}” is not a collection or global of this site.`, items: [diff("create", undefined, input)] };

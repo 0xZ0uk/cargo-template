@@ -236,3 +236,45 @@ export function documentRefs(
   if (inputId) add(inputId);
   return [...refs.values()];
 }
+
+/** Tools that only read (plugin-mcp's find/count/schema/config tools). Everything else writes. */
+export const isReadTool = (name: string): boolean => /^(find|count|get)/i.test(name);
+
+/**
+ * Write tool calls that finished successfully (an approved change was applied), in transcript
+ * order: the tool result is there and is not an error, a rejection or a cancellation.
+ */
+export function appliedWrites(
+  messages: ReadonlyArray<{ parts: ReadonlyArray<{ type: string; [key: string]: unknown }> }>,
+  results: ReadonlyMap<string, ToolResultLike>
+): Array<{ call: ToolCallLike; result: ToolResultLike }> {
+  const out: Array<{ call: ToolCallLike; result: ToolResultLike }> = [];
+  for (const message of messages) {
+    for (const part of message.parts) {
+      if (part.type !== "tool-call") continue;
+      const call = part as unknown as ToolCallLike;
+      if (typeof call.id !== "string" || typeof call.name !== "string" || isReadTool(call.name)) continue;
+      const result = results.get(call.id);
+      if (result && toolStatus(call, result) === "done") out.push({ call, result });
+    }
+  }
+  return out;
+}
+
+/**
+ * Whether an applied write changed the given document (#69): the same global, or the same
+ * collection with the document's id in the call's input or in the documents its result returned
+ * (an update by `where`). A delete doesn't count: there is nothing left to reload.
+ */
+export function writeTouches(
+  call: ToolCallLike,
+  result: ToolResultLike | undefined,
+  target: { kind: "collection" | "global"; slug: string; id?: string }
+): boolean {
+  if (isReadTool(call.name) || /^delete/i.test(call.name)) return false;
+  if (toolTarget(call) !== target.slug) return false;
+  if (target.kind === "global") return isGlobalTool(call.name);
+  if (isGlobalTool(call.name) || !target.id) return false;
+  if (idOf(toolInput(call)?.id) === target.id) return true;
+  return documentsIn(structuredResult(result?.content)).some((doc) => idOf(doc.id) === target.id);
+}

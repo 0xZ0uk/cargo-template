@@ -240,4 +240,89 @@ test.describe('Assistant', () => {
       await page.request.delete(`/api/pages/${richTextPageId}`)
     }
   })
+
+  // #69: "Ask the assistant" in a document's edit view, in a drawer, and the form kept in step.
+
+  /** Open the drawer from the edit view and send one message in a new conversation. */
+  const askFromEditView = async (message: string) => {
+    const drawer = page.locator('.assistant-drawer')
+    // The button is server-rendered before React hydrates it: click until the drawer opens.
+    await expect(async () => {
+      await page.getByTestId('assistant-ask').click()
+      await expect(drawer.getByRole('heading', { name: 'What can I help with?' })).toBeVisible({ timeout: 1_000 })
+    }).toPass({ timeout: 15_000 })
+    await drawer.getByLabel('Message the assistant').fill(message)
+    await drawer.getByRole('button', { name: 'Send', exact: true }).click()
+    return drawer
+  }
+
+  test("asks from a page's edit view: approved, the form shows the change, and saving keeps it", async () => {
+    const newTitle = `${originalTitle} (from the edit view)`
+    await page.goto(`/admin/collections/pages/${pageId}`)
+    await expect(page.locator('#field-title')).toHaveValue(originalTitle)
+
+    const drawer = await askFromEditView(updateCommand(newTitle))
+    // The first message is about this document.
+    await expect(drawer.getByRole('list', { name: 'About' })).toContainText(originalTitle)
+    const card = drawer.locator('article.assistant-approval-card')
+    await expect(card).toContainText(newTitle)
+    await card.getByRole('button', { name: 'Approve', exact: true }).click()
+    await expect(card.getByText('Applied, saved as a draft.')).toBeVisible()
+
+    // The form reloaded with the assistant's change: no dialog (nothing was modified).
+    await expect(page.locator('#field-title')).toHaveValue(newTitle)
+    await expect(page.getByText('Reloaded with the assistant’s change.')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'The assistant changed this document' })).toBeHidden()
+
+    // Save from the form (here: an edit, then the page's autosave): the assistant's change stays.
+    await page.keyboard.press('Escape')
+    await expect(drawer).toBeHidden()
+    await page.locator('#field-title').fill(`${newTitle} and more`)
+    await expect.poll(draftTitle, { timeout: 15_000 }).toBe(`${newTitle} and more`)
+
+    const reset = await page.request.patch(`/api/pages/${pageId}?draft=true`, {
+      data: { title: originalTitle },
+    })
+    expect(reset.ok(), await reset.text()).toBe(true)
+  })
+
+  test('with unsaved edits, asks before reloading; keeping them warns that saving overwrites the change', async () => {
+    // Tags have no autosave, so the edit stays unsaved.
+    const created = await page.request.post('/api/tags', { data: { name: `E2E tag ${Date.now()}` } })
+    expect(created.ok(), await created.text()).toBe(true)
+    const tag = (await created.json()).doc as { id: number; name: string }
+    const assistantName = `${tag.name} (assistant)`
+    try {
+      await page.goto(`/admin/collections/tags/${tag.id}`)
+      await expect(page.locator('#field-name')).toHaveValue(tag.name)
+      await page.locator('#field-name').fill(`${tag.name} (mine)`)
+
+      const drawer = await askFromEditView(
+        `/tool updateDocument ${JSON.stringify({ slug: 'tags', id: tag.id, data: { name: assistantName } })}`,
+      )
+      const card = drawer.locator('article.assistant-approval-card')
+      await card.getByRole('button', { name: 'Approve', exact: true }).click()
+      await expect(card.getByText('Applied', { exact: true })).toBeVisible()
+
+      const dialog = page.locator('dialog, [role="dialog"]').filter({
+        has: page.getByRole('heading', { name: 'The assistant changed this document' }),
+      })
+      await expect(dialog).toBeVisible()
+      await dialog.getByRole('button', { name: 'Keep editing' }).click()
+      await expect(dialog).toBeHidden()
+      // The edits stay, the warning shows, and nothing was saved over the assistant's change.
+      await expect(page.locator('#field-name')).toHaveValue(`${tag.name} (mine)`)
+      await expect(drawer.getByText(/Saving will overwrite its change/)).toBeVisible()
+      const saved = await page.request.get(`/api/tags/${tag.id}?depth=0`)
+      expect(((await saved.json()) as { name: string }).name).toBe(assistantName)
+
+      // Changed their mind: reload with the assistant's change.
+      await drawer.getByRole('button', { name: 'Reload with its change' }).click()
+      await dialog.getByRole('button', { name: 'Reload and lose my edits' }).click()
+      await expect(page.locator('#field-name')).toHaveValue(assistantName)
+      await expect(drawer.getByText(/Saving will overwrite its change/)).toBeHidden()
+    } finally {
+      await page.request.delete(`/api/tags/${tag.id}`)
+    }
+  })
 })

@@ -212,6 +212,8 @@ describe("checks before a turn", () => {
       models: MODELS,
       defaultModel: MODELS[0]!.id,
       maxSteps: 10,
+      // `users` is named by its email, which the auth defaults redact.
+      redactedTitles: expect.any(Object),
     });
   });
 });

@@ -4,6 +4,7 @@ import {
   CHAT_ENDPOINT_PATH,
   CONFIG_ENDPOINT_PATH,
   CONVERSATIONS_ENDPOINT_PATH,
+  DOCUMENTS_ENDPOINT_PATH,
   STOP_ENDPOINT_PATH,
   USAGE_ENDPOINT_PATH,
 } from "../constants";
@@ -43,7 +44,7 @@ export function buildEndpoints(options: NormalizedAssistantOptions, deps: ChatDe
     {
       path: CONFIG_ENDPOINT_PATH,
       method: "get",
-      handler: guarded({}, async (_handlers, req) =>
+      handler: guarded({}, async (handlers, req) =>
         Response.json({
           configured: configuredFor(options, req),
           // Lets an end-to-end test check it talks to the scripted model, never OpenRouter.
@@ -51,6 +52,8 @@ export function buildEndpoints(options: NormalizedAssistantOptions, deps: ChatDe
           models: options.models,
           defaultModel: options.defaultModel,
           maxSteps: options.maxSteps,
+          // Collections whose title field is redacted (slug → singular label): their documents are named `User #12`.
+          redactedTitles: handlers.redactedTitlesOf(req, options),
         })
       ),
     },
@@ -62,6 +65,11 @@ export function buildEndpoints(options: NormalizedAssistantOptions, deps: ChatDe
     { path: CHAT_ENDPOINT_PATH, method: "get", handler: guarded({}, (h, req) => h.handleChatGet(req, options, deps)) },
     { path: APPROVALS_ENDPOINT_PATH, method: "get", handler: guarded({}, (h, req) => h.handleApprovals(req, options, deps)) },
     { path: USAGE_ENDPOINT_PATH, method: "get", handler: guarded({}, (h, req) => h.handleUsage(req, options, deps)) },
+    {
+      path: DOCUMENTS_ENDPOINT_PATH,
+      method: "get",
+      handler: guarded({}, (h, req) => h.handleSearchDocuments(req, options, deps)),
+    },
     { path: STOP_ENDPOINT_PATH, method: "post", handler: guarded({}, (h, req) => h.handleStop(req, options, deps)) },
     {
       path: CONVERSATIONS_ENDPOINT_PATH,

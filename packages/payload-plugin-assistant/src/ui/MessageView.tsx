@@ -3,6 +3,8 @@
 import { Collapsible, Link } from "@payloadcms/ui";
 import { TextPart } from "@tanstack/ai-react/ui";
 import React, { useMemo } from "react";
+import { messageReferences } from "../references";
+import { ReferenceChips } from "./ReferenceChips";
 import { ToolCallRow } from "./ToolCallRow";
 import type { DocumentRef, EntitySlugs, ToolCallLike, ToolResultLike } from "./tools";
 import { documentRefs } from "./tools";
@@ -12,6 +14,8 @@ export interface MessageLike {
   id: string;
   role: string;
   parts: ReadonlyArray<{ type: string; [key: string]: unknown }>;
+  /** `metadata.assistant` holds the documents a user message is about (#69). */
+  metadata?: unknown;
 }
 
 export interface MessageViewProps {
@@ -169,12 +173,17 @@ export function MessageView({ message, results, slugs, adminRoute, hrefFor, rend
   });
 
   if (!rendered.some(Boolean)) return null;
+  const refs = isUser ? messageReferences(message.metadata) : {};
+  const chipHref = (ref: DocumentRef) =>
+    (ref.kind === "global" ? slugs.globals : slugs.collections).has(ref.slug) ? hrefFor(ref) : undefined;
   return (
     <article
       aria-label={isUser ? "You" : "Assistant"}
       className={`assistant-message assistant-message--${isUser ? "user" : "assistant"}`}
     >
+      {refs.context ? <ReferenceChips hrefFor={chipHref} label="About" references={[refs.context]} /> : null}
       {rendered}
+      {refs.references ? <ReferenceChips hrefFor={chipHref} label="Mentioned" references={refs.references} /> : null}
     </article>
   );
 }

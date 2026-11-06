@@ -29,6 +29,10 @@
       "types": "./dist/admin/AssistantNavLink.d.ts",
       "default": "./dist/admin/AssistantNavLink.js"
     },
+    "./admin/AssistantDocumentControls": {
+      "types": "./dist/admin/AssistantDocumentControls.d.ts",
+      "default": "./dist/admin/AssistantDocumentControls.js"
+    },
     "./client": {
       "types": "./dist/client.d.ts",
       "default": "./dist/client.js"

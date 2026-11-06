@@ -24,3 +24,6 @@ export type {
   ProposalDocument,
   ProposalItem,
 } from "./approvals/types";
+export { AskAssistant, useDocumentRefresh, type AskAssistantProps } from "./ui/AskAssistant";
+export { ReferenceChips, type ReferenceChipsProps } from "./ui/ReferenceChips";
+export type { DocumentReference, DocumentReferenceInput, MessageReferences } from "./references";

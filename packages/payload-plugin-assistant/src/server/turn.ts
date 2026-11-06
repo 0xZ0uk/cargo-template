@@ -8,6 +8,7 @@ import type { ChatTurnBody, TurnContext, TurnRunner, TurnSettings } from "../con
 import { createPayloadToolSource, payloadToolsMcpOptions } from "../tools/payloadToolSource";
 import { withAssistantErrors } from "./errors";
 import { redactedMessageStore, turnPolicyMiddleware } from "./policy";
+import { withReferenceNotes } from "./referenceNotes";
 import { testModelAdapter } from "./testModel";
 
 /** Builds the model adapter for a turn. Default: OpenRouter. Tests pass `fakeText()`. */
@@ -124,6 +125,8 @@ export function createTurnRunner(options: TurnRunnerOptions = {}): TurnRunner {
           ...(context.recordUsage ? { recordUsage: context.recordUsage } : {}),
           ...(context.audit ? { audit: context.audit } : {}),
         }),
+        // The documents a message is about (#69), named after its text for the model only.
+        withReferenceNotes(),
       ],
     }) as AsyncIterable<StreamChunk>;
 
