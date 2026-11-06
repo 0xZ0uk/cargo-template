@@ -138,7 +138,10 @@ export const buildSocialTemplatesCollection = (
       description:
         'Reusable post templates. Each template is bound to a collection (source kind) and its placeholders are filled per source record at compose time.',
       group: 'Socials',
-      hidden: schemaOnly ? true : ({ user }) => !user,
+      // A function even when schema-only: Payload's dashboard `collection-query` widget lists
+      // collections whose `hidden` is not the literal `true`, and `payload-types.ts` carries
+      // that list, so a boolean here would make the generated types depend on `disabled`.
+      hidden: schemaOnly ? () => true : ({ user }) => !user,
       useAsTitle: 'name',
     },
     // Payload 4 versions collections by default; upstream (Payload 3) had none.

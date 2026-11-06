@@ -3,6 +3,7 @@ import { MetaTitleComponent as MetaTitleComponent_a8a977ebc872c5d5ea7ee689724c08
 import { MetaImageComponent as MetaImageComponent_a8a977ebc872c5d5ea7ee689724c0860 } from '@payloadcms/plugin-seo/client'
 import { MetaDescriptionComponent as MetaDescriptionComponent_a8a977ebc872c5d5ea7ee689724c0860 } from '@payloadcms/plugin-seo/client'
 import { PreviewComponent as PreviewComponent_a8a977ebc872c5d5ea7ee689724c0860 } from '@payloadcms/plugin-seo/client'
+import { SocialPublishPanelClient as SocialPublishPanelClient_5fd21c991680a0e7a8a18e6a7e9e5018 } from '@cargo/payload-plugin-socials/client'
 import { SeoAnalyzerField as SeoAnalyzerField_91407beeea43f355408968e66219c5e2 } from '@cargo/payload-seo-analyzer/client'
 import { LLMInstructionsMenuItem as LLMInstructionsMenuItem_3817bf644402e67bfe6577f60ef982de } from '@payloadcms/ui'
 import { OnPageAdminControls as OnPageAdminControls_a22e6095b62e0dad910a5e23238b0d49 } from '@cargo/onpage-plugin/admin'
@@ -19,6 +20,7 @@ import { ParagraphFeatureClient as ParagraphFeatureClient_e70f5e05f09f93e00b997e
 import { NullField as NullField_3817bf644402e67bfe6577f60ef982de } from '@payloadcms/ui'
 import { HierarchyField as HierarchyField_ab83ff7e88da8d3530831f296ec4756a } from '@payloadcms/ui/rsc'
 import { HierarchyButton as HierarchyButton_ab83ff7e88da8d3530831f296ec4756a } from '@payloadcms/ui/rsc'
+import { SocialTemplateFieldBuilder as SocialTemplateFieldBuilder_5fd21c991680a0e7a8a18e6a7e9e5018 } from '@cargo/payload-plugin-socials/client'
 import { LLMInstructionsDescription as LLMInstructionsDescription_3817bf644402e67bfe6577f60ef982de } from '@payloadcms/ui'
 import { OrderedListFeatureClient as OrderedListFeatureClient_e70f5e05f09f93e00b997edb1ef0c864 } from '@payloadcms/richtext-lexical/client'
 import { UnorderedListFeatureClient as UnorderedListFeatureClient_e70f5e05f09f93e00b997edb1ef0c864 } from '@payloadcms/richtext-lexical/client'
@@ -29,6 +31,8 @@ import { RowLabel as RowLabel_ec255a65fa6fa8d1faeb09cf35284224 } from '@/Header/
 import { RowLabel as RowLabel_1f6ff6ff633e3695d348f4f3c58f1466 } from '@/Footer/RowLabel'
 import { RowLabel as RowLabel_881d177759bf43ec466dd71c19bfba23 } from '@/blocks/shared/RowLabel'
 import { SeoNavLink as SeoNavLink_91407beeea43f355408968e66219c5e2 } from '@cargo/payload-seo-analyzer/client'
+import { SocialsDashboardWidget as SocialsDashboardWidget_5fd21c991680a0e7a8a18e6a7e9e5018 } from '@cargo/payload-plugin-socials/client'
+import { SocialsNavLink as SocialsNavLink_5fd21c991680a0e7a8a18e6a7e9e5018 } from '@cargo/payload-plugin-socials/client'
 import { FolderIcon as FolderIcon_3817bf644402e67bfe6577f60ef982de } from '@payloadcms/ui'
 import { HierarchySidebarTabServer as HierarchySidebarTabServer_ab83ff7e88da8d3530831f296ec4756a } from '@payloadcms/ui/rsc'
 import { TagIcon as TagIcon_3817bf644402e67bfe6577f60ef982de } from '@payloadcms/ui'
@@ -38,6 +42,7 @@ import { SeoConfigView as SeoConfigView_62b561af77a7161a5fa3ccf8464d9f5e } from 
 import { RedirectManagerView as RedirectManagerView_62b561af77a7161a5fa3ccf8464d9f5e } from '@cargo/payload-seo-analyzer/views'
 import { PerformanceView as PerformanceView_62b561af77a7161a5fa3ccf8464d9f5e } from '@cargo/payload-seo-analyzer/views'
 import { SchemaBuilderView as SchemaBuilderView_62b561af77a7161a5fa3ccf8464d9f5e } from '@cargo/payload-seo-analyzer/views'
+import { SocialsAdminView as SocialsAdminView_e8c522850b09674c08b7536a18d4e973 } from '@cargo/payload-plugin-socials/rsc'
 import { WelcomeWidget as WelcomeWidget_ab83ff7e88da8d3530831f296ec4756a } from '@payloadcms/ui/rsc'
 import { CollectionCards as CollectionCards_ab83ff7e88da8d3530831f296ec4756a } from '@payloadcms/ui/rsc'
 import { CollectionQueryWidget as CollectionQueryWidget_ab83ff7e88da8d3530831f296ec4756a } from '@payloadcms/ui/rsc'
@@ -55,6 +60,7 @@ export const importMap = {
   "@payloadcms/plugin-seo/client#MetaImageComponent": MetaImageComponent_a8a977ebc872c5d5ea7ee689724c0860,
   "@payloadcms/plugin-seo/client#MetaDescriptionComponent": MetaDescriptionComponent_a8a977ebc872c5d5ea7ee689724c0860,
   "@payloadcms/plugin-seo/client#PreviewComponent": PreviewComponent_a8a977ebc872c5d5ea7ee689724c0860,
+  "@cargo/payload-plugin-socials/client#SocialPublishPanelClient": SocialPublishPanelClient_5fd21c991680a0e7a8a18e6a7e9e5018,
   "@cargo/payload-seo-analyzer/client#SeoAnalyzerField": SeoAnalyzerField_91407beeea43f355408968e66219c5e2,
   "@payloadcms/ui#LLMInstructionsMenuItem": LLMInstructionsMenuItem_3817bf644402e67bfe6577f60ef982de,
   "@cargo/onpage-plugin/admin#OnPageAdminControls": OnPageAdminControls_a22e6095b62e0dad910a5e23238b0d49,
@@ -71,6 +77,7 @@ export const importMap = {
   "@payloadcms/ui#NullField": NullField_3817bf644402e67bfe6577f60ef982de,
   "@payloadcms/ui/rsc#HierarchyField": HierarchyField_ab83ff7e88da8d3530831f296ec4756a,
   "@payloadcms/ui/rsc#HierarchyButton": HierarchyButton_ab83ff7e88da8d3530831f296ec4756a,
+  "@cargo/payload-plugin-socials/client#SocialTemplateFieldBuilder": SocialTemplateFieldBuilder_5fd21c991680a0e7a8a18e6a7e9e5018,
   "@payloadcms/ui#LLMInstructionsDescription": LLMInstructionsDescription_3817bf644402e67bfe6577f60ef982de,
   "@payloadcms/richtext-lexical/client#OrderedListFeatureClient": OrderedListFeatureClient_e70f5e05f09f93e00b997edb1ef0c864,
   "@payloadcms/richtext-lexical/client#UnorderedListFeatureClient": UnorderedListFeatureClient_e70f5e05f09f93e00b997edb1ef0c864,
@@ -81,6 +88,8 @@ export const importMap = {
   "@/Footer/RowLabel#RowLabel": RowLabel_1f6ff6ff633e3695d348f4f3c58f1466,
   "@/blocks/shared/RowLabel#RowLabel": RowLabel_881d177759bf43ec466dd71c19bfba23,
   "@cargo/payload-seo-analyzer/client#SeoNavLink": SeoNavLink_91407beeea43f355408968e66219c5e2,
+  "@cargo/payload-plugin-socials/client#SocialsDashboardWidget": SocialsDashboardWidget_5fd21c991680a0e7a8a18e6a7e9e5018,
+  "@cargo/payload-plugin-socials/client#SocialsNavLink": SocialsNavLink_5fd21c991680a0e7a8a18e6a7e9e5018,
   "@payloadcms/ui#FolderIcon": FolderIcon_3817bf644402e67bfe6577f60ef982de,
   "@payloadcms/ui/rsc#HierarchySidebarTabServer": HierarchySidebarTabServer_ab83ff7e88da8d3530831f296ec4756a,
   "@payloadcms/ui#TagIcon": TagIcon_3817bf644402e67bfe6577f60ef982de,
@@ -90,6 +99,7 @@ export const importMap = {
   "@cargo/payload-seo-analyzer/views#RedirectManagerView": RedirectManagerView_62b561af77a7161a5fa3ccf8464d9f5e,
   "@cargo/payload-seo-analyzer/views#PerformanceView": PerformanceView_62b561af77a7161a5fa3ccf8464d9f5e,
   "@cargo/payload-seo-analyzer/views#SchemaBuilderView": SchemaBuilderView_62b561af77a7161a5fa3ccf8464d9f5e,
+  "@cargo/payload-plugin-socials/rsc#SocialsAdminView": SocialsAdminView_e8c522850b09674c08b7536a18d4e973,
   "@payloadcms/ui/rsc#WelcomeWidget": WelcomeWidget_ab83ff7e88da8d3530831f296ec4756a,
   "@payloadcms/ui/rsc#CollectionCards": CollectionCards_ab83ff7e88da8d3530831f296ec4756a,
   "@payloadcms/ui/rsc#CollectionQueryWidget": CollectionQueryWidget_ab83ff7e88da8d3530831f296ec4756a,

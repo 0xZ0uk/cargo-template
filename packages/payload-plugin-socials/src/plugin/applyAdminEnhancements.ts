@@ -84,6 +84,10 @@ export const applyAdminEnhancements = (
   const socialsCustom = {
     adminRoute: options.admin.route,
     apiBasePath: options.api.basePath,
+    // The components are registered either way (the import map must not depend on
+    // the encryption key); this tells them to show a notice instead of calling
+    // endpoints that a disabled plugin doesn't register.
+    disabled: options.disabled,
     enabledPlatforms: Object.entries(options.platforms)
       .filter(([, p]) => p.enabled)
       .map(([id]) => id),

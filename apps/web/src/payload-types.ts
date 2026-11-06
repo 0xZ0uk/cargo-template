@@ -165,6 +165,8 @@ export interface Config {
     tags: Tag;
     'seo-settings': SeoSetting;
     'seo-redirects': SeoRedirect;
+    'social-posts': SocialPost;
+    'social-templates': SocialTemplate;
     'payload-kv': PayloadKv;
     'payload-jobs': PayloadJob;
     'payload-locked-documents': PayloadLockedDocument;
@@ -182,6 +184,8 @@ export interface Config {
     tags: TagsSelect<false> | TagsSelect<true>;
     'seo-settings': SeoSettingsSelect<false> | SeoSettingsSelect<true>;
     'seo-redirects': SeoRedirectsSelect<false> | SeoRedirectsSelect<true>;
+    'social-posts': SocialPostsSelect<false> | SocialPostsSelect<true>;
+    'social-templates': SocialTemplatesSelect<false> | SocialTemplatesSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-jobs': PayloadJobsSelect<false> | PayloadJobsSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
@@ -196,11 +200,13 @@ export interface Config {
   globals: {
     header: Header;
     footer: Footer;
+    'socials-connections': SocialsConnection;
     'payload-jobs-stats': PayloadJobsStat;
   };
   globalsSelect: {
     header: HeaderSelect<false> | HeaderSelect<true>;
     footer: FooterSelect<false> | FooterSelect<true>;
+    'socials-connections': SocialsConnectionsSelect<false> | SocialsConnectionsSelect<true>;
     'payload-jobs-stats': PayloadJobsStatsSelect<false> | PayloadJobsStatsSelect<true>;
   };
   locale: 'en';
@@ -217,6 +223,11 @@ export interface Config {
       seoAuditContinue: TaskSeoAuditContinue;
       seoAlertsDigest: TaskSeoAlertsDigest;
       seoRetentionPurge: TaskSeoRetentionPurge;
+      socialPostPublish: SocialsPublishTaskInput;
+      socialPostRetry: SocialsRetryTaskInput;
+      socialInsightsRefresh: SocialsInsightsRefreshTaskInput;
+      socialConnectionRefresh: SocialsConnectionRefreshTaskInput;
+      socialPostSweep: SocialsSweepTaskInput;
       inline: {
         input: unknown;
         output: unknown;
@@ -1524,6 +1535,184 @@ export interface SeoRedirect {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "social-posts".
+ */
+export interface SocialPost {
+  id: number;
+  /**
+   * Stable idempotency hash. Format depends on platform but is always a hash of (platform, sourceKind, sourceId, destination, primary asset url).
+   */
+  idempotencyKey: string;
+  /**
+   * Content fingerprint of the outbound payload at publish time.
+   */
+  sourceHash: string;
+  platform: 'pinterest' | 'instagram' | 'facebook' | 'gbp';
+  sourceKind: string;
+  sourceId: string;
+  /**
+   * Snapshotted title at publish time.
+   */
+  title?: string | null;
+  /**
+   * Snapshotted body text at publish time.
+   */
+  body?: string | null;
+  altText?: string | null;
+  imageUrl?: string | null;
+  /**
+   * Outbound URL embedded in the post.
+   */
+  link?: string | null;
+  /**
+   * Account the post went to: board id, Instagram user id, Page id or Business Profile location resource name.
+   */
+  destinationId?: string | null;
+  /**
+   * Display label and channel-specific details of the destination.
+   */
+  destination?: {
+    label?: string | null;
+    meta?:
+      | {
+          [k: string]: unknown;
+        }
+      | unknown[]
+      | string
+      | number
+      | boolean
+      | null;
+  };
+  status:
+    'draft' | 'queued' | 'scheduled' | 'publishing' | 'unknown' | 'published' | 'failed' | 'cancelled' | 'deleted';
+  platformPublicationStatus?: ('pending' | 'publishing' | 'unknown' | 'published' | 'failed' | 'skipped') | null;
+  /**
+   * Platform-side id (pin id, fb post id, ig media id, gbp localPost name).
+   */
+  externalId?: string | null;
+  externalUrl?: string | null;
+  publishedAt?: string | null;
+  lastAttemptedAt?: string | null;
+  attempts?: number | null;
+  lastError?: string | null;
+  /**
+   * When the post should publish. Null for immediate publishes.
+   */
+  scheduledAt?: string | null;
+  /**
+   * Payload Jobs job id (when queued).
+   */
+  queuedJobId?: string | null;
+  /**
+   * Next attempt time for failed posts.
+   */
+  nextRetryAt?: string | null;
+  publishedBy?: (number | null) | User;
+  /**
+   * Free-form platform-specific metadata.
+   */
+  meta?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  /**
+   * Last fetched per-post analytics snapshot.
+   */
+  insightsSnapshot?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  insightsFetchedAt?: string | null;
+  createdBy?: {
+    relationTo: 'users';
+    value: number | User;
+  } | null;
+  updatedBy?: {
+    relationTo: 'users';
+    value: number | User;
+  } | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * Reusable post templates. Each template is bound to a collection (source kind) and its placeholders are filled per source record at compose time.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "social-templates".
+ */
+export interface SocialTemplate {
+  id: number;
+  name: string;
+  /**
+   * The collection (source kind) this template is built from. The builder offers that collection’s fields, and the composer only shows this template when publishing from that collection.
+   */
+  sourceKind: 'page';
+  /**
+   * Default for this collection. When set, the composer auto-applies this template for its source kind (still honoring the platform filter below). Only one template per source kind can be the default.
+   */
+  isDefault?: boolean | null;
+  /**
+   * Internal note describing when to use this template.
+   */
+  description?: string | null;
+  enabled?: boolean | null;
+  /**
+   * Platforms this template is intended for (informational).
+   */
+  appliesTo?: ('pinterest' | 'instagram' | 'facebook' | 'gbp')[] | null;
+  templates?: {
+    /**
+     * Template for "pinterestTitle". Use the builder to pick tokens from the resolved scope and apply filters. Tokens must be mapped by the host's SourceContextResolver to produce output — fields not exposed via the resolver's metadata map will render as empty.
+     */
+    pinterestTitle?: string | null;
+    /**
+     * Template for "pinterestDescription". Use the builder to pick tokens from the resolved scope and apply filters. Tokens must be mapped by the host's SourceContextResolver to produce output — fields not exposed via the resolver's metadata map will render as empty.
+     */
+    pinterestDescription?: string | null;
+    /**
+     * Template for "pinterestAltText". Use the builder to pick tokens from the resolved scope and apply filters. Tokens must be mapped by the host's SourceContextResolver to produce output — fields not exposed via the resolver's metadata map will render as empty.
+     */
+    pinterestAltText?: string | null;
+    /**
+     * Space or comma separated tags; a leading # is added automatically. Use the builder to construct the template.
+     */
+    pinterestHashtags?: string | null;
+    /**
+     * Template for "instagramCaption". Use the builder to pick tokens from the resolved scope and apply filters. Tokens must be mapped by the host's SourceContextResolver to produce output — fields not exposed via the resolver's metadata map will render as empty.
+     */
+    instagramCaption?: string | null;
+    /**
+     * Template for "facebookMessage". Use the builder to pick tokens from the resolved scope and apply filters. Tokens must be mapped by the host's SourceContextResolver to produce output — fields not exposed via the resolver's metadata map will render as empty.
+     */
+    facebookMessage?: string | null;
+    /**
+     * Template for "gbpSummary". Use the builder to pick tokens from the resolved scope and apply filters. Tokens must be mapped by the host's SourceContextResolver to produce output — fields not exposed via the resolver's metadata map will render as empty.
+     */
+    gbpSummary?: string | null;
+  };
+  createdBy?: {
+    relationTo: 'users';
+    value: number | User;
+  } | null;
+  updatedBy?: {
+    relationTo: 'users';
+    value: number | User;
+  } | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
@@ -1600,7 +1789,16 @@ export interface PayloadJob {
     | {
         executedAt: string;
         completedAt: string;
-        taskSlug: 'inline' | 'seoAuditContinue' | 'seoAlertsDigest' | 'seoRetentionPurge';
+        taskSlug:
+          | 'inline'
+          | 'seoAuditContinue'
+          | 'seoAlertsDigest'
+          | 'seoRetentionPurge'
+          | 'socialPostPublish'
+          | 'socialPostRetry'
+          | 'socialInsightsRefresh'
+          | 'socialConnectionRefresh'
+          | 'socialPostSweep';
         taskID: string;
         input:
           | {
@@ -1631,13 +1829,37 @@ export interface PayloadJob {
           | boolean
           | null;
         parent?: {
-          taskSlug?: ('inline' | 'seoAuditContinue' | 'seoAlertsDigest' | 'seoRetentionPurge') | null;
+          taskSlug?:
+            | (
+                | 'inline'
+                | 'seoAuditContinue'
+                | 'seoAlertsDigest'
+                | 'seoRetentionPurge'
+                | 'socialPostPublish'
+                | 'socialPostRetry'
+                | 'socialInsightsRefresh'
+                | 'socialConnectionRefresh'
+                | 'socialPostSweep'
+              )
+            | null;
           taskID?: string | null;
         };
         id?: string | null;
       }[]
     | null;
-  taskSlug?: ('inline' | 'seoAuditContinue' | 'seoAlertsDigest' | 'seoRetentionPurge') | null;
+  taskSlug?:
+    | (
+        | 'inline'
+        | 'seoAuditContinue'
+        | 'seoAlertsDigest'
+        | 'seoRetentionPurge'
+        | 'socialPostPublish'
+        | 'socialPostRetry'
+        | 'socialInsightsRefresh'
+        | 'socialConnectionRefresh'
+        | 'socialPostSweep'
+      )
+    | null;
   queue?: string | null;
   waitUntil?: string | null;
   processingUntil?: string | null;
@@ -1687,6 +1909,14 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'seo-redirects';
         value: number | SeoRedirect;
+      } | null)
+    | ({
+        relationTo: 'social-posts';
+        value: number | SocialPost;
+      } | null)
+    | ({
+        relationTo: 'social-templates';
+        value: number | SocialTemplate;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -1962,6 +2192,75 @@ export interface SeoRedirectsSelect<T extends boolean = true> {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "social-posts_select".
+ */
+export interface SocialPostsSelect<T extends boolean = true> {
+  idempotencyKey?: T;
+  sourceHash?: T;
+  platform?: T;
+  sourceKind?: T;
+  sourceId?: T;
+  title?: T;
+  body?: T;
+  altText?: T;
+  imageUrl?: T;
+  link?: T;
+  destinationId?: T;
+  destination?:
+    | T
+    | {
+        label?: T;
+        meta?: T;
+      };
+  status?: T;
+  platformPublicationStatus?: T;
+  externalId?: T;
+  externalUrl?: T;
+  publishedAt?: T;
+  lastAttemptedAt?: T;
+  attempts?: T;
+  lastError?: T;
+  scheduledAt?: T;
+  queuedJobId?: T;
+  nextRetryAt?: T;
+  publishedBy?: T;
+  meta?: T;
+  insightsSnapshot?: T;
+  insightsFetchedAt?: T;
+  createdBy?: T;
+  updatedBy?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "social-templates_select".
+ */
+export interface SocialTemplatesSelect<T extends boolean = true> {
+  name?: T;
+  sourceKind?: T;
+  isDefault?: T;
+  description?: T;
+  enabled?: T;
+  appliesTo?: T;
+  templates?:
+    | T
+    | {
+        pinterestTitle?: T;
+        pinterestDescription?: T;
+        pinterestAltText?: T;
+        pinterestHashtags?: T;
+        instagramCaption?: T;
+        facebookMessage?: T;
+        gbpSummary?: T;
+      };
+  createdBy?: T;
+  updatedBy?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv_select".
  */
 export interface PayloadKvSelect<T extends boolean = true> {
@@ -2122,6 +2421,212 @@ export interface Footer {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "socials-connections".
+ */
+export interface SocialsConnection {
+  id: number;
+  pinterest?: {
+    state?: {
+      connected?: boolean | null;
+      accountId?: string | null;
+      accountLabel?: string | null;
+      accessTokenExpiresAt?: string | null;
+      refreshTokenExpiresAt?: string | null;
+      scopes?:
+        | {
+            value: string;
+            id?: string | null;
+          }[]
+        | null;
+      lastError?: string | null;
+      lastRefreshedAt?: string | null;
+    };
+    /**
+     * Encrypted at rest with AES-256-GCM. Never displayed in plaintext.
+     */
+    accessToken?: {
+      version?: number | null;
+      iv?: string | null;
+      ciphertext?: string | null;
+      authTag?: string | null;
+    };
+    /**
+     * Encrypted at rest with AES-256-GCM. Never displayed in plaintext.
+     */
+    refreshToken?: {
+      version?: number | null;
+      iv?: string | null;
+      ciphertext?: string | null;
+      authTag?: string | null;
+    };
+    /**
+     * Plugin-managed per-platform metadata (account id, page id, etc.).
+     */
+    extra?:
+      | {
+          [k: string]: unknown;
+        }
+      | unknown[]
+      | string
+      | number
+      | boolean
+      | null;
+  };
+  instagram?: {
+    state?: {
+      connected?: boolean | null;
+      accountId?: string | null;
+      accountLabel?: string | null;
+      accessTokenExpiresAt?: string | null;
+      refreshTokenExpiresAt?: string | null;
+      scopes?:
+        | {
+            value: string;
+            id?: string | null;
+          }[]
+        | null;
+      lastError?: string | null;
+      lastRefreshedAt?: string | null;
+    };
+    /**
+     * Encrypted at rest with AES-256-GCM. Never displayed in plaintext.
+     */
+    accessToken?: {
+      version?: number | null;
+      iv?: string | null;
+      ciphertext?: string | null;
+      authTag?: string | null;
+    };
+    /**
+     * Encrypted at rest with AES-256-GCM. Never displayed in plaintext.
+     */
+    refreshToken?: {
+      version?: number | null;
+      iv?: string | null;
+      ciphertext?: string | null;
+      authTag?: string | null;
+    };
+    /**
+     * Plugin-managed per-platform metadata (account id, page id, etc.).
+     */
+    extra?:
+      | {
+          [k: string]: unknown;
+        }
+      | unknown[]
+      | string
+      | number
+      | boolean
+      | null;
+  };
+  facebook?: {
+    state?: {
+      connected?: boolean | null;
+      accountId?: string | null;
+      accountLabel?: string | null;
+      accessTokenExpiresAt?: string | null;
+      refreshTokenExpiresAt?: string | null;
+      scopes?:
+        | {
+            value: string;
+            id?: string | null;
+          }[]
+        | null;
+      lastError?: string | null;
+      lastRefreshedAt?: string | null;
+    };
+    /**
+     * Encrypted at rest with AES-256-GCM. Never displayed in plaintext.
+     */
+    accessToken?: {
+      version?: number | null;
+      iv?: string | null;
+      ciphertext?: string | null;
+      authTag?: string | null;
+    };
+    /**
+     * Encrypted at rest with AES-256-GCM. Never displayed in plaintext.
+     */
+    refreshToken?: {
+      version?: number | null;
+      iv?: string | null;
+      ciphertext?: string | null;
+      authTag?: string | null;
+    };
+    /**
+     * Plugin-managed per-platform metadata (account id, page id, etc.).
+     */
+    extra?:
+      | {
+          [k: string]: unknown;
+        }
+      | unknown[]
+      | string
+      | number
+      | boolean
+      | null;
+  };
+  gbp?: {
+    state?: {
+      connected?: boolean | null;
+      accountId?: string | null;
+      accountLabel?: string | null;
+      accessTokenExpiresAt?: string | null;
+      refreshTokenExpiresAt?: string | null;
+      scopes?:
+        | {
+            value: string;
+            id?: string | null;
+          }[]
+        | null;
+      lastError?: string | null;
+      lastRefreshedAt?: string | null;
+    };
+    /**
+     * Encrypted at rest with AES-256-GCM. Never displayed in plaintext.
+     */
+    accessToken?: {
+      version?: number | null;
+      iv?: string | null;
+      ciphertext?: string | null;
+      authTag?: string | null;
+    };
+    /**
+     * Encrypted at rest with AES-256-GCM. Never displayed in plaintext.
+     */
+    refreshToken?: {
+      version?: number | null;
+      iv?: string | null;
+      ciphertext?: string | null;
+      authTag?: string | null;
+    };
+    /**
+     * Plugin-managed per-platform metadata (account id, page id, etc.).
+     */
+    extra?:
+      | {
+          [k: string]: unknown;
+        }
+      | unknown[]
+      | string
+      | number
+      | boolean
+      | null;
+  };
+  lastBoardsRefreshAt?: string | null;
+  createdBy?: {
+    relationTo: 'users';
+    value: number | User;
+  } | null;
+  updatedBy?: {
+    relationTo: 'users';
+    value: number | User;
+  } | null;
+  updatedAt?: string | null;
+  createdAt?: string | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-jobs-stats".
  */
 export interface PayloadJobsStat {
@@ -2190,6 +2695,170 @@ export interface FooterSelect<T extends boolean = true> {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "socials-connections_select".
+ */
+export interface SocialsConnectionsSelect<T extends boolean = true> {
+  pinterest?:
+    | T
+    | {
+        state?:
+          | T
+          | {
+              connected?: T;
+              accountId?: T;
+              accountLabel?: T;
+              accessTokenExpiresAt?: T;
+              refreshTokenExpiresAt?: T;
+              scopes?:
+                | T
+                | {
+                    value?: T;
+                    id?: T;
+                  };
+              lastError?: T;
+              lastRefreshedAt?: T;
+            };
+        accessToken?:
+          | T
+          | {
+              version?: T;
+              iv?: T;
+              ciphertext?: T;
+              authTag?: T;
+            };
+        refreshToken?:
+          | T
+          | {
+              version?: T;
+              iv?: T;
+              ciphertext?: T;
+              authTag?: T;
+            };
+        extra?: T;
+      };
+  instagram?:
+    | T
+    | {
+        state?:
+          | T
+          | {
+              connected?: T;
+              accountId?: T;
+              accountLabel?: T;
+              accessTokenExpiresAt?: T;
+              refreshTokenExpiresAt?: T;
+              scopes?:
+                | T
+                | {
+                    value?: T;
+                    id?: T;
+                  };
+              lastError?: T;
+              lastRefreshedAt?: T;
+            };
+        accessToken?:
+          | T
+          | {
+              version?: T;
+              iv?: T;
+              ciphertext?: T;
+              authTag?: T;
+            };
+        refreshToken?:
+          | T
+          | {
+              version?: T;
+              iv?: T;
+              ciphertext?: T;
+              authTag?: T;
+            };
+        extra?: T;
+      };
+  facebook?:
+    | T
+    | {
+        state?:
+          | T
+          | {
+              connected?: T;
+              accountId?: T;
+              accountLabel?: T;
+              accessTokenExpiresAt?: T;
+              refreshTokenExpiresAt?: T;
+              scopes?:
+                | T
+                | {
+                    value?: T;
+                    id?: T;
+                  };
+              lastError?: T;
+              lastRefreshedAt?: T;
+            };
+        accessToken?:
+          | T
+          | {
+              version?: T;
+              iv?: T;
+              ciphertext?: T;
+              authTag?: T;
+            };
+        refreshToken?:
+          | T
+          | {
+              version?: T;
+              iv?: T;
+              ciphertext?: T;
+              authTag?: T;
+            };
+        extra?: T;
+      };
+  gbp?:
+    | T
+    | {
+        state?:
+          | T
+          | {
+              connected?: T;
+              accountId?: T;
+              accountLabel?: T;
+              accessTokenExpiresAt?: T;
+              refreshTokenExpiresAt?: T;
+              scopes?:
+                | T
+                | {
+                    value?: T;
+                    id?: T;
+                  };
+              lastError?: T;
+              lastRefreshedAt?: T;
+            };
+        accessToken?:
+          | T
+          | {
+              version?: T;
+              iv?: T;
+              ciphertext?: T;
+              authTag?: T;
+            };
+        refreshToken?:
+          | T
+          | {
+              version?: T;
+              iv?: T;
+              ciphertext?: T;
+              authTag?: T;
+            };
+        extra?: T;
+      };
+  lastBoardsRefreshAt?: T;
+  createdBy?: T;
+  updatedBy?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  globalType?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-jobs-stats_select".
  */
 export interface PayloadJobsStatsSelect<T extends boolean = true> {
@@ -2225,7 +2894,17 @@ export interface CollectionsWidget {
 export interface CollectionQueryWidget {
   data?: {
     title?: string | null;
-    relatedCollection: 'pages' | 'sections' | 'users' | 'media' | 'folders' | 'tags' | 'seo-settings' | 'seo-redirects';
+    relatedCollection:
+      | 'pages'
+      | 'sections'
+      | 'users'
+      | 'media'
+      | 'folders'
+      | 'tags'
+      | 'seo-settings'
+      | 'seo-redirects'
+      | 'social-posts'
+      | 'social-templates';
     where?:
       | {
           [k: string]: unknown;
@@ -2248,7 +2927,19 @@ export interface CollectionQueryWidget {
 export interface ActivityWidget {
   data?: {
     excludedCollections?:
-      ('pages' | 'sections' | 'users' | 'media' | 'folders' | 'tags' | 'seo-settings' | 'seo-redirects')[] | null;
+      | (
+          | 'pages'
+          | 'sections'
+          | 'users'
+          | 'media'
+          | 'folders'
+          | 'tags'
+          | 'seo-settings'
+          | 'seo-redirects'
+          | 'social-posts'
+          | 'social-templates'
+        )[]
+      | null;
   };
   width: 'small' | 'medium' | 'large' | 'x-large' | 'full';
 }
@@ -2283,6 +2974,46 @@ export interface TaskSeoAlertsDigest {
  * via the `definition` "TaskSeoRetentionPurge".
  */
 export interface TaskSeoRetentionPurge {
+  input?: unknown;
+  output?: unknown;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "SocialsPublishTaskInput".
+ */
+export interface SocialsPublishTaskInput {
+  input?: unknown;
+  output?: unknown;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "SocialsRetryTaskInput".
+ */
+export interface SocialsRetryTaskInput {
+  input?: unknown;
+  output?: unknown;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "SocialsInsightsRefreshTaskInput".
+ */
+export interface SocialsInsightsRefreshTaskInput {
+  input?: unknown;
+  output?: unknown;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "SocialsConnectionRefreshTaskInput".
+ */
+export interface SocialsConnectionRefreshTaskInput {
+  input?: unknown;
+  output?: unknown;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "SocialsSweepTaskInput".
+ */
+export interface SocialsSweepTaskInput {
   input?: unknown;
   output?: unknown;
 }

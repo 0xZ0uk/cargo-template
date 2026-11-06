@@ -6,9 +6,9 @@ import React, { useCallback, useEffect, useState } from 'react'
 import type { ConnectionState } from '../types/index.js'
 
 import { PLATFORM_IDS, PLATFORM_LABELS, type PlatformId } from '../constants.js'
-import { resolveSocialsEndpointBase } from './accessModel.js'
+import { isSocialsDisabled, resolveSocialsEndpointBase } from './accessModel.js'
 import { connectionButtonLabel, describeConnectionRow } from './connectionRowModel.js'
-import { Card, Dot, LoadingState } from './ui/index.js'
+import { Card, DisabledNotice, Dot, LoadingState } from './ui/index.js'
 import { useSocialsAccess } from './useSocialsAccess.js'
 import './ui/styles.css'
 import './socials.css'
@@ -31,6 +31,19 @@ const asRecord = (value: unknown): Record<string, unknown> | undefined =>
  * unauthorized user never sees the panel, and never sees a toast.
  */
 export const SocialsDashboardWidget: React.FC<Props> = (props) => {
+  const { config } = useConfig()
+  // Disabled: the access and connections endpoints aren't registered, so show the
+  // notice instead of probing them.
+  return isSocialsDisabled(config) ? (
+    <Card title="Social connections">
+      <DisabledNotice />
+    </Card>
+  ) : (
+    <SocialsDashboardWidgetGated {...props} />
+  )
+}
+
+const SocialsDashboardWidgetGated: React.FC<Props> = (props) => {
   const { config } = useConfig()
   const { admin, loading } = useSocialsAccess(resolveSocialsEndpointBase(config))
   if (loading || !admin) {

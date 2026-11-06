@@ -18,6 +18,7 @@ vi.mock('../SocialsAdminViewClientRef.js', async () => import('../SocialsAdminVi
 import { SocialsAdminView } from '../SocialsAdminView.js'
 import { SocialsAdminViewClient } from '../SocialsAdminViewClient.js'
 import { SocialsDashboardWidget } from '../SocialsDashboardWidget.js'
+import { SocialsNavLink } from '../SocialsNavLink.js'
 import { SocialTemplateFieldBuilder } from '../SocialTemplateFieldBuilder.js'
 import { SocialPublishPanelClient } from '../SourceSocialsPanelClient.js'
 import { StandaloneSocialComposer } from '../StandaloneSocialComposer.js'
@@ -459,6 +460,68 @@ describe('SocialTemplateFieldBuilder', () => {
     )
     const alert = await screen.findByRole('alert', {}, { timeout: 2000 })
     expect(alert.querySelector('.banner--type-danger')?.textContent).toBe('Record not found')
+  })
+})
+
+/* ---------------------------------------------------------------------------- */
+
+describe('when the plugin is disabled', () => {
+  const NOTICE = 'Socials is turned off. Set its encryption key to enable it.'
+  const disable = () => {
+    ;(stubState.config.admin.custom.socials as Record<string, unknown>).disabled = true
+  }
+
+  it('shows the notice on the dashboard widget without calling any endpoint', () => {
+    disable()
+    const fetchMock = mockFetch({})
+    render(<SocialsDashboardWidget />)
+    expect(screen.getByText(NOTICE)).toBeTruthy()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('shows the notice on the Socials tab and the standalone composer, without calling endpoints', () => {
+    disable()
+    const fetchMock = mockFetch({})
+    const { unmount } = render(<SocialPublishPanelClient sourceKind="product" />)
+    expect(screen.getByText(NOTICE)).toBeTruthy()
+    unmount()
+    render(<SocialPublishPanelClient mode="standalone" />)
+    expect(screen.getByText(NOTICE)).toBeTruthy()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('renders no nav link and probes nothing', () => {
+    disable()
+    const fetchMock = mockFetch({})
+    const { container } = render(<SocialsNavLink />)
+    expect(container.innerHTML).toBe('')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('shows the notice instead of the client island in the /admin/socials view', async () => {
+    const props = {
+      initPageResult: {
+        locale: undefined,
+        permissions: {},
+        req: {
+          i18n: {},
+          payload: {
+            config: { custom: { socials: { authorize: () => true, disabled: true } }, routes: {} },
+          },
+          user: { id: 1 },
+        },
+        visibleEntities: {},
+      },
+      params: {},
+      searchParams: {},
+      server: { redirect: vi.fn() },
+    }
+    const element = await (SocialsAdminView as unknown as (p: unknown) => Promise<React.ReactElement>)(
+      props,
+    )
+    render(element)
+    expect(screen.getByText(NOTICE)).toBeTruthy()
+    expect(screen.queryByRole('tablist')).toBeNull()
   })
 })
 

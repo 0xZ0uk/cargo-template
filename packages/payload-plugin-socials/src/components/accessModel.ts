@@ -42,3 +42,14 @@ export const resolveSocialsEndpointBase = (config: unknown): string => {
   const basePath = typeof socials?.apiBasePath === 'string' ? socials.apiBasePath : '/socials'
   return `${apiRoute.replace(/\/$/, '')}${basePath}`
 }
+
+/**
+ * True when the plugin runs `disabled` (the host turned it off, e.g. no encryption
+ * key). The flag travels in the client-serialized `admin.custom.socials`, so the
+ * admin components stay registered in both modes and just show a notice instead of
+ * calling endpoints that don't exist.
+ */
+export const isSocialsDisabled = (config: unknown): boolean => {
+  const socials = asRecord(asRecord(asRecord(asRecord(config)?.admin)?.custom)?.socials)
+  return socials?.disabled === true
+}

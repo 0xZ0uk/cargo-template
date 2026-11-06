@@ -26,6 +26,7 @@ import type { Page } from './payload-types'
 import { limitVersions } from './plugins/limitVersions'
 import { r2SeoCacheStore } from './plugins/seoCacheStore'
 import { workersSeoRateLimit } from './plugins/seoRateLimit'
+import { SocialsPlugin } from './plugins/socials'
 import { pagePath } from './utilities/pagePath'
 import { siteName } from './utilities/siteName'
 
@@ -220,6 +221,11 @@ export default buildConfig({
       },
       session: tanstackSession({ secret }),
     }),
+    // Social publishing (packages/payload-plugin-socials): a Socials tab on Pages and a
+    // composer at /admin/socials, Pinterest only. Disabled until SOCIALS_ENCRYPTION_KEY is set;
+    // the schema is the same either way. The Cron Trigger runs its queue (src/server.ts).
+    SocialsPlugin,
+    // Last, so the cap also covers collections the plugins above add.
     limitVersions({ max: 20 }),
   ],
 })

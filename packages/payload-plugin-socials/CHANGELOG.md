@@ -8,8 +8,14 @@ All notable changes to this project are documented here. The format follows [Kee
 
 - The admin UI (`/admin/socials`, the dashboard widget, the Socials tab, the standalone composer and the template builder) is rebuilt on `@payloadcms/ui` components and Payload 4 tokens, following the SEO analyzer's UI rules; `socials.css` keeps only what the components don't cover. Behaviour is unchanged. Platform tabs no longer use per-platform brand colours.
 
+- `disabled` no longer changes the admin component paths. It registers the nav link, the `/admin/socials` view, the dashboard widget and the Socials tab on `injectInto` collections like the enabled mode does, so Payload's generated import map is identical with and without the encryption key. The components read `admin.custom.socials.disabled` and show "Socials is turned off. Set its encryption key to enable it." (the nav link shows nothing) instead of calling endpoints; endpoints, jobs, hooks, scheduling and access are unchanged.
+
+- `disabled` now registers the same job task definitions as the enabled mode (slugs, `inputSchema`, `outputSchema`, `interfaceName`, retries), so everything Payload derives from them (the `Socials*TaskInput` types in `payload-types.ts`, the `payload-jobs` task-slug options) is the same with and without the encryption key. The tasks have no `schedule` and a handler that needs no options or key and touches no platform: it throws ("socials is disabled"), so Payload records the job as failed after the task's retries (Payload 4 logs a returned `{ state: 'failed' }` as succeeded). Nothing queues them while disabled (no endpoints, hooks or scheduling). A failure rather than a silent no-op, so a job queued by hand or left over from an enabled deploy is not reported as published.
+- In `disabled`, `social-posts` and `social-templates` set `admin.hidden` to `() => true` instead of `true`. Payload's dashboard `collection-query` widget lists collections whose `hidden` is not the literal `true`, so the boolean made the generated types depend on `disabled`. They stay hidden.
+
 ### Fixed
 
+- The Socials tab on a source document shows "No platform is enabled" when no platform is enabled, instead of loading a Pinterest composer whose requests fail with "platform is not enabled".
 - Composer channel chips: the checkbox sits inline with its label instead of stacking above it.
 
 ## [0.12.0-beta.0] - 2026-11-04
