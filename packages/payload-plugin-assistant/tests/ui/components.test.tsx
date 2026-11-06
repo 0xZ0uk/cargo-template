@@ -9,6 +9,7 @@ import { ApprovalControl, type PendingApproval } from "../../src/ui/ApprovalCont
 import { AssistantNavLinkClient } from "../../src/ui/AssistantNavLinkClient";
 import { Composer, type ComposerProps } from "../../src/ui/Composer";
 import { ConversationList } from "../../src/ui/ConversationList";
+import { chatBodyState, EmptyConversation, EXAMPLE_PROMPTS } from "../../src/ui/EmptyConversation";
 import { collectToolResults, MessageView, type MessageLike } from "../../src/ui/MessageView";
 
 afterEach(cleanup);
@@ -312,5 +313,31 @@ describe("nav link (client half)", () => {
     const link = screen.getByRole("link", { name: "Chat" });
     expect(link.getAttribute("href")).toBe("/admin/assistant");
     expect(link.getAttribute("aria-current")).toBe("page");
+  });
+});
+
+describe("an empty conversation (#116)", () => {
+  it("shows what the assistant does and example prompts; picking one fills the composer", () => {
+    const onPick = vi.fn();
+    render(<EmptyConversation onPick={onPick} />);
+    expect(screen.getByRole("heading", { name: "What can I help with?" })).toBeTruthy();
+    const examples = within(screen.getByRole("list", { name: "Example questions" })).getAllByRole("button");
+    expect(examples.map((b) => b.textContent)).toEqual([...EXAMPLE_PROMPTS]);
+    fireEvent.click(examples[1]!);
+    expect(onPick).toHaveBeenCalledWith(EXAMPLE_PROMPTS[1]);
+    // Payload components, no placeholders.
+    expect(document.querySelector(".shimmer-effect")).toBeNull();
+  });
+
+  it("no examples when sending isn't possible", () => {
+    render(<EmptyConversation examples={false} onPick={() => {}} />);
+    expect(screen.queryByRole("list", { name: "Example questions" })).toBeNull();
+  });
+
+  it("placeholders only while an existing conversation loads", () => {
+    expect(chatBodyState({ isHydrating: true, isNew: true, messageCount: 0 })).toBe("empty");
+    expect(chatBodyState({ isHydrating: false, isNew: false, messageCount: 0 })).toBe("empty");
+    expect(chatBodyState({ isHydrating: true, isNew: false, messageCount: 0 })).toBe("loading");
+    expect(chatBodyState({ isHydrating: true, isNew: false, messageCount: 2 })).toBe("messages");
   });
 });

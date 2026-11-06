@@ -731,6 +731,11 @@ The reply is over when the stream ends (`isLoading`), not at a `RUN_FINISHED` (o
 
 ### What it shows
 
+- **A new conversation** (`EmptyConversation`): "What can I help with?", what the assistant does,
+  and three example prompts (Payload `Button`s) that fill the composer without sending. Shown at
+  once for a thread the view just created: `ShimmerEffect` placeholders only while an existing
+  conversation loads (`chatBodyState`, #116), since a fresh id has nothing stored. No examples while
+  the assistant isn't configured.
 - **Text**: Markdown via `TextPart` from `@tanstack/ai-react/ui`, i.e. `@tanstack/markdown`
   0.0.13, which `ai-react` already depends on (no new package): raw HTML is escaped, executable
   URLs (`javascript:`, `data:`…) are dropped. Links to admin paths, or to admin URLs on this origin,

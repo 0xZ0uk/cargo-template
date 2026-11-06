@@ -84,11 +84,16 @@ export function AssistantChat({
   // Read after mount (the URL isn't known while rendering on the server). A new conversation gets
   // a fresh id and exists once its first turn is sent.
   const [threadId, setThreadId] = useState<string | null>(null);
+  // The thread this view minted and hasn't sent yet: there is nothing stored to load.
+  const [newThread, setNewThread] = useState<string | null>(null);
   const [model, setModel] = useState<string>("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
-    setThreadId(readThreadFromUrl() ?? newThreadId());
+    const fromUrl = readThreadFromUrl();
+    const id = fromUrl ?? newThreadId();
+    setThreadId(id);
+    if (!fromUrl) setNewThread(id);
   }, []);
 
   useEffect(() => {
@@ -130,14 +135,17 @@ export function AssistantChat({
   }, []);
 
   const startNew = useCallback(() => {
-    setThreadId(newThreadId());
+    const id = newThreadId();
+    setThreadId(id);
+    setNewThread(id);
     writeThreadToUrl(undefined);
     setSidebarOpen(false);
   }, []);
 
   const onActivity = useCallback(() => {
-    // The first turn creates the conversation: from now on the URL names it.
+    // The first turn creates the conversation: from now on the URL names it, and reopening it loads it.
     if (threadId) writeThreadToUrl(threadId);
+    setNewThread(null);
     void refreshList();
   }, [refreshList, threadId]);
 
@@ -242,6 +250,7 @@ export function AssistantChat({
             ApprovalComponent={ApprovalComponent}
             configured={configured}
             hrefFor={hrefFor}
+            isNew={threadId === newThread}
             key={threadId}
             model={model || clientConfig?.defaultModel || ""}
             models={clientConfig?.models ?? []}

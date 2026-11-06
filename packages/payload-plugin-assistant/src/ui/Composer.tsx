@@ -18,6 +18,8 @@ export interface ComposerProps {
   models: AssistantModelOption[];
   model: string;
   onModelChange: (model: string) => void;
+  /** The textarea, e.g. to focus it after an example prompt filled it in. */
+  inputRef?: React.Ref<HTMLTextAreaElement>;
 }
 
 /**
@@ -35,6 +37,7 @@ export function Composer({
   models,
   model,
   onModelChange,
+  inputRef,
 }: ComposerProps) {
   const inputId = useId();
   const modelId = useId();
@@ -65,6 +68,7 @@ export function Composer({
         id={inputId}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={onKeyDown}
+        ref={inputRef}
         placeholder="Ask about your content…"
         rows={3}
         value={value}

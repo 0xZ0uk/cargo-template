@@ -12,6 +12,7 @@ import type { AssistantNotice } from "./errors";
 import { noticeForClientError, noticeForRunError } from "./errors";
 import type { MessageLike } from "./MessageView";
 import { collectToolResults, MessageView } from "./MessageView";
+import { chatBodyState, EmptyConversation } from "./EmptyConversation";
 import type { DocumentRef, EntitySlugs, ToolCallLike, ToolResultLike } from "./tools";
 
 /** The text of a user message's parts. */
@@ -26,6 +27,8 @@ export interface ChatPanelProps {
   apiRoute: string;
   adminRoute: string;
   threadId: string;
+  /** This view just created the thread (nothing stored yet): show the empty state, not placeholders. */
+  isNew?: boolean;
   configured: boolean;
   models: AssistantModelOption[];
   model: string;
@@ -52,6 +55,7 @@ export function ChatPanel({
   apiRoute,
   adminRoute,
   threadId,
+  isNew = false,
   configured,
   models,
   model,
@@ -67,6 +71,7 @@ export function ChatPanel({
   const [runNotice, setRunNotice] = useState<AssistantNotice | null>(null);
   const [draft, setDraft] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const stickToBottom = useRef(true);
   const onActivityRef = useRef(onActivity);
   onActivityRef.current = onActivity;
@@ -105,6 +110,7 @@ export function ChatPanel({
   }, [streaming]);
 
   const messages = chat.messages as unknown as ReadonlyArray<MessageLike>;
+  const body = chatBodyState({ isHydrating: chat.isHydrating, isNew, messageCount: messages.length });
   const results = useMemo(() => collectToolResults(messages), [messages]);
 
   const documentHref = useCallback(
@@ -214,19 +220,19 @@ export function ChatPanel({
         }}
         ref={scrollRef}
       >
-        {chat.isHydrating ? (
+        {body === "loading" ? (
           <div className="assistant-chat__loading">
             <ShimmerEffect height={48} />
             <ShimmerEffect height={96} />
           </div>
-        ) : messages.length === 0 ? (
-          <div className="assistant-chat__empty">
-            <h2 className="assistant-heading">What can I help with?</h2>
-            <p className="assistant-text assistant-text--secondary">
-              Ask about your pages, posts and media: find content, check what is missing, or draft changes. Every change
-              waits for your approval and is saved as a draft.
-            </p>
-          </div>
+        ) : body === "empty" ? (
+          <EmptyConversation
+            examples={configured}
+            onPick={(prompt) => {
+              setDraft(prompt);
+              inputRef.current?.focus();
+            }}
+          />
         ) : (
           <div className="assistant-chat__messages">
             {messages.map((message) => (
@@ -306,7 +312,8 @@ export function ChatPanel({
         ) : null}
       </div>
       <Composer
-        disabled={!configured || waitingForApproval || chat.isHydrating}
+        disabled={!configured || waitingForApproval || body === "loading"}
+        inputRef={inputRef}
         disabledReason={disabledReason}
         model={model}
         models={models}
