@@ -4,6 +4,7 @@ import type { AbTestingPluginConfig } from "../types/config";
 import {
   AB_PASS_PERCENTAGE_FIELD,
   AB_VARIANT_OF_FIELD,
+  AB_SKIP_RECOMPUTE_CONTEXT_KEY,
   AB_WRITE_CONTEXT_KEY,
   DEFAULT_SLUG_FIELD,
 } from "../constants";
@@ -95,6 +96,9 @@ export function buildDuplicateVariantHandler<TVariantData extends object>(
       const drafts = collectionConfig ? hasDraftsEnabled(collectionConfig) : false;
       // Lets the field-level access on the variant fields accept this write (see injectAdminFields).
       req.context[AB_WRITE_CONTEXT_KEY] = true;
+      // A draft copy takes no traffic: skip the manifest recompute, which would otherwise see it
+      // published in the other locales until the unpublish below (and start and end a run).
+      if (drafts) req.context[AB_SKIP_RECOMPUTE_CONTEXT_KEY] = true;
       const newDoc = (await req.payload.duplicate({
         collection: collectionSlug as CollectionSlug,
         id: docId,
@@ -136,6 +140,7 @@ export function buildDuplicateVariantHandler<TVariantData extends object>(
       return Response.json({ error: message }, { status });
     } finally {
       delete req.context[AB_WRITE_CONTEXT_KEY];
+      delete req.context[AB_SKIP_RECOMPUTE_CONTEXT_KEY];
     }
   };
 }

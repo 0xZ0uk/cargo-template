@@ -1,6 +1,11 @@
 import type { CollectionAfterChangeHook } from "payload";
 import type { AbTestingPluginConfig, CollectionABConfig } from "../types/config";
-import { AB_CASCADE_CONTEXT_KEY, AB_PENDING_CONTEXT_KEY, AB_VARIANT_OF_FIELD } from "../constants";
+import {
+  AB_CASCADE_CONTEXT_KEY,
+  AB_PENDING_CONTEXT_KEY,
+  AB_SKIP_RECOMPUTE_CONTEXT_KEY,
+  AB_VARIANT_OF_FIELD,
+} from "../constants";
 import { applyVariantPercentage } from "../utils/applyVariantPercentage";
 import type { VariantPercentageEntry } from "../utils/buildPercentagePlan";
 import { recomputeManifestForParent } from "../utils/recomputeManifest";
@@ -16,6 +21,7 @@ export function buildParentAfterChangeHook<TVariantData extends object>(
     const { payload, context } = req;
     if (!payload) return;
     if (context?.[AB_CASCADE_CONTEXT_KEY]) return;
+    if (context?.[AB_SKIP_RECOMPUTE_CONTEXT_KEY]) return;
 
     const isDraft = doc._status === "draft";
     const variantOfValue = doc[AB_VARIANT_OF_FIELD];

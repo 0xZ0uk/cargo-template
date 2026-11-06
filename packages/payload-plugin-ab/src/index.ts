@@ -9,10 +9,11 @@ export type {
   CollectionABConfig,
   StorageAdapter,
 } from "./types/config";
-export type { AbResultsResponse } from "./endpoints/measurement";
+export type { AbPastRun, AbResultsResponse } from "./endpoints/measurement";
 export { DEFAULT_CONVERSION_COOKIE_PREFIX } from "./endpoints/measurement";
 export type { ManifestCache, ManifestCacheOptions, ManifestCacheValue } from "./cache/types";
 export type { AbCookieConfig } from "./cookie/types";
 export { resolveAbCookieNames } from "./cookie/utils/resolveAbCookieNames";
 export type { ResolvedAbCookieNames } from "./cookie/utils/resolveAbCookieNames";
-export { AB_EXPERIMENTS_SLUG, AB_DIMENSION_PARAMS } from "./constants";
+export { AB_EXPERIMENTS_SLUG, AB_DIMENSION_PARAMS, AB_RUN_RETENTION_DAYS } from "./constants";
+export { pruneEndedExperimentRuns } from "./utils/experimentRuns";

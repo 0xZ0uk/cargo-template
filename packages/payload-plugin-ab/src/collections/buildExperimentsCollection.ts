@@ -7,14 +7,15 @@ export function buildExperimentsCollection(debug: boolean, slug: string): Collec
       hidden: !debug,
       group: "System",
       useAsTitle: "manifestKey",
-      defaultColumns: ["manifestKey", "parentCollection", "locale", "startedAt"],
+      defaultColumns: ["manifestKey", "parentCollection", "locale", "startedAt", "endedAt"],
     },
     // Experiment keys and start dates are for editors and the analytics plugin (Local API),
     // not visitors.
     access: {
       read: ({ req }) => Boolean(req.user),
     },
-    // Payload 4 versions collections by default; these rows are written once per experiment.
+    // Payload 4 versions collections by default; these rows are written once per run and
+    // once more when it ends.
     versions: false,
     fields: [
       {
@@ -51,6 +52,14 @@ export function buildExperimentsCollection(debug: boolean, slug: string): Collec
         required: true,
         admin: {
           description: "Set to now() when the first variant for this parent+locale is published.",
+        },
+      },
+      {
+        name: "endedAt",
+        type: "date",
+        admin: {
+          description:
+            "Set to now() when the run ends (no published variant left, or the original unpublished). Empty while it runs; the row is deleted 90 days after.",
         },
       },
     ],
