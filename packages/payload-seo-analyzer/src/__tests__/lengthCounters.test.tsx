@@ -170,3 +170,15 @@ describe('dashboard text', () => {
     )
   })
 })
+
+describe('sidebar tips quote the resolved limits', () => {
+  it('title and word-count tips follow custom values, and keep the defaults otherwise', () => {
+    const t = getDashboardT()
+    const d = resolveThresholds()
+    expect(t.seoAnalyzer.titleCharactersIdeal(d.titleLengthMin, d.titleLengthMax)).toBe('characters, ideal: 30-60')
+    expect(t.seoAnalyzer.enrichContent(d.minWordsGeneric)).toContain('minimum 300 words')
+    const c = resolveThresholds({ titleLengthMin: 40, titleLengthMax: 70, minWordsGeneric: 500 })
+    expect(t.seoAnalyzer.titleCharactersIdeal(c.titleLengthMin, c.titleLengthMax)).toBe('characters, ideal: 40-70')
+    expect(t.seoAnalyzer.enrichContent(c.minWordsGeneric)).toContain('minimum 500 words')
+  })
+})

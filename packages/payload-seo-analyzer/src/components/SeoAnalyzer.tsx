@@ -700,11 +700,11 @@ const SeoAnalyzerInner: React.FC = () => {
       if (check.id.startsWith('title-length') || check.id.startsWith('title-')) {
         const match = check.message.match(/(\d+)\s*caract|\b(\d+)\s*char/)
         const charCount = match ? (match[1] || match[2]) : '?'
-        text = `${t.seoAnalyzer.adjustTitle} (${t.seoAnalyzer.currently} ${charCount} ${t.seoAnalyzer.titleCharactersIdeal})`
+        text = `${t.seoAnalyzer.adjustTitle} (${t.seoAnalyzer.currently} ${charCount} ${t.seoAnalyzer.titleCharactersIdeal(limits.titleLengthMin, limits.titleLengthMax)})`
       } else if (check.id.startsWith('meta-desc')) {
         text = t.seoAnalyzer.writeMetaDesc(limits.metaDescLengthMin, limits.metaDescLengthMax)
       } else if (check.id === 'content-wordcount') {
-        text = t.seoAnalyzer.enrichContent
+        text = t.seoAnalyzer.enrichContent(collectionSlug === 'posts' ? limits.minWordsPost : limits.minWordsGeneric)
       } else if (check.id === 'keyword-in-title') {
         text = t.seoAnalyzer.includeKeywordInTitle
       } else if (check.id === 'keyword-in-meta') {
