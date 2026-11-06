@@ -49,14 +49,8 @@
       }
     }
   },
-  "bin": {
-    "seo-analyzer-uninstall": "./scripts/uninstall.mjs"
-  },
   "files": [
     "dist",
-    "scripts",
-    "!scripts/__tests__",
-    "!scripts/verify-dist-imports.mjs",
     "README.md",
     "LICENSE"
   ],
