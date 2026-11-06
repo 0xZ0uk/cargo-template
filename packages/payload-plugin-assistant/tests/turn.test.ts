@@ -123,6 +123,52 @@ describe("the OpenRouter request", () => {
   });
 });
 
+describe("limits (#116)", () => {
+  const toolCalls = (count: number) =>
+    sse(
+      {
+        id: "gen-tools",
+        object: "chat.completion.chunk",
+        created: 1,
+        model: "m",
+        choices: [
+          {
+            index: 0,
+            delta: {
+              role: "assistant",
+              tool_calls: Array.from({ length: count }, (_, i) => ({ index: i, id: `call_${i}`, type: "function", function: { name: "findDocuments", arguments: "{}" } })),
+            },
+            finish_reason: null,
+          },
+        ],
+      },
+      { id: "gen-tools", object: "chat.completion.chunk", created: 1, model: "m", choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] },
+      "[DONE]"
+    );
+
+  it("RUN_STARTED and RUN_FINISHED carry the server's run id, not OpenRouter's", async () => {
+    const { chunks } = await runTurn({ respond: () => answer("Hello") });
+    const runEvents = chunks.filter((c) => c.type === "RUN_STARTED" || c.type === "RUN_FINISHED");
+    expect(runEvents.map((c) => c.type)).toEqual(["RUN_STARTED", "RUN_FINISHED"]);
+    for (const event of runEvents) expect(event.runId).toBe("run-1");
+  });
+
+  it("settings.maxToolCalls caps the run's tool calls; the rest reach the model as errors", async () => {
+    const calls: string[] = [];
+    const mcpFetch = (async (request: Request) => {
+      const body = await request.clone().text();
+      if (body.includes('"tools/call"')) calls.push(body);
+      return mcp.fetch(request);
+    }) as typeof fetch;
+    let model = 0;
+    const { sent } = await runTurn({ respond: () => (model++ === 0 ? toolCalls(3) : answer("Found one page.")), settings: { maxToolCalls: 1 }, mcpFetch });
+    expect(calls).toHaveLength(1);
+    const toolMessages = sent[1]!.body.messages.filter((m: { role: string }) => m.role === "tool");
+    expect(toolMessages).toHaveLength(3);
+    expect(toolMessages.filter((m: { content: string }) => m.content.includes("Tool call limit reached"))).toHaveLength(2);
+  });
+});
+
 describe("error mapping", () => {
   const error = (status: number, message: string, metadata?: unknown) => () =>
     Response.json({ error: { code: status, message, ...(metadata ? { metadata } : {}) } }, { status });

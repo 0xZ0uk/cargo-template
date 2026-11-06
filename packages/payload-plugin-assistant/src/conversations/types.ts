@@ -29,6 +29,8 @@ export interface TurnSettings {
   systemPrompt: string;
   /** Most model calls in the run (`maxIterations`). */
   maxSteps: number;
+  /** Most tool calls in the run (the Worker invocation limit). Absent: `DEFAULT_MAX_TOOL_CALLS`. */
+  maxToolCalls?: number;
   /** Compaction budget: older turns are cleared or dropped past this many (estimated) tokens. */
   maxContextTokens: number;
   /** Absolute URL of plugin-mcp's `POST /api/mcp`. */

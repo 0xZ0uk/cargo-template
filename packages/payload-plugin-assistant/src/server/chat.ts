@@ -128,6 +128,7 @@ export async function handleChat(req: PayloadRequest, options: NormalizedAssista
     apiKey: options.apiKey,
     systemPrompt: await buildSystemPrompt(req, options),
     maxSteps: options.maxSteps,
+    maxToolCalls: options.maxToolCalls,
     maxContextTokens: options.maxContextTokens,
     mcpEndpoint: `${api}/mcp`,
     ...(toolNames ? { toolNames } : {}),

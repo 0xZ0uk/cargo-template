@@ -34,6 +34,19 @@ export interface PayloadToolSourceOptions {
   dispatch: McpDispatch;
   /** Extra filter, after the built-in one (the plugin's `toolFilter` option). */
   toolFilter?: (tool: AssistantToolInfo) => boolean;
+  /**
+   * Most tool calls through this source (one source per run), parallel calls included. Past it a
+   * call sends nothing and fails with {@link AssistantToolCallLimitError}, which the model reads
+   * as the tool's error. Default: no limit.
+   */
+  maxToolCalls?: number;
+  /**
+   * Most MCP requests this source sends (connecting included), whatever the reason: a backstop
+   * under {@link maxToolCalls} for Cloudflare's 32 Worker invocations per request. Past it a
+   * request fails with {@link AssistantRequestLimitError} instead of reaching the platform's
+   * exception. Default: no limit.
+   */
+  maxRequests?: number;
   logger?: ToolSourceLogger;
 }
 
@@ -121,6 +134,32 @@ export class AssistantToolDiscoveryError extends Error {
   }
 }
 
+/**
+ * A run made all the tool calls it may (`maxToolCalls`). The message is what the model reads as
+ * the tool's result: stop calling tools, answer with what it has, let the user continue.
+ */
+export class AssistantToolCallLimitError extends Error {
+  override readonly name = "AssistantToolCallLimitError";
+  constructor(readonly limit: number) {
+    super(
+      `Tool call limit reached: this turn already made ${limit} tool calls, the most one turn can make. ` +
+        "This call was not run. Do not call any more tools in this turn: answer with what you have, say what is left to do, " +
+        "and tell the editor to send another message to continue."
+    );
+  }
+}
+
+/** A run sent all the MCP requests it may (`maxRequests`): the request was not sent. */
+export class AssistantRequestLimitError extends Error {
+  override readonly name = "AssistantRequestLimitError";
+  constructor(readonly limit: number) {
+    super(
+      `The assistant reached its limit of ${limit} requests to Payload's tools in one turn (Cloudflare allows 32 Worker invocations per request). ` +
+        "Do not call any more tools in this turn: answer with what you have and tell the editor to send another message to continue."
+    );
+  }
+}
+
 /** JSON-RPC "Method not found": plugin-mcp advertises no `tools` capability to an anonymous caller. */
 const METHOD_NOT_FOUND = -32601;
 
@@ -181,8 +220,28 @@ export interface PayloadToolSource {
 export function createPayloadToolSource(options: PayloadToolSourceOptions): PayloadToolSource {
   const endpoint = new URL(options.endpoint).toString();
   const filter = buildToolFilter(options.toolFilter);
-  const transportFetch: typeof fetch = (input, init) =>
-    options.dispatch(input instanceof Request && !init ? input : new Request(input, init));
+  let requests = 0;
+  const transportFetch: typeof fetch = async (input, init) => {
+    if (options.maxRequests !== undefined && requests >= options.maxRequests) throw new AssistantRequestLimitError(options.maxRequests);
+    requests += 1;
+    return options.dispatch(input instanceof Request && !init ? input : new Request(input, init));
+  };
+  // Counted across every `tools()` list of this source: one source is one run.
+  let toolCalls = 0;
+  const limitToolCalls = <T extends { execute?: (...args: never[]) => unknown }>(tools: T[]): T[] => {
+    const max = options.maxToolCalls;
+    if (max === undefined) return tools;
+    for (const tool of tools) {
+      const execute = tool.execute;
+      if (!execute) continue;
+      tool.execute = (async (...args: never[]) => {
+        if (toolCalls >= max) throw new AssistantToolCallLimitError(max);
+        toolCalls += 1;
+        return execute.apply(tool, args);
+      }) as T["execute"];
+    }
+    return tools;
+  };
 
   let client: Promise<MCPClient> | undefined;
   const connect = (signal?: AbortSignal) =>
@@ -202,7 +261,7 @@ export function createPayloadToolSource(options: PayloadToolSourceOptions): Payl
     async tools(toolsOptions) {
       try {
         const connected = await connect(toolsOptions?.signal);
-        return withRejectPayload(await connected.tools(toolsOptions));
+        return limitToolCalls(withRejectPayload(await connected.tools(toolsOptions)));
       } catch (error) {
         throw toDiscoveryError(error);
       }
@@ -263,6 +322,7 @@ export const PAYLOAD_TOOLS_SYSTEM_PROMPT = [
   "On findDocuments, always pass `select` with only the fields you need, a small `limit` (10 or fewer unless the user asks for more) and `depth: 0`. Use countDocuments to answer how-many questions.",
   "The draft/published status of a versioned document is the `_status` field. Write drafts (`draft: true`) unless the user asks you to publish.",
   "Tools that change content wait for the user's approval. If a tool returns an access error, tell the user you are not allowed to do that; do not retry it or look for a workaround.",
+  "One turn can make a limited number of tool calls: fetch what you need in few calls (one findDocuments with a `where` beats many by id). If a tool says the limit is reached, stop calling tools and answer with what you have.",
   "If the user rejects a change, nothing was written: read their reason, if they gave one, and don't propose the same change again unless they ask.",
 ].join("\n");
 
