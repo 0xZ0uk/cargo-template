@@ -1,0 +1,16 @@
+{
+  // Test Worker for the workerd suite. Mirrors the app wiring documented in the README:
+  // two SQLite Durable Object classes and a service binding to itself (the MCP transport).
+  "name": "assistant-test",
+  "main": "./worker.ts",
+  "compatibility_date": "2026-10-23",
+  "compatibility_flags": ["nodejs_compat"],
+  "durable_objects": {
+    "bindings": [
+      { "name": "ASSISTANT_CONVERSATIONS", "class_name": "TestConversation" },
+      { "name": "ASSISTANT_INDEX", "class_name": "AssistantConversationIndex" }
+    ]
+  },
+  "services": [{ "binding": "ASSISTANT_SELF", "service": "assistant-test" }],
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TestConversation", "AssistantConversationIndex"] }]
+}

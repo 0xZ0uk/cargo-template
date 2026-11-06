@@ -1,13 +1,15 @@
 import type { PayloadRequest } from "payload";
-import { DEFAULT_MAX_STEPS, PLUGIN_NAME } from "../constants";
+import { DEFAULT_MAX_STEPS, DEFAULT_RETENTION_DAYS, PLUGIN_NAME } from "../constants";
 import type {
   AssistantAccess,
   AssistantContext,
   AssistantModel,
   AssistantPluginOptions,
   AssistantToolInfo,
+  ConversationIndexNamespace,
   ConversationNamespace,
 } from "../types/options";
+import { resolveCaps, type ConversationCaps } from "../conversations/caps";
 
 const PREFIX = `[${PLUGIN_NAME}]`;
 
@@ -25,8 +27,33 @@ export const OPENROUTER_PROVIDER = {
 } as const;
 
 export type ConversationStorage =
-  | { kind: "memory" }
-  | { kind: "durable-object"; namespace: ConversationNamespace };
+  | { kind: "memory"; retentionMs: number; caps: ConversationCaps }
+  | {
+      kind: "durable-object";
+      namespace: ConversationNamespace;
+      index: ConversationIndexNamespace;
+      retentionMs: number;
+      caps: ConversationCaps;
+    };
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function normalizeConversations(options: AssistantPluginOptions["conversations"]): ConversationStorage {
+  const retentionDays = options?.retentionDays ?? DEFAULT_RETENTION_DAYS;
+  if (typeof retentionDays !== "number" || !Number.isFinite(retentionDays) || retentionDays <= 0) {
+    throw new Error(`${PREFIX} "conversations.retentionDays" must be a positive number (got ${String(retentionDays)}).`);
+  }
+  const retentionMs = Math.round(retentionDays * DAY_MS);
+  const caps = resolveCaps(options?.caps, PREFIX);
+  const { namespace, index } = options ?? {};
+  if (!namespace && !index) return { kind: "memory", retentionMs, caps };
+  if (!namespace || !index) {
+    throw new Error(
+      `${PREFIX} "conversations.namespace" and "conversations.index" go together (AssistantConversation and AssistantConversationIndex).`
+    );
+  }
+  return { kind: "durable-object", namespace, index, retentionMs, caps };
+}
 
 export interface NormalizedAssistantOptions {
   /** `false` when `apiKey` is missing: schema and admin shape stay the same, the assistant says "not configured". */
@@ -100,9 +127,7 @@ export function normalizeOptions(options: AssistantPluginOptions): NormalizedAss
     instructions: options.instructions,
     maxSteps,
     toolFilter: options.toolFilter,
-    conversations: options.conversations
-      ? { kind: "durable-object", namespace: options.conversations.namespace }
-      : { kind: "memory" },
+    conversations: normalizeConversations(options.conversations),
     rateLimit: options.rateLimit,
     openRouter: { provider: OPENROUTER_PROVIDER },
   };

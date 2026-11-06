@@ -1,3 +1,4 @@
+import { DEFAULT_CONVERSATION_CAPS } from "../src/conversations/caps";
 import type { Config, PayloadRequest } from "payload";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { assistantPlugin } from "../src/plugin";
@@ -87,12 +88,35 @@ describe("normalizeOptions", () => {
     expect(await access({ user: { id: 1 } as never, req })).toBe(false);
   });
 
-  it("uses the Durable Object namespace when given", () => {
-    const namespace = { idFromName: () => "id", get: () => ({ fetch: async () => new Response() }) };
-    expect(normalizeOptions({ ...valid, conversations: { namespace } }).conversations).toEqual({
+  it("uses the Durable Object namespaces when given, with retention and caps", () => {
+    const stub = {
+      fetch: async () => new Response(),
+      claim: async () => ({}),
+      transcript: async () => null,
+      destroy: async () => false,
+      store: async () => null,
+    };
+    const namespace = { idFromName: () => "id", get: () => stub };
+    const index = { idFromName: () => "id", get: () => ({ call: async () => null }) };
+    expect(normalizeOptions({ ...valid, conversations: { namespace, index } }).conversations).toEqual({
       kind: "durable-object",
       namespace,
+      index,
+      retentionMs: 30 * 24 * 60 * 60 * 1000,
+      caps: DEFAULT_CONVERSATION_CAPS,
     });
+    const custom = normalizeOptions({
+      ...valid,
+      conversations: { namespace, index, retentionDays: 7, caps: { maxMessages: 50 } },
+    }).conversations;
+    expect(custom).toMatchObject({ retentionMs: 7 * 24 * 60 * 60 * 1000, caps: { maxMessages: 50, maxBytes: DEFAULT_CONVERSATION_CAPS.maxBytes } });
+  });
+
+  it("rejects half a Durable Object pair, bad retention and bad caps", () => {
+    const namespace = { idFromName: () => "id", get: () => ({}) as never };
+    expect(() => normalizeOptions({ ...valid, conversations: { namespace } })).toThrow(/go together/);
+    expect(() => normalizeOptions({ ...valid, conversations: { retentionDays: 0 } })).toThrow(/retentionDays/);
+    expect(() => normalizeOptions({ ...valid, conversations: { caps: { maxBytes: -1 } } })).toThrow(/caps.maxBytes/);
   });
 
   it("keeps OpenRouter provider options camelCase (snake_case is silently dropped by the SDK)", () => {

@@ -1,4 +1,5 @@
 import type { PayloadRequest } from "payload";
+import type { ConversationCaps } from "../conversations/caps";
 
 /** A model the assistant may use. The list is an allowlist: requests naming another id are refused. */
 export interface AssistantModel {
@@ -21,27 +22,49 @@ export interface AssistantToolInfo {
 }
 
 /**
- * A Durable Object stub, structurally. Declared here so the plugin needs no
- * `@cloudflare/workers-types`; a real `DurableObjectNamespace` is assignable.
+ * A conversation Durable Object stub, structurally: `fetch` plus the RPC methods of
+ * `AssistantConversation` the endpoint calls. Declared here so the plugin needs no
+ * `@cloudflare/workers-types`; a real `DurableObjectNamespace<AssistantConversation>` is assignable.
  */
 export interface ConversationStub {
   fetch(input: any, init?: any): Promise<any>;
+  claim(input: any): Promise<any>;
+  transcript(userKey: string): Promise<any>;
+  destroy(userKey: string): Promise<any>;
+  store(name: any, method: string, args: unknown[]): Promise<any>;
 }
 
-/** A Durable Object namespace, structurally (`env.ASSISTANT` on a Worker). */
+/** The conversation Durable Object namespace, structurally (`env.ASSISTANT_CONVERSATIONS`). */
 export interface ConversationNamespace {
   idFromName(name: string): any;
   get(id: any): ConversationStub;
 }
 
+/** A per-user index Durable Object stub, structurally (`AssistantConversationIndex`). */
+export interface ConversationIndexStub {
+  call(method: any, args: unknown[]): Promise<any>;
+}
+
+/** The index Durable Object namespace, structurally (`env.ASSISTANT_INDEX`). */
+export interface ConversationIndexNamespace {
+  idFromName(name: string): any;
+  get(id: any): ConversationIndexStub;
+}
+
 export interface AssistantConversationsOptions {
   /**
-   * The Durable Object namespace that holds the conversations. `chat()` runs inside the
+   * The `AssistantConversation` Durable Object namespace. `chat()` runs inside the
    * conversation's Durable Object, so a run survives a closed tab and a reconnect is a log
-   * read. Omit it for the in-memory fallback (Node dev and tests): conversations live in
-   * the process and are lost on restart.
+   * read. Omit the whole `conversations.namespace`/`index` pair for the in-memory fallback
+   * (Node dev and tests): conversations live in the process and are lost on restart.
    */
-  namespace: ConversationNamespace;
+  namespace?: ConversationNamespace;
+  /** The `AssistantConversationIndex` namespace: one index object per user. Required with `namespace`. */
+  index?: ConversationIndexNamespace;
+  /** Delete a conversation after this many days without activity. Default 30. */
+  retentionDays?: number;
+  /** Size limits per conversation. See `ConversationCaps` for the defaults. */
+  caps?: Partial<ConversationCaps>;
 }
 
 /** What `access` gets to decide with. `user` is always set: anonymous requests never reach it. */

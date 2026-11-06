@@ -27,6 +27,15 @@ export default defineConfig([
   // banner. The chat UI (#64) will be a client entry and needs ab's `addClientBanner` helper:
   // esbuild drops module-level directives.
   { ...shared, entry: { "admin/AssistantView": "src/admin/AssistantView.tsx" }, splitting: false, clean: false },
-  // Durable Object (#62) will be a third entry, `./do`: workerd-only code, never imported by
-  // the config or the admin bundle.
+  // Durable Objects: workerd-only (`cloudflare:workers` stays an import the Worker bundler
+  // resolves), never imported by the config or the admin bundle. Types come from
+  // tsconfig.do.json (Workers types, no DOM).
+  {
+    ...shared,
+    entry: { "do/index": "src/do/index.ts" },
+    splitting: false,
+    clean: false,
+    external: [...(shared.external ?? []), "cloudflare:workers"],
+    tsconfig: "tsconfig.do.json",
+  },
 ]);

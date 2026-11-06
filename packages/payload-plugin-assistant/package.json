@@ -22,6 +22,10 @@
     "./admin/AssistantView": {
       "types": "./dist/admin/AssistantView.d.ts",
       "default": "./dist/admin/AssistantView.js"
+    },
+    "./do": {
+      "types": "./dist/do/index.d.ts",
+      "default": "./dist/do/index.js"
     }
   },
   "main": "./dist/index.js",
@@ -35,9 +39,10 @@
   "scripts": {
     "build": "rm -rf dist && tsup",
     "dev": "tsup --watch",
-    "test": "vitest run",
+    "test": "vitest run && vitest run --config vitest.workerd.config.ts",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.do.json",
+    "test:workerd": "vitest run --config vitest.workerd.config.ts"
   },
   "dependencies": {
     "@tanstack/ai": "1.2.0",
@@ -53,6 +58,9 @@
     "react": "^19.0.0"
   },
   "devDependencies": {
+    "@cloudflare/vitest-plugin": "1.4.11",
+    "@cloudflare/workers-types": "5.20261023.1",
+    "@modelcontextprotocol/server": "2.4.0",
     "@payloadcms/db-sqlite": "catalog:",
     "@payloadcms/plugin-mcp": "catalog:",
     "@payloadcms/ui": "catalog:",
