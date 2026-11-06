@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { SeoCache, SeoSharedCache, defaultSeoSharedCache, seoCache, type SeoCacheStore } from '../cache.js'
+import {
+  REDIRECT_CACHE_BASES,
+  SeoCache,
+  SeoSharedCache,
+  defaultSeoSharedCache,
+  seoCache,
+  type SeoCacheStore,
+} from '../cache.js'
+import { FRONTEND_REDIRECTS_CACHE_BASE } from '../helpers/frontendRedirectsBase.js'
 import { createAuditHandler } from '../endpoints/audit.js'
 import { createSitemapAuditHandler } from '../endpoints/sitemap-audit.js'
 import { createInvalidateCachesHook, invalidateForRequest } from '../hooks/invalidateSeoCaches.js'
@@ -250,6 +258,24 @@ describe('invalidation hooks', () => {
     await invalidateForRequest(cache, req as any, ['audit', 'redirect-chains'])
     const genWrites = (store.put as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0])
     expect(genWrites.sort()).toEqual(['gen/audit', 'gen/redirect-chains', 'gen/sitemap-audit'])
+  })
+
+  it('a redirect save or delete bumps the frontend redirects generation', async () => {
+    const store = fakeStore()
+    const hook = createInvalidateCachesHook(REDIRECT_CACHE_BASES, isolate(store))
+    const key = `gen/${FRONTEND_REDIRECTS_CACHE_BASE}`
+    // One hook serves afterChange and afterDelete; each hook call is its own request.
+    const run = () =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (hook as any)({ doc: { id: 1 }, req: { context: {}, payload: { logger: { error: vi.fn() } } } })
+
+    expect(store.data.has(key)).toBe(false)
+    await run()
+    const afterSave = store.data.get(key)
+    expect(afterSave).toBeTruthy()
+
+    await run()
+    expect(store.data.get(key)).not.toBe(afterSave)
   })
 
   it('log a store failure instead of failing the save', async () => {

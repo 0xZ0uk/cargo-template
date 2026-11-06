@@ -5,11 +5,10 @@ import { cleanupTestUser, seedTestUser, testUser } from '../helpers/seedUser'
 
 // A redirect made in the plugin's Redirect Manager, followed on the frontend, then removed again.
 
-// The frontend caches the redirect table per server instance for up to 60 s
-// (`CACHE_TTL_MS` in src/app/_frontend/redirects.functions.ts), so a change reaches the site
-// after that at the latest. Poll for it rather than sleeping.
-const REDIRECT_CACHE_TTL_MS = 60_000
-const POLL_TIMEOUT_MS = REDIRECT_CACHE_TTL_MS + 30_000
+// The frontend compares a shared generation marker (`gen/frontend-redirects`, bumped by the
+// redirect hooks) on every lookup, so a change applies on the next request. Poll briefly rather
+// than assert once, in case the dev server's R2 proxy lags the write.
+const POLL_TIMEOUT_MS = 5_000
 
 test.describe('SEO analyzer: redirects', () => {
   let page: Page
@@ -36,7 +35,7 @@ test.describe('SEO analyzer: redirects', () => {
   })
 
   test('creates a redirect in the manager, serves its 301, and stops after deleting it', async ({ request }) => {
-    test.setTimeout(2 * POLL_TIMEOUT_MS + 60_000)
+    test.setTimeout(60_000)
 
     // The path the frontend sees: the old path with a query that must survive the redirect.
     const requestOldPath = async () => request.get(`${from}?utm_source=e2e`, { maxRedirects: 0 })

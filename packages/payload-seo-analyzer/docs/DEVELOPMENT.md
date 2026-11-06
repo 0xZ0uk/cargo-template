@@ -59,7 +59,7 @@ Ground rules, gotchas and how to check a change, for anyone working on `@cargo/p
 - Playwright runs with `workers: 1` everywhere: each spec file deletes and recreates the same admin user.
 - A dev server Playwright starts itself sometimes dies mid-suite locally (`ERR_CONNECTION_REFUSED`, workerd `SQLITE_BUSY`). Start `pnpm dev --port N` first and point `E2E_PORT` at it for reliable local runs.
 - Specs create pages through REST as the logged-in admin, not the Local API, which raced the dev server's autosaves for the SQLite file. SEO_D1 rows they leave are removed with `apps/web/tests/helpers/seoStore.ts`.
-- Frontend redirects take up to 60 s to reflect a change (per-isolate cache), so the redirect spec polls and takes ~2 minutes.
+- Frontend redirects apply on the next request (the app compares the shared `gen/frontend-redirects` marker), so the redirect spec only polls for a few seconds.
 
 ## Checking a change
 

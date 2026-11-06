@@ -7,3 +7,4 @@
  */
 export { buildJsonLd, serializeJsonLd } from './helpers/buildSchema.js'
 export { normalizeFromPath, validateRedirectTarget, type RedirectTargetResult } from './helpers/redirectSafety.js'
+export { FRONTEND_REDIRECTS_CACHE_BASE } from './helpers/frontendRedirectsBase.js'
