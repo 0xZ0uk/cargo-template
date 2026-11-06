@@ -98,9 +98,11 @@ const emit = (
   console[CONSOLE_METHOD[level]](stringify(entry))
 }
 
-const create = (
-  { bindings = {}, level = 'info', msgPrefix = '' }: WorkersLoggerOptions = {},
-): PayloadLogger => {
+const create = ({
+  bindings = {},
+  level = 'info',
+  msgPrefix = '',
+}: WorkersLoggerOptions = {}): PayloadLogger => {
   const logger: Record<string, unknown> = {
     level,
     silent: () => undefined,
