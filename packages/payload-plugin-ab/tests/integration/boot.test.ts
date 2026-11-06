@@ -29,6 +29,10 @@ let payload: Payload;
 let config: SanitizedConfig;
 let token: string;
 let memberToken: string;
+let readonlyToken: string;
+const READONLY_EMAIL = "readonly@example.com";
+let nodeleteToken: string;
+const NODELETE_EMAIL = "nodelete@example.com";
 
 type Doc = Record<string, unknown> & { id: number | string };
 
@@ -99,12 +103,29 @@ beforeAll(async () => {
       {
         slug: "pages",
         admin: { useAsTitle: "title" },
-        access: { read: () => true },
+        access: {
+          read: () => true,
+          // An admin-panel user who may read pages but not edit them.
+          update: ({ req }) => Boolean(req.user) && (req.user as any).email !== READONLY_EMAIL,
+          // An editor who may edit pages but not delete them.
+          delete: ({ req }) =>
+            Boolean(req.user) && ![READONLY_EMAIL, NODELETE_EMAIL].includes((req.user as any).email),
+        },
         versions: { drafts: true },
         fields: [
           { name: "title", type: "text", localized: true },
           { name: "slug", type: "text", index: true },
           { name: "blocks", type: "array", fields: [{ name: "text", type: "text", localized: true }] },
+          {
+            name: "meta",
+            type: "group",
+            fields: [
+              { name: "title", type: "text", localized: true },
+              { name: "related", type: "relationship", relationTo: "posts" },
+            ],
+          },
+          // A host system field, kept out of promotions with `promoteSkipFields`.
+          { name: "internalNote", type: "text" },
         ],
       },
       { slug: "posts", fields: [{ name: "title", type: "text" }] },
@@ -116,6 +137,7 @@ beforeAll(async () => {
           pages: {
             generatePath: ({ doc, locale }) =>
               typeof doc.slug === "string" && doc.slug ? `/${locale}/${doc.slug}` : null,
+            promoteSkipFields: ["internalNote"],
           },
         },
         measurement: { recordConversion, getResults, rateLimit },
@@ -142,6 +164,28 @@ beforeAll(async () => {
     await payload.login({
       collection: "members" as never,
       data: { email: "member@example.com", password: "test-password" },
+    })
+  ).token!;
+  await payload.create({
+    collection: "users" as CollectionSlug,
+    data: { email: READONLY_EMAIL, password: "test-password" } as never,
+    overrideAccess: true,
+  });
+  readonlyToken = (
+    await payload.login({
+      collection: "users" as never,
+      data: { email: READONLY_EMAIL, password: "test-password" },
+    })
+  ).token!;
+  await payload.create({
+    collection: "users" as CollectionSlug,
+    data: { email: NODELETE_EMAIL, password: "test-password" } as never,
+    overrideAccess: true,
+  });
+  nodeleteToken = (
+    await payload.login({
+      collection: "users" as never,
+      data: { email: NODELETE_EMAIL, password: "test-password" },
     })
   ).token!;
 }, 60_000);
@@ -231,7 +275,14 @@ describe("the variant fields", () => {
     page = await createPublishedPage("locked", "Locked");
     other = await createPublishedPage("locked-other", "Locked other");
     variant = await addVariant(page);
-    user = (await payload.find({ collection: "users" as CollectionSlug, limit: 1, overrideAccess: true })).docs[0]!;
+    user = (
+      await payload.find({
+        collection: "users" as CollectionSlug,
+        where: { email: { equals: "editor@example.com" } },
+        limit: 1,
+        overrideAccess: true,
+      })
+    ).docs[0]!;
   });
 
   it("can't be set by a REST create: the page is created as an original", async () => {
@@ -1134,5 +1185,227 @@ describe("measurement", () => {
       expect(res.status).toBe(502);
       expect(res.body.error).toBe("SQL API down");
     });
+  });
+});
+
+describe("POST /api/_ab/promote", () => {
+  let post: Doc;
+  let otherPost: Doc;
+
+  const promote = (body: Record<string, unknown>, auth: string | null = `JWT ${token}`) =>
+    handleEndpoints({
+      config,
+      request: new Request("http://localhost:3000/api/_ab/promote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(auth ? { Authorization: auth } : {}) },
+        body: JSON.stringify(body),
+      }),
+    }).then(async (res) => ({ status: res.status, body: (await res.json()) as Record<string, any> }));
+
+  const publishAll = (id: Doc["id"]) =>
+    payload.update({
+      collection: PAGES,
+      id,
+      data: { _status: "published" } as never,
+      locale: "en" as never,
+      publishAllLocales: true,
+      overrideAccess: true,
+    });
+
+  /** A published original with content in both locales, and a published variant that differs. */
+  async function experiment(slug: string) {
+    // Rows of an array with localized fields keep their ids across locales.
+    const rows = (texts: string[], locale: string) =>
+      texts.map((text, i) => ({ id: `${slug}-${i}`.padEnd(24, "0").slice(0, 24), text: `${text} (${locale})` }));
+    const original = await createPublishedPage(slug, "Original");
+    for (const locale of ["en", "pt"]) {
+      await payload.update({
+        collection: PAGES,
+        id: original.id,
+        data: {
+          blocks: rows(["Old block"], locale),
+          meta: { title: `Old meta (${locale})`, related: post.id },
+          internalNote: "original note",
+          _status: "published",
+        } as never,
+        locale: locale as never,
+        overrideAccess: true,
+      });
+    }
+    const variant = await addVariant(original);
+    const loser = await addVariant(original);
+    for (const locale of ["en", "pt"]) {
+      await payload.update({
+        collection: PAGES,
+        id: variant.id,
+        data: {
+          title: `Winner (${locale})`,
+          blocks: rows(["New block", "Second"], locale).map((row) => ({ ...row, id: `v${row.id}`.slice(0, 24) })),
+          meta: { title: `New meta (${locale})`, related: otherPost.id },
+          internalNote: "variant note",
+        } as never,
+        locale: locale as never,
+        overrideAccess: true,
+      });
+    }
+    await publishAll(variant.id);
+    await publishAll(loser.id);
+    return { original, variant, loser, slug };
+  }
+
+  beforeAll(async () => {
+    post = (await payload.create({
+      collection: "posts" as CollectionSlug,
+      data: { title: "related" } as never,
+      overrideAccess: true,
+    })) as Doc;
+    otherPost = (await payload.create({
+      collection: "posts" as CollectionSlug,
+      data: { title: "other related" } as never,
+      overrideAccess: true,
+    })) as Doc;
+  });
+
+  it("copies the variant onto the original's draft in every locale, skipping system and custom fields", async () => {
+    const { original, variant, slug } = await experiment("promoted");
+    const variantBlocks = (await findPage(variant.id, { draft: true })).blocks as { id: string }[];
+
+    const res = await promote({ collectionSlug: "pages", docId: original.id, variantId: variant.id });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body).toMatchObject({ originalId: original.id, promotedId: variant.id, locales: ["en", "pt"] });
+
+    for (const locale of ["en", "pt"]) {
+      const draft = await findPage(original.id, { draft: true, locale });
+      // Copied: content, localized fields per locale, and relationships by id.
+      expect(draft.title).toBe(`Winner (${locale})`);
+      expect((draft.blocks as any[]).map((b) => b.text)).toEqual([`New block (${locale})`, `Second (${locale})`]);
+      expect(draft.meta).toEqual({ title: `New meta (${locale})`, related: otherPost.id });
+      // Skipped: the slug, the A/B fields, ids and timestamps, and the custom skip field.
+      expect(draft.slug).toBe(slug);
+      expect(draft._abVariantOf ?? null).toBeNull();
+      expect(draft._abPassPercentage ?? null).toBeNull();
+      expect(draft.internalNote).toBe("original note");
+      expect(draft.id).toBe(original.id);
+      expect(draft.createdAt).toBe(original.createdAt);
+      // Array rows get new ids: the variant's rows aren't the original's.
+      for (const block of draft.blocks as { id: string }[]) {
+        expect(variantBlocks.map((b) => b.id)).not.toContain(block.id);
+      }
+      expect(draft._status).toBe("draft");
+
+      // The live page is untouched until an editor publishes the draft.
+      const live = await findPage(original.id, { locale });
+      expect(live._status).toBe("published");
+      expect(live.title).toBe(`Original${locale === "pt" ? " (pt)" : ""}`);
+      expect((live.blocks as any[]).map((b) => b.text)).toEqual([`Old block (${locale})`]);
+    }
+
+    // The promoted content is the newest version, a draft; the published one is still there.
+    const { docs: versions } = await payload.findVersions({
+      collection: PAGES,
+      where: { parent: { equals: original.id } },
+      sort: "-updatedAt",
+      locale: "en" as never,
+      depth: 0,
+      overrideAccess: true,
+    });
+    expect((versions[0] as any).version).toMatchObject({ title: "Winner (en)", _status: "draft" });
+    expect(versions.some((v: any) => v.version._status === "published" && v.version.title === "Original")).toBe(
+      true
+    );
+  });
+
+  it("deletes the variants and ends the run, which stays listed as a past experiment", async () => {
+    const { original, variant, loser, slug } = await experiment("promoted-ends");
+    expect((await manifest())[`/en/${slug}`]).toHaveLength(2);
+
+    const res = await promote({ collectionSlug: "pages", docId: original.id, variantId: variant.id });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect([...res.body.deleted].sort()).toEqual([variant.id, loser.id].sort());
+    // The promoted variant goes last.
+    expect(res.body.deleted.at(-1)).toBe(variant.id);
+
+    const { totalDocs } = await payload.find({
+      collection: PAGES,
+      where: { _abVariantOf: { equals: original.id } },
+      draft: true,
+      overrideAccess: true,
+    });
+    expect(totalDocs).toBe(0);
+    const m = await manifest();
+    expect(m).not.toHaveProperty(`/en/${slug}`);
+    expect(m).not.toHaveProperty(`/pt/${slug}`);
+
+    const results = await handleEndpoints({
+      config,
+      request: new Request(`http://localhost:3000/api/_ab/results?collection=pages&id=${original.id}`, {
+        headers: { Authorization: `JWT ${token}` },
+      }),
+    });
+    const body = (await results.json()) as Record<string, any>;
+    expect(body.experiment).toBeNull();
+    expect(body.pastRuns).toEqual([
+      expect.objectContaining({ key: `/en/${slug}`, startedAt: expect.any(String), endedAt: expect.any(String) }),
+    ]);
+  });
+
+  it("is for admin-panel users with update and delete access", async () => {
+    const { original, variant } = await experiment("promote-guarded");
+    const body = { collectionSlug: "pages", docId: original.id, variantId: variant.id };
+    expect((await promote(body, null)).status).toBe(401);
+    expect((await promote(body, `JWT ${memberToken}`)).status).toBe(403);
+    expect((await promote(body, `JWT ${readonlyToken}`)).status).toBe(403);
+    // Can update the original but not delete pages: refused before anything is copied.
+    expect((await promote(body, `JWT ${nodeleteToken}`)).status).toBe(403);
+
+    // Nothing changed.
+    expect((await findPage(original.id, { draft: true })).title).toBe("Original");
+    expect((await findPage(variant.id, { draft: true })).id).toBe(variant.id);
+  });
+
+  it("refuses a variant of another page, an original as the variant, and bad bodies", async () => {
+    const { original, variant } = await experiment("promote-mismatch");
+    const { original: other } = await experiment("promote-other");
+
+    const mismatch = await promote({ collectionSlug: "pages", docId: other.id, variantId: variant.id });
+    expect(mismatch.status).toBe(400);
+    expect((await promote({ collectionSlug: "pages", docId: original.id, variantId: other.id })).status).toBe(400);
+    expect((await promote({ collectionSlug: "pages", docId: variant.id, variantId: variant.id })).status).toBe(400);
+    expect((await promote({ collectionSlug: "posts", docId: original.id, variantId: variant.id })).status).toBe(400);
+    expect((await promote({ collectionSlug: "pages", docId: original.id })).status).toBe(400);
+    expect((await promote({ collectionSlug: "pages", docId: original.id, variantId: 999_999 })).status).toBe(404);
+
+    // Neither original changed, and the variant still exists.
+    expect((await findPage(other.id, { draft: true })).title).toBe("Original");
+    expect((await findPage(original.id, { draft: true })).title).toBe("Original");
+    expect((await findPage(variant.id, { draft: true })).title).toBe("Winner (en)");
+  });
+
+  it("promotes the variant's published version, not edits saved after it", async () => {
+    const { original, variant } = await experiment("promote-published");
+    // An edit the editor saved but never published: visitors were never tested on it.
+    await payload.update({
+      collection: PAGES,
+      id: variant.id,
+      data: { title: "Unpublished edit" } as never,
+      draft: true,
+      locale: "en" as never,
+      overrideAccess: true,
+    });
+    expect((await findPage(variant.id, { draft: true, locale: "en" })).title).toBe("Unpublished edit");
+
+    const res = await promote({ collectionSlug: "pages", docId: original.id, variantId: variant.id });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect((await findPage(original.id, { draft: true, locale: "en" })).title).toBe("Winner (en)");
+  });
+
+  it("refuses a variant that was never published", async () => {
+    const original = await createPublishedPage("promote-unpublished", "Original");
+    const variant = await addVariant(original);
+
+    const res = await promote({ collectionSlug: "pages", docId: original.id, variantId: variant.id });
+    expect(res.status).toBe(400);
+    expect((await findPage(original.id, { draft: true })).title).toBe("Original");
+    expect((await findPage(variant.id, { draft: true })).id).toBe(variant.id);
   });
 });

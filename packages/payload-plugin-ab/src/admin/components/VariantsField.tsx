@@ -12,6 +12,7 @@ import {
   useConfig,
   useDocumentInfo,
   useField,
+  useFormModified,
   useModal,
 } from "@payloadcms/ui";
 import {
@@ -42,6 +43,7 @@ interface VariantsFieldProps {
 }
 
 const CLEAR_ALL_MODAL_SLUG = "ab-variants-clear-all";
+const PROMOTE_MODAL_SLUG = "ab-variants-promote";
 
 export function VariantsField({
   slugField = "slug",
@@ -49,7 +51,8 @@ export function VariantsField({
   collectionSlug: collectionSlugProp,
   resultsPath,
 }: VariantsFieldProps) {
-  const { id, collectionSlug: docCollectionSlug } = useDocumentInfo();
+  const { id, collectionSlug: docCollectionSlug, unpublishedVersionCount } = useDocumentInfo();
+  const formModified = useFormModified();
   const slug = collectionSlugProp ?? docCollectionSlug;
   const {
     config: {
@@ -70,6 +73,7 @@ export function VariantsField({
 
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const [promoteTarget, setPromoteTarget] = useState<VariantData | null>(null);
 
   const fetchVariants = useCallback(async () => {
     if (!id || !slug) return;
@@ -195,6 +199,41 @@ export function VariantsField({
     }
   };
 
+  const handlePromote = async () => {
+    const target = promoteTarget;
+    if (!target || !id || !slug) return;
+    setActionLoading(true);
+    try {
+      const res = await fetch(`${apiURL}/_ab/promote`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ collectionSlug: slug, docId: id, variantId: target.id }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { error?: string; deleted?: unknown[] };
+      if (!res.ok) {
+        toast.error(body.error ?? "Failed to promote the variant");
+        // Part of it may have happened (the draft written, some variants deleted).
+        await fetchVariants();
+        return;
+      }
+      toast.success("Variant promoted. Review this page's draft, then publish it.");
+      // The form holds the content from before the promotion: reload it so the editor sees,
+      // and later saves, the promoted draft rather than overwriting it.
+      window.location.reload();
+    } catch {
+      toast.error("Failed to promote the variant");
+    } finally {
+      setActionLoading(false);
+      setPromoteTarget(null);
+    }
+  };
+
+  const openPromote = (variant: VariantData) => {
+    setPromoteTarget(variant);
+    openModal(PROMOTE_MODAL_SLUG);
+  };
+
   const sumOthers = (excludeId: string) =>
     variants.filter((v) => v.id !== excludeId).reduce((s, v) => s + (v.passPercentage ?? 0), 0);
 
@@ -268,6 +307,7 @@ export function VariantsField({
                 onPercentageChange={(value) => handlePercentageChange(variant.id, value)}
                 onPercentageBlur={() => handlePercentageBlur(variant.id)}
                 onDelete={() => handleDeleteVariant(variant.id)}
+                onPromote={() => openPromote(variant)}
                 onSaved={fetchVariants}
               />
             ))}
@@ -309,6 +349,40 @@ export function VariantsField({
         body={`This deletes ${variants.length} variant(s) of this page. Their traffic goes back to the original.`}
         confirmLabel="Delete all"
         onConfirm={handleClearAll}
+      />
+
+      <ConfirmationModal
+        modalSlug={PROMOTE_MODAL_SLUG}
+        heading={`Promote ${promoteTarget?.title ?? "this variant"}?`}
+        body={
+          <div className="ab-promote" data-testid="ab-promote-confirm">
+            <p>
+              Its content, including SEO, is copied onto this page as a <strong>draft</strong>, in
+              every locale. The slug and URL stay. Nothing changes on the live site until you
+              publish this page.
+            </p>
+            <p>
+              The experiment then ends: {variants.length === 1 ? "the variant is" : `all ${variants.length} variants are`}{" "}
+              deleted, which can&apos;t be undone. The results stay under Past experiments, and
+              this page&apos;s current content stays in its version history.
+            </p>
+            {unpublishedVersionCount > 0 && (
+              <p className="ab-promote__warning" data-testid="ab-promote-draft-warning">
+                This page has unpublished changes: the promoted content replaces them (they stay
+                in the version history).
+              </p>
+            )}
+            {formModified && (
+              <p className="ab-promote__warning">
+                Unsaved changes in this form are lost: the page reloads after the promotion.
+              </p>
+            )}
+          </div>
+        }
+        confirmLabel="Promote"
+        confirmingLabel="Promoting…"
+        onCancel={() => setPromoteTarget(null)}
+        onConfirm={handlePromote}
       />
     </div>
   );

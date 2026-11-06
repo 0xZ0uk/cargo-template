@@ -5,6 +5,7 @@ import { buildParentAfterChangeHook } from "./hooks/buildParentAfterChangeHook";
 import { buildParentAfterDeleteHook } from "./hooks/buildParentAfterDeleteHook";
 import { buildParentBeforeChangeHook } from "./hooks/buildParentBeforeChangeHook";
 import { buildDuplicateVariantHandler } from "./endpoints/duplicateVariant";
+import { buildPromoteVariantHandler } from "./endpoints/promoteVariant";
 import { buildConvertHandler, buildResultsHandler } from "./endpoints/measurement";
 import { buildExperimentsCollection } from "./collections/buildExperimentsCollection";
 import { AB_EXPERIMENTS_SLUG, PLUGIN_NAME } from "./constants";
@@ -80,6 +81,11 @@ export const abTestingPlugin =
           path: "/_ab/duplicate",
           method: "post",
           handler: buildDuplicateVariantHandler(pluginConfig),
+        },
+        {
+          path: "/_ab/promote",
+          method: "post",
+          handler: buildPromoteVariantHandler(pluginConfig),
         },
         ...(measurement
           ? [

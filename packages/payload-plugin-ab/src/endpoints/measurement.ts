@@ -5,6 +5,7 @@ import { DEFAULT_VISITOR_ID_COOKIE_NAME } from "../cookie/constants";
 import { bucketCookieName } from "../cookie/utils/bucketCookieName";
 import { parseCookieHeader, serializeAbCookie } from "../middleware/utils/cookies";
 import { abRunMarker } from "../middleware/utils/runMarker";
+import { isAdminPanelUser } from "../utils/isAdminPanelUser";
 import {
   type ExperimentRunRow,
   experimentsSlugOf,
@@ -144,18 +145,6 @@ export function buildConvertHandler<TVariantData extends object>(
     });
     return json({ recorded: true }, 200, { "Set-Cookie": marker });
   };
-}
-
-/**
- * True for a user of the admin panel's auth collection. `req.user` alone isn't enough: a
- * user of any other auth collection (members, customers…) is "signed in" too. The same gate
- * as the SEO analyzer's, without its role layer (Cargo's `users` have no roles).
- */
-export function isAdminPanelUser(req: PayloadRequest): boolean {
-  const user = req.user as { collection?: unknown } | null | undefined;
-  if (!user) return false;
-  const adminCollection = req.payload.config.admin?.user;
-  return !adminCollection || user.collection === adminCollection;
 }
 
 /** A run of the experiment that ended, as `GET /api/_ab/results` lists it. */
