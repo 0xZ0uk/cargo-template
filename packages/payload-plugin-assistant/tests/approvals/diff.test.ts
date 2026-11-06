@@ -153,6 +153,89 @@ describe("diffDocument", () => {
     ]);
   });
 
+  describe("array rows", () => {
+    const ITEMS: FieldLike[] = [{ type: "array", name: "items", fields: [{ type: "text", name: "title" }] }];
+    const diffItems = (before: unknown[], after: unknown[]) =>
+      diffDocument({ mode: "update", fields: ITEMS, before: { items: before }, after: { items: after } }).changes;
+    const paths = (changes: Array<{ path: string }>) => changes.map((c) => c.path);
+    const row = (id: string | undefined, title: string) => (id === undefined ? { title } : { id, title });
+
+    it("a removed row never collides with a kept row (before [a, b], after [b'])", () => {
+      const changes = diffItems([row("a", "x"), row("b", "y")], [row("b", "y2")]);
+      expect(changes).toEqual([
+        { path: "items.0.title", label: "Items › 1 › Title", kind: "changed", format: "text", before: "y", after: "y2" },
+        { path: "items.removed-0.title", label: "Items › 1 (removed) › Title", kind: "removed", format: "text", before: "x" },
+      ]);
+      expect(new Set(paths(changes)).size).toBe(changes.length);
+    });
+
+    it("removing the first of two rows is a removal, not a move of the kept row", () => {
+      const changes = diffItems([row("a", "x"), row("b", "y")], [row("b", "y")]);
+      expect(changes).toEqual([{ path: "items.removed-0.title", label: "Items › 1 (removed) › Title", kind: "removed", format: "text", before: "x" }]);
+    });
+
+    it("a reorder of rows with ids is visible (it was an empty diff)", () => {
+      const changes = diffItems([row("a", "x"), row("b", "y")], [row("b", "y"), row("a", "x")]);
+      expect(changes).toHaveLength(1);
+      expect(changes[0]).toMatchObject({ kind: "changed", format: "text" });
+      expect(changes[0]!.label).toMatch(/Position$/);
+      expect(Number(changes[0]!.before)).not.toBe(Number(changes[0]!.after));
+    });
+
+    it("moving one block to the end reports that block only, with its before and after positions", () => {
+      const changes = diffItems([row("a", "A"), row("b", "B"), row("c", "C")], [row("b", "B"), row("c", "C"), row("a", "A")]);
+      expect(changes).toEqual([{ path: "items.2:moved", label: "Items › 3 › Position", kind: "changed", format: "text", before: "1", after: "3" }]);
+    });
+
+    it("inserting in the middle is one added row; the rows after it are not changes", () => {
+      const changes = diffItems([row("a", "A"), row("c", "C")], [row("a", "A"), { title: "New" }, row("c", "C")]);
+      expect(changes).toEqual([{ path: "items.1.title", label: "Items › 2 › Title", kind: "added", format: "text", after: "New" }]);
+    });
+
+    it("a row with an id that is edited and moved shows the edit under its new position, and the move", () => {
+      const changes = diffItems([row("a", "A"), row("b", "B")], [row("b", "B2"), row("a", "A")]);
+      expect(new Set(paths(changes)).size).toBe(changes.length);
+      expect(changes.some((c) => c.path === "items.0.title" && c.before === "B" && c.after === "B2")).toBe(true);
+      expect(changes.filter((c) => c.path.endsWith(":moved"))).toHaveLength(1);
+    });
+
+    it("an added row with no visible values and a removed one are still reported", () => {
+      expect(diffItems([row("a", "A")], [row("a", "A"), {}])).toEqual([
+        { path: "items.1", label: "Items › 2", kind: "added", format: "text", after: "Empty row" },
+      ]);
+      expect(diffItems([row("a", "A"), { id: "e" }], [row("a", "A")])).toEqual([
+        { path: "items.removed-1", label: "Items › 2 (removed)", kind: "removed", format: "text", before: "Empty row" },
+      ]);
+    });
+
+    it("rows without ids are paired by position; extra rows are added or removed at the end", () => {
+      expect(diffItems([row(undefined, "A"), row(undefined, "B")], [row(undefined, "A"), row(undefined, "B2"), row(undefined, "C")])).toEqual([
+        { path: "items.1.title", label: "Items › 2 › Title", kind: "changed", format: "text", before: "B", after: "B2" },
+        { path: "items.2.title", label: "Items › 3 › Title", kind: "added", format: "text", after: "C" },
+      ]);
+      const removed = diffItems([row(undefined, "A"), row(undefined, "B")], [row(undefined, "A")]);
+      expect(removed).toEqual([{ path: "items.removed-1.title", label: "Items › 2 (removed) › Title", kind: "removed", format: "text", before: "B" }]);
+    });
+
+    it("an id-less new row is not paired with a row that an id claims", () => {
+      // `a` is kept (claimed by id) at index 1; the new id-less row at index 0 must not steal `a`.
+      const changes = diffItems([row("a", "A")], [{ title: "New" }, row("a", "A")]);
+      expect(changes).toEqual([{ path: "items.0.title", label: "Items › 1 › Title", kind: "added", format: "text", after: "New" }]);
+    });
+
+    it("blocks: the same rules, with block labels, for a reordered layout", () => {
+      const changes = diffDocument({
+        mode: "update",
+        fields: FIELDS,
+        blocks: BLOCKS,
+        before: current,
+        after: { layout: [current.layout[1], current.layout[0]] },
+      }).changes;
+      expect(changes).toHaveLength(1);
+      expect(changes[0]!.label).toMatch(/^Layout › \d · (Hero|FAQ) › Position$/);
+    });
+  });
+
   it("update: relationships, uploads and JSON are readable; an unchanged value is not listed", () => {
     const { changes } = diffDocument({
       mode: "update",

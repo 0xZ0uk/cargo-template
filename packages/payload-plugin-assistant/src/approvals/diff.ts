@@ -213,7 +213,8 @@ function cut(text: string | undefined): { text: string | undefined; truncated: b
 
 /**
  * - `update`: only what `data` sets (a partial update): its keys, recursively into groups;
- *   arrays and blocks are compared whole, row by row (paired by row `id`, then by position).
+ *   arrays and blocks are compared whole, row by row (paired by row `id`, rows without one by
+ *   position; a removed row is labelled "(removed)", a reordered one gets a "Position" change).
  * - `create`: every value of `data`.
  * - `delete`: every value of the current document (what will be lost).
  * - `replace`: the union of both (restoring a version over the current document).
@@ -242,10 +243,104 @@ const isGroupValue = (value: unknown, other: unknown) =>
 const isRowArray =(value: unknown): value is Record<string, unknown>[] =>
   Array.isArray(value) && value.length > 0 && value.every(isPlainObject) && !value.every(isLexicalState);
 
+/** What an array row with no visible values is called when it is added or removed. */
+const EMPTY_ROW = "Empty row";
+
+interface RowPair {
+  b?: Record<string, unknown>;
+  a: Record<string, unknown>;
+  beforeIndex: number;
+  afterIndex: number;
+  /** Matched by row id (so a different position is a real move), not by position. */
+  byId: boolean;
+}
+
+/**
+ * Pairs the rows of an array or blocks field.
+ *
+ * 1. Rows with an `id` (Payload gives every array and block row one) pair with the row of the
+ *    same id before, wherever it was.
+ * 2. Rows without an id (what an assistant writes for a new or rewritten row) pair with the row
+ *    at the same position that no id claimed; with none, they are new.
+ * 3. Rows before that nothing paired with are removed.
+ */
+export function pairRows(
+  beforeRows: ReadonlyArray<Record<string, unknown>>,
+  afterRows: ReadonlyArray<Record<string, unknown>>
+): { kept: RowPair[]; removed: Array<{ b: Record<string, unknown>; beforeIndex: number }> } {
+  const used = new Set<number>();
+  const matchOf = new Map<number, { beforeIndex: number; byId: boolean }>();
+  const byId = new Map<unknown, number[]>();
+  beforeRows.forEach((row, i) => {
+    if (row.id === undefined || row.id === null) return;
+    byId.set(row.id, [...(byId.get(row.id) ?? []), i]);
+  });
+  afterRows.forEach((row, afterIndex) => {
+    if (row.id === undefined || row.id === null) return;
+    const candidate = (byId.get(row.id) ?? []).find((i) => !used.has(i));
+    if (candidate === undefined) return;
+    used.add(candidate);
+    matchOf.set(afterIndex, { beforeIndex: candidate, byId: true });
+  });
+  afterRows.forEach((row, afterIndex) => {
+    if (row.id !== undefined && row.id !== null) return;
+    if (afterIndex < beforeRows.length && !used.has(afterIndex)) {
+      used.add(afterIndex);
+      matchOf.set(afterIndex, { beforeIndex: afterIndex, byId: false });
+    }
+  });
+  const kept = afterRows.map((a, afterIndex): RowPair => {
+    const match = matchOf.get(afterIndex);
+    return {
+      ...(match ? { b: beforeRows[match.beforeIndex] } : {}),
+      a,
+      beforeIndex: match?.beforeIndex ?? -1,
+      afterIndex,
+      byId: match?.byId ?? false,
+    };
+  });
+  const removed = beforeRows.flatMap((b, beforeIndex) => (used.has(beforeIndex) ? [] : [{ b, beforeIndex }]));
+  return { kept, removed };
+}
+
+/**
+ * The `afterIndex` of rows that moved. Inserting or removing a row shifts the rows after it
+ * without moving them, so a row counts as moved only if it is outside the longest run of
+ * id-matched rows that kept their relative order.
+ */
+function movedRows(pairs: { kept: RowPair[] }): Set<number> {
+  const matched = pairs.kept.filter((p) => p.b && p.byId);
+  // Longest increasing subsequence of the before positions, in after order (patience sorting).
+  const tails: number[] = [];
+  const tailPair: number[] = [];
+  const previous: number[] = matched.map(() => -1);
+  matched.forEach((pair, i) => {
+    let lo = 0;
+    let hi = tails.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (tails[mid]! < pair.beforeIndex) lo = mid + 1;
+      else hi = mid;
+    }
+    tails[lo] = pair.beforeIndex;
+    tailPair[lo] = i;
+    previous[i] = lo > 0 ? tailPair[lo - 1]! : -1;
+  });
+  const stable = new Set<number>();
+  for (let i = tailPair[tails.length - 1] ?? -1; i >= 0; i = previous[i]!) stable.add(i);
+  const moved = new Set<number>();
+  matched.forEach((pair, i) => {
+    if (!stable.has(i)) moved.add(pair.afterIndex);
+  });
+  return moved;
+}
+
 export function diffDocument(input: DiffInput): DiffResult {
   const changes: FieldChange[] = [];
   let omitted = 0;
+  let total = 0;
   const push = (change: FieldChange) => {
+    total += 1;
     if (changes.length >= MAX_CHANGES) omitted += 1;
     else changes.push(change);
   };
@@ -276,24 +371,47 @@ export function diffDocument(input: DiffInput): DiffResult {
   ) => {
     const beforeRows = Array.isArray(before) ? (before.filter(isPlainObject) as Record<string, unknown>[]) : [];
     const afterRows = Array.isArray(after) ? (after.filter(isPlainObject) as Record<string, unknown>[]) : [];
-    const used = new Set<number>();
-    const pairs: Array<{ b?: Record<string, unknown>; a?: Record<string, unknown>; index: number }> = [];
-    afterRows.forEach((row, index) => {
-      let match = row.id !== undefined ? beforeRows.findIndex((r, i) => !used.has(i) && r.id === row.id) : -1;
-      if (match < 0 && row.id === undefined && index < beforeRows.length && !used.has(index)) match = index;
-      if (match >= 0) used.add(match);
-      pairs.push({ ...(match >= 0 ? { b: beforeRows[match] } : {}), a: row, index });
-    });
-    beforeRows.forEach((row, index) => {
-      if (!used.has(index)) pairs.push({ b: row, index });
-    });
-    for (const pair of pairs) {
-      const blockType = String((pair.a ?? pair.b)?.blockType ?? "");
+    const pairs = pairRows(beforeRows, afterRows);
+    const moved = movedRows(pairs);
+    const marked = pairs.kept.length > 0;
+
+    const rowOf = (row: Record<string, unknown> | undefined, position: number, removed: boolean) => {
+      const blockType = String(row?.blockType ?? "");
       const block = node?.blocks?.get(blockType);
       const rowName = block ? ` · ${block.label}` : blockType ? ` · ${humanize(blockType)}` : "";
-      const rowLabel = `${label} › ${pair.index + 1}${rowName}`;
-      const rowFields = node?.type === "blocks" ? block?.fields : node?.fields;
-      object(pair.b, pair.a, rowFields, `${path}.${pair.index}`, rowLabel, "replace", ROW_KEYS);
+      return {
+        // Next to kept rows, a removed row is named by its position before, with a marker: it can
+        // never be mistaken for (or collide with) a kept row, named by its position after.
+        rowPath: removed && marked ? `${path}.removed-${position}` : `${path}.${position}`,
+        rowLabel: `${label} › ${position + 1}${removed && marked ? " (removed)" : ""}${rowName}`,
+        fields: node?.type === "blocks" ? block?.fields : node?.fields,
+      };
+    };
+
+    for (const pair of pairs.kept) {
+      const { rowPath, rowLabel, fields } = rowOf(pair.a, pair.afterIndex, false);
+      if (moved.has(pair.afterIndex)) {
+        push({
+          path: `${rowPath}:moved`,
+          label: `${rowLabel} › Position`,
+          kind: "changed",
+          format: "text",
+          before: String(pair.beforeIndex + 1),
+          after: String(pair.afterIndex + 1),
+        });
+      }
+      const count = total;
+      object(pair.b, pair.a, fields, rowPath, rowLabel, "replace", ROW_KEYS);
+      if (!pair.b && total === count) {
+        // A new row with nothing in it still changes the page.
+        push({ path: rowPath, label: rowLabel, kind: "added", format: "text", after: EMPTY_ROW });
+      }
+    }
+    for (const row of pairs.removed) {
+      const { rowPath, rowLabel, fields } = rowOf(row.b, row.beforeIndex, true);
+      const count = total;
+      object(row.b, undefined, fields, rowPath, rowLabel, "replace", ROW_KEYS);
+      if (total === count) push({ path: rowPath, label: rowLabel, kind: "removed", format: "text", before: EMPTY_ROW });
     }
   };
 
