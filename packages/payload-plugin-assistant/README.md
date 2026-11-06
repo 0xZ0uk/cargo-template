@@ -64,6 +64,7 @@ serialised request body, not the options object.
 | `./admin/AssistantView` | The admin view (a server component wrapped in `DefaultTemplate`; the import-map target). |
 | `./admin/AssistantNavLink` | The nav link (a server component that asks `access`; the import-map target). |
 | `./client` | The chat UI, client components only (`"use client"`): `AssistantChat`, `AssistantNavLinkClient`, `ApprovalCard` (the default), `ApprovalControl` (minimal), `pendingApprovalFrom`, `answerInterrupt`, the `PendingApproval` / `ApprovalRenderer` / `ApprovalDecision` types and the proposal types (`ApprovalProposal`, `FieldChange`…). Its CSS is `./client.css`, imported by `client.js`. |
+| `./mcp` | plugin-mcp items for rich text as Markdown (#67): `withMarkdownRichText`, `setRichTextFromMarkdownTool`, `richTextAsMarkdown`, `SET_RICH_TEXT_TOOL_NAME`, `markdownLosses`, `unsupportedMarkdown`, `RichTextPathError`. Needs `@payloadcms/plugin-mcp` (an optional peer: only this entry imports it). See [Rich text as Markdown](#rich-text-as-markdown-67). |
 | `./do` | The Durable Object classes `AssistantConversation` and `AssistantConversationIndex`, plus their stores. Workerd-only (`cloudflare:workers`): re-export them from the Worker entry, never import this entry from `payload.config.ts` or the admin bundle. |
 
 The endpoints load the AI runtime with `await import('./server/chat')`, and tsup code-splits it
@@ -265,8 +266,12 @@ Built on the Worker per turn (`buildSystemPrompt`, `src/server/instructions.ts`)
    `getGlobalSchema` before writing; small targeted updates (only the changed fields); after a change
    say what changed with a link to `<admin>/collections/<slug>/<id>` or `<admin>/globals/<slug>`;
    ask when ambiguous.
-4. The app's `instructions`.
-5. `payloadToolsSystemPrompt`: `getConfigInfo` for slugs, `select` + small `limit` + `depth: 0`, `_status`, approvals, access errors.
+4. Rich text rules, when a plugin-mcp collection entry has `setRichTextFromMarkdown` (see
+   [Rich text as Markdown](#rich-text-as-markdown-67)): rich text reads as Markdown, is written only
+   with that tool (never Lexical JSON in create/update data), and what Markdown loses. Plus, among the
+   conventions: read with `draft: true` when discussing or editing a draft (#116).
+5. The app's `instructions`.
+6. `payloadToolsSystemPrompt`: `getConfigInfo` for slugs, `select` + small `limit` + `depth: 0`, `_status`, approvals, access errors.
 
 ## Endpoints: the contract for the admin UI
 
@@ -561,6 +566,73 @@ warm on workerd in the spike), and each tool call is another in-process POST tha
 re-authenticates. plugin-mcp refuses the client's `subscriptions/listen` and logs an error for
 it on every connection; harmless, upstream noise.
 
+## Rich text as Markdown (#67)
+
+plugin-mcp's create and update tools take raw field data, i.e. Lexical JSON for rich text: models
+get it wrong, it costs tokens, and nobody can read it on a card. The `./mcp` entry adds Markdown in
+both directions, as plugin-mcp items (one tool layer for the assistant and external MCP clients, #58):
+
+```ts
+import { withMarkdownRichText } from '@cargo/payload-plugin-assistant/mcp'
+
+mcpPlugin({
+  collections: {
+    pages: withMarkdownRichText('pages', { description: '…' }), // keeps the entry's own tools
+    media: withMarkdownRichText('media'),
+  },
+})
+```
+
+Give it to every collection with a rich text field (`apps/web` has a test for that).
+
+**Converters.** Payload's sanitizer binds `converters.fromMarkdown` / `toMarkdown` to each Lexical
+field's own editor config (`field.editor.converters`), so every field converts with its own features
+(heading levels, lists…). A field whose editor has no converters (not Lexical) is refused.
+
+**`setRichTextFromMarkdown`** (`src/richText/tool.ts`, `defineCollectionTool`): `{ slug, id, path,
+markdown, draft?, locale?, allowFormattingLoss? }`.
+
+- `path` is a **data path**: field names and row numbers, `caption`, `hero.richText`,
+  `layout.3.columns.0.content.1.richText`. Blocks rows resolve by their `blockType`, so the same field
+  name in two blocks is never ambiguous; `layout[3]` is accepted. Unknown field, a row that doesn't
+  exist, a non-rich-text field, a missing document: an error (`isError`) that lists the document's
+  rich text paths. An unknown collection lists the collections with rich text (plugin-mcp answers
+  first for a collection without the tool).
+- It reads the document as the user (`depth: 0`, the latest draft), sets the converted state at the
+  path, and updates **the path's top-level field** with the document's current value: block and array
+  rows keep their ids and siblings (a dot-path patch would recreate rows). Draft by default;
+  `draft: false` publishes (`_status: "published"`). Runs with the user's access
+  (`overrideAccess: authorizedMCP.overrideAccess`); listed for users with `update` on some collection
+  that has it, refused for the others.
+- Annotated `readOnlyHint: false`, so the assistant asks for approval. Returns a short confirmation,
+  never Lexical JSON.
+
+**Reads.** `richTextAsMarkdown(slug)` is the `overrideResponse` of `findDocuments` (by id and by
+`where`): every rich text value becomes Markdown with its field's converters (by schema, through
+groups, tabs, arrays and blocks; Lexical found elsewhere, e.g. in populated relationships, with the
+root editor's), and the response text is rebuilt in plugin-mcp's format, since `findDocuments`
+prints the documents itself. A line tells the model to write rich text with the tool. **This changes
+the output for external MCP clients too**, on purpose (one tool layer, #58). Other tools
+(`updateDocument`'s result, versions) still return Lexical JSON; `getCollectionSchema` still
+describes rich text as Lexical JSON, so the system prompt carries the rule.
+
+**Fidelity.** Markdown keeps paragraphs, headings, bold, italic, links to URLs and, where the field's
+editor has them, lists, quotes, strikethrough and inline code. It can't keep underline,
+sub/superscript, highlight, text styles, alignment, indentation, internal links (to documents), links
+opening in a new tab, or upload/relationship/block nodes (`markdownLosses`). **Decision: refuse, not
+warn.** If the field holds any of them, the tool writes nothing and says what would be lost; the
+system prompt tells the model to tell the editor and call again with `allowFormattingLoss: true` only
+once they agree, and the card repeats it. A warning alone would only reach the model after the loss.
+The other direction: Markdown the field's editor doesn't support (a heading level, lists) is kept as
+literal text by Lexical; `unsupportedMarkdown` finds it in the converted state, and both the tool
+result and the card say so. Blocks embedded in rich text (`BlocksFeature`) are out of scope: no
+editor in `apps/web` enables it.
+
+**Approval card.** `buildProposal` special-cases the tool: one `richText` change at the path's label
+(`Layout › 3 · Rich text › Rich Text`), before = the current value as Markdown, after = the proposed
+Markdown as the field will store it (converted and back), plus a notice for formatting that would be
+lost or Markdown the field doesn't support. Stale checks work as for `updateDocument`.
+
 ## Admin UI
 
 `/admin/assistant`: the conversation list on the left (a toggle above the chat on narrow screens),
@@ -710,7 +782,9 @@ Payload + plugin-mcp, turns with `fakeText()`; `tests/turn.test.ts`: the real Op
 its `httpClient` replaced, asserting the serialised request and the error mapping;
 `tests/approvals/diff.test.ts`: the diff and Lexical-to-text helpers; `tests/integration/approvals.test.ts`:
 proposals, approve, reject with a reason, batches, stale proposals, an access error at apply
-time and ownership end to end; `tests/ui/approvals.test.tsx`: the card, and the chat panel's
+time and ownership end to end; `tests/integration/richText.test.ts`: the Markdown tool and reads
+through plugin-mcp on app-shaped editors (block references, columns → content blocks) plus a list
+fixture, paths and errors, ids kept, formatting loss, access, the card and the system prompt; `tests/ui/approvals.test.tsx`: the card, and the chat panel's
 batch, stale and refused-send handling with a fake `useChat`). `vitest.workerd.config.ts` runs `tests/workerd/` under workerd with
 `@cloudflare/vitest-plugin` 1.4.11 (its Miniflare and Wrangler match the app's), against the test
 Worker in `tests/workerd/` (same bindings as the app wiring above): conformance of both objects,

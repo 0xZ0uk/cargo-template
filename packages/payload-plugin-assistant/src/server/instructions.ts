@@ -1,4 +1,5 @@
 import type { PayloadRequest } from "payload";
+import { SET_RICH_TEXT_TOOL_NAME } from "../richText/fields";
 import { payloadToolsSystemPrompt } from "../tools/payloadToolSource";
 import type { NormalizedAssistantOptions } from "../utils/normalizeOptions";
 
@@ -14,6 +15,30 @@ function mcpDescriptions(config: PayloadRequest["payload"]["config"]): {
   const plugins = (config as { plugins?: Array<{ slug?: string; options?: Record<string, any> }> }).plugins ?? [];
   const options = plugins.find((plugin) => plugin?.slug === MCP_PLUGIN_SLUG)?.options ?? {};
   return { collections: options.collections ?? {}, globals: options.globals ?? {} };
+}
+
+
+/** Collections whose plugin-mcp entry has the Markdown rich text tool (`withMarkdownRichText`). */
+export function markdownRichTextCollections(config: PayloadRequest["payload"]["config"]): string[] {
+  const { collections } = mcpDescriptions(config);
+  return Object.entries(collections)
+    .filter(([, entry]) => {
+      const tools = (entry as { tools?: Record<string, unknown> } | undefined)?.tools;
+      return Boolean(tools && tools[SET_RICH_TEXT_TOOL_NAME]);
+    })
+    .map(([slug]) => slug);
+}
+
+/** How to read and write rich text, when the app installed the Markdown tool. */
+function richTextRules(slugs: string[]): string {
+  if (!slugs.length) return "";
+  return [
+    `Rich text (${slugs.map((s) => `\`${s}\``).join(", ")}):`,
+    "- findDocuments shows rich text fields as Markdown, never Lexical JSON.",
+    `- To change one, call ${SET_RICH_TEXT_TOOL_NAME} with the document id, the field's data path from the document (e.g. \`layout.2.richText\`, \`layout.3.columns.0.content.1.richText\`, \`caption\`) and the field's whole new Markdown. Read the current value first and change only what was asked; keep the rest word for word.`,
+    "- Never put rich text in updateDocument or createDocuments data: those take Lexical JSON. To create a document with rich text, create it without the rich text, then set each field with the Markdown tool.",
+    "- Markdown keeps paragraphs, headings, bold, italic and links to URLs (lists and quotes only where the field allows them). Underline, alignment, indentation, internal links to documents, new-tab links and embedded uploads or relationships are lost: if the tool says a field holds them, tell the editor what would be lost and only pass `allowFormattingLoss: true` once they agree.",
+  ].join("\n");
 }
 
 const text = (value: unknown): string | undefined => (typeof value === "string" && value.trim() ? value.trim() : undefined);
@@ -80,7 +105,9 @@ export async function buildSystemPrompt(req: PayloadRequest, options: Normalized
       "- Prefer small, targeted updates: send only the fields you change, never a whole document back.",
       `- After a change, say what changed and link to it in the admin: ${admin}/collections/<slug>/<id> for a document, ${admin}/globals/<slug> for a global.`,
       "- If something is ambiguous (which document, which wording), ask before writing.",
+      "- For collections with drafts, read with `draft: true` when you discuss or edit a document, so you see the latest draft and not the published copy; say which one you mean when they differ.",
     ].join("\n"),
+    richTextRules(markdownRichTextCollections(req.payload.config)),
     own?.trim() ?? "",
   ].filter(Boolean);
 

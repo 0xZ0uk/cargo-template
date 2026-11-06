@@ -134,6 +134,43 @@ describe("approval card", () => {
     expect(screen.getAllByRole("region").length).toBe(4);
   });
 
+  it("setRichTextFromMarkdown: the field's text before and after, and what Markdown can't keep", () => {
+    const richText = proposal({
+      toolName: "setRichTextFromMarkdown",
+      notice: "This field contains underline, which Markdown can't keep: approving removes it.",
+      items: [
+        {
+          document: { id: "7", title: "Home", updatedAt: "2026-11-01T00:00:00.000Z", status: "draft" },
+          changes: [
+            {
+              path: "layout.2.richText",
+              label: "Layout › 3 · Rich text › Rich Text",
+              kind: "changed",
+              format: "richText",
+              before: "First paragraph.\n\nSecond paragraph.",
+              after: "First paragraph, **rewritten**.\n\nSecond paragraph.",
+            },
+          ],
+        },
+      ],
+    });
+    const { container } = render(
+      <ApprovalCard
+        approval={approval({
+          toolName: "setRichTextFromMarkdown",
+          input: { slug: "pages", id: "7", path: "layout.2.richText", markdown: "First paragraph, **rewritten**.\n\nSecond paragraph." },
+          proposal: richText,
+        })}
+      />
+    );
+    expect(screen.getByRole("heading", { name: "Update Page" })).toBeTruthy();
+    expect(container.textContent).toContain("Layout › 3 · Rich text › Rich Text");
+    expect(container.querySelector(".assistant-diff__side--before")!.textContent).toContain("First paragraph.\n\nSecond paragraph.");
+    expect(container.querySelector(".assistant-diff__side--after")!.textContent).toContain("First paragraph, **rewritten**.");
+    expect(container.textContent).toContain("which Markdown can't keep");
+    expect(container.textContent).not.toMatch(/"root"|"children"/);
+  });
+
   it("create lists the proposed fields; delete says what will be lost", () => {
     const create = proposal({
       action: "create",

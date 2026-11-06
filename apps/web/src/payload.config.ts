@@ -2,6 +2,7 @@ import { onpage } from '@cargo/onpage-plugin'
 import { tanstackSession } from '@cargo/onpage-tanstack-start/session'
 import { abTestingPlugin } from '@cargo/payload-plugin-ab'
 import { assistantPlugin } from '@cargo/payload-plugin-assistant'
+import { withMarkdownRichText } from '@cargo/payload-plugin-assistant/mcp'
 import { createSqlSeoDataStore, seoAnalyzerPlugin } from '@cargo/payload-seo-analyzer'
 import { sqliteD1Adapter } from '@payloadcms/db-d1-sqlite'
 import { mcpPlugin } from '@payloadcms/plugin-mcp'
@@ -104,19 +105,23 @@ export default buildConfig({
   plugins: [
     // Serves MCP at POST /api/mcp. Callers authenticate with a user API key; without one
     // they get no tools, since every tool requires a logged-in user by default.
+    // `withMarkdownRichText` (every collection with rich text: Pages and Sections through their
+    // blocks, Media's caption): findDocuments shows rich text as Markdown, and
+    // setRichTextFromMarkdown writes it, for the assistant and external MCP clients alike.
     mcpPlugin({
       collections: {
         folders: {
           description: 'Folders that organise media in the admin panel.',
         },
-        pages: {
+        pages: withMarkdownRichText('pages', {
           description:
             'Website pages, served at /<slug> (the page with slug "home" is served at /). Built from layout blocks (sections) and SEO meta. Saved as drafts until published. Pages with `_abVariantOf` set are A/B test variants of that page (slug `<original>--<hash>`), shown to a share of its visitors; they are created, weighted and removed in the admin\'s Variants panel, and `_abVariantOf` / `_abPassPercentage` cannot be written here.',
-        },
-        media: {
+        }),
+        sections: withMarkdownRichText('sections'),
+        media: withMarkdownRichText('media', {
           description:
             'Uploaded files (images, documents) with alt text, stored in R2. Call getUploadInstructions before uploading.',
-        },
+        }),
         tags: {
           description: 'Tags used to label and filter media.',
         },

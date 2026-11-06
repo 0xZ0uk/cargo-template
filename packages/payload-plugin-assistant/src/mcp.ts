@@ -1,0 +1,11 @@
+/**
+ * `@cargo/payload-plugin-assistant/mcp`: plugin-mcp items for rich text as Markdown (#67). A
+ * separate entry so the plugin itself never imports `@payloadcms/plugin-mcp` (an optional peer).
+ */
+export {
+  richTextAsMarkdown,
+  SET_RICH_TEXT_TOOL_NAME,
+  setRichTextFromMarkdownTool,
+  withMarkdownRichText,
+} from "./richText/tool";
+export { markdownLosses, RichTextPathError, unsupportedMarkdown } from "./richText/fields";

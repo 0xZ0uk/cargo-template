@@ -75,7 +75,9 @@ test.describe('Assistant', () => {
       })}`,
     )
 
-    const tool = page.locator('.assistant-tool', { has: page.locator('code', { hasText: 'findDocuments' }) })
+    const tool = page.locator('.assistant-tool', {
+      has: page.locator('code', { hasText: 'findDocuments' }),
+    })
     await expect(tool).toBeVisible()
     await expect(tool).toHaveAttribute('data-status', 'done')
     await expect(page.getByText(/^Tool findDocuments finished:/)).toBeVisible()
@@ -102,7 +104,9 @@ test.describe('Assistant', () => {
     await expect.poll(draftTitle).toBe(newTitle)
 
     // Reset for the next test.
-    const reset = await page.request.patch(`/api/pages/${pageId}?draft=true`, { data: { title: originalTitle } })
+    const reset = await page.request.patch(`/api/pages/${pageId}?draft=true`, {
+      data: { title: originalTitle },
+    })
     expect(reset.ok(), await reset.text()).toBe(true)
   })
 
@@ -118,5 +122,94 @@ test.describe('Assistant', () => {
     await expect(card.getByText('Rejected: nothing was written.')).toBeVisible()
     await expect(page.getByText('The change was rejected. Nothing was written.')).toBeVisible()
     expect(await draftTitle()).toBe(originalTitle)
+  })
+
+  test("rewrites a paragraph of a block's rich text from Markdown: the card shows it as text", async () => {
+    const paragraph = (text: string) => ({
+      type: 'paragraph',
+      version: 1,
+      direction: 'ltr',
+      format: '',
+      indent: 0,
+      textFormat: 0,
+      children: [
+        { type: 'text', version: 1, text, format: 0, detail: 0, mode: 'normal', style: '' },
+      ],
+    })
+    const created = await page.request.post('/api/pages?draft=true', {
+      data: {
+        title: `${originalTitle} (rich text)`,
+        _status: 'draft',
+        layout: [
+          {
+            blockType: 'richText',
+            richText: {
+              root: {
+                type: 'root',
+                version: 1,
+                direction: 'ltr',
+                format: '',
+                indent: 0,
+                children: [
+                  paragraph('The old first paragraph.'),
+                  paragraph('The second paragraph.'),
+                ],
+              },
+            },
+          },
+        ],
+      },
+    })
+    expect(created.ok(), await created.text()).toBe(true)
+    const richTextPageId = (await created.json()).doc.id
+    const readLayout = async () => {
+      const response = await page.request.get(`/api/pages/${richTextPageId}?draft=true&depth=0`)
+      return (
+        (await response.json()) as {
+          layout: Array<{
+            id: string
+            richText: { root: { children: Array<{ children: Array<{ text: string }> }> } }
+          }>
+        }
+      ).layout
+    }
+    const before = await readLayout()
+
+    try {
+      await send(
+        `/tool setRichTextFromMarkdown ${JSON.stringify({
+          slug: 'pages',
+          id: richTextPageId,
+          path: 'layout.0.richText',
+          markdown: 'The **new** first paragraph.\n\nThe second paragraph.',
+        })}`,
+      )
+      const card = page.locator('article.assistant-approval-card')
+      await expect(card).toBeVisible()
+      await expect(card.getByRole('heading', { name: 'Update Page' })).toBeVisible()
+      await expect(card.locator('.assistant-diff__side--before')).toContainText(
+        'The old first paragraph.',
+      )
+      await expect(card.locator('.assistant-diff__side--after')).toContainText(
+        'The **new** first paragraph.',
+      )
+      await expect(card).not.toContainText('"root"')
+
+      await card.getByRole('button', { name: 'Approve', exact: true }).click()
+      await expect(card.getByText('Applied, saved as a draft.')).toBeVisible()
+      await expect(page.getByText(/^Tool setRichTextFromMarkdown finished:/)).toBeVisible()
+      await expect
+        .poll(async () =>
+          (await readLayout())[0]!.richText.root.children[0]!.children.map((c) => c.text).join(''),
+        )
+        .toBe('The new first paragraph.')
+      const after = await readLayout()
+      expect(after[0]!.id).toBe(before[0]!.id)
+      expect(after[0]!.richText.root.children[1]).toMatchObject({
+        children: [{ text: 'The second paragraph.' }],
+      })
+    } finally {
+      await page.request.delete(`/api/pages/${richTextPageId}`)
+    }
   })
 })
