@@ -3,7 +3,8 @@
 /**
  * Document controls added by payload-onpage: open this document's page in edit
  * mode, or copy a sealed read-only preview link. Hidden for users who can't
- * update the document.
+ * update the document; "Edit on page" is also hidden while the document's
+ * `hideEditWhen` field has a value.
  */
 import { payloadRest } from '@cargo/onpage-core/payload'
 import {
@@ -11,6 +12,7 @@ import {
   toast,
   useConfig,
   useDocumentInfo,
+  useFormFields,
   useLocale,
   useTranslation,
 } from '@payloadcms/ui'
@@ -24,6 +26,8 @@ export interface OnPageAdminControlsProps {
   slug: string
   /** Plugin endpoint prefix (`routePrefix`). */
   prefix: `/${string}`
+  /** Top-level field that, when set on the document, hides "Edit on page" (`hideEditWhen`). */
+  hideEditWhen?: string
 }
 
 /**
@@ -43,8 +47,18 @@ function postInNewTab(action: string) {
   form.remove()
 }
 
-export function OnPageAdminControls({ kind, slug, prefix }: OnPageAdminControlsProps) {
+export function OnPageAdminControls({
+  kind,
+  slug,
+  prefix,
+  hideEditWhen,
+}: OnPageAdminControlsProps) {
   const { id, hasSavePermission } = useDocumentInfo()
+  const hideEdit = useFormFields(([fields]) => {
+    if (!hideEditWhen) return false
+    const value: unknown = fields[hideEditWhen]?.value
+    return value != null && value !== '' && value !== false
+  })
   const { config } = useConfig()
   const locale = useLocale()
   const { t } = useTranslation<(typeof translations)['en'], OnPageTranslationKey>()
@@ -77,14 +91,16 @@ export function OnPageAdminControls({ kind, slug, prefix }: OnPageAdminControlsP
   const style = { whiteSpace: 'nowrap' as const, flexShrink: 0 }
   return (
     <div style={{ display: 'flex', gap: 6 }} data-testid="onpage-admin-controls">
-      <Button
-        buttonStyle="secondary"
-        size="medium"
-        onClick={() => postInNewTab(`${apiBase}${prefix}${ROUTES.enter}?${params}`)}
-        extraButtonProps={{ style, 'data-testid': 'onpage-edit-on-page' }}
-      >
-        {t('onpage:editOnPage')}
-      </Button>
+      {hideEdit ? null : (
+        <Button
+          buttonStyle="secondary"
+          size="medium"
+          onClick={() => postInNewTab(`${apiBase}${prefix}${ROUTES.enter}?${params}`)}
+          extraButtonProps={{ style, 'data-testid': 'onpage-edit-on-page' }}
+        >
+          {t('onpage:editOnPage')}
+        </Button>
+      )}
       <Button
         buttonStyle="ghost"
         size="medium"

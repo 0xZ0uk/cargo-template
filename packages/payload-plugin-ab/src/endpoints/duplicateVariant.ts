@@ -1,7 +1,12 @@
 import type { CollectionSlug, PayloadHandler } from "payload";
 import { hasDraftsEnabled, hasLocalizeStatusEnabled } from "payload/shared";
 import type { AbTestingPluginConfig } from "../types/config";
-import { AB_PASS_PERCENTAGE_FIELD, AB_VARIANT_OF_FIELD, DEFAULT_SLUG_FIELD } from "../constants";
+import {
+  AB_PASS_PERCENTAGE_FIELD,
+  AB_VARIANT_OF_FIELD,
+  AB_WRITE_CONTEXT_KEY,
+  DEFAULT_SLUG_FIELD,
+} from "../constants";
 import { getNestedValue } from "../utils/getNestedValue";
 
 const HASH_ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyz";
@@ -88,6 +93,8 @@ export function buildDuplicateVariantHandler<TVariantData extends object>(
     try {
       const collectionConfig = req.payload.collections[collectionSlug as CollectionSlug]?.config;
       const drafts = collectionConfig ? hasDraftsEnabled(collectionConfig) : false;
+      // Lets the field-level access on the variant fields accept this write (see injectAdminFields).
+      req.context[AB_WRITE_CONTEXT_KEY] = true;
       const newDoc = (await req.payload.duplicate({
         collection: collectionSlug as CollectionSlug,
         id: docId,
@@ -127,6 +134,8 @@ export function buildDuplicateVariantHandler<TVariantData extends object>(
           : 500;
       const message = err instanceof Error ? err.message : "Failed to create variant";
       return Response.json({ error: message }, { status });
+    } finally {
+      delete req.context[AB_WRITE_CONTEXT_KEY];
     }
   };
 }

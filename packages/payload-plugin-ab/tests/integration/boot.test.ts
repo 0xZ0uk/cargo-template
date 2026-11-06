@@ -203,6 +203,92 @@ describe("POST /api/_ab/duplicate", () => {
   });
 });
 
+describe("the variant fields", () => {
+  let page: Doc;
+  let other: Doc;
+  let variant: Doc;
+  let user: Record<string, unknown>;
+
+  beforeAll(async () => {
+    page = await createPublishedPage("locked", "Locked");
+    other = await createPublishedPage("locked-other", "Locked other");
+    variant = await addVariant(page);
+    user = (await payload.find({ collection: "users" as CollectionSlug, limit: 1, overrideAccess: true })).docs[0]!;
+  });
+
+  it("can't be set by a REST create: the page is created as an original", async () => {
+    const res = await api("/pages", {
+      method: "POST",
+      body: JSON.stringify({ title: "Sneaky", slug: "sneaky", _status: "published", _abVariantOf: page.id, _abPassPercentage: 50 }),
+    });
+    expect(res.status).toBe(201);
+    const created = await findPage(res.body.doc.id, { draft: true });
+    expect(created._abVariantOf).toBeFalsy();
+    expect(created._abPassPercentage).toBeFalsy();
+    expect(await manifest()).not.toHaveProperty("/en/locked");
+  });
+
+  it("can't make a variant of a variant, or turn an original into a variant, over REST", async () => {
+    const res = await api(`/pages/${other.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ _abVariantOf: variant.id, _abPassPercentage: 10 }),
+    });
+    expect(res.status).toBe(200);
+    const after = await findPage(other.id, { draft: true });
+    expect(after._abVariantOf).toBeFalsy();
+    expect(after._abPassPercentage).toBeFalsy();
+  });
+
+  it("a REST save of the variant keeps its parent and percentage, as the Variants drawer sends them", async () => {
+    const res = await api(`/pages/${variant.id}?draft=true`, {
+      method: "PATCH",
+      body: JSON.stringify({ title: "Locked B", _abVariantOf: other.id, _abPassPercentage: 60 }),
+    });
+    expect(res.status).toBe(200);
+    const after = await findPage(variant.id, { draft: true });
+    expect(after.title).toBe("Locked B");
+    expect(after._abVariantOf).toBe(page.id);
+    expect(after._abPassPercentage).toBe(1);
+
+    const detach = await api(`/pages/${variant.id}?draft=true`, {
+      method: "PATCH",
+      body: JSON.stringify({ _abVariantOf: null }),
+    });
+    expect(detach.status).toBe(200);
+    expect((await findPage(variant.id, { draft: true }))._abVariantOf).toBe(page.id);
+  });
+
+  it("can't be set by a Local API write that enforces access, as the MCP tools make", async () => {
+    const created = (await payload.create({
+      collection: PAGES,
+      data: { title: "Via MCP", slug: "via-mcp", _abVariantOf: page.id, _abPassPercentage: 20 } as never,
+      draft: true,
+      overrideAccess: false,
+      user: user as never,
+    })) as Doc;
+    expect((await findPage(created.id, { draft: true }))._abVariantOf).toBeFalsy();
+
+    await payload.update({
+      collection: PAGES,
+      id: variant.id,
+      data: { _abPassPercentage: 40 } as never,
+      draft: true,
+      overrideAccess: false,
+      user: user as never,
+    });
+    expect((await findPage(variant.id, { draft: true }))._abPassPercentage).toBe(1);
+  });
+
+  it("the Variants panel still stages percentages through a REST save of the original", async () => {
+    const res = await api(`/pages/${page.id}?draft=true`, {
+      method: "PATCH",
+      body: JSON.stringify({ _status: "draft", _abPendingPercentages: { [String(variant.id)]: 25 } }),
+    });
+    expect(res.status).toBe(200);
+    expect((await findPage(variant.id, { draft: true }))._abPassPercentage).toBe(25);
+  });
+});
+
 describe("variant lifecycle", () => {
   let page: Doc;
   let variant: Doc;

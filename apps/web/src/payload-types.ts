@@ -165,6 +165,8 @@ export interface Config {
     tags: Tag;
     'seo-settings': SeoSetting;
     'seo-redirects': SeoRedirect;
+    'ab-manifest': AbManifest;
+    'ab-experiments': AbExperiment;
     'social-posts': SocialPost;
     'social-templates': SocialTemplate;
     'payload-kv': PayloadKv;
@@ -184,6 +186,8 @@ export interface Config {
     tags: TagsSelect<false> | TagsSelect<true>;
     'seo-settings': SeoSettingsSelect<false> | SeoSettingsSelect<true>;
     'seo-redirects': SeoRedirectsSelect<false> | SeoRedirectsSelect<true>;
+    'ab-manifest': AbManifestSelect<false> | AbManifestSelect<true>;
+    'ab-experiments': AbExperimentsSelect<false> | AbExperimentsSelect<true>;
     'social-posts': SocialPostsSelect<false> | SocialPostsSelect<true>;
     'social-templates': SocialTemplatesSelect<false> | SocialTemplatesSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
@@ -307,6 +311,7 @@ export interface HeroBlock {
  */
 export interface Page {
   id: number;
+  _abPassPercentage?: number | null;
   title: string;
   layout: (
     | HeroBlock
@@ -337,7 +342,7 @@ export interface Page {
     description?: string | null;
   };
   publishedAt?: string | null;
-  slug: string;
+  slug?: string | null;
   /**
    * Cornerstone content is the most important content on your site and should be well linked.
    */
@@ -358,6 +363,19 @@ export interface Page {
         keyword: string;
         id?: string | null;
       }[]
+    | null;
+  /**
+   * The original page this variant belongs to.
+   */
+  _abVariantOf?: (number | null) | Page;
+  _abPendingPercentages?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
     | null;
   createdBy?: {
     relationTo: 'users';
@@ -1535,6 +1553,73 @@ export interface SeoRedirect {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ab-manifest".
+ */
+export interface AbManifest {
+  id: number;
+  /**
+   * Manifest key: the path generatePath returned for the original.
+   */
+  key: string;
+  /**
+   * Variants served on this key. Managed automatically — do not edit manually.
+   */
+  variants?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  createdBy?: {
+    relationTo: 'users';
+    value: number | User;
+  } | null;
+  updatedBy?: {
+    relationTo: 'users';
+    value: number | User;
+  } | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ab-experiments".
+ */
+export interface AbExperiment {
+  id: number;
+  /**
+   * Internal URL path used as the experiment id; matches GA4 fr_ab_experiment.
+   */
+  manifestKey: string;
+  /**
+   * ID of the original (non-variant) document.
+   */
+  parentDocId: string;
+  parentCollection: string;
+  /**
+   * Locale this experiment row is scoped to; null when localization is disabled.
+   */
+  locale?: string | null;
+  /**
+   * Set to now() when the first variant for this parent+locale is published.
+   */
+  startedAt: string;
+  createdBy?: {
+    relationTo: 'users';
+    value: number | User;
+  } | null;
+  updatedBy?: {
+    relationTo: 'users';
+    value: number | User;
+  } | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "social-posts".
  */
 export interface SocialPost {
@@ -1911,6 +1996,14 @@ export interface PayloadLockedDocument {
         value: number | SeoRedirect;
       } | null)
     | ({
+        relationTo: 'ab-manifest';
+        value: number | AbManifest;
+      } | null)
+    | ({
+        relationTo: 'ab-experiments';
+        value: number | AbExperiment;
+      } | null)
+    | ({
         relationTo: 'social-posts';
         value: number | SocialPost;
       } | null)
@@ -1987,6 +2080,7 @@ export interface PayloadLlmInstruction {
  * via the `definition` "pages_select".
  */
 export interface PagesSelect<T extends boolean = true> {
+  _abPassPercentage?: T;
   title?: T;
   layout?: T | {};
   meta?:
@@ -2007,6 +2101,8 @@ export interface PagesSelect<T extends boolean = true> {
         keyword?: T;
         id?: T;
       };
+  _abVariantOf?: T;
+  _abPendingPercentages?: T;
   createdBy?: T;
   updatedBy?: T;
   updatedAt?: T;
@@ -2185,6 +2281,33 @@ export interface SeoRedirectsSelect<T extends boolean = true> {
   from?: T;
   to?: T;
   type?: T;
+  createdBy?: T;
+  updatedBy?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ab-manifest_select".
+ */
+export interface AbManifestSelect<T extends boolean = true> {
+  key?: T;
+  variants?: T;
+  createdBy?: T;
+  updatedBy?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ab-experiments_select".
+ */
+export interface AbExperimentsSelect<T extends boolean = true> {
+  manifestKey?: T;
+  parentDocId?: T;
+  parentCollection?: T;
+  locale?: T;
+  startedAt?: T;
   createdBy?: T;
   updatedBy?: T;
   updatedAt?: T;

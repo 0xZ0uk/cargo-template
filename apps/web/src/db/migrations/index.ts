@@ -8,6 +8,7 @@ import * as migration_20261103_201707_seo_jobs from './20261103_201707_seo_jobs'
 import * as migration_20261105_163314_page_blocks from './20261105_163314_page_blocks';
 import * as migration_20261106_025216_seo_noindex from './20261106_025216_seo_noindex';
 import * as migration_20261106_083840_socials from './20261106_083840_socials';
+import * as migration_20261106_092406_ab from './20261106_092406_ab';
 
 export const migrations = [
   {
@@ -58,6 +59,11 @@ export const migrations = [
   {
     up: migration_20261106_083840_socials.up,
     down: migration_20261106_083840_socials.down,
-    name: '20261106_083840_socials'
+    name: '20261106_083840_socials',
+  },
+  {
+    up: migration_20261106_092406_ab.up,
+    down: migration_20261106_092406_ab.down,
+    name: '20261106_092406_ab'
   },
 ];
