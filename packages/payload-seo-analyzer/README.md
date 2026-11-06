@@ -548,7 +548,7 @@ There is no uninstall script; remove the plugin by hand. The steps below are for
 1. **Revoke Google access first, if `gscApi` was ever on.** The `seo-gsc-auth` collection holds an encrypted Google refresh token, and removing the package does not revoke it. Revoke the grant at [myaccount.google.com/permissions](https://myaccount.google.com/permissions) before its table is dropped.
 2. **Remove the code.**
    - `seoAnalyzerPlugin(...)` from `payload.config.ts`, and the `createSqlSeoDataStore`, `r2SeoCacheStore` and `workersSeoRateLimit` wiring that only it used.
-   - The app glue: `servePluginFile` and the `llms.txt`, `sitemap.xml` and `robots.txt` routes, the redirect lookup and 404 recording, the `scheduled` handler that runs the plugin's jobs, and the `seo-store:migrate` scripts.
+   - The app glue: `servePluginFile` and the `llms.txt`, `sitemap.xml` and `robots.txt` routes, the redirect lookup and 404 recording, the `scheduled` handler that runs the plugin's jobs, and the `seo-store:migrate` scripts — and drop `pnpm run seo-store:migrate:remote` from `deploy:database` in `apps/web/package.json`, which runs it on every deploy.
    - The package itself (`pnpm web remove @cargo/payload-seo-analyzer`).
 3. **Regenerate the import map**: `pnpm web generate:importmap`. It drops the plugin's admin views and fields.
 4. **Drop the plugin's collections from the main D1** with `pnpm web migrate:create`, review the generated SQL and apply it with `pnpm web migrate`. Only the collections you enabled exist: `seo-settings` (`settings`), `seo-redirects` (`redirects`; your 301/302 rules stop being served once it is gone) and `seo-gsc-auth` (`gscApi`). The four time-series collections (`seo-score-history`, `seo-performance`, `seo-logs`, `seo-rank-history`) are in the main D1 only when you ran without `dataStore`.
@@ -559,7 +559,7 @@ There is no uninstall script; remove the plugin by hand. The steps below are for
    - Delete the R2 prefix `seo-analyzer/cache/` and its lifecycle rule (`pnpm web r2:lifecycle` added it).
    - Remove `triggers.crons` from `wrangler.jsonc` if the plugin's jobs were the only thing it ran, then `pnpm web cf-typegen`.
    - Optional: delete the `seoAuditContinue`, `seoRankSnapshot`, `seoAlertsDigest` and `seoRetentionPurge` rows from `payload-jobs`. Finished rows are harmless.
-   - Remove the plugin's variables from `.env.schema` (`OPENROUTER_API_KEY`, `SEO_ALERT_*`, `GSC_OAUTH_*`, `SEO_GSC_ENCRYPTION_KEY`) and their secrets from Cloudflare.
+   - Remove the plugin's variables from `.env.schema` and their secrets from Cloudflare: every `SEO_*` variable (`SEO_AI_*`, `SEO_ALERT_*`, `SEO_AUDIT_*`, `SEO_EXTERNAL_LINKS_*`, `SEO_FETCH_MAX_DOCS`, `SEO_LLMS_TXT`, `SEO_GSC_ENCRYPTION_KEY`), `GSC_OAUTH_*` and `PAGESPEED_API_KEY`, plus `OPENROUTER_API_KEY` unless something else in the app uses it. Then run `pnpm web cf-typegen`.
 
 ## License
 
