@@ -200,7 +200,7 @@ export const CONTENT_CACHE_BASES = [
  */
 export const STALE_SERVABLE_BASES = ['audit'] as const
 
-/** In-memory mode: cap on kept last-good values (keys are per locale, so a handful in practice). */
+/** In-memory mode: cap on kept last-good values (one audit key per config, so a handful in practice). */
 const MAX_LAST_GOOD = 50
 
 /** Caches that depend on the redirects collection, plus the frontend's generation marker. */
