@@ -2,34 +2,45 @@ import type { Payload } from 'payload'
 import { describe, expect, it, vi } from 'vitest'
 
 import {
+  FAILED_SOCIAL_POST_RETENTION_DAYS,
+  FAILED_SOCIAL_POST_STATUSES,
   FINAL_SOCIAL_POST_STATUSES,
-  finishedSocialPostsBefore,
+  prunableSocialPostsBefore,
   pruneSocialPosts,
   SOCIAL_POST_RETENTION_DAYS,
 } from '@/plugins/socialsRetention'
 
 const NOW = new Date('2026-11-06T12:00:00.000Z')
 
-describe('finishedSocialPostsBefore', () => {
-  it('selects final statuses last updated more than 90 days ago', () => {
+describe('prunableSocialPostsBefore', () => {
+  it('selects finished rows after 90 days and failed rows after 180 days', () => {
     expect(SOCIAL_POST_RETENTION_DAYS).toBe(90)
-    expect(finishedSocialPostsBefore(NOW)).toEqual({
-      and: [
-        { status: { in: ['published', 'cancelled', 'deleted'] } },
-        { updatedAt: { less_than: '2026-08-08T12:00:00.000Z' } },
+    expect(FAILED_SOCIAL_POST_RETENTION_DAYS).toBe(180)
+    expect(prunableSocialPostsBefore(NOW)).toEqual({
+      or: [
+        {
+          and: [
+            { status: { in: ['published', 'cancelled', 'deleted'] } },
+            { updatedAt: { less_than: '2026-08-08T12:00:00.000Z' } },
+          ],
+        },
+        {
+          and: [
+            { status: { in: ['failed'] } },
+            { updatedAt: { less_than: '2026-05-10T12:00:00.000Z' } },
+          ],
+        },
       ],
     })
   })
 
-  it('takes the window in days', () => {
-    expect(finishedSocialPostsBefore(NOW, 1)).toMatchObject({
-      and: [expect.anything(), { updatedAt: { less_than: '2026-11-05T12:00:00.000Z' } }],
-    })
-  })
-
-  it('never selects a row that can still be retried, swept or resolved', () => {
-    for (const status of ['draft', 'queued', 'scheduled', 'publishing', 'unknown', 'failed']) {
-      expect(FINAL_SOCIAL_POST_STATUSES).not.toContain(status)
+  it('never selects a row that is in progress or needs an operator', () => {
+    const pruned: readonly string[] = [
+      ...FINAL_SOCIAL_POST_STATUSES,
+      ...FAILED_SOCIAL_POST_STATUSES,
+    ]
+    for (const status of ['draft', 'queued', 'scheduled', 'publishing', 'unknown']) {
+      expect(pruned).not.toContain(status)
     }
   })
 })
@@ -38,10 +49,12 @@ describe('pruneSocialPosts', () => {
   const fakePayload = (batches: number[][], reclaimed: number[] = []) => {
     const find = vi.fn(async () => ({ docs: (batches.shift() ?? []).map((id) => ({ id })) }))
     // Deletes the requested ids, except the ones in `reclaimed` (left a final status).
-    const del = vi.fn(async ({ where }: { where: { and: [{ id: { in: number[] } }, unknown] } }) => ({
-      docs: where.and[0].id.in.filter((id) => !reclaimed.includes(id)).map((id) => ({ id })),
-      errors: [],
-    }))
+    const del = vi.fn(
+      async ({ where }: { where: { and: [{ id: { in: number[] } }, unknown] } }) => ({
+        docs: where.and[0].id.in.filter((id) => !reclaimed.includes(id)).map((id) => ({ id })),
+        errors: [],
+      }),
+    )
     return { del, find, payload: { delete: del, find } as unknown as Payload }
   }
 
@@ -56,13 +69,13 @@ describe('pruneSocialPosts', () => {
         collection: 'social-posts',
         limit: 10,
         overrideAccess: true,
-        where: finishedSocialPostsBefore(NOW),
+        where: prunableSocialPostsBefore(NOW),
       }),
     )
     expect(del).toHaveBeenCalledWith({
       collection: 'social-posts',
       overrideAccess: true,
-      where: { and: [{ id: { in: [1, 2, 3] } }, finishedSocialPostsBefore(NOW)] },
+      where: { and: [{ id: { in: [1, 2, 3] } }, prunableSocialPostsBefore(NOW)] },
     })
   })
 

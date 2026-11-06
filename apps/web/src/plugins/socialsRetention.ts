@@ -1,31 +1,55 @@
 import type { Payload, Where } from 'payload'
 
 /**
- * Finished `social-posts`. Not strictly terminal: publishing the same content again reclaims
- * a `cancelled` or `deleted` row (the plugin's `reservePublication`) and moves it back to
- * `publishing`, so the delete re-checks status and age. `draft`, `queued`, `scheduled`,
- * `publishing`, `unknown` and `failed` stay: they can still be retried, swept or need an
- * operator to resolve them.
+ * Finished `social-posts`, deleted 90 days after their last update. Not strictly terminal:
+ * publishing the same content again reclaims a `cancelled` or `deleted` row (the plugin's
+ * `reservePublication`) and moves it back to `publishing`, so the delete re-checks status and
+ * age. Deleting a `published` row also drops the plugin's "already published" check, so the
+ * same image can be pinned to the same board again after that; that's accepted.
  */
 export const FINAL_SOCIAL_POST_STATUSES = ['published', 'cancelled', 'deleted'] as const
 
 /** Finished rows are deleted this many days after their last update. */
 export const SOCIAL_POST_RETENTION_DAYS = 90
 
+/**
+ * `failed` rows are kept twice as long: the plugin can still retry or reclaim them, and an
+ * operator may want to see why a post never went out. A row reclaimed in the meantime is back
+ * in `publishing` with a fresh `updatedAt`, so it isn't selected.
+ */
+export const FAILED_SOCIAL_POST_STATUSES = ['failed'] as const
+export const FAILED_SOCIAL_POST_RETENTION_DAYS = 180
+
 const DAY_MS = 24 * 60 * 60 * 1000
 
-/** Rows in a final status whose last update is older than `days` days before `now`. */
-export const finishedSocialPostsBefore = (now: Date, days = SOCIAL_POST_RETENTION_DAYS): Where => ({
-  and: [
-    { status: { in: [...FINAL_SOCIAL_POST_STATUSES] } },
-    { updatedAt: { less_than: new Date(now.getTime() - days * DAY_MS).toISOString() } },
+const olderThan = (now: Date, days: number) => new Date(now.getTime() - days * DAY_MS).toISOString()
+
+/**
+ * Rows past their retention window: finished rows last updated more than 90 days before `now`,
+ * failed rows more than 180 days before. `draft`, `queued`, `scheduled`, `publishing` and
+ * `unknown` are never pruned: they are still in progress or need an operator to resolve them.
+ */
+export const prunableSocialPostsBefore = (now: Date): Where => ({
+  or: [
+    {
+      and: [
+        { status: { in: [...FINAL_SOCIAL_POST_STATUSES] } },
+        { updatedAt: { less_than: olderThan(now, SOCIAL_POST_RETENTION_DAYS) } },
+      ],
+    },
+    {
+      and: [
+        { status: { in: [...FAILED_SOCIAL_POST_STATUSES] } },
+        { updatedAt: { less_than: olderThan(now, FAILED_SOCIAL_POST_RETENTION_DAYS) } },
+      ],
+    },
   ],
 })
 
 /**
- * Deletes finished `social-posts` past the retention window, `batchSize` rows at a time, for
- * at most `maxBatches` batches (a cron run has a CPU budget; the next run continues).
- * Returns how many rows were deleted.
+ * Deletes `social-posts` past their retention window, `batchSize` rows at a time, for at most
+ * `maxBatches` batches (a cron run has a CPU budget; the next run continues). Returns how many
+ * rows were deleted.
  *
  * Runs in the app's Cron Trigger, so it bypasses the collection's access rules (nobody can
  * delete posts through the API).
@@ -34,17 +58,15 @@ export const pruneSocialPosts = async (
   payload: Payload,
   {
     batchSize = 50,
-    days,
     maxBatches = 5,
     now = new Date(),
   }: {
     batchSize?: number
-    days?: number
     maxBatches?: number
     now?: Date
   } = {},
 ): Promise<number> => {
-  const where = finishedSocialPostsBefore(now, days)
+  const where = prunableSocialPostsBefore(now)
   let deleted = 0
 
   for (let batch = 0; batch < maxBatches; batch++) {
