@@ -16,7 +16,7 @@ import {
 } from "@payloadcms/ui";
 import { formatAdminURL } from "payload/shared";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { DocumentReference } from "../references";
+import { type DocumentReference, neutralTitle } from "../references";
 import { VIEW_PATH } from "../constants";
 import { useAssistantAdminContext } from "./adminContext";
 import type { ApprovalRenderer } from "./ApprovalControl";
@@ -47,6 +47,10 @@ export function AskAssistant({ kind, slug, ApprovalComponent = ApprovalCard }: A
 
 type Target = { kind: "collection" | "global"; slug: string; id?: string };
 
+/** A modal or drawer slug unique to one document at one edit depth. */
+export const modalSlugOf = (prefix: string, target: Target, depth: number): string =>
+  `${prefix}-${target.kind}-${target.slug}-${target.id ?? "global"}-${depth}`;
+
 /**
  * Keeps the edit view in step with the assistant (#69). When an applied write changed this
  * document: an unmodified form reloads (the saved draft, as the edit view loads it, through
@@ -61,7 +65,10 @@ export function useDocumentRefresh(target: Target, apiRoute: string) {
   const { setData } = useDocumentInfo();
   const locale = useLocale();
   const { openModal } = useModal();
-  const confirmSlug = `assistant-reload-${target.kind}-${target.slug}`;
+  // Per edit depth and document: nested drawers of the same collection (a link field's document
+  // drawer on a page) each have their own, and one's Approve never opens another's dialog.
+  const depth = useEditDepth();
+  const confirmSlug = modalSlugOf("assistant-reload", target, depth);
   const [keptEdits, setKeptEdits] = useState(false);
   const modifiedRef = useRef(modified);
   modifiedRef.current = modified;
@@ -115,15 +122,25 @@ function AskAssistantControls({ kind, slug, id, ApprovalComponent }: Required<Pi
   const { title } = useDocumentTitle();
   const { openModal, closeModal } = useModal();
   const depth = useEditDepth();
-  const drawerSlug = `assistant-${kind}-${slug}-${depth}`;
+  const drawerSlug = modalSlugOf("assistant", { kind, slug, ...(id ? { id } : {}) }, depth);
   const [threadId, setThreadId] = useState<string | null>(null);
   const [started, setStarted] = useState(false);
   const target = useMemo<Target>(() => ({ kind, slug, ...(id ? { id } : {}) }), [kind, slug, id]);
   const refresh = useDocumentRefresh(target, admin.apiRoute);
 
+  // The editor's own view of the document, as the server will name it: a collection whose title
+  // is redacted (users, by email) is `User #12` here too, so the header and the first message's
+  // chip match what is stored. Until the config has loaded, collections get the neutral name too.
+  const redactedLabel = kind === "collection" ? (admin.clientConfig ? admin.clientConfig.redactedTitles?.[slug] : slug) : undefined;
   const context = useMemo<DocumentReference>(
-    () => ({ ...target, title: (typeof title === "string" && title.trim()) || id || slug }),
-    [target, title, id, slug]
+    () => ({
+      ...target,
+      title:
+        redactedLabel !== undefined && id
+          ? neutralTitle(redactedLabel, id)
+          : (typeof title === "string" && title.trim()) || id || slug,
+    }),
+    [target, title, id, slug, redactedLabel]
   );
 
   // A new conversation the first time; reopening the drawer goes back to it until "New conversation".

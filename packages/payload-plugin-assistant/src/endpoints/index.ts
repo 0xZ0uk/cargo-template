@@ -44,7 +44,7 @@ export function buildEndpoints(options: NormalizedAssistantOptions, deps: ChatDe
     {
       path: CONFIG_ENDPOINT_PATH,
       method: "get",
-      handler: guarded({}, async (_handlers, req) =>
+      handler: guarded({}, async (handlers, req) =>
         Response.json({
           configured: configuredFor(options, req),
           // Lets an end-to-end test check it talks to the scripted model, never OpenRouter.
@@ -52,6 +52,8 @@ export function buildEndpoints(options: NormalizedAssistantOptions, deps: ChatDe
           models: options.models,
           defaultModel: options.defaultModel,
           maxSteps: options.maxSteps,
+          // Collections whose title field is redacted (slug → singular label): their documents are named `User #12`.
+          redactedTitles: handlers.redactedTitlesOf(req, options),
         })
       ),
     },

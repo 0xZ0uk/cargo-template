@@ -80,6 +80,24 @@ export function messageReferences(metadata: unknown): MessageReferences {
   return out;
 }
 
+/** A label as text: a string, or the English (or first) entry of a localized one. */
+export function labelText(label: unknown, fallback: string): string {
+  if (typeof label === "string" && label.trim()) return label.trim();
+  if (label && typeof label === "object") {
+    const record = label as Record<string, unknown>;
+    const value = record.en ?? Object.values(record)[0];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return fallback;
+}
+
+/**
+ * The title of a document whose title field is redacted (`admin.useAsTitle` hidden by the
+ * defaults or the `redact` option: an auth collection's email): its value is never used, the
+ * document is named by its collection and id, `User #12`.
+ */
+export const neutralTitle = (singularLabel: string, id: string): string => `${singularLabel} #${id}`.slice(0, 200);
+
 /** How a document is named to the model: `pages 12 "Home"`, `global header "Header"`. */
 export function describeReference(ref: DocumentReference): string {
   const title = JSON.stringify(ref.title.slice(0, 200));

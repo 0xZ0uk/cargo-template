@@ -34,6 +34,8 @@ let cookies: { editor: string; customer: string };
 let homeId: string;
 let aboutId: string;
 let secretId: string;
+let editorId: string;
+let personId: string;
 /** What each model call received. */
 let calls: ModelMessage[][] = [];
 
@@ -43,7 +45,10 @@ const boot = async () => {
     db: sqliteAdapter({ client: { url: `file:${join(tmpDir, "references.db")}` }, push: true }),
     admin: { user: "users" },
     collections: [
-      { slug: "users", auth: true, fields: [] },
+      // Named by its email, which the assistant never sees (the auth defaults redact it).
+      { slug: "users", auth: true, admin: { useAsTitle: "email" }, fields: [] },
+      // Named by a field the app redacts with the `redact` option.
+      { slug: "people", labels: { singular: "Person", plural: "People" }, admin: { useAsTitle: "name" }, fields: [{ name: "name", type: "text" }] },
       { slug: "customers", auth: true, fields: [] },
       {
         slug: "pages",
@@ -66,11 +71,11 @@ const boot = async () => {
     ],
     plugins: [
       mcpPlugin({
-        collections: { pages: {}, secrets: {} },
+        collections: { pages: {}, secrets: {}, users: {}, people: {} },
         globals: { header: {}, vault: {} },
       }),
       assistantPluginWith(
-        { models: [{ id: "test/model", label: "Test" }], apiKey: "sk-test" },
+        { models: [{ id: "test/model", label: "Test" }], apiKey: "sk-test", redact: { people: ["name"] } },
         {
           createAdapter: () => {
             const model = fakeText();
@@ -122,7 +127,8 @@ beforeAll(async () => {
   app = await boot();
   const login = async (collection: "users" | "customers", email: string) => {
     await app.payload.create({ collection: collection as never, data: { email, password: "pw-123456" } as never, overrideAccess: true });
-    const { token } = await app.payload.login({ collection: collection as never, data: { email, password: "pw-123456" } });
+    const { token, user } = await app.payload.login({ collection: collection as never, data: { email, password: "pw-123456" } });
+    if (collection === "users") editorId = String((user as { id: number | string }).id);
     return `payload-token=${token}`;
   };
   cookies = { editor: await login("users", "editor@example.com"), customer: await login("customers", "c@example.com") };
@@ -132,6 +138,7 @@ beforeAll(async () => {
   aboutId = await create("pages", { title: "About us", body: SECRET_BODY, _status: "draft" });
   secretId = await create("secrets", { name: "Home secret" });
   await create("notes", { name: "Home note" });
+  personId = await create("people", { name: "Ada Lovelace" });
 });
 
 afterAll(async () => {
@@ -197,6 +204,73 @@ describe("the edit view's context", () => {
     const response = await send(newThread(), { context });
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ code: "invalid_body" });
+  });
+});
+
+const EDITOR_EMAIL = "editor@example.com";
+
+describe("titles of redacted fields", () => {
+  const userRef = () => ({ kind: "collection", slug: "users", id: editorId });
+  const personRef = () => ({ kind: "collection", slug: "people", id: personId });
+
+  it("a users context is named User #id: no email reaches the model, the stream or the stored message", async () => {
+    const threadId = newThread();
+    const response = await send(threadId, { context: userRef() });
+    expect(response.status).toBe(200);
+    const events = await readEvents(response);
+
+    expect(lastUserText(calls[0]!)).toContain(`\`users\` id ${editorId} "User #${editorId}"`);
+    expect(JSON.stringify(calls)).not.toContain(EDITOR_EMAIL);
+    expect(JSON.stringify(events)).not.toContain(EDITOR_EMAIL);
+    const body = await hydrate(threadId);
+    expect(JSON.stringify(body)).not.toContain(EDITOR_EMAIL);
+    expect(body.messages[0].metadata.assistant.context).toEqual({ kind: "collection", slug: "users", id: editorId, title: `User #${editorId}` });
+  });
+
+  it("a mention of a users document, and of one whose title the redact option hides, are named by label and id", async () => {
+    const threadId = newThread();
+    const response = await send(threadId, { references: [userRef(), personRef(), { kind: "collection", slug: "pages", id: homeId }] });
+    expect(response.status).toBe(200);
+    await readEvents(response);
+
+    expect(lastUserText(calls[0]!)).toContain(
+      `The editor mentioned: \`users\` id ${editorId} "User #${editorId}"; \`people\` id ${personId} "Person #${personId}"; \`pages\` id ${homeId} "Home".`
+    );
+    for (const secret of [EDITOR_EMAIL, "Ada Lovelace"]) {
+      expect(JSON.stringify(calls)).not.toContain(secret);
+      expect(JSON.stringify(await hydrate(threadId))).not.toContain(secret);
+    }
+  });
+
+  it("the @ search never returns the hidden title, and finds those documents by label or id", async () => {
+    const search = async (q: string) => call("GET", `/assistant/documents?q=${encodeURIComponent(q)}`);
+    const seen: string[] = [];
+    const titles = async (q: string) => {
+      const text = await (await search(q)).text();
+      seen.push(text);
+      return (JSON.parse(text).documents as Array<{ slug: string; title: string }>).filter((d) => d.slug === "users" || d.slug === "people");
+    };
+
+    // By what the title field holds: nothing matches it, since it isn't read.
+    expect(await titles("editor@")).toEqual([]);
+    expect(await titles("Ada")).toEqual([]);
+    // By label, by id, and in the empty-query list.
+    expect(await titles("user")).toEqual([expect.objectContaining({ title: `User #${editorId}` })]);
+    // (An id matches in every such collection: a user and a person may both be #1.)
+    expect(await titles(`#${personId}`)).toContainEqual(expect.objectContaining({ slug: "people", id: personId, title: `Person #${personId}` }));
+    expect(await titles("#99999")).toEqual([]);
+    expect((await titles("")).map((d) => d.title)).toEqual(expect.arrayContaining([`User #${editorId}`, `Person #${personId}`]));
+    for (const text of seen) {
+      expect(text).not.toContain(EDITOR_EMAIL);
+      expect(text).not.toContain("Ada Lovelace");
+    }
+    // A title that isn't redacted still shows.
+    expect(JSON.parse(await (await search("Hom")).text()).documents).toEqual([{ kind: "collection", slug: "pages", id: homeId, title: "Home" }]);
+  });
+
+  it("the config endpoint tells the client which collections are named that way", async () => {
+    const config = await (await call("GET", "/assistant/config")).json();
+    expect(config.redactedTitles).toEqual({ users: "User", people: "Person" });
   });
 });
 
@@ -301,7 +375,7 @@ describe("the edit-view control", () => {
     expect(controls(global("header"))).toContainEqual(
       expect.objectContaining({ path: DOCUMENT_CONTROLS_COMPONENT_PATH, clientProps: { kind: "global", slug: "header" } })
     );
-    for (const entity of [collection("notes"), collection("users"), global("footer")]) {
+    for (const entity of [collection("notes"), collection("customers"), global("footer")]) {
       expect(controls(entity).some((c) => c.path === DOCUMENT_CONTROLS_COMPONENT_PATH)).toBe(false);
     }
   });

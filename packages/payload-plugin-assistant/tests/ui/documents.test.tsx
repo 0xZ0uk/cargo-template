@@ -29,13 +29,20 @@ let fetchMock: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   uiState.documentInfo = { id: undefined, setData: vi.fn() };
   uiState.title = "Home";
+  uiState.depth = 0;
   uiState.modified = false;
   uiState.reset = vi.fn(async () => {});
   uiState.calls = { openModal: [], closeModal: [], toasts: [] };
   panel.props = undefined;
   fetchMock = vi.fn(async (url: string) => {
     if (url.includes("/assistant/config")) {
-      return Response.json({ configured: true, models: [{ id: "m", label: "M" }], defaultModel: "m", maxSteps: 10 });
+      return Response.json({
+        configured: true,
+        models: [{ id: "m", label: "M" }],
+        defaultModel: "m",
+        maxSteps: 10,
+        redactedTitles: { users: "User" },
+      });
     }
     if (url.startsWith("/api/pages/12")) return Response.json({ id: 12, title: "Home (by the assistant)" });
     return new Response("not found", { status: 404 });
@@ -207,7 +214,7 @@ describe("Ask the assistant (edit view)", () => {
     uiState.documentInfo = { ...uiState.documentInfo, id: 12 };
     render(<AskAssistant kind="collection" slug="pages" />);
     await openDrawer();
-    expect(uiState.calls.openModal).toEqual(["assistant-collection-pages-0"]);
+    expect(uiState.calls.openModal).toEqual(["assistant-collection-pages-12-0"]);
     expect(panel.props!.context).toEqual({ kind: "collection", slug: "pages", id: "12", title: "Home" });
     expect(panel.props!.threadId).toMatch(/^thread_/);
     expect(panel.props!.isNew).toBe(true);
@@ -226,7 +233,7 @@ describe("Ask the assistant (edit view)", () => {
     expect(url).toContain("depth=0");
     expect(url).toContain("locale=en");
     expect(uiState.documentInfo.setData).toHaveBeenCalledWith({ id: 12, title: "Home (by the assistant)" });
-    expect(uiState.calls.openModal).not.toContain("assistant-reload-collection-pages");
+    expect(uiState.calls.openModal).not.toContain("assistant-reload-collection-pages-12-0");
     expect(uiState.calls.toasts).toContain("success: Reloaded with the assistant’s change.");
   });
 
@@ -236,7 +243,7 @@ describe("Ask the assistant (edit view)", () => {
     await openDrawer();
     await act(async () => panel.props!.onAppliedWrite(updateCall(13), okResult("call-13")));
     expect(uiState.reset).not.toHaveBeenCalled();
-    expect(uiState.calls.openModal).toEqual(["assistant-collection-pages-0"]);
+    expect(uiState.calls.openModal).toEqual(["assistant-collection-pages-12-0"]);
   });
 
   it("a modified form asks first; keeping the edits shows the overwrite warning until the form is saved", async () => {
@@ -247,7 +254,7 @@ describe("Ask the assistant (edit view)", () => {
 
     await act(async () => panel.props!.onAppliedWrite(updateCall(12), okResult("call-12")));
     expect(uiState.reset).not.toHaveBeenCalled();
-    expect(uiState.calls.openModal).toContain("assistant-reload-collection-pages");
+    expect(uiState.calls.openModal).toContain("assistant-reload-collection-pages-12-0");
     const dialog = screen.getByRole("heading", { name: "The assistant changed this document" }).parentElement!;
     fireEvent.click(within(dialog).getByRole("button", { name: "Keep editing" }));
     expect(uiState.reset).not.toHaveBeenCalled();
@@ -258,6 +265,41 @@ describe("Ask the assistant (edit view)", () => {
     uiState.modified = false;
     rerender(<AskAssistant kind="collection" slug="pages" />);
     expect(screen.queryByText(/Saving will overwrite its change/)).toBeNull();
+  });
+
+  it("nested document drawers of the same collection each have their own confirmation modal and drawer", async () => {
+    // A page whose link field opens another page in a drawer (depth 1), itself in a drawer (depth 2).
+    const slugsAt = async (depth: number, id: number) => {
+      cleanup();
+      uiState.depth = depth;
+      uiState.documentInfo = { ...uiState.documentInfo, id };
+      uiState.modified = true;
+      uiState.calls.openModal = [];
+      render(<AskAssistant kind="collection" slug="pages" />);
+      await openDrawer();
+      await act(async () => panel.props!.onAppliedWrite({ id: "c", name: "updateDocument", input: { slug: "pages", id, data: { title: "x" } } }, okResult("c")));
+      const [drawer, confirm] = uiState.calls.openModal;
+      expect(screen.getByRole("dialog", { name: "Assistant" }).getAttribute("data-drawer")).toBe(drawer);
+      expect(document.querySelector("[data-slug]")!.getAttribute("data-slug")).toBe(confirm);
+      return { drawer, confirm };
+    };
+    const outer = await slugsAt(0, 12);
+    const inner = await slugsAt(1, 13);
+    const sameDocDeeper = await slugsAt(1, 12);
+    const all = [outer, inner, sameDocDeeper];
+    expect(new Set(all.map((s) => s.confirm)).size).toBe(3);
+    expect(new Set(all.map((s) => s.drawer)).size).toBe(3);
+    expect(inner.confirm).toBe("assistant-reload-collection-pages-13-1");
+  });
+
+  it("a collection whose title is redacted is named by its label and id, never by the document's title", async () => {
+    uiState.documentInfo = { ...uiState.documentInfo, id: 3 };
+    uiState.title = "editor@example.com";
+    render(<AskAssistant kind="collection" slug="users" />);
+    await openDrawer();
+    expect(panel.props!.context).toEqual({ kind: "collection", slug: "users", id: "3", title: "User #3" });
+    expect(screen.getByRole("dialog", { name: "Assistant" }).textContent).toContain("User #3");
+    expect(screen.getByRole("dialog", { name: "Assistant" }).textContent).not.toContain("editor@example.com");
   });
 
   it("a modified form reloads when the editor chooses to lose the edits", async () => {

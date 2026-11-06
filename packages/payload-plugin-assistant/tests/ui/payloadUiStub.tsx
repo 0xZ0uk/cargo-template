@@ -18,6 +18,8 @@ const Icon = () => <svg aria-hidden="true" />;
 export const uiState = {
   documentInfo: { id: undefined as string | number | undefined, setData: (_doc: unknown) => {} },
   title: "Home",
+  /** The edit depth: 0 in a page, 1 in a document drawer, 2 in one nested in it. */
+  depth: 0,
   modified: false,
   reset: async (_data: unknown) => {},
   calls: { openModal: [] as string[], closeModal: [] as string[], toasts: [] as string[] },
@@ -39,7 +41,7 @@ export const payloadUiStub = {
   }),
   useDocumentInfo: () => uiState.documentInfo,
   useDocumentTitle: () => ({ title: uiState.title }),
-  useEditDepth: () => 0,
+  useEditDepth: () => uiState.depth,
   useForm: () => ({ reset: (data: unknown) => uiState.reset(data) }),
   useFormModified: () => uiState.modified,
   useLocale: () => ({ code: "en" }),

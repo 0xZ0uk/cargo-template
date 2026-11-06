@@ -342,8 +342,10 @@ anything yet.
 
 ### `GET /api/assistant/config`
 
-`{ configured, models: [{ id, label }], defaultModel, maxSteps }`: for the model picker and the
-"not configured" notice.
+`{ configured, models: [{ id, label }], defaultModel, maxSteps, redactedTitles }`: for the model
+picker and the "not configured" notice. `redactedTitles` (`{ [slug]: singular label }`) lists the
+collections whose title field is redacted, so the edit view names their documents `User #12`, as
+the server does.
 
 ### `POST /api/assistant/chat`: send a turn, or resume after approvals
 
@@ -378,7 +380,8 @@ Body: what `useChat`'s `fetchServerSentEvents(url)` sends (AG-UI `RunAgentInput`
   resolves each as the caller (`overrideAccess: false`, `depth: 0`, the latest draft, only the
   title field) before anything runs, refuses the turn with 400 `invalid_reference` / 404
   `reference_not_found`, and stores the result on the user message as `metadata.assistant`
-  (`{ context?, references? }`, each `{ kind, slug, id?, title }` with the server's title). AG-UI's
+  (`{ context?, references? }`, each `{ kind, slug, id?, title }` with the server's title; for a
+  collection whose title field is redacted, `User #12`, see [Redaction](#redaction)). AG-UI's
   own top-level `context` array is not this and is ignored. Not allowed with `resume`.
 - **Resume**: one entry **per pending interrupt of the run** (TanStack validates the whole batch
   before any tool runs; a partial batch ends in `RUN_ERROR` and nothing is written),
@@ -443,7 +446,9 @@ the stored interrupts and read **as the caller** (`overrideAccess: false`, `dept
 most 8: documents whose title field (`admin.useAsTitle`; collections without one are skipped)
 contains `q` (`like`), in every collection the assistant reaches, newest first and interleaved
 across collections, plus readable globals whose label or slug contains it. An empty `q` lists
-recent ones. Every read goes through plugin-mcp's `findDocuments` / `findGlobal` as the caller (one
+recent ones. A collection whose title field is redacted (`users`, named by email) is never read by
+that field: its documents are listed as `User #12` and found by the collection's label (`user`)
+or an id (`#12`). Every read goes through plugin-mcp's `findDocuments` / `findGlobal` as the caller (one
 in-process MCP session, the app's `toolFilter` applied), so a collection or global the caller can't
 read gives nothing, and drafts and `?locale=` behave as they do for the model. Never returns field
 values other than the title. `q` is at most 100 characters (400 `invalid_query`). Not rate limited
@@ -1009,6 +1014,11 @@ conversation's Durable Object (or the Node process with the in-memory backend).
   `lockUntil` (some of which Payload strips already). `redact` adds to them. The endpoint resolves
   the policy from the running (sanitized) config, so auth collections added by later plugins count
   too, and sends it with the turn (`settings.redact`, `settings.relations`).
+- **Titles.** A document is named by `admin.useAsTitle` in the reference note, the stored message
+  (`metadata.assistant`), the `@` search and the chips. When that field is redacted (by the
+  defaults or `redact`, the same policy the tools use) its value is never read or used: the
+  document is `<singular label> #<id>` (`User #12`). Approval cards take their title from the
+  redacted document, so they never show it either.
 - **Paths.** Dotted field names (`profile.phone`); arrays and blocks rows are walked implicitly
   (`layout.trackingId` drops it from every row). Documents of the call's collection are found at
   the top of a result and inside `docs`, `doc`, `version` and `parent` (the versions tools) and

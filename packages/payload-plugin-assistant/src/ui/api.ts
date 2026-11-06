@@ -20,6 +20,8 @@ export interface AssistantClientConfig {
   models: AssistantModelOption[];
   defaultModel: string;
   maxSteps: number;
+  /** Collections whose title field is redacted (slug → singular label): documents there are named `User #12`, never by the hidden value. */
+  redactedTitles?: Record<string, string>;
 }
 
 export interface ConversationSummary {

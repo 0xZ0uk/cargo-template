@@ -14,7 +14,10 @@ import { budgetExceeded, formatUsd, usageResponse, utcDay } from "../usage";
 import type { RedactionPolicy } from "../redaction";
 import { redactionPolicyOf, type ConfigLike } from "../redactionSchema";
 import { MESSAGE_METADATA_KEY } from "../references";
-import { MAX_SEARCH_CHARS, resolveMessageReferences, searchDocuments } from "./references";
+import { MAX_SEARCH_CHARS, redactedTitleLabels, resolveMessageReferences, searchDocuments } from "./references";
+
+/** Collections whose title field is redacted (slug → singular label), for the config endpoint. */
+export const redactedTitlesOf = redactedTitleLabels;
 
 /**
  * The assistant's endpoints, behind the checks in `endpoints/index.ts` (signed in, `access`…).
@@ -124,7 +127,7 @@ export async function handleChat(req: PayloadRequest, options: NormalizedAssista
   // What the message is about (#69), resolved as the user: a document they can't read is refused,
   // and the stored message keeps the server's titles, never the client's. No content is added.
   if (context || references.length) {
-    const resolved = await resolveMessageReferences(req, { ...(context ? { context } : {}), references });
+    const resolved = await resolveMessageReferences(req, { ...(context ? { context } : {}), references }, options);
     if (!resolved.ok) return jsonError(resolved.status, resolved.code, resolved.error);
     const message = messages[0];
     if (message) message.metadata = { ...message.metadata, [MESSAGE_METADATA_KEY]: resolved.value };
