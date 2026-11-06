@@ -1,6 +1,8 @@
 import type { CollectionSlug, GlobalSlug, PayloadRequest } from "payload";
 import { diffDocument, labelText, type BlockLike, type DiffMode, type FieldLike } from "../approvals/diff";
 import type { ApprovalAction, ApprovalProposal, ProposalDocument, ProposalItem } from "../approvals/types";
+import { lexicalToText } from "../approvals/lexical";
+import { blocksBySlugOf, collectionOf as richTextCollectionOf, markdownLosses, resolveRichText, RichTextPathError, toMarkdown, unsupportedMarkdown } from "../richText/fields";
 
 /**
  * Approval proposals (#65): what a pending write would change, read as the signed-in user.
@@ -41,7 +43,11 @@ export function interruptCall(record: PendingInterruptLike): InterruptCall {
   };
 }
 
+/** plugin-mcp's name for the rich text tool (`src/richText/tool.ts`; not imported: no plugin-mcp here). */
+const SET_RICH_TEXT_TOOL = "setRichTextFromMarkdown";
+
 export function actionOf(toolName: string): ApprovalAction {
+  if (toolName === SET_RICH_TEXT_TOOL) return "update";
   if (/^create/i.test(toolName)) return "create";
   if (/^update/i.test(toolName)) return "update";
   if (/^delete/i.test(toolName)) return "delete";
@@ -242,6 +248,10 @@ export async function buildProposal(req: PayloadRequest, record: PendingInterrup
     return { ...base, notice: `“${slug}” is not a collection or global of this site.`, items: [diff("create", undefined, input)] };
   }
 
+  if (toolName === SET_RICH_TEXT_TOOL && slug && collectionConfig) {
+    return richTextProposal(req, record, call, { ...base, ...(versioned ? { draft: input.draft !== false } : {}) }, asDocument);
+  }
+
   switch (action) {
     case "create": {
       const documents = Array.isArray(input.documents) ? input.documents : isRecord(input.data) ? [{ data: input.data }] : [];
@@ -293,6 +303,73 @@ export async function buildProposal(req: PayloadRequest, record: PendingInterrup
       const { slug: _slug, ...rest } = input;
       return { ...base, items: [diff("create", undefined, rest)] };
     }
+  }
+}
+
+/**
+ * The card of `setRichTextFromMarkdown` (#67): the field as text, before (the current value as
+ * Markdown, with the field's own converters) and after (the proposed Markdown, as the field's
+ * editor will store it). Formatting Markdown can't keep is named in a notice.
+ */
+async function richTextProposal(
+  req: PayloadRequest,
+  record: PendingInterruptLike,
+  call: InterruptCall,
+  base: ApprovalProposal,
+  asDocument: (doc: Doc) => ProposalDocument
+): Promise<ApprovalProposal> {
+  const { input } = call;
+  const slug = input.slug as string;
+  const path = typeof input.path === "string" ? input.path : "";
+  const markdown = typeof input.markdown === "string" ? input.markdown : "";
+  const id = idOf(input.id);
+  const doc = id ? await readDoc(req, slug, id, input) : null;
+  const fallback = (notice: string): ApprovalProposal => ({
+    ...base,
+    notice,
+    items: [{ changes: [{ path: path || "markdown", label: path || "Rich text", kind: "changed", format: "richText", after: markdown }] }],
+  });
+  if (!doc) return fallback("The current document could not be read: it doesn't exist, or you can't access it. Applying this may fail.");
+  const collection = richTextCollectionOf(req, slug);
+  if (!collection) return fallback(`“${slug}” is not a collection of this site.`);
+  try {
+    const location = resolveRichText(collection, doc, path, blocksBySlugOf(req));
+    const before = toMarkdown(location.converters, location.value) || lexicalToText(location.value);
+    let after = markdown.trim();
+    let unsupported: string[] = [];
+    try {
+      const proposed = location.converters.fromMarkdown({ markdown });
+      after = toMarkdown(location.converters, proposed) || after;
+      unsupported = unsupportedMarkdown(proposed);
+    } catch {
+      // Show the proposed Markdown as sent.
+    }
+    const losses = markdownLosses(location.value);
+    const notices = [
+      losses.length
+        ? `This field contains ${losses.join(", ")}, which Markdown can't keep: ${
+            input.allowFormattingLoss === true ? "approving removes it." : "the tool will refuse unless the editor agrees to lose it."
+          }`
+        : "",
+      unsupported.length ? `This field doesn't support ${unsupported.join(", ")}: that Markdown will be saved as plain text.` : "",
+    ].filter(Boolean);
+    const lossNotice = notices.length ? notices.join(" ") : undefined;
+    const change = before === after ? [] : [{
+      path: location.path,
+      label: location.label,
+      kind: before ? (after ? "changed" : "removed") : "added",
+      format: "richText",
+      ...(before ? { before } : {}),
+      ...(after ? { after } : {}),
+    } as ProposalItem["changes"][number]];
+    return {
+      ...base,
+      ...(lossNotice ? { notice: lossNotice } : {}),
+      items: [{ document: asDocument(doc), changes: change }],
+      ...(changedAfter(doc, record.requestedAt) ? { changedSinceProposal: true } : {}),
+    };
+  } catch (error) {
+    return fallback(error instanceof RichTextPathError ? error.message : "The rich text field could not be read.");
   }
 }
 

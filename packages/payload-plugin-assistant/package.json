@@ -37,6 +37,10 @@
     "./do": {
       "types": "./dist/do/index.d.ts",
       "default": "./dist/do/index.js"
+    },
+    "./mcp": {
+      "types": "./dist/mcp.d.ts",
+      "default": "./dist/mcp.js"
     }
   },
   "main": "./dist/index.js",
@@ -64,9 +68,15 @@
     "@tanstack/ai-react": "1.0.2"
   },
   "peerDependencies": {
+    "@payloadcms/plugin-mcp": ">=4.0.0-beta.6 <5.0.0",
     "@payloadcms/ui": ">=4.0.0-beta.6 <5.0.0",
     "payload": ">=4.0.0-beta.6 <5.0.0",
     "react": "^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@payloadcms/plugin-mcp": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "1.4.11",
@@ -74,6 +84,7 @@
     "@modelcontextprotocol/server": "2.4.0",
     "@payloadcms/db-sqlite": "catalog:",
     "@payloadcms/plugin-mcp": "catalog:",
+    "@payloadcms/richtext-lexical": "catalog:",
     "@payloadcms/ui": "catalog:",
     "@testing-library/react": "16.3.3",
     "@types/node": "24.12.3",

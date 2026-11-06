@@ -760,6 +760,9 @@ importers:
       '@payloadcms/plugin-mcp':
         specifier: 'catalog:'
         version: 4.0.0-beta.6(payload@4.0.0-beta.6(patch_hash=a9abd1297b478daa72f3d031352b2d5dcaaba1e9a47f001defbfd3ea54267c48)(graphql@16.14.2)(supports-color@7.2.0)(typescript@6.0.3))
+      '@payloadcms/richtext-lexical':
+        specifier: 'catalog:'
+        version: 4.0.0-beta.6(@faceless-ui/modal@3.0.2(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@faceless-ui/scroll-info@2.0.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@types/react@19.3.0)(monaco-editor@0.57.0)(payload@4.0.0-beta.6(patch_hash=a9abd1297b478daa72f3d031352b2d5dcaaba1e9a47f001defbfd3ea54267c48)(graphql@16.14.2)(supports-color@7.2.0)(typescript@6.0.3))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(supports-color@7.2.0)(typescript@6.0.3)(yjs@13.6.33)
       '@payloadcms/ui':
         specifier: 'catalog:'
         version: 4.0.0-beta.6(@types/react@19.3.0)(monaco-editor@0.57.0)(payload@4.0.0-beta.6(patch_hash=a9abd1297b478daa72f3d031352b2d5dcaaba1e9a47f001defbfd3ea54267c48)(graphql@16.14.2)(supports-color@7.2.0)(typescript@6.0.3))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(supports-color@7.2.0)(typescript@6.0.3)
