@@ -27,7 +27,7 @@ vi.mock("@payloadcms/ui/rsc", () => ({ DefaultTemplate: () => null }));
 import type { ApprovalProposal } from "../../src/approvals/types";
 import { assistantPluginWith } from "../../src/plugin";
 import { markdownLosses, unsupportedMarkdown, resolveRichText, RichTextPathError, convertersOf, blocksBySlugOf, collectionOf, parseInternalLinkUrl, type FieldLike } from "../../src/richText/fields";
-import { sameMarkdown, setRichTextFromMarkdownTool, SET_RICH_TEXT_TOOL_NAME, withMarkdownRichText } from "../../src/richText/tool";
+import { describeRichTextAsMarkdown, sameMarkdown, setRichTextFromMarkdownTool, SET_RICH_TEXT_TOOL_NAME, withMarkdownRichText } from "../../src/richText/tool";
 import { buildSystemPrompt } from "../../src/server/instructions";
 import { createPayloadToolSource, authHeadersFrom, type PayloadToolSource } from "../../src/tools/payloadToolSource";
 import { inProcessDispatch } from "../../src/tools/inProcess";
@@ -520,6 +520,31 @@ describe("other tools' results and the schema (#116)", () => {
     const out = await run("updateDocument", { slug: "pages", id: page.id, draft: true, data: { title: "Plain" } });
     expect(out).toContain("Document updated successfully");
     expect(out).not.toContain(SET_RICH_TEXT_TOOL_NAME);
+  });
+
+  it("describes rich text fields Payload deduplicated into $defs, and prunes the Lexical defs", () => {
+    const lexical = { type: "object", properties: { root: { type: "object", properties: { type: { const: "root" }, children: { items: { $ref: "#/$defs/paragraph" } } } } } };
+    const schema = {
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      type: "object",
+      properties: {
+        intro: { $ref: "#/$defs/shared_0" },
+        body: { $ref: "#/$defs/shared_0" },
+        blocks: { type: "array", items: { $ref: "#/$defs/block" } },
+      },
+      $defs: {
+        shared_0: lexical,
+        paragraph: { type: "object", properties: { type: { const: "paragraph" } } },
+        block: { type: "object", properties: { text: lexical, label: { type: "string" } } },
+      },
+    };
+    const { schema: out, changed } = describeRichTextAsMarkdown(schema) as { schema: { properties: Record<string, unknown>; $defs?: Record<string, unknown> }; changed: boolean };
+    expect(changed).toBe(true);
+    expect(out.properties.intro).toEqual({ description: expect.stringContaining(SET_RICH_TEXT_TOOL_NAME) });
+    expect(out.properties.body).toEqual({ description: expect.stringContaining(SET_RICH_TEXT_TOOL_NAME) });
+    expect(Object.keys(out.$defs ?? {})).toEqual(["block"]);
+    expect(JSON.stringify(out)).not.toContain("paragraph");
+    expect(JSON.stringify(out)).not.toContain('"root"');
   });
 
   it("getCollectionSchema describes rich text as Markdown written with the tool, without the Lexical schema", async () => {

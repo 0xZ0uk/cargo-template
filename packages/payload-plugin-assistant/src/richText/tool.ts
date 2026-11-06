@@ -359,16 +359,22 @@ const RICH_TEXT_SCHEMA_DESCRIPTION = `Rich text, read as Markdown (findDocuments
  */
 export function describeRichTextAsMarkdown(schema: unknown): { schema: unknown; changed: boolean } {
   let changed = false;
+  if (!isRecord(schema)) return { schema, changed };
+  // Payload deduplicates repeated subschemas into `$defs` (two rich text fields on the same editor
+  // become `{ $ref: "#/$defs/shared_0" }`), so a `$ref` to a rich text def is a rich text field too.
+  const rootDefs = isRecord(schema.$defs) ? schema.$defs : {};
+  const richDefs = new Set(Object.entries(rootDefs).filter(([, def]) => isRecord(def) && isRichTextSchema(def)).map(([name]) => name));
   const visit = (node: unknown): unknown => {
     if (Array.isArray(node)) return node.map(visit);
     if (!isRecord(node)) return node;
-    if (isRichTextSchema(node)) {
+    const ref = typeof node.$ref === "string" ? /^#\/\$defs\/(.+)$/.exec(node.$ref)?.[1] : undefined;
+    if (isRichTextSchema(node) || (ref !== undefined && richDefs.has(ref))) {
       changed = true;
       return { description: RICH_TEXT_SCHEMA_DESCRIPTION };
     }
-    return Object.fromEntries(Object.entries(node).map(([key, value]) => [key, key === "$defs" ? value : visit(value)]));
+    // `$defs` are visited too, so a shared block def's own rich text fields are described as well.
+    return Object.fromEntries(Object.entries(node).map(([key, value]) => [key, visit(value)]));
   };
-  if (!isRecord(schema)) return { schema, changed };
   const next = visit(schema) as Record<string, unknown>;
   if (!changed) return { schema, changed };
   // Keep only the $defs still reachable from the rest of the schema.
