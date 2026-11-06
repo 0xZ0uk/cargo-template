@@ -16,4 +16,13 @@ describe('wrangler.jsonc', () => {
     expect(staging.name).toBe('cargo-template-staging')
     expect(staging.triggers.crons).toEqual([])
   })
+
+  it('writes the assistant audit log (#68) to its own dataset per environment', () => {
+    const dataset = (env?: string) =>
+      (read(env).analytics_engine_datasets as Array<{ binding: string; dataset?: string }>).find(
+        (d) => d.binding === 'ASSISTANT_AUDIT',
+      )?.dataset
+    expect(dataset()).toBe('cargo_assistant_audit')
+    expect(dataset('staging')).toBe('cargo_assistant_audit_staging')
+  })
 })

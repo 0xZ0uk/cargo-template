@@ -52,7 +52,7 @@ No collections, globals or injected fields. With `enabled: false` the config is 
 | `toolFilter(tool)` | Which MCP tools the model sees, after the built-in filter (auth tools and `getUploadInstructions` are always dropped). Gets the raw MCP tool (`name`, `description`, `annotations`). Default: all the rest. By name only: to hide deletes for one collection, use plugin-mcp's own `collections.<slug>.tools`. |
 | `conversations` | `{ namespace, index, retentionDays, caps }`. `namespace` (`AssistantConversation`) and `index` (`AssistantConversationIndex`) go together; omit both for the in-memory fallback (Node dev, tests). `retentionDays`: delete a conversation idle this long, default 30. `caps`: size limits, see [Size caps](#size-caps). The namespace types are structural (no `@cloudflare/workers-types`). |
 | `testModel` | **Tests only.** Answer turns with a scripted model instead of OpenRouter; see [Test model](#test-model). Only requests to a loopback host use it. Default `false`. |
-| `budget` | Daily allowance per user (#68): `{ dailyCostUsd?, dailyTokens? }`, at least one; default `{ dailyCostUsd: 5 }`; `false` turns budgets off. Counted from the cost OpenRouter reports per model call, reset at midnight UTC. Past a cap a turn (send or approval) gets 402 `budget_exceeded` before the model is called. See [Budgets](#budgets). |
+| `budget` | Daily allowance per user (#68): `{ dailyCostUsd?, dailyTokens? }`, at least one; default `{ dailyCostUsd: 5 }`; `false` turns budgets off. Counted from the cost OpenRouter reports per model call, reset at midnight UTC. Past a cap a send or an approval gets 402 `budget_exceeded` before the model is called; a rejection still goes through. See [Budgets](#budgets). |
 | `redact` | Fields the model never sees (#68): `{ [slug]: dotted paths }`, e.g. `{ customers: ['phone', 'address.street'] }`. **Added to** the defaults: every auth collection hides `DEFAULT_AUTH_REDACTIONS`. Throws on a path that isn't dotted field names. See [Redaction](#redaction). |
 | `audit(event)` | Where applied writes are reported (#68), one `AssistantAuditEvent` each, no content. Used where turns run in this process (the in-memory backend); the conversation Durable Object takes its sink from `auditSink()`, which the app overrides. See [Audit log](#audit-log). |
 | `rateLimit(req)` | Return `false` for 429. Called for each chat turn (a send or an approval resume), after `access`, before any model call; reads, rejoins, stop and the conversation endpoints aren't limited. Key it per user (`req.user.collection` + `id`); the app connects it to a Workers Rate Limiting binding (#66). |
@@ -320,7 +320,7 @@ All under Payload's API route (`/api`), authenticated by the admin session cooki
 | 403 | `forbidden` | `access` refused (every endpoint). |
 | 503 | `not_configured` | No API key (`POST /chat` only). |
 | 429 | `rate_limited` | `rateLimit(req)` returned `false` (`POST /chat` only). |
-| 402 | `budget_exceeded` | The user's daily budget is used up (`POST /chat` only, sends and resumes; checked after the body and model, before anything that costs). The body adds `usage` (the `GET /usage` body). |
+| 402 | `budget_exceeded` | The user's daily budget is used up (`POST /chat` only: sends, and resumes that approve anything; checked after the body and model, before anything that costs). A resume that only rejects or cancels is not refused. The body adds `usage` (the `GET /usage` body). |
 | 400 | `invalid_body` / `invalid_query` / `model_not_allowed` | Bad request; `model_not_allowed` also lists `models`. |
 | 404 | `not_found` | The conversation (or run) doesn't exist **or isn't the caller's**: the two are indistinguishable. |
 | 409 | `run_id_used` | A turn reused a run id: rejoin it instead. |
@@ -897,7 +897,12 @@ conversation's Durable Object (or the Node process with the in-memory backend).
 - **The check.** `POST /chat` reads today's usage (`backend.usage`) before tool discovery and the
   turn, and answers 402 `budget_exceeded` ("You have used today's assistant budget ($5.00). It
   resets at midnight UTC.") once `costUsd ≥ dailyCostUsd` or `tokens ≥ dailyTokens`. Resumes are
-  checked too: answering an approval calls the model (pending approvals wait for the next day).
+  checked too: approving applies a write and lets the run go on, so it waits for the next day.
+- **Rejecting still works.** A resume whose decisions all reject (or cancel) goes through over the
+  cap: it writes nothing and lets the paused run end. The run still needs the model's closing
+  answer, so it runs with `maxSteps` 1: one model call, whose cost is recorded (a rejection can
+  overshoot slightly). If that call asks for a tool anyway, a read runs and its result is stored
+  without another model call; a write pauses on a new card, which can again only be rejected.
 - **Overshoot.** The check is at the start of a turn and usage is recorded as calls finish, so a
   run that starts under the cap finishes, and concurrent turns can each start just under it. One
   run (up to `maxSteps` model calls) per tab can go over. The OpenRouter key's credit limit is the
@@ -970,9 +975,11 @@ through plugin-mcp on app-shaped editors (block references, columns → content 
 fixture, paths and errors, ids kept, formatting loss, access, the card and the system prompt; `tests/ui/approvals.test.tsx`: the card, and the chat panel's
 batch, stale and refused-send handling with a fake `useChat`; `tests/policies.test.ts`: redaction,
 usage and audit helpers; `tests/integration/policies.test.ts` (#68): budgets recorded, refused with
-402 before any model call, per user, reset at midnight UTC, recorded after a disconnect; one audit
-event per approved write and none for reads, rejections or failures; redacted fields absent from what
-the model sees, the stream, the stored transcript and the approval cards). `vitest.workerd.config.ts` runs `tests/workerd/` under workerd with
+402 before any model call, per user, reset at midnight UTC, recorded after a disconnect, approving
+refused but rejecting let through over the cap with one closing model call; one audit event per
+approved write and none for reads, rejections or failures, also past `maxToolCalls` (only the calls
+that ran); redacted fields absent from what the model sees, the stream, the stored transcript and
+the approval cards, including an `updateDocument` result with rich text as Markdown). `vitest.workerd.config.ts` runs `tests/workerd/` under workerd with
 `@cloudflare/vitest-plugin` 1.4.11 (its Miniflare and Wrangler match the app's), against the test
 Worker in `tests/workerd/` (same bindings as the app wiring above): conformance of both objects,
 ownership, retention (alarm), reconnect after a mid-run disconnect, restart mid-run, and the MCP
