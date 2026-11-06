@@ -224,6 +224,8 @@ The default variant data carries the run's `startedAt` on every entry (a custom 
 
 Mount `<ExperimentTracker experimentId={manifestKey} />` (from `@cargo/payload-plugin-ab/analytics`, a client component) on variant-served pages. It sets three GA4 event-scoped parameters with `gtag('set', …)`: `fr_ab_experiment` (the manifest key), `fr_ab_variant` (the bucket) and `fr_ab_visitor_id`. Register them as custom dimensions in GA4. It does nothing when `gtag` never loads.
 
+**Consent is up to each site.** The plugin doesn't ask for consent and doesn't gate GA4 on it. With GA4 loaded, the tracker sends the experiment key, the visitor's bucket and an anonymous visitor id (`ab_visitor_id`) to Google. Load gtag, and mount `ExperimentTracker`, only once your consent flow allows it (or use Google Consent Mode), and list these parameters in your privacy policy. Analytics Engine measurement (see [Measurement](#measurement)) is first-party and stores no visitor id, IP or user agent, but it still sets cookies, so check it against your own consent rules too.
+
 The `ab-experiments` collection records the `startedAt` of each experiment's current run (see [Runs](#runs)).
 
 ## Configuration
