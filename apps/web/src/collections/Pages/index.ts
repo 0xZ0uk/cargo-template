@@ -14,6 +14,8 @@ import { pageBlockSlugs } from '@/blocks'
 import { populatePublishedAt } from '@/hooks/populatePublishedAt'
 import { pagePath } from '@/utilities/pagePath'
 
+const SPIKE_READ_ONLY_EMAIL = 'readonly@spike.test'
+
 // Drafts render on the frontend only for logged-in users who add `?draft=true`.
 const previewPath = (slug: unknown) =>
   typeof slug === 'string' && slug ? `${pagePath(slug)}?draft=true` : null
@@ -21,10 +23,12 @@ const previewPath = (slug: unknown) =>
 export const Pages: CollectionConfig = {
   slug: 'pages',
   access: {
-    create: authenticated,
-    delete: authenticated,
+    // SPIKE (#59): Users has no role field, so the access-filtering check restricts one
+    // test user by email: it may read pages but not create, update or delete them.
+    create: ({ req }) => authenticated({ req } as never) && req.user?.email !== SPIKE_READ_ONLY_EMAIL,
+    delete: ({ req }) => authenticated({ req } as never) && req.user?.email !== SPIKE_READ_ONLY_EMAIL,
     read: authenticatedOrPublished,
-    update: authenticated,
+    update: ({ req }) => authenticated({ req } as never) && req.user?.email !== SPIKE_READ_ONLY_EMAIL,
   },
   // What's populated by default when a page is referenced (links, relationships).
   // https://payloadcms.com/docs/queries/select#defaultpopulate-collection-config-property

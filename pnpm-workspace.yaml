@@ -40,6 +40,7 @@ catalog:
   '@tanstack/react-start': ^1.169.1
 
 allowBuilds:
+  '@openrouter/sdk': false
   esbuild: true
   sharp: true
   unrs-resolver: true

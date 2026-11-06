@@ -32,37 +32,51 @@ import { workersSeoRateLimit } from './plugins/seoRateLimit'
 import { SocialsPlugin } from './plugins/socials'
 import { pagePath } from './utilities/pagePath'
 import { siteName } from './utilities/siteName'
+// SPIKE (#59): throwaway endpoint, never merge.
+import { assistantSpikeEndpoint } from './spike/assistant'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
 
 // Payload's default pino logger doesn't suit Workers; emit one JSON line per entry so
 // Workers Logs can index the fields.
-const createLog =
-  (level: string, write: typeof console.log) =>
-  (objectOrMessage: object | string, message?: string) => {
-    const entry =
-      typeof objectOrMessage === 'string'
-        ? { level, msg: objectOrMessage }
-        : {
-            level,
-            ...objectOrMessage,
-            msg: message ?? (objectOrMessage as { msg?: string }).msg,
-          }
+// SPIKE (#59): plugin-mcp calls `payload.logger.child(bindings, { msgPrefix })` and sets
+// `.level` on the child (getLogger); without `child`, every /api/mcp request threw on Workers.
+const LEVELS = ['trace', 'debug', 'info', 'warn', 'error', 'fatal']
+const WRITERS: Record<string, typeof console.log> = {
+  debug: console.debug,
+  error: console.error,
+  fatal: console.error,
+  info: console.log,
+  trace: console.debug,
+  warn: console.warn,
+}
 
-    write(JSON.stringify(entry))
+const createLogger = (bindings: object, msgPrefix: string, initialLevel: string): unknown => {
+  const logger: Record<string, unknown> = { level: initialLevel, silent: () => undefined }
+  for (const level of LEVELS) {
+    logger[level] = (objectOrMessage: object | string, message?: string) => {
+      if (LEVELS.indexOf(level) < LEVELS.indexOf(String(logger.level))) return
+      const fields = typeof objectOrMessage === 'string' ? {} : objectOrMessage
+      const msg =
+        typeof objectOrMessage === 'string'
+          ? objectOrMessage
+          : (message ?? (objectOrMessage as { msg?: string }).msg)
+      const entry = { level, ...bindings, ...fields, msg: msg === undefined ? msg : msgPrefix + msg }
+      // SPIKE (#59): Errors stringify as {}; keep message, stack and cause.
+      WRITERS[level](
+        JSON.stringify(entry, (_k, v) =>
+          v instanceof Error ? { name: v.name, message: v.message, stack: v.stack, cause: v.cause } : v,
+        ),
+      )
+    }
   }
+  logger.child = (childBindings: object = {}, options: { msgPrefix?: string } = {}) =>
+    createLogger({ ...bindings, ...childBindings }, msgPrefix + (options.msgPrefix ?? ''), String(logger.level))
+  return logger
+}
 
-const cloudflareLogger = {
-  debug: createLog('debug', console.debug),
-  error: createLog('error', console.error),
-  fatal: createLog('fatal', console.error),
-  info: createLog('info', console.log),
-  level: process.env.PAYLOAD_LOG_LEVEL || 'info',
-  silent: () => undefined,
-  trace: createLog('trace', console.debug),
-  warn: createLog('warn', console.warn),
-} as unknown as PayloadLogger
+const cloudflareLogger = createLogger({}, '', process.env.PAYLOAD_LOG_LEVEL || 'info') as PayloadLogger
 
 // Payload's secret also seals onpage's edit-mode cookies and preview links.
 const secret = process.env.PAYLOAD_SECRET || cloudflare.PAYLOAD_SECRET || ''
@@ -82,6 +96,7 @@ export default buildConfig({
   },
   // Page blocks (src/blocks), defined once and listed by slug in each blocks field.
   blocks,
+  endpoints: [assistantSpikeEndpoint],
   collections: [Pages, Sections, Users, Media, Folders, Tags],
   editor: defaultLexical,
   globals: [Header, Footer],
