@@ -89,9 +89,10 @@ export const loadPage = createServerFn({ method: 'GET', strict: { output: false 
       const { varies, ab } = await routeAb(getRequestHeader('cookie'), pagePath(data.slug), payload)
       for (const header of ab?.setCookieHeaders ?? []) appendResponseHeader('Set-Cookie', header)
       // The page depends on the bucket cookie, so no shared cache may store it: keyed by URL
-      // alone, it would serve one visitor's bucket to everyone. This includes visitors already
-      // in the original bucket, for whom the resolver returns null. Pages without an
-      // experiment keep their normal caching.
+      // alone, it would serve one visitor's bucket to everyone, original bucket included.
+      // `varies` comes from the manifest, not from `ab`, which is also null when the manifest
+      // can't be read (the next request may well be routed). Pages without an experiment keep
+      // their normal caching.
       if (varies) setResponseHeader('Cache-Control', 'private, no-store')
       // With the default variant data, the bucket is the variant's slug.
       variantSlug = ab?.variant?.bucket

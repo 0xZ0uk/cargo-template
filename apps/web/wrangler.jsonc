@@ -74,5 +74,14 @@
       "namespace_id": "1003",
       "simple": { "limit": 30, "period": 60 },
     },
+    // A/B conversions (`POST /api/_ab/convert`, unauthenticated), per client IP: a visitor
+    // converts once per experiment, so this only stops a script that drops the dedupe cookie.
+    // Generous enough for visitors behind one shared IP (an office, a carrier NAT).
+    // See abConversionRateLimit in src/plugins/abMeasurement.ts.
+    {
+      "name": "AB_RATE_LIMIT_CONVERT",
+      "namespace_id": "1004",
+      "simple": { "limit": 20, "period": 60 },
+    },
   ],
 }

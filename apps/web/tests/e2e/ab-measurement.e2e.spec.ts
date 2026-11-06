@@ -76,9 +76,13 @@ test.describe('A/B measurement', () => {
     await page.goto(`/${slug}`)
     await expect(page.getByRole('link', { name: 'Sign up' })).toBeVisible()
 
-    // The impression was counted once: its marker cookie holds the bucket.
+    // The impression was counted once: its marker cookie holds the bucket and the run
+    // (`original:<run>`, URI-encoded).
     const marker = (await ctx.cookies()).find((c) => c.name === `payload_ab_seen_${slug}`)
-    expect(marker).toMatchObject({ value: 'original', httpOnly: true })
+    expect(marker).toMatchObject({
+      value: expect.stringMatching(/^original%3A[0-9a-z]+$/),
+      httpOnly: true,
+    })
 
     // The tracker listens once React has hydrated; the dev server loads modules lazily.
     await page.waitForLoadState('networkidle')
@@ -88,12 +92,13 @@ test.describe('A/B measurement', () => {
     ])
     expect(JSON.parse(request.postData() ?? '{}')).toEqual({ experiment: `/${slug}`, goal: 'cta' })
 
-    // The endpoint reads the bucket from the cookies and marks the visitor as converted.
+    // The endpoint reads the bucket from the cookies and marks the visitor as converted, in
+    // the same run as the impression.
     await expect
       .poll(
         async () => (await ctx.cookies()).find((c) => c.name === `payload_ab_cv_${slug}`)?.value,
       )
-      .toBe('original')
+      .toBe(marker?.value)
     await ctx.close()
   })
 

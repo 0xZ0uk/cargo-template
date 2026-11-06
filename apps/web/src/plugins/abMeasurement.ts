@@ -1,5 +1,6 @@
 import type { AbBucketResult, AbMeasurementConfig, AbResults } from '@cargo/payload-plugin-ab'
 import {
+  abRunMarker,
   bucketCookieName,
   parseCookieHeader,
   serializeAbCookie,
@@ -21,7 +22,7 @@ import {
  * | blob4    | the conversion goal (`cta`), empty for an impression     |
  * | double1  | 1                                                        |
  *
- * No visitor id, IP or user agent is written: each visitor counts once per experiment and
+ * No visitor id, IP or user agent is written: each visitor counts once per experiment run and
  * bucket because a cookie marks them as counted, not because the store can tell them apart.
  * Counts are `SUM(_sample_interval)`, which stays right when Analytics Engine samples.
  */
@@ -31,7 +32,10 @@ export const AB_DATASET = 'cargo_ab'
 /** Analytics Engine keeps data points for three months. */
 export const AB_RETENTION_DAYS = 90
 
-/** Marks a visitor whose impression was counted, per experiment; the value is the bucket. */
+/**
+ * Marks a visitor whose impression was counted, per experiment; the value is the bucket and
+ * the run (`abRunMarker`), so a new experiment on the same page counts them again.
+ */
 export const IMPRESSION_COOKIE_PREFIX = 'payload_ab_seen'
 /** As long as the bucket cookie (the resolver's default): one impression per assignment. */
 const IMPRESSION_COOKIE_MAX_AGE = 60 * 60 * 24 * 90
@@ -79,13 +83,15 @@ export function writeAbEvent(dataset: AnalyticsEngineDataset | undefined, event:
 }
 
 /**
- * Counts an impression for a routed page view, once per visitor, experiment and bucket.
+ * Counts an impression for a routed page view, once per visitor, experiment run and bucket.
  *
  * `loadPage` runs on the server render and again as a server-function call on client-side
  * navigation and route invalidation, so a write per call would count one visit several
- * times. The first counted view sets an HttpOnly marker cookie holding the bucket; views
+ * times. The first counted view sets an HttpOnly marker cookie holding the bucket and the
+ * run (`startedAt`, which the manifest entry carries, so this costs no extra read); views
  * that carry it are not counted again. A visitor moved to another bucket (their variant was
- * deleted) has a different bucket from the marker's and is counted there.
+ * deleted), or returning in a later experiment on the same page, doesn't match the marker
+ * and is counted again.
  *
  * Returns the marker's `Set-Cookie` value when one must be set, else null.
  */
@@ -94,14 +100,16 @@ export function recordImpression(
   cookieHeader: string | null | undefined,
   key: string,
   ab: Pick<AbRewrite, 'bucket'>,
+  startedAt?: string | null,
 ): string | null {
   const name = bucketCookieName(key, IMPRESSION_COOKIE_PREFIX)
-  if (parseCookieHeader(cookieHeader).get(name) === ab.bucket) return null
+  const value = abRunMarker(ab.bucket, startedAt)
+  if (parseCookieHeader(cookieHeader).get(name) === value) return null
 
   writeAbEvent(dataset, { experiment: key, bucket: ab.bucket, event: 'impression' })
   return serializeAbCookie({
     name,
-    value: ab.bucket,
+    value,
     options: { path: '/', sameSite: 'lax', maxAge: IMPRESSION_COOKIE_MAX_AGE, httpOnly: true },
   })
 }
@@ -185,8 +193,27 @@ export async function getAbResults(
   }
 }
 
+/** Rate-limit key for a conversion: the client IP, which Cloudflare's edge sets and clients can't forge. */
+const clientKey = (headers: Headers) => headers.get('cf-connecting-ip')?.trim() || 'unknown'
+
+/**
+ * The plugin's `measurement.rateLimit`: `POST /api/_ab/convert` per client IP, through the
+ * `AB_RATE_LIMIT_CONVERT` binding (wrangler.jsonc), shared by every isolate in a location.
+ * Without the binding, everything passes.
+ */
+export function abConversionRateLimit(
+  binding: RateLimit | undefined,
+): (req: { headers: Headers }) => Promise<boolean> {
+  return async (req) => {
+    if (!binding) return true
+    const { success } = await binding.limit({ key: `ab-convert:${clientKey(req.headers)}` })
+    return success
+  }
+}
+
 type MeasurementEnv = {
   AB_ANALYTICS?: AnalyticsEngineDataset
+  AB_RATE_LIMIT_CONVERT?: RateLimit
   AB_ANALYTICS_ACCOUNT_ID?: string
   AB_ANALYTICS_API_TOKEN?: string
 }
@@ -199,6 +226,7 @@ type MeasurementEnv = {
 export function abMeasurementConfig(env: MeasurementEnv): AbMeasurementConfig {
   return {
     goals: ['cta'],
+    rateLimit: abConversionRateLimit(env.AB_RATE_LIMIT_CONVERT),
     recordConversion: ({ experiment, bucket, goal }) =>
       writeAbEvent(env.AB_ANALYTICS, { experiment, bucket, event: 'conversion', goal }),
     getResults: (args) =>

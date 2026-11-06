@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 
+import { abRunMarker } from '@cargo/payload-plugin-ab/middleware'
+
 import {
+  abConversionRateLimit,
   abMeasurementConfig,
   abResultsQuery,
   getAbResults,
@@ -44,6 +47,28 @@ describe('recordImpression', () => {
     const marker = recordImpression(dataset, `${MARKER}=pricing--gone`, KEY, { bucket: 'original' })
     expect(writeDataPoint).toHaveBeenCalledTimes(1)
     expect(marker).toMatch(/^payload_ab_seen_pricing=original;/)
+  })
+
+  it('keys the marker to the run, so a returning visitor counts again in a new experiment', () => {
+    const { dataset, writeDataPoint } = fakeDataset()
+    const run1 = '2026-10-01T09:00:00.000Z'
+    const run2 = '2026-11-01T09:00:00.000Z'
+    const marker = recordImpression(dataset, '', KEY, { bucket: 'original' }, run1)
+    const value = encodeURIComponent(abRunMarker('original', run1))
+    expect(marker).toMatch(new RegExp(`^${MARKER}=${value};`))
+
+    // The same run: deduped. A bare-bucket marker (before runs) or another run: counted.
+    expect(
+      recordImpression(dataset, `${MARKER}=${value}`, KEY, { bucket: 'original' }, run1),
+    ).toBeNull()
+    expect(writeDataPoint).toHaveBeenCalledTimes(1)
+    expect(
+      recordImpression(dataset, `${MARKER}=original`, KEY, { bucket: 'original' }, run2),
+    ).not.toBeNull()
+    expect(
+      recordImpression(dataset, `${MARKER}=${value}`, KEY, { bucket: 'original' }, run2),
+    ).not.toBeNull()
+    expect(writeDataPoint).toHaveBeenCalledTimes(3)
   })
 
   it('still dedupes without the binding (local dev), and writes nothing', () => {
@@ -161,6 +186,28 @@ describe('getAbResults', () => {
     expect(error.message).toContain('403')
     expect(error.message).toContain('Authentication error')
     expect(error.message).not.toContain('secret-token')
+  })
+})
+
+describe('abConversionRateLimit', () => {
+  const req = (ip?: string) => ({ headers: new Headers(ip ? { 'cf-connecting-ip': ip } : {}) })
+
+  it('limits per client IP through the binding', async () => {
+    const limit = vi.fn(async () => ({ success: false }))
+    const rateLimit = abConversionRateLimit({ limit } as unknown as RateLimit)
+    expect(await rateLimit(req('203.0.113.7'))).toBe(false)
+    expect(limit).toHaveBeenCalledWith({ key: 'ab-convert:203.0.113.7' })
+  })
+
+  it('lets everything through without the binding', async () => {
+    expect(await abConversionRateLimit(undefined)(req())).toBe(true)
+  })
+
+  it('is the measurement config’s rateLimit', async () => {
+    const limit = vi.fn(async () => ({ success: true }))
+    const config = abMeasurementConfig({ AB_RATE_LIMIT_CONVERT: { limit } as unknown as RateLimit })
+    expect(await config.rateLimit?.(req('198.51.100.1') as never)).toBe(true)
+    expect(limit).toHaveBeenCalledTimes(1)
   })
 })
 

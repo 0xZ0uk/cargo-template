@@ -7,8 +7,17 @@ import {
 import { createResolveAbRewrite, type AbRewrite } from '@cargo/payload-plugin-ab/middleware'
 import type { Payload } from 'payload'
 
-/** What the manifest stores per variant (the plugin's default `generateVariantData`). */
-export type AbVariant = { bucket: string; rewritePath: string; passPercentage: number }
+/**
+ * What the manifest stores per variant (the plugin's default `generateVariantData`).
+ * `startedAt` is the experiment run's start, the same on every variant of a key; entries
+ * written before it existed lack it.
+ */
+export type AbVariant = {
+  bucket: string
+  rewritePath: string
+  passPercentage: number
+  startedAt?: string
+}
 
 /** Seconds a cached manifest entry lives: the longest a colo that missed a change keeps routing the old way. */
 const CACHE_TTL = 30
@@ -110,8 +119,9 @@ const resolverFor = (variants: AbVariant[]) =>
  * well be routed. (`varies` comes from the manifest rather than from `ab`, which is also null
  * when the manifest can't be read.)
  *
- * A routed view also counts as an impression (Workers Analytics Engine, once per visitor and
- * bucket; see `recordImpression`). Its marker cookie joins `ab.setCookieHeaders`.
+ * A routed view also counts as an impression (Workers Analytics Engine, once per visitor, run
+ * and bucket; see `recordImpression`). The run comes from the manifest entry already read.
+ * Its marker cookie joins `ab.setCookieHeaders`.
  */
 export async function routeAb(
   cookieHeader: string | undefined,
@@ -135,6 +145,7 @@ export async function routeAb(
     cookieHeader,
     key,
     ab,
+    variants[0]?.startedAt,
   )
   return {
     varies: true,
