@@ -28,7 +28,7 @@ import { metaFields } from './metaFields.js'
 import { createValidateHandler } from './endpoints/validate.js'
 import { createSidebarContentHandler } from './endpoints/sidebarContent.js'
 import { clientSeoConfig } from './helpers/seoConfig.js'
-import { fingerprintContentExtractors, type SeoContentExtractors } from './helpers/contentExtractor.js'
+import type { SeoContentExtractors } from './helpers/contentExtractor.js'
 import { createCheckKeywordHandler } from './endpoints/checkKeyword.js'
 import { createAuditHandler } from './endpoints/audit.js'
 import { createIndexationAuditHandler } from './endpoints/indexationAudit.js'
@@ -332,9 +332,8 @@ export interface SeoPluginConfig {
 
 /** Build a resolved SeoConfig from plugin config for use by analyzeSeo() */
 export function buildSeoConfig(pluginConfig: SeoPluginConfig): SeoConfig {
-  // The extractors shape what the audits compute, so they belong in the hashed config like
-  // `excludeDocs`; a fingerprint of their source keeps the functions out of `SeoConfig`.
-  const extractContentFingerprint = fingerprintContentExtractors(pluginConfig.extractContent)
+  // The `extractContent` extractors are not part of `SeoConfig`: they live in `config.custom`,
+  // where `keyFor` reads them to key the persisted caches.
   return {
     ...(pluginConfig.localSeoSlugs && { localSeoSlugs: pluginConfig.localSeoSlugs }),
     ...(pluginConfig.siteName && { siteName: pluginConfig.siteName }),
@@ -345,7 +344,6 @@ export function buildSeoConfig(pluginConfig: SeoPluginConfig): SeoConfig {
     ...(pluginConfig.collectionRoutes && { collectionRoutes: pluginConfig.collectionRoutes }),
     ...(pluginConfig.excludeDocs && { excludeDocs: pluginConfig.excludeDocs }),
     ...(pluginConfig.excludeDocsFields && { excludeDocsFields: pluginConfig.excludeDocsFields }),
-    ...(extractContentFingerprint && { extractContentFingerprint }),
   }
 }
 

@@ -23,7 +23,7 @@ assistantPlugin({
   // Durable Object namespaces (see "App wiring"); omit both for the in-memory fallback.
   conversations: { namespace: cloudflare.ASSISTANT_CONVERSATIONS, index: cloudflare.ASSISTANT_INDEX },
   budget: { dailyCostUsd: 5 },                                    // the default
-  audit: analyticsEngineAuditSink(cloudflare.ASSISTANT_AUDIT),     // + the DO's auditSink(), see "Audit log"
+  audit: analyticsEngineAuditSink(cloudflare.ASSISTANT_AUDIT),     // + the DO's factory, see "Audit log"
 })
 ```
 
@@ -57,7 +57,7 @@ No collections, globals or injected fields. With `enabled: false` the config is 
 | `testModel` | **Tests only.** Answer turns with a scripted model instead of OpenRouter; see [Test model](#test-model). Only requests to a loopback host use it. Default `false`. |
 | `budget` | Daily allowance per user (#68): `{ dailyCostUsd?, dailyTokens? }`, at least one; default `{ dailyCostUsd: 5 }`; `false` turns budgets off. Counted from the cost OpenRouter reports per model call, reset at midnight UTC. Past a cap a send or an approval gets 402 `budget_exceeded` before the model is called; a rejection still goes through. See [Budgets](#budgets). |
 | `redact` | Fields the model never sees (#68): `{ [slug]: dotted paths }`, e.g. `{ customers: ['phone', 'address.street'] }`. **Added to** the defaults: every auth collection hides `DEFAULT_AUTH_REDACTIONS`. Throws on a path that isn't dotted field names. See [Redaction](#redaction). |
-| `audit(event)` | Where applied writes are reported (#68), one `AssistantAuditEvent` each, no content. Used where turns run in this process (the in-memory backend); the conversation Durable Object takes its sink from `auditSink()`, which the app overrides. See [Audit log](#audit-log). |
+| `audit(event)` | Where applied writes are reported (#68), one `AssistantAuditEvent` each, no content. Used where turns run in this process (the in-memory backend); the conversation Durable Object takes its sink from the factory the app passes to `assistantConversation()`. See [Audit log](#audit-log). |
 | `rateLimit(req)` | Return `false` for 429. Called for each chat turn (a send or an approval resume), after `access`, before any model call; reads, rejoins, stop and the conversation endpoints aren't limited. Key it per user (`req.user.collection` + `id`); the app connects it to a Workers Rate Limiting binding (#66). |
 
 OpenRouter provider routing is fixed (`src/utils/provider.ts`): `{ requireParameters: true,
@@ -153,9 +153,11 @@ would be a hot spot holding everyone's titles. Per user, list/rename/delete are 
 storage grows per user; it passes the conformance suite as one store. Rename is `getVersioned` +
 `upsertIf` (full replace). Delete goes through the conversation object (owner check), which drops
 its data and its index entry. A run still live at that moment is aborted and fenced off: the
-object bumps an epoch the run captured at its start, and the run's store writes, log appends,
-activity and alarm only go through while that epoch is current. Readers tailing it end. So the
-aborted run's last events never land in the deleted (or a re-claimed) conversation.
+conversation bumps an epoch the run captured at its start, and the run's store writes, log
+appends, activity, alarm and usage on the conversation only go through while that epoch is
+current (its spend still counts for the user's day). Readers tailing it end. So the aborted run's
+last events never land in the deleted (or a re-claimed) conversation. The fence is part of the
+shared lifecycle, so the in-memory backend has it too.
 
 ### Retention
 
@@ -245,13 +247,44 @@ backend.transcript(userKey, threadId)          // model messages, pending approv
 backend.list(userKey) / rename(userKey, threadId, title) / remove(userKey, threadId)
 ```
 
-Inside the object, `startTurn` calls `turnRunner()` (by default `createTurnRunner()`; a subclass
-can override it, as the workerd tests do with `fakeText()`) with a `TurnContext`: `input` (thread,
-run, user, body, auth), `persistence` (the four stores, messages capped, fenced against a delete),
-`mcpFetch` (`ASSISTANT_SELF` with the admin's Cookie and Origin) and the stop `signal`. A run id is
-used once (409 `run_id_used`) for the conversation's lifetime: the object keeps every accepted id
-in `assistant_run_ids`, which outlives the stream logs pruned an hour after a run. A resume is a
-new run id with `resume` in the body.
+### One lifecycle, two storages
+
+The lifecycle is written once, in `Conversation` (`src/conversations/conversation.ts`), and both
+backends run it; the seam is one conversation's storage below it (#135):
+
+```
+ConversationBackend ── backendOver() ── claim then start · list · rename · usage   (src/conversations/backendOver.ts)
+        │ one handle per conversation
+        ▼
+Conversation ── ownership · run ids (409) · RunControl · caps · TurnContext · usage · audit
+        │       epoch fence · kill runs on delete · retention (expire) · cleanup on close
+        ▼
+ConversationStorage + ConversationIndex                                             (src/conversations/storage.ts)
+   ├─ sqliteConversationStorage: the object's SQLite, stream log + StreamHub, alarm  (src/do/sqlConversation.ts)
+   │  + durableConversationIndex: the owner's AssistantConversationIndex
+   └─ memoryConversationStorage: memoryPersistence(), memoryStream, the run-id ledger (src/conversations/memory.ts)
+      + memoryConversationIndex: the process's session list and daily usage
+```
+
+On Workers the `Conversation` lives in the `AssistantConversation` object, which is only its RPC
+surface (`claim`, `transcript`, `stop`, `destroy`, the `/turn`, `/join`, `/hydrate` routes) and its
+alarm (`expire()`); in Node it lives in the process, one per thread, swept lazily before each call.
+A storage provides the record (owner, activity, retention, caps; insert-if-absent), the four chat
+stores, the run-id ledger, a producer log and readers, pruning, `clear()` (which ends readers) and
+`schedule()`; an index provides the list entry (create, touch, remove) and `addUsage`.
+`tests/lifecycle/suite.ts` is one suite that runs against both (`tests/lifecycle.test.ts`,
+`tests/workerd/lifecycle.test.ts`).
+
+`startTurn` calls the turn runner with a `TurnContext`: `input` (thread, run, user, body, auth),
+`persistence` (the four stores, messages capped, fenced against a delete), `mcpFetch` (in the
+object: `ASSISTANT_SELF` with the admin's Cookie and Origin), the stop `signal`, `recordUsage`
+and `audit`. What isn't plain JSON comes from `TurnDependencies`: the plugin's options in Node
+(`turnRunner`, `mcpFetch`, `audit`), and in the object the factory the app passes to
+`assistantConversation(factory)` (`audit`, and `turnRunner`, by default `createTurnRunner()`; the
+workerd tests pass one with `fakeText()`). A run id is used once (409 `run_id_used`) for the
+conversation's lifetime: the storage keeps every accepted id (the object in `assistant_run_ids`,
+which outlives the stream logs pruned an hour after a run). A resume is a new run id with
+`resume` in the body.
 
 `RunControl` keeps the two early endings apart: **stop** aborts the runner's signal, so `chat()`
 winds down and the stream ends with a logged `RUN_ERROR` (`code: "stopped"`), cut anyway after 10 s
@@ -547,19 +580,22 @@ As `apps/web` does it:
 5. **The audit log** (#68): an Analytics Engine dataset, `{ "binding": "ASSISTANT_AUDIT", "dataset":
    "cargo_assistant_audit" }` in `analytics_engine_datasets` (and a `_staging` one in the staging
    env), then `audit: analyticsEngineAuditSink(cloudflare.ASSISTANT_AUDIT)` in the plugin options and,
-   because turns run in the conversation object, a subclass exported from the Worker entry instead
-   of the plain class:
+   because turns run in the conversation object, the conversation class built with the app's
+   dependencies, exported from the Worker entry under the binding's class name instead of the
+   plain class:
 
    ```ts
    import { analyticsEngineAuditSink } from '@cargo/payload-plugin-assistant'
-   import { AssistantConversation as AssistantConversationBase } from '@cargo/payload-plugin-assistant/do'
+   import { assistantConversation } from '@cargo/payload-plugin-assistant/do'
 
-   export class AssistantConversation extends AssistantConversationBase<Cloudflare.Env> {
-     protected override auditSink() {
-       return analyticsEngineAuditSink(this.env.ASSISTANT_AUDIT)
-     }
-   }
+   export const AssistantConversation = assistantConversation<Cloudflare.Env>((env) => ({
+     audit: analyticsEngineAuditSink(env.ASSISTANT_AUDIT),
+   }))
+   export type AssistantConversation = InstanceType<typeof AssistantConversation>
    ```
+
+   The factory runs once per object instance. `apps/web` keeps it in `src/plugins/assistant.ts`
+   (`assistantConversationDependencies`), next to the sink its `audit` option uses.
 
 No D1 migration: nothing here touches D1.
 
@@ -654,6 +690,20 @@ card for an instruction-only call. Dropping it beats exempting it from approval 
 server declares read-only run without asking; no annotations means approval. With plugin-mcp's
 annotations: find/count/schema/config/versions tools run, create/update/delete/duplicate/restore
 pause with an approval interrupt (`metadata: { kind: 'approval', toolName, input }`).
+
+**What a call means (`src/toolCalls.ts`, #134).** One pure, client-safe module reads tool calls
+for the server and the UI. `describeCall(name, args, { needsApproval? })` → operation (`read`,
+`create`, `update`, `delete`, `duplicate`, `restore`, or `other` for a tool it doesn't know),
+target (`{ kind: 'collection' | 'global', slug }`, from the `slug` argument, the only name
+plugin-mcp gives it), `id`, `versions` (the versions tools: `id` is a version, paths sit under
+`version.`), the queried paths (`where`, `sort`, `select`, `field`), `locale` and `needsApproval`
+(the tool definition's flag when the caller has it, else the rule above applied to its table of
+tools; unknown tools need approval). `parseResult(result)` → the documents a result lists, their
+ids, `nothingChanged` (`Updated: 0 documents`…) and chat()'s `{ error }`. Approval cards, the
+audit log, redaction, the hidden-field check and the tool rows all use it. It is tested against
+real plugin-mcp calls and results in `tests/fixtures/plugin-mcp.json`; after a plugin-mcp bump,
+re-record them with `RECORD_PLUGIN_MCP_FIXTURES=1 pnpm vitest run tests/integration/toolFixtures.test.ts`
+(which also fails when plugin-mcp lists a tool the table doesn't know, or annotates one differently).
 
 **Access denials** come back to the model as an ordinary tool error, e.g. `{ error: 'MCP tool
 "updateDocument" returned an error: MCP access to "updateDocument" is not enabled for collection
@@ -1019,7 +1069,7 @@ conversation's Durable Object (or the Node process with the in-memory backend).
   `findVersion` are always `overrideAccess: false` with the request's user, `depth: 0` unless
   asked, the latest draft when the collection or global has drafts, and return documents already
   redacted; `find` refuses a `where` on a hidden field (`HiddenFieldError`); `title(slug, doc, id)`
-  is the only way documents are named; `hiddenField(args, toolName)` is the hidden-field check.
+  is the only way documents are named; `hiddenField(call)` is the hidden-field check.
   Its `policy` (`{ paths, relations }`, plain JSON) is what the endpoint sends with the turn
   (`settings.redaction`), and the turn's middleware and message store use it as sent.
 - **Titles.** A document is named by `admin.useAsTitle` (its id when there is none) in the
@@ -1051,8 +1101,8 @@ conversation's Durable Object (or the Node process with the in-memory backend).
   keyed by the literal dotted path, which the document walker wouldn't match). A write is checked
   when it is applied, since `chat()` asks no hook before the approval: its card shows a notice
   that it will be refused, and if approved anyway it is refused (and not audited). The versions
-  tools (`findVersions`, `countVersions`, the globals' versions tools: any tool whose name says
-  "version") hold the document's fields under `version.` and the collection document under
+  tools (`findVersions`, `countVersions`, `findVersionByID` and the globals' equivalents:
+  `describeCall(…).versions`) hold the document's fields under `version.` and the collection document under
   `parent`, so for them `version.createdBy.email`, `version.email` and `parent.email` are
   refused like `createdBy.email` and `email`. On other tools a field called `version` is just a field.
 - **Tool results → model.** `onAfterToolCall` returns `replaceResult` with the redacted result, so
@@ -1099,8 +1149,8 @@ conversation's Durable Object (or the Node process with the in-memory backend).
   changed. Writes of up to 200 documents are unchanged. A turn is one invocation: a resume after
   an approval starts a new count.
 - **Where.** The sink is the app's: the plugin never reads `env`. With the Durable Objects, turns
-  run in the conversation object, which has no plugin options, so the object asks its own
-  `auditSink()` (default: none), and the app exports a subclass that returns one (see
+  run in the conversation object, which has no plugin options, so the object takes it from the
+  factory the app passes to `assistantConversation()` (default: none; see
   [App wiring](#app-wiring-66), step 5). With the in-memory backend the plugin's `audit` option is
   used. A failing sink is logged and never fails the run.
 - **Analytics Engine.** `analyticsEngineAuditSink(dataset)` writes `indexes: [userKey]`, `blobs:
@@ -1120,8 +1170,10 @@ pnpm --filter @cargo/payload-plugin-assistant typecheck  # tsconfig.json + tscon
 `vitest.config.ts` is the Node suite (`tests/ui/`: the chat UI under jsdom with `@payloadcms/ui`
 stubbed, Markdown safety, tool rows, composer keys, approvals, the conversation list, and the
 error/result/link helpers; options, boot (the view's redirects and the nav link's `access` gate
-against real Payload), caps, the in-memory fallback and its
-conformance; `tests/integration/chat.test.ts`: every endpoint through Payload's router against real
+against real Payload), caps, the in-memory fallback's options, the lifecycle suite over process
+memory (`tests/lifecycle.test.ts`, the same `tests/lifecycle/suite.ts` the workerd suite runs over
+SQLite: ownership, rejoin, run ids, stop, delete during a run and the fence, retention, usage,
+audit); `tests/integration/chat.test.ts`: every endpoint through Payload's router against real
 Payload + plugin-mcp, turns with `fakeText()`; `tests/turn.test.ts`: the real OpenRouter adapter with
 its `httpClient` replaced, asserting the serialised request and the error mapping;
 `tests/approvals/diff.test.ts`: the diff and Lexical-to-text helpers; `tests/integration/approvals.test.ts`:
@@ -1151,8 +1203,9 @@ the `@` keyboard flow and chips, chips on stored messages, the button's visibili
 ask and keep-editing paths). `vitest.workerd.config.ts` runs `tests/workerd/` under workerd with
 `@cloudflare/vitest-plugin` 1.4.11 (its Miniflare and Wrangler match the app's), against the test
 Worker in `tests/workerd/` (same bindings as the app wiring above): conformance of both objects,
-ownership, retention (alarm), reconnect after a mid-run disconnect, restart mid-run, and the MCP
-transport prototype, and the real turn in the object (`tests/workerd/chat.test.ts`: tools,
+the lifecycle suite over the object's SQLite (`tests/workerd/lifecycle.test.ts`), the object's own
+owner checks, the alarm's re-arming, a run id kept after its log was pruned, restart mid-run, and
+the MCP transport prototype, and the real turn in the object (`tests/workerd/chat.test.ts`: tools,
 approval resume, a reject reason reaching the model, disconnect + rejoin, stop;
 `tests/workerd/policies.test.ts`: usage in the index object per day and conversation, after a
 disconnect, atomic and pruned, the audit sink in the object, redaction in the stream, log and

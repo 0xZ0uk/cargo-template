@@ -3,7 +3,8 @@
 import { Banner, Button, Collapsible } from "@payloadcms/ui";
 import React from "react";
 import type { ApprovalProposal } from "../approvals/types";
-import { formatToolResult, toolTarget } from "./tools";
+import { describeCall, type ToolCall } from "../toolCalls";
+import { formatToolResult } from "./tools";
 
 /** The user's answer to one approval, before the batch is sent. */
 export interface ApprovalDecision {
@@ -100,7 +101,7 @@ export function pendingApprovalFrom(interrupt: unknown): PendingApproval | null 
     toolName,
     toolCallId: toolCallIdOf(i),
     input,
-    target: toolTarget({ id: "", name: toolName, input }),
+    target: describeCall(toolName, input).target?.slug,
     canAnswer: i.canResolve !== false && (i.status === undefined || i.status === "pending" || i.status === "error"),
     approve: () => answer(true),
     reject: (reason?: string) => answer(false, reason),
@@ -136,31 +137,39 @@ export function answerInterrupt(interrupt: unknown, decision: ApprovalDecision):
   i.resolveInterrupt.call(i, payload);
 }
 
-const VERB: Record<string, string> = {
-  createDocuments: "create documents in",
-  createDocument: "create a document in",
-  updateDocument: "update a document in",
-  updateDocuments: "update documents in",
-  deleteDocuments: "delete documents from",
-  deleteDocument: "delete a document from",
-  duplicateDocument: "duplicate a document in",
-  restoreVersion: "restore a version in",
-  updateGlobal: "update the global",
-};
+/** What the call would do, as "The assistant wants to … <target>". */
+function verbOf(call: ToolCall): string {
+  const one = call.id !== undefined;
+  const global = call.target?.kind === "global";
+  switch (call.operation) {
+    case "create":
+      return "create documents in";
+    case "update":
+      return global ? "update the global" : one ? "update a document in" : "update documents in";
+    case "delete":
+      return one ? "delete a document from" : "delete documents from";
+    case "duplicate":
+      return "duplicate a document in";
+    case "restore":
+      return global ? "restore a version of the global" : "restore a version in";
+    default:
+      return `run ${call.name} on`;
+  }
+}
 
 /**
  * The minimal approve/reject control: the tool, its target and its input (collapsed). The chat
  * uses the diff card (`ApprovalCard`); this stays for custom setups that want less.
  */
 export function ApprovalControl({ approval }: ApprovalRendererProps) {
-  const verb = VERB[approval.toolName];
+  const verb = verbOf(describeCall(approval.toolName, approval.input));
   const formatted = approval.input ? formatToolResult(approval.input) : undefined;
   const input = formatted?.text ?? "";
   return (
     <Banner className="assistant-approval" type="warning">
       <div className="assistant-approval__body">
         <p className="assistant-text">
-          The assistant wants to {verb ?? `run ${approval.toolName} on`}{" "}
+          The assistant wants to {verb}{" "}
           <strong>{approval.target ?? "your content"}</strong>
           {typeof approval.input?.id === "string" || typeof approval.input?.id === "number" ? (
             <>

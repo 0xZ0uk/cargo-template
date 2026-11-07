@@ -31,7 +31,7 @@ import {
   SITEMAP_VIDEO_CACHE_BASE,
 } from '../endpoints/sitemapExtensions.js'
 import { seoViewRedirectTarget } from '../helpers/viewAccess.js'
-import { safeCacheLocale } from '../helpers/safeCacheLocale.js'
+import { keyFor } from '../cacheKey.js'
 import { seoAnalyzerPlugin } from '../plugin.js'
 import { seoCache } from '../cache.js'
 
@@ -560,7 +560,7 @@ describe('SEO-07 residue — cache-busting the site-wide endpoints is admin-only
 
   it('serves the cache to a non-admin panel user instead of recomputing site-wide', async () => {
     process.env.SEO_REQUIRE_ADMIN_ROLE = '1'
-    seoCache.set('duplicate-content:default:0.7', { duplicates: [] })
+    seoCache.set(await keyFor('duplicate-content', {}, { inputs: 0.7 }), { duplicates: [] })
     const find = vi.fn()
 
     const res = await createDuplicateContentHandler(['pages'])({
@@ -576,7 +576,7 @@ describe('SEO-07 residue — cache-busting the site-wide endpoints is admin-only
   })
 
   it('still lets an SEO admin force the recomputation', async () => {
-    seoCache.set('duplicate-content:default:0.7', { duplicates: [] })
+    seoCache.set(await keyFor('duplicate-content', {}, { inputs: 0.7 }), { duplicates: [] })
     const find = vi.fn(async () => ({ docs: [] }))
 
     await createDuplicateContentHandler(['pages'])({
@@ -614,16 +614,20 @@ describe('SEO-09 — the cache scope comes from the host config, not from ?local
     logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn() },
   }
 
-  it('drops a locale the host never declared', () => {
-    expect(safeCacheLocale({ locale: 'a1', payload: localizedPayload })).toBeUndefined()
+  it('drops a locale the host never declared', async () => {
+    const unscoped = await keyFor('indexation-audit', { payload: localizedPayload })
+    expect(await keyFor('indexation-audit', { locale: 'a1', payload: localizedPayload })).toBe(unscoped)
     // No localization block at all → the site has one corpus, hence one key.
-    expect(safeCacheLocale({ locale: 'a1', payload: multiAuthPayload })).toBeUndefined()
+    expect(await keyFor('indexation-audit', { locale: 'a1', payload: multiAuthPayload })).toBe(
+      await keyFor('indexation-audit', { payload: multiAuthPayload }),
+    )
   })
 
-  it('keeps a declared locale, and Payload cross-locale mode, as distinct scopes', () => {
-    expect(safeCacheLocale({ locale: 'en', payload: localizedPayload })).toBe('en')
-    expect(safeCacheLocale({ locale: 'all', payload: localizedPayload })).toBe('all')
-    expect(safeCacheLocale({ locale: '*', payload: localizedPayload })).toBe('all')
+  it('keeps a declared locale, and Payload cross-locale mode, as distinct scopes', async () => {
+    const key = (locale?: string) => keyFor('indexation-audit', { locale, payload: localizedPayload })
+    const keys = [await key(), await key('de'), await key('en'), await key('all')]
+    expect(new Set(keys).size).toBe(4)
+    expect(await key('*')).toBe(await key('all'))
   })
 
   it('still throttles a non-admin refresh when the locale is forged', async () => {
@@ -652,7 +656,7 @@ describe('SEO-09 — the cache scope comes from the host config, not from ?local
   })
 
   it('serves the cached aggregation instead of recomputing it per forged locale', async () => {
-    seoCache.set('duplicate-content:default:0.7', { duplicates: [] })
+    seoCache.set(await keyFor('duplicate-content', {}, { inputs: 0.7 }), { duplicates: [] })
     const find = vi.fn()
 
     for (const forged of ['a1', 'a2', 'a3']) {
@@ -671,7 +675,9 @@ describe('SEO-09 — the cache scope comes from the host config, not from ?local
   // The other half of the contract: a real multi-locale site must keep one
   // cache entry per locale, or the fix would serve German results in English.
   it('keeps declared locales isolated from one another', async () => {
-    seoCache.set('duplicate-content:de:0.7', { duplicates: [] })
+    seoCache.set(await keyFor('duplicate-content', { locale: 'de', payload: localizedPayload }, { inputs: 0.7 }), {
+      duplicates: [],
+    })
     const find = vi.fn(async () => ({ docs: [] }))
 
     const deRes = await createDuplicateContentHandler(['pages'])({

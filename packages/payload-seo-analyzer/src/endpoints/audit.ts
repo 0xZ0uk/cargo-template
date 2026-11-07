@@ -11,7 +11,8 @@
 import type { Payload, PayloadHandler } from 'payload'
 import { getSeoDataStore, seoDatasetEnabled } from '../store/index.js'
 import type { SeoConfig } from '../types.js'
-import { defaultSeoSharedCache, hashConfig, seoCache, type SeoSharedCache } from '../cache.js'
+import { defaultSeoSharedCache, seoCache, type SeoSharedCache } from '../cache.js'
+import { keyFor, type CacheKeyBase, type CacheKeyReq } from '../cacheKey.js'
 import { auditMaxDocs } from '../helpers/auditLimits.js'
 import { docExclusion, isExcludedDoc } from '../helpers/excludeDocs.js'
 import { loadMergedConfig } from '../helpers/loadMergedConfig.js'
@@ -69,7 +70,7 @@ function analyzeDoc(
   }
 }
 
-const CACHE_KEY = 'audit'
+const CACHE_KEY = 'audit' satisfies CacheKeyBase
 
 interface AuditStats {
   totalPages: number
@@ -481,20 +482,20 @@ async function ensureAuditBuild(
   return true
 }
 
-/** Hash of the config that shapes the audit; part of persisted keys. */
-function auditConfigHash(collections: string[], globals: string[], seoConfig: SeoConfig | undefined): string {
-  // v2: readability uses the English Flesch formula.
-  // v3: word count, readability, headings and links come from the analysis's own walk.
-  return hashConfig({ v: 3, collections, globals, seoConfig: seoConfig ?? null })
-}
-
 /**
- * The audit never passes a locale to `payload.find` (it scores the default-locale
- * content of every doc), so every locale would build and store the same result:
- * the key is the same for all of them.
+ * The audit's cache key. One entry for the whole site: the audit never passes a locale to
+ * `payload.find`, so every locale would build the same result (see `CACHE_KEY_POLICY`). A
+ * persistent cache scopes it by the config that shapes the audit, so a deploy that changes
+ * collections or rules starts from a clean slate.
  */
-function auditCacheKey(cache: SeoSharedCache, configHash: string): string {
-  return cache.persistent ? `${CACHE_KEY}:${configHash}` : CACHE_KEY
+function auditCacheKey(
+  cache: SeoSharedCache,
+  req: CacheKeyReq,
+  collections: string[],
+  globals: string[],
+  seoConfig: SeoConfig | undefined,
+): Promise<string> {
+  return keyFor(CACHE_KEY, req, { cache, config: { collections, globals, seoConfig: seoConfig ?? null } })
 }
 
 /**
@@ -510,8 +511,7 @@ export async function continuePausedAuditBuilds(args: {
   cache: SeoSharedCache
 }): Promise<{ key: string; outcome: 'done' | 'paused' | 'failed' }[]> {
   const { payload, collections, globals, seoConfig, cache } = args
-  const configHash = auditConfigHash(collections, globals, seoConfig)
-  const key = auditCacheKey(cache, configHash)
+  const key = await auditCacheKey(cache, { payload }, collections, globals, seoConfig)
   const status = await cache.buildStatus(key)
   if (!status.paused) return []
   const claim = await cache.tryStartBuildStep(key)
@@ -612,9 +612,6 @@ export function createAuditHandler(
   auditCacheFile?: string,
   cache: SeoSharedCache = defaultSeoSharedCache,
 ): PayloadHandler {
-  // Persisted entries outlive deploys, so their key includes a hash of the config that
-  // shapes the audit: a deploy that changes collections/rules starts from a clean slate.
-  const configHash = auditConfigHash(collections, globals, seoConfig)
   // The build-time file cache is a filesystem feature for long-lived Node hosts. With a
   // persistent store the audit already survives restarts, so the file is ignored there
   // (the plugin warns at init).
@@ -634,7 +631,7 @@ export function createAuditHandler(
       // One cache entry + single-flight for the whole site: the audit is the same for every
       // content locale, and keying on the request's `?locale=` would let a caller mint
       // unlimited keys (each a guaranteed miss, hence a fresh site-wide build).
-      const cacheKey = auditCacheKey(cache, configHash)
+      const cacheKey = await auditCacheKey(cache, req, collections, globals, seoConfig)
 
       // Manual refresh: start a rebuild now. The current audit keeps being served (marked
       // `refreshing`) until the new one replaces it.

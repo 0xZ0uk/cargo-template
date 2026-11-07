@@ -5,7 +5,6 @@ import {
   AUDIT_DOCUMENT_EVENT_LIMIT,
   AUDIT_SUMMARY_DOCUMENT_ID,
   analyticsEngineAuditSink,
-  auditDocumentId,
   auditDocumentIds,
   auditEventsFor,
   type AssistantAuditEvent,
@@ -19,6 +18,8 @@ import {
   type RedactionPolicy,
 } from "../src/redaction";
 import { redactionPolicyOf, relationMapOf } from "../src/redactionSchema";
+import { describeCall } from "../src/toolCalls";
+import { recorded } from "./fixtures/pluginMcp";
 import { redactedMessageStore, turnPolicyMiddleware } from "../src/server/policy";
 import { budgetExceeded, dayBefore, nextUtcMidnight, usageAmountOf, usageResponse, utcDay } from "../src/usage";
 import { normalizeOptions } from "../src/utils/normalizeOptions";
@@ -237,42 +238,45 @@ describe("relations: populated documents are redacted by their own collection", 
   });
 });
 
+/** The hidden field a call of `tool` (a plain collection read unless given) queries. */
+const hidden = (policy: RedactionPolicy, args: Record<string, unknown>, tool = "findDocuments") => redactedReference(policy, describeCall(tool, args));
+
 describe("redactedReference: queries on hidden fields", () => {
   const policy: RedactionPolicy = redactionPolicyOf(config, { pages: ["meta.secret"] });
   it("where (through and/or), sort, select and findDistinct's field, directly or through a relation", () => {
-    expect(redactedReference(policy, { slug: "users", where: { email: { like: "a" } } })).toBe("email");
-    expect(redactedReference(policy, { slug: "users", where: { or: [{ name: { equals: "A" } }, { and: [{ apiKey: { exists: true } }] }] } })).toBe("apiKey");
-    expect(redactedReference(policy, { slug: "users", sort: "-email" })).toBe("email");
-    expect(redactedReference(policy, { slug: "users", sort: ["name", "+sessions"] })).toBe("sessions");
-    expect(redactedReference(policy, { slug: "users", select: { name: true, email: true } })).toBe("email");
-    expect(redactedReference(policy, { slug: "users", field: "email" })).toBe("email");
-    expect(redactedReference(policy, { slug: "users", field: "sessions.id" })).toBe("sessions.id");
-    expect(redactedReference(policy, { slug: "pages", where: { "createdBy.email": { equals: "x" } } })).toBe("createdBy.email");
-    expect(redactedReference(policy, { slug: "pages", where: { "createdBy.value.email": { equals: "x" } } })).toBe("createdBy.value.email");
-    expect(redactedReference(policy, { slug: "pages", where: { "layout.0.author.email": { exists: true } } })).toBe("layout.0.author.email");
-    expect(redactedReference(policy, { slug: "pages", where: { "meta.secret": { exists: true } } })).toBe("meta.secret");
-    expect(redactedReference(policy, { slug: "pages", where: { "hero.createdBy.email": { exists: true } } })).toBe("hero.createdBy.email");
+    expect(hidden(policy, { slug: "users", where: { email: { like: "a" } } })).toBe("email");
+    expect(hidden(policy, { slug: "users", where: { or: [{ name: { equals: "A" } }, { and: [{ apiKey: { exists: true } }] }] } })).toBe("apiKey");
+    expect(hidden(policy, { slug: "users", sort: "-email" })).toBe("email");
+    expect(hidden(policy, { slug: "users", sort: ["name", "+sessions"] })).toBe("sessions");
+    expect(hidden(policy, { slug: "users", select: { name: true, email: true } })).toBe("email");
+    expect(hidden(policy, { slug: "users", field: "email" })).toBe("email");
+    expect(hidden(policy, { slug: "users", field: "sessions.id" })).toBe("sessions.id");
+    expect(hidden(policy, { slug: "pages", where: { "createdBy.email": { equals: "x" } } })).toBe("createdBy.email");
+    expect(hidden(policy, { slug: "pages", where: { "createdBy.value.email": { equals: "x" } } })).toBe("createdBy.value.email");
+    expect(hidden(policy, { slug: "pages", where: { "layout.0.author.email": { exists: true } } })).toBe("layout.0.author.email");
+    expect(hidden(policy, { slug: "pages", where: { "meta.secret": { exists: true } } })).toBe("meta.secret");
+    expect(hidden(policy, { slug: "pages", where: { "hero.createdBy.email": { exists: true } } })).toBe("hero.createdBy.email");
   });
   it("the versions tools: a leading version. is the document's root", () => {
     for (const tool of ["findVersions", "countVersions", "findGlobalVersions"]) {
       // where, directly and through a relation, on a versioned collection and an auth collection
-      expect(redactedReference(policy, { slug: "pages", where: { "version.createdBy.email": { equals: "x" } } }, tool), tool).toBe("version.createdBy.email");
-      expect(redactedReference(policy, { slug: "users", where: { "version.email": { like: "a" } } }, tool), tool).toBe("version.email");
-      expect(redactedReference(policy, { slug: "pages", where: { and: [{ or: [{ "version.meta.secret": { exists: true } }] }] } }, tool), tool).toBe("version.meta.secret");
-      expect(redactedReference(policy, { slug: "pages", where: { "version.createdBy.value.email": { equals: "x" } } }, tool), tool).toBe("version.createdBy.value.email");
+      expect(hidden(policy, { slug: "pages", where: { "version.createdBy.email": { equals: "x" } } }, tool), tool).toBe("version.createdBy.email");
+      expect(hidden(policy, { slug: "users", where: { "version.email": { like: "a" } } }, tool), tool).toBe("version.email");
+      expect(hidden(policy, { slug: "pages", where: { and: [{ or: [{ "version.meta.secret": { exists: true } }] }] } }, tool), tool).toBe("version.meta.secret");
+      expect(hidden(policy, { slug: "pages", where: { "version.createdBy.value.email": { equals: "x" } } }, tool), tool).toBe("version.createdBy.value.email");
       // sort, select, and the version's parent (the collection document)
-      expect(redactedReference(policy, { slug: "pages", sort: "-version.createdBy.email" }, tool), tool).toBe("version.createdBy.email");
-      expect(redactedReference(policy, { slug: "users", sort: ["version.name", "version.email"] }, tool), tool).toBe("version.email");
-      expect(redactedReference(policy, { slug: "users", select: { version: { email: true } } }, tool), tool).toBe("version.email");
-      expect(redactedReference(policy, { slug: "users", where: { "parent.email": { equals: "x" } } }, tool), tool).toBe("parent.email");
+      expect(hidden(policy, { slug: "pages", sort: "-version.createdBy.email" }, tool), tool).toBe("version.createdBy.email");
+      expect(hidden(policy, { slug: "users", sort: ["version.name", "version.email"] }, tool), tool).toBe("version.email");
+      expect(hidden(policy, { slug: "users", select: { version: { email: true } } }, tool), tool).toBe("version.email");
+      expect(hidden(policy, { slug: "users", where: { "parent.email": { equals: "x" } } }, tool), tool).toBe("parent.email");
       // what stays allowed
-      expect(redactedReference(policy, { slug: "pages", where: { "version.title": { equals: "x" }, parent: { equals: 1 } }, sort: "-updatedAt" }, tool), tool).toBeUndefined();
-      expect(redactedReference(policy, { slug: "users", where: { "version.name": { equals: "x" } }, sort: "-version.name" }, tool), tool).toBeUndefined();
+      expect(hidden(policy, { slug: "pages", where: { "version.title": { equals: "x" }, parent: { equals: 1 } }, sort: "-updatedAt" }, tool), tool).toBeUndefined();
+      expect(hidden(policy, { slug: "users", where: { "version.name": { equals: "x" } }, sort: "-version.name" }, tool), tool).toBeUndefined();
     }
-    // the same paths without the tool name (or on another tool) are plain fields called "version"
-    expect(redactedReference(policy, { slug: "users", where: { "version.email": { like: "a" } } })).toBeUndefined();
-    expect(redactedReference(policy, { slug: "users", where: { "version.email": { like: "a" } } }, "findDocuments")).toBeUndefined();
-    expect(redactedReference(policy, { slug: "users", where: { email: { like: "a" } } }, "findVersions")).toBe("email");
+    // the same paths on another tool are plain fields called "version"
+    expect(hidden(policy, { slug: "users", where: { "version.email": { like: "a" } } })).toBeUndefined();
+    expect(hidden(policy, { slug: "users", where: { "version.email": { like: "a" } } }, "findDocuments")).toBeUndefined();
+    expect(hidden(policy, { slug: "users", where: { email: { like: "a" } } }, "findVersions")).toBe("email");
   });
   it("the policy refuses findVersions and countVersions on a hidden field, and answers the model why", async () => {
     const middleware = turnPolicyMiddleware({ input: { threadId: "t", runId: "r", userKey: "users:1" }, settings: { model: "m", redaction: policy } });
@@ -295,11 +299,11 @@ describe("redactedReference: queries on hidden fields", () => {
     expect(JSON.stringify(out)).not.toContain("ann@example.com");
   });
   it("lets everything else through", () => {
-    expect(redactedReference(policy, { slug: "users", where: { name: { equals: "email" } }, sort: "name", select: { email: false } })).toBeUndefined();
-    expect(redactedReference(policy, { slug: "pages", where: { createdBy: { equals: 1 } }, field: "title" })).toBeUndefined();
-    expect(redactedReference(policy, { slug: "pages", where: { "meta.owner": { equals: 1 } } })).toBeUndefined();
-    expect(redactedReference(policy, { where: { email: { equals: "x" } } })).toBeUndefined(); // no slug, no collection
-    expect(redactedReference({ paths: {} }, { slug: "users", where: { email: {} } })).toBeUndefined();
+    expect(hidden(policy, { slug: "users", where: { name: { equals: "email" } }, sort: "name", select: { email: false } })).toBeUndefined();
+    expect(hidden(policy, { slug: "pages", where: { createdBy: { equals: 1 } }, field: "title" })).toBeUndefined();
+    expect(hidden(policy, { slug: "pages", where: { "meta.owner": { equals: 1 } } })).toBeUndefined();
+    expect(hidden(policy, { where: { email: { equals: "x" } } })).toBeUndefined(); // no slug, no collection
+    expect(hidden({ paths: {} }, { slug: "users", where: { email: {} } })).toBeUndefined();
   });
 });
 
@@ -353,44 +357,46 @@ describe("usage helpers", () => {
 });
 
 describe("audit helpers", () => {
-  it("the document id: the call's id, else the created document's", () => {
-    expect(auditDocumentId({ slug: "pages", id: 7 }, "ok")).toBe("7");
-    expect(auditDocumentId({ slug: "pages" }, 'Created 1 of 1 documents:\n```json\n{"id":"abc","title":"x"}\n```')).toBe("abc");
-    expect(auditDocumentId({ slug: "pages", where: {} }, "Updated 3 documents")).toBe("");
+  const ids = (name: string, args: Record<string, unknown>, result: unknown) => auditDocumentIds(describeCall(name, args), result);
+  /** The audit ids of a call recorded from plugin-mcp (`tests/fixtures/plugin-mcp.json`). */
+  const idsOf = (label: string) => {
+    const call = recorded(label);
+    return ids(call.name, call.args, call.result);
+  };
+
+  it("one id per changed document, from each of plugin-mcp's recorded write results", () => {
+    // by id: the argument
+    expect(idsOf("update by id")).toEqual(["1"]);
+    expect(idsOf("delete by id")).toEqual(["2"]);
+    expect(idsOf("rich text from Markdown")).toEqual(["1"]);
+    // update and delete by where: the ids listed (whole documents for a delete: their relations don't count)
+    expect(idsOf("update by where")).toEqual(["3", "2"]);
+    expect(idsOf("delete by where")).toEqual(["5", "3"]);
+    // nothing updated: no event
+    expect(idsOf("update by where, none match")).toEqual([]);
+    // create: the created documents; failed indexes are not documents
+    expect(idsOf("create two")).toEqual(["3", "4"]);
+    expect(idsOf("create, one fails")).toEqual(["1"]);
+    // duplicate and restore: the document written, not the id argument (the source, the version)
+    expect(recorded("duplicate").args.id).toBe("2");
+    expect(idsOf("duplicate")).toEqual(["5"]);
+    expect(ids("restoreVersion", { slug: "pages", id: "v1" }, recorded("restore a version").result)).toEqual(["1"]);
+    // globals: no document id
+    expect(idsOf("update global")).toEqual([""]);
+    expect(idsOf("restore a global version")).toEqual([""]);
   });
 
-  // plugin-mcp 4.0.0-beta.6's result texts, as its tools write them.
-  const fence = (value: unknown) => "```json\n" + JSON.stringify(value) + "\n```";
-  it("one id per changed document, from each of plugin-mcp's write results", () => {
+  it("documents that failed, results without ids, content parts", () => {
+    const fence = (value: unknown) => "```json\n" + JSON.stringify(value) + "\n```";
     const where = { slug: "pages", where: { title: { like: "x" } } };
-    // update by where (not returning: ids only), with and without failed documents
-    expect(auditDocumentIds("updateDocument", where, `Multiple documents updated in collection "pages"!\nUpdated: 3 documents\nErrors: 0\n---\n\nUpdated documents:\n${fence([{ id: 1 }, { id: 2 }, { id: 3 }])}`)).toEqual(["1", "2", "3"]);
-    expect(
-      auditDocumentIds(
-        "updateDocument",
-        where,
-        `Multiple documents updated in collection "pages"!\nUpdated: 1 documents\nErrors: 1\n---\n\nUpdated documents:\n${fence([{ id: "a" }])}\n\nErrors:\n${fence([{ id: "b", message: "no" }])}\n\nUse this schema for data:\n${fence({ id: "schema" })}`
-      )
-    ).toEqual(["a"]);
-    // nothing updated: no event; only failures: no event
-    expect(auditDocumentIds("updateDocument", where, `Multiple documents updated in collection "pages"!\nUpdated: 0 documents\nErrors: 0\n---`)).toEqual([]);
-    expect(auditDocumentIds("updateDocument", where, `Multiple documents updated in collection "pages"!\nUpdated: 0 documents\nErrors: 1\n---\n\nErrors:\n${fence([{ id: "b", message: "no" }])}`)).toEqual([]);
-    // delete by where returns whole documents (their relations too: only top-level ids count)
-    const deleted = [{ id: 4, createdBy: { relationTo: "users", value: { id: 99 } } }, { id: 5 }];
-    expect(auditDocumentIds("deleteDocuments", where, `Document deleted successfully from collection "pages"!\nDeleted: 2 documents\nErrors: 0\n---\n\nDeleted documents:\n${fence(deleted)}`)).toEqual(["4", "5"]);
-    // by id: the argument
-    expect(auditDocumentIds("deleteDocuments", { slug: "pages", id: 6 }, `Document deleted successfully from collection "pages"!\nDeleted document:\n${fence({ id: 6 })}`)).toEqual(["6"]);
-    expect(auditDocumentIds("updateDocument", { slug: "pages", id: "p" }, `Document updated successfully in collection "pages"!\nResult:\n${fence({ id: "p" })}`)).toEqual(["p"]);
-    // create: ids or { doc } per created document; failed indexes are not documents
-    expect(auditDocumentIds("createDocuments", { slug: "pages" }, `Created 2 of 3 documents in collection "pages".\nRetry failed indexes only.\nResults:\n${fence({ docs: [{ id: 7, index: 0 }, { id: 8, index: 2 }], errors: [{ index: 1, message: "bad" }] })}`)).toEqual(["7", "8"]);
-    expect(auditDocumentIds("createDocuments", { slug: "pages" }, `Created 1 of 1 documents in collection "pages".\nResults:\n${fence({ docs: [{ doc: { id: 9, title: "x" }, index: 0 }], errors: [] })}`)).toEqual(["9"]);
-    // duplicate and restore: the document written, not the id argument (the source, the version)
-    expect(auditDocumentIds("duplicateDocument", { slug: "pages", id: 1 }, `Document duplicated successfully in collection "pages"!\nDuplicated document:\n${fence({ id: 10 })}`)).toEqual(["10"]);
-    expect(auditDocumentIds("restoreVersion", { slug: "pages", id: "v1" }, `Version "v1" restored successfully in collection "pages"!\nRestored document:\n${fence({ id: 11 })}`)).toEqual(["11"]);
-    // globals: no document id
-    expect(auditDocumentIds("updateGlobal", { slug: "settings" }, `Global "settings" updated successfully!\n${fence({ id: 1 })}`)).toEqual([""]);
+    // plugin-mcp's Errors: section (updateTool.ts) lists documents that were not changed
+    expect(ids("updateDocument", where, `Multiple documents updated in collection "pages"!\nUpdated: 1 documents\nErrors: 1\n---\n\nUpdated documents:\n${fence([{ id: "a" }])}\n\nErrors:\n${fence([{ id: "b", message: "no" }])}`)).toEqual(["a"]);
+    expect(ids("updateDocument", where, `Multiple documents updated in collection "pages"!\nUpdated: 0 documents\nErrors: 1\n---\n\nErrors:\n${fence([{ id: "b", message: "no" }])}`)).toEqual([]);
+    // a write whose result names no document: one event without an id
+    expect(ids("updateDocument", where, "Updated 3 documents")).toEqual([""]);
+    expect(ids("publishEverything", { slug: "pages" }, "ok")).toEqual([""]);
     // content parts work as text does
-    expect(auditDocumentIds("updateDocument", where, [{ type: "text", content: `Updated documents:\n${fence([{ id: 1 }, { id: 2 }])}` }])).toEqual(["1", "2"]);
+    expect(ids("updateDocument", where, [{ type: "text", content: `Updated documents:\n${fence([{ id: 1 }, { id: 2 }])}` }])).toEqual(["1", "2"]);
   });
 
   it("the Analytics Engine sink writes one data point per event, no content", () => {

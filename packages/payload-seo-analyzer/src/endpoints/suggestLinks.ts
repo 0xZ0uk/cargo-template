@@ -3,7 +3,7 @@
  * Analyzes page content and suggests relevant internal links from other pages.
  *
  * The editor polls this while typing, so the corpus it matches against is built
- * once and cached (`suggest-links-index:<locale>`, invalidated on every save via
+ * once and cached (`suggest-links-index`, per locale, invalidated on every save via
  * CACHE_BASES) and read with a field projection — only title, slug,
  * focusKeyword and the noindex flag are needed, not the whole Lexical tree of every document.
  * The endpoint itself is registered behind the shared rate limiter.
@@ -20,7 +20,7 @@ import type { SeoConfig } from '../types.js'
 import { buildSelect } from '../helpers/buildSelect.js'
 import { seoCache } from '../cache.js'
 import { isSeoPanelUser } from '../helpers/isAdmin.js'
-import { safeCacheLocale } from '../helpers/safeCacheLocale.js'
+import { keyFor } from '../cacheKey.js'
 
 /** The fields the corpus reads: noindex pages are left out of the suggestions. */
 export const SUGGEST_LINKS_SELECT_PATHS = ['title', 'slug', 'focusKeyword', 'noindex', 'meta.noindex']
@@ -78,10 +78,7 @@ export function createSuggestLinksHandler(
       const normalizedContent = normalizeForComparison(content)
       const suggestions: LinkSuggestion[] = []
 
-      const reqLocale = safeCacheLocale(req)
-      const cacheKey = reqLocale
-        ? `${SUGGEST_LINKS_CACHE_BASE}:${reqLocale}`
-        : SUGGEST_LINKS_CACHE_BASE
+      const cacheKey = await keyFor(SUGGEST_LINKS_CACHE_BASE, req)
 
       let index = seoCache.get<IndexEntry[]>(cacheKey)
       if (!index) {

@@ -11,7 +11,7 @@ import type { PayloadHandler } from 'payload'
 import { seoCache } from '../cache.js'
 import { analyzeLoadedDocument } from '../helpers/analyzeDocument.js'
 import { isSeoAdminRequest, isSeoPanelUser } from '../helpers/isAdmin.js'
-import { safeCacheLocale } from '../helpers/safeCacheLocale.js'
+import { keyFor } from '../cacheKey.js'
 import { docExclusion, isExcludedDoc } from '../helpers/excludeDocs.js'
 import type { SeoConfig } from '../types.js'
 
@@ -86,9 +86,7 @@ export function createDuplicateContentHandler(collections: string[], seoConfig?:
       // into unbounded distinct entries (?threshold=0.7001, 0.7002, …).
       const rawThreshold = parseFloat(url.searchParams.get('threshold') || '') || SIMILARITY_THRESHOLD
       const threshold = Math.min(1, Math.max(0, Math.round(rawThreshold * 100) / 100))
-      // Locale-scoped: content differs per locale, so cache must not collide across locales.
-      const reqLocale = safeCacheLocale(req)
-      const CACHE_KEY = `duplicate-content:${reqLocale || 'default'}:${threshold}`
+      const CACHE_KEY = await keyFor('duplicate-content', req, { inputs: threshold })
       const cached = noCache ? null : seoCache.get<unknown>(CACHE_KEY)
       if (cached) {
         return Response.json({ ...(cached as Record<string, unknown>), cached: true })

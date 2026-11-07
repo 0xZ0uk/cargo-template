@@ -3,6 +3,7 @@ import { diffDocument, labelText, type BlockLike, type DiffMode, type FieldLike 
 import type { ApprovalAction, ApprovalProposal, ProposalDocument, ProposalItem } from "../approvals/types";
 import { lexicalToText } from "../approvals/lexical";
 import { blocksBySlugOf, collectionOf as richTextCollectionOf, markdownLosses, resolveRichText, RichTextPathError, SET_RICH_TEXT_TOOL_NAME, toMarkdown, unsupportedMarkdown } from "../richText/fields";
+import { describeCall, type ToolCall } from "../toolCalls";
 import { HiddenFieldError, type UserReader } from "./reader";
 
 /**
@@ -32,31 +33,25 @@ interface InterruptCall {
   toolName: string;
   toolCallId: string;
   input: Record<string, unknown>;
+  /** What the call means ({@link describeCall}). An interrupt is only raised for a tool that needs approval. */
+  call: ToolCall;
 }
 
 /** The tool call behind an approval interrupt (`metadata: { kind: "approval", toolName, input }`). */
 export function interruptCall(record: PendingInterruptLike): InterruptCall {
   const descriptor = record.payload as { toolCallId?: unknown; metadata?: { toolName?: unknown; input?: unknown } };
-  const input = descriptor.metadata?.input;
+  const toolName = typeof descriptor.metadata?.toolName === "string" ? descriptor.metadata.toolName : "tool";
+  const call = describeCall(toolName, descriptor.metadata?.input, { needsApproval: true });
   return {
-    toolName: typeof descriptor.metadata?.toolName === "string" ? descriptor.metadata.toolName : "tool",
+    toolName,
     toolCallId: typeof descriptor.toolCallId === "string" ? descriptor.toolCallId : "",
-    input: input && typeof input === "object" && !Array.isArray(input) ? (input as Record<string, unknown>) : {},
+    input: call.args,
+    call,
   };
 }
 
-
-export function actionOf(toolName: string): ApprovalAction {
-  if (toolName === SET_RICH_TEXT_TOOL_NAME) return "update";
-  if (/^create/i.test(toolName)) return "create";
-  if (/^update/i.test(toolName)) return "update";
-  if (/^delete/i.test(toolName)) return "delete";
-  if (/^restore/i.test(toolName)) return "restore";
-  if (/^duplicate/i.test(toolName)) return "duplicate";
-  return "other";
-}
-
-const isGlobalTool = (toolName: string) => /global/i.test(toolName);
+/** The card's action: a read never waits for approval, so it (like an unknown tool) is `other`. */
+const actionOf = (call: ToolCall): ApprovalAction => (call.operation === "read" ? "other" : call.operation);
 
 const idOf = (value: unknown): string | undefined =>
   typeof value === "string" && value ? value : typeof value === "number" ? String(value) : undefined;
@@ -87,13 +82,14 @@ function documentOf(reader: UserReader, slug: string, doc: Doc): ProposalDocumen
   };
 }
 
-const localeOf = (input: Record<string, unknown>) => (typeof input.locale === "string" && input.locale ? { locale: input.locale } : {});
+const localeOf = (call: ToolCall) => (call.locale ? { locale: call.locale } : {});
 
 /** The documents a write by `where` matches (the first {@link MAX_ITEMS}), or `null` when they can't be read. */
-async function findWhere(reader: UserReader, slug: string, where: unknown, input: Record<string, unknown>) {
-  if (!isRecord(where)) return null;
+async function findWhere(reader: UserReader, call: ToolCall) {
+  const { target, args } = call;
+  if (!target || !isRecord(args.where)) return null;
   try {
-    return await reader.find(slug, where as Where, { limit: MAX_ITEMS, ...localeOf(input) });
+    return await reader.find(target.slug, args.where as Where, { limit: MAX_ITEMS, ...localeOf(call) });
   } catch (error) {
     if (error instanceof HiddenFieldError) return null;
     throw error;
@@ -105,28 +101,25 @@ async function findWhere(reader: UserReader, slug: string, where: unknown, input
  * by id, `restoreVersion` (the version's parent), `duplicateDocument`, and the global tools.
  * `undefined` for writes that don't target one existing document (create, by `where`).
  */
-async function currentTarget(reader: UserReader, call: InterruptCall): Promise<{ doc: Doc | null; version?: Doc } | undefined> {
-  const { toolName, input } = call;
-  const slug = typeof input.slug === "string" ? input.slug : undefined;
-  if (!slug) return undefined;
-  const action = actionOf(toolName);
-  if (isGlobalTool(toolName)) {
+async function currentTarget(reader: UserReader, call: ToolCall): Promise<{ doc: Doc | null; version?: Doc } | undefined> {
+  const { target, id } = call;
+  if (!target) return undefined;
+  const { slug } = target;
+  const action = actionOf(call);
+  if (target.kind === "global") {
     if (action === "restore") {
-      const versionId = idOf(input.id);
-      const version = versionId ? await reader.findVersion(slug, versionId, { global: true }) : null;
-      return { doc: await reader.findGlobal(slug, localeOf(input)), ...(version ? { version: version.version } : {}) };
+      const version = id ? await reader.findVersion(slug, id, { global: true }) : null;
+      return { doc: await reader.findGlobal(slug, localeOf(call)), ...(version ? { version: version.version } : {}) };
     }
-    return action === "update" ? { doc: await reader.findGlobal(slug, localeOf(input)) } : undefined;
+    return action === "update" ? { doc: await reader.findGlobal(slug, localeOf(call)) } : undefined;
   }
   if (action === "restore") {
-    const versionId = idOf(input.id);
-    const version = versionId ? await reader.findVersion(slug, versionId) : null;
-    const doc = version?.parent ? await reader.findByID(slug, version.parent, localeOf(input)) : null;
+    const version = id ? await reader.findVersion(slug, id) : null;
+    const doc = version?.parent ? await reader.findByID(slug, version.parent, localeOf(call)) : null;
     return { doc, ...(version ? { version: version.version } : {}) };
   }
   if (action === "update" || action === "delete" || action === "duplicate") {
-    const id = idOf(input.id);
-    return id ? { doc: await reader.findByID(slug, id, localeOf(input)) } : undefined;
+    return id ? { doc: await reader.findByID(slug, id, localeOf(call)) } : undefined;
   }
   return undefined;
 }
@@ -139,14 +132,14 @@ const changedAfter = (doc: Doc | null | undefined, requestedAt: number) => {
 /** Build the proposal of one pending approval. Never throws: problems become a `notice`. */
 export async function buildProposal(reader: UserReader, record: PendingInterruptLike): Promise<ApprovalProposal> {
   const { req } = reader;
-  const call = interruptCall(record);
-  const { toolName, input } = call;
-  const action = actionOf(toolName);
-  const slug = typeof input.slug === "string" ? input.slug : undefined;
+  const interrupt = interruptCall(record);
+  const { toolName, input, call } = interrupt;
+  const action = actionOf(call);
+  const slug = call.target?.slug;
   // Current values of redacted fields (#68) never reach the card: the reader returns documents
   // without them, populated relations (`createdBy`…) redacted by their own collection. What the
   // model proposes to write is shown as is (it authored it).
-  const global = isGlobalTool(toolName);
+  const global = call.target?.kind === "global";
   const collectionConfig = slug && !global ? collectionOf(req, slug) : undefined;
   const globalConfig = slug && global ? globalOf(req, slug) : undefined;
   const entity = collectionConfig ?? globalConfig;
@@ -156,7 +149,7 @@ export async function buildProposal(reader: UserReader, record: PendingInterrupt
 
   const base: ApprovalProposal = {
     interruptId: record.interruptId,
-    toolCallId: call.toolCallId,
+    toolCallId: interrupt.toolCallId,
     toolName,
     action,
     target: slug
@@ -186,7 +179,7 @@ export async function buildProposal(reader: UserReader, record: PendingInterrupt
   }
 
   // The policy refuses calls that query a hidden field (#68) when they are applied: say so now.
-  const hiddenField = reader.hiddenField(input, toolName);
+  const hiddenField = reader.hiddenField(call);
   if (hiddenField) {
     return {
       ...base,
@@ -238,7 +231,7 @@ export async function buildProposal(reader: UserReader, record: PendingInterrupt
       }
       // By `where` (update or delete many).
       if (slug && (action === "update" || action === "delete") && input.where !== undefined) {
-        const found = await findWhere(reader, slug, input.where, input);
+        const found = await findWhere(reader, call);
         if (!found) return { ...base, notice: "The matching documents could not be read.", items: action === "update" ? [diff("create", undefined, data)] : [] };
         const items = found.docs.map((doc) => ({ document: asDocument(doc), ...(action === "delete" ? diff("delete", doc, undefined) : diff("update", doc, data)) }));
         return { ...base, items, matchedDocs: found.total };
@@ -261,17 +254,16 @@ export async function buildProposal(reader: UserReader, record: PendingInterrupt
 async function richTextProposal(
   reader: UserReader,
   record: PendingInterruptLike,
-  call: InterruptCall,
+  call: ToolCall,
   base: ApprovalProposal,
   asDocument: (doc: Doc) => ProposalDocument
 ): Promise<ApprovalProposal> {
   const { req } = reader;
-  const { input } = call;
-  const slug = input.slug as string;
+  const { args: input } = call;
+  const slug = call.target?.slug ?? "";
   const path = typeof input.path === "string" ? input.path : "";
   const markdown = typeof input.markdown === "string" ? input.markdown : "";
-  const id = idOf(input.id);
-  const doc = id ? await reader.findByID(slug, id, localeOf(input)) : null;
+  const doc = call.id ? await reader.findByID(slug, call.id, localeOf(call)) : null;
   const fallback = (notice: string): ApprovalProposal => ({
     ...base,
     notice,
@@ -340,7 +332,7 @@ export async function findStaleApprovals(
   for (const { interruptId, seenUpdatedAt } of seen) {
     const record = pending.find((p) => p.interruptId === interruptId);
     if (!record) continue;
-    const target = await currentTarget(reader, interruptCall(record));
+    const target = await currentTarget(reader, interruptCall(record).call);
     const current = target?.doc?.updatedAt;
     if (typeof current === "string" && current !== seenUpdatedAt) stale.push(interruptId);
   }

@@ -28,8 +28,8 @@ import { docExclusion, isExcludedDoc } from '../helpers/excludeDocs.js'
 import { loadMergedConfig } from '../helpers/loadMergedConfig.js'
 import { isSeoAdminRequest, isSeoPanelUser } from '../helpers/isAdmin.js'
 import { indexationMaxDocs } from '../helpers/auditLimits.js'
-import { safeCacheLocale } from '../helpers/safeCacheLocale.js'
-import { defaultSeoSharedCache, hashConfig, type SeoSharedCache } from '../cache.js'
+import { defaultSeoSharedCache, type SeoSharedCache } from '../cache.js'
+import { keyFor } from '../cacheKey.js'
 
 /** Technical-group check ids that represent an indexation/canonical hygiene problem. */
 const INDEXATION_CHECK_IDS = new Set([
@@ -401,8 +401,6 @@ export function createIndexationAuditHandler(
   globals: string[] = [],
   cache: SeoSharedCache = defaultSeoSharedCache,
 ): PayloadHandler {
-  // Persisted entries outlive deploys: scope them by the config that shapes the result.
-  const configSuffix = cache.persistent ? `:${hashConfig({ v: 1, collections, globals, seoConfig })}` : ''
   return async (req) => {
     try {
       if (!isSeoPanelUser(req)) {
@@ -411,8 +409,8 @@ export function createIndexationAuditHandler(
 
       // Same gate as /audit?nocache=1: only SEO admins may force the whole-site rescan.
       const noCache = new URL(req.url as string).searchParams.get('nocache') === '1' && isSeoAdminRequest(req)
-      const reqLocale = safeCacheLocale(req)
-      const CACHE_KEY = (reqLocale ? `indexation-audit:${reqLocale}` : 'indexation-audit') + configSuffix
+      // Persisted entries outlive deploys: the key carries the config that shapes the result.
+      const CACHE_KEY = await keyFor('indexation-audit', req, { cache, config: { collections, globals, seoConfig } })
       // Read the generation before computing, so a save landing mid-scan leaves the stored
       // result stale instead of hiding the save.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

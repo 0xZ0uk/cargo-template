@@ -131,7 +131,7 @@ describe('core-web-vitals — shared cache', () => {
     await createCoreWebVitalsHandler(config, isolate(store))(makeReq(urlQuery(target)))
     const keys = [...store.data.keys()].filter((k) => k.startsWith('entry/'))
     expect(keys).toHaveLength(1)
-    expect(keys[0]).toMatch(/^entry\/core-web-vitals:mobile:[0-9a-f]{64}$/)
+    expect(keys[0]).toMatch(/^entry\/core-web-vitals:i-[0-9a-f]{64}:c-[0-9a-f]{64}$/)
     expect(keys[0]).toMatch(/^[a-z0-9:/._-]+$/)
   })
 

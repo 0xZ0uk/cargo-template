@@ -78,9 +78,22 @@ No schema change: nothing to migrate.
 - **`buildSeoInputFromDoc` blanks the slug of a global.** Globals have no URL; the audit already
   did this, `/validate`, score history and the indexation audit didn't, so a global with a `slug`
   field got self-link and evergreen checks for a path that doesn't exist.
+- **One cache-key policy behind every endpoint** (cargo-template #136). `keyFor(base, req, …)` in
+  `src/cacheKey.ts` owns a key's version, locale policy (a table per base, written down in the
+  module), the hash of its inputs, the persisted config hash (plugin config plus the
+  `extractContent` fingerprint, read from `config.custom.seoAnalyzer`, the one place the extractors
+  live) and the allowed character set. The endpoints name their base and inputs. This replaces
+  `hashConfig` (a 32-bit hash) and `safeCacheLocale`; config and inputs are now SHA-256. Every
+  persisted key changes shape, so stored audits, indexation and sitemap audits, redirect chains,
+  external-links scans, Core Web Vitals results, sitemaps and `llms.txt` are rebuilt once (Core Web
+  Vitals results cost one PageSpeed call per URL).
+- **`SeoConfig.extractContentFingerprint` is removed.** It was an `@internal` field the plugin set
+  and the analyzer never read.
 
 ### Fixed
 
+- **A stored external-links scan is no longer served after the config or the extractors change.**
+  Its persisted key carried no config hash, unlike the audits and sitemaps.
 - **`maxRecursionDepth` reaches the `extractContent` extractors.** They always got a depth of 10;
   they now get the analyzer's setting (default 50), like the built-in walker.
 - **The global score history reads the same content as `/validate`.** It analysed globals with no

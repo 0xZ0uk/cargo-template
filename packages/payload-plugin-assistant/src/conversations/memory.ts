@@ -1,10 +1,12 @@
-import { memoryStream, resumeServerSentEventsResponse, toServerSentEventsResponse } from "@tanstack/ai";
-import { memoryPersistence, reconstructChat } from "@tanstack/ai-persistence";
-import { RunControl } from "./runControl";
-import { DEFAULT_CONVERSATION_CAPS, withConversationCaps, type ConversationCaps } from "./caps";
+import { memoryStream, type StreamDurability } from "@tanstack/ai";
+import { memoryPersistence, type SessionIndexEntry, type SessionIndexKey, type SessionIndexStore } from "@tanstack/ai-persistence";
 import type { AssistantAuditSink } from "../audit";
-import { utcDay, type UsageAmount } from "../usage";
-import { DO_HEADERS, EMPTY_HYDRATION, type ConversationBackend, type TurnInput, type TurnRunner } from "./types";
+import { dayBefore, entryUsage, USAGE_RETENTION_DAYS, type UsageAmount, type UsageSnapshot } from "../usage";
+import { backendOver } from "./backendOver";
+import { capJsonSize, DEFAULT_CONVERSATION_CAPS, type ConversationCaps } from "./caps";
+import { Conversation, type TurnDependencies } from "./conversation";
+import type { ConversationIndex, ConversationRecord, ConversationStorage } from "./storage";
+import type { ConversationBackend, TurnInput, TurnRunner } from "./types";
 
 export interface MemoryConversationsOptions {
   /** The chat turn (#63). Without it `startTurn` answers 501. */
@@ -29,200 +31,196 @@ export interface MemoryConversationsOptions {
 
 /** The data of the memory backend, separate from its options (`createMemoryConversationState`). */
 export interface MemoryConversationState {
-  conversations: Map<string, Conversation>;
-  sessions: ReturnType<typeof memoryPersistence>["stores"]["sessions"];
+  conversations: Map<string, MemoryConversation>;
+  /** The owners' conversation lists (`tenantId` = user key). */
+  sessions: SessionIndexStore;
   /** Daily usage per user (#68), keyed `<userKey> <day>`. */
   usage: Map<string, UsageAmount>;
+}
+
+/** One conversation of the memory backend: the shared lifecycle over its memory storage. */
+export interface MemoryConversation {
+  conversation: Conversation;
+  storage: ConversationStorage;
 }
 
 export function createMemoryConversationState(): MemoryConversationState {
   return { conversations: new Map(), sessions: memoryPersistence().stores.sessions, usage: new Map() };
 }
 
-const usageKey = (userKey: string, day: string) => `${userKey} ${day}`;
-
-type Conversation = {
-  owner: string;
-  persistence: ReturnType<typeof memoryPersistence>;
-  lastActive: number;
-  controllers: Map<string, RunControl>;
-  runIds: Set<string>;
-};
-
 const DAY = 24 * 60 * 60 * 1000;
-const notFound = () => Response.json({ error: "Not found", code: "not_found" }, { status: 404 });
 
 /**
- * The in-memory fallback for Node dev and tests: the same `ConversationBackend` as the Durable
- * Objects, with `memoryPersistence()` per conversation and `memoryStream` for reconnects.
- * Conversations live in the process and vanish on restart. Retention is applied lazily, on the
- * next call after a conversation's deadline.
+ * The in-memory fallback for Node dev and tests: the same lifecycle as the Durable Objects
+ * (`Conversation`), over process memory: `memoryPersistence()` stores per conversation and
+ * `memoryStream` logs. Conversations vanish on restart. Retention is applied lazily, on the next
+ * call after a conversation's deadline.
  */
 export function memoryConversations(options: MemoryConversationsOptions = {}): ConversationBackend & {
   /** Drop idle conversations now (the Durable Object does this with an alarm). */
-  sweep(): void;
+  sweep(): Promise<void>;
 } {
   const now = options.now ?? Date.now;
-  const retentionMs = options.retentionMs ?? 30 * DAY;
-  const caps = { ...DEFAULT_CONVERSATION_CAPS, ...options.caps };
-  const { conversations, sessions, usage } = options.state ?? createMemoryConversationState();
-
-  /** One model call's usage: the user's day, then the conversation's running total on its entry. */
-  const recordUsage = async (userKey: string, threadId: string, amount: UsageAmount) => {
-    const key = usageKey(userKey, utcDay(now()));
-    const day = usage.get(key) ?? { costUsd: 0, tokens: 0 };
-    usage.set(key, { costUsd: day.costUsd + amount.costUsd, tokens: day.tokens + amount.tokens });
-    const entry = await sessions.get({ tenantId: userKey, threadId });
-    if (!entry) return;
-    const metadata = (entry.metadata ?? {}) as { costUsd?: number; tokens?: number };
-    await sessions.upsert({
-      ...entry,
-      metadata: { ...entry.metadata, costUsd: (metadata.costUsd ?? 0) + amount.costUsd, tokens: (metadata.tokens ?? 0) + amount.tokens },
-    });
+  const state = options.state ?? createMemoryConversationState();
+  const index = memoryConversationIndex(state);
+  const dependencies: TurnDependencies = {
+    turnRunner: options.turnRunner ?? null,
+    mcpFetch: options.mcpFetch ?? (() => missingMcpFetch),
+    ...(options.audit ? { audit: options.audit } : {}),
   };
 
-  const sweep = () => {
-    for (const [threadId, conversation] of conversations) {
-      if (conversation.controllers.size === 0 && now() >= conversation.lastActive + retentionMs) {
-        conversations.delete(threadId);
-        void sessions.delete({ tenantId: conversation.owner, threadId });
-      }
+  const sweep = async () => {
+    for (const [threadId, entry] of state.conversations) {
+      await entry.conversation.expire();
+      if (!entry.storage.record() && !entry.conversation.running) state.conversations.delete(threadId);
     }
   };
-  const owned = (userKey: string, threadId: string) => {
-    sweep();
-    const conversation = conversations.get(threadId);
-    return userKey !== "" && conversation?.owner === userKey ? conversation : undefined;
+  const conversationOf = (threadId: string): Conversation => {
+    let entry = state.conversations.get(threadId);
+    if (!entry) {
+      const storage = memoryConversationStorage();
+      entry = { storage, conversation: new Conversation({ storage, index, now }) };
+      state.conversations.set(threadId, entry);
+    }
+    return entry.conversation;
   };
 
-  const backend: ConversationBackend & { sweep(): void } = {
-    sweep,
-    async claim(userKey, threadId, title) {
-      sweep();
-      if (!userKey) return { ok: false };
-      const existing = conversations.get(threadId);
-      if (existing) {
-        if (existing.owner !== userKey) return { ok: false };
-        existing.lastActive = now();
-        return { ok: true, created: false };
-      }
-      const at = now();
-      conversations.set(threadId, {
-        owner: userKey,
-        persistence: memoryPersistence(),
-        lastActive: at,
-        controllers: new Map(),
-        runIds: new Set(),
-      });
-      await sessions.upsert({
-        tenantId: userKey,
-        threadId,
-        members: [{ userId: userKey, role: "owner" }],
-        harness: "payload-assistant",
-        createdAt: at,
-        updatedAt: at,
-        ...(title ? { title } : {}),
-      });
-      return { ok: true, created: true };
-    },
-    async transcript(userKey, threadId) {
-      const conversation = owned(userKey, threadId);
-      if (!conversation) return null;
-      const { messages, interrupts, runs } = conversation.persistence.stores;
+  const backend = backendOver({
+    open(threadId) {
+      const conversation = conversationOf(threadId);
       return {
-        threadId,
-        messages: await messages.loadThread(threadId),
-        pendingInterrupts: await interrupts.listPending(threadId),
-        activeRun: await runs.findActiveRun(threadId),
+        claim: (input) => conversation.claim(input),
+        transcript: (userKey) => conversation.transcript(userKey),
+        startTurn: (input) => conversation.startTurn(input, dependencies),
+        join: async (userKey, request) => conversation.join(userKey, request),
+        stop: async (userKey, runId) => conversation.stop(userKey, runId),
+        hydrate: (userKey, request) => conversation.hydrate(userKey, request),
+        destroy: (userKey) => conversation.destroy(userKey),
       };
     },
-    async startTurn(input) {
-      const claimed = await backend.claim(input.userKey, input.threadId, input.title);
-      if (!claimed.ok) return notFound();
-      if (!options.turnRunner) return Response.json({ error: "not implemented", code: "not_implemented" }, { status: 501 });
-      const conversation = conversations.get(input.threadId)!;
-      if (conversation.runIds.has(input.runId)) {
-        return Response.json({ error: "run id already used; rejoin it instead", code: "run_id_used" }, { status: 409 });
-      }
-      conversation.runIds.add(input.runId);
-      const control = new RunControl();
-      conversation.controllers.set(input.runId, control);
-      const stream = options.turnRunner({
-        input,
-        persistence: withConversationCaps(conversation.persistence, caps),
-        mcpFetch: options.mcpFetch?.(input.auth) ?? missingMcpFetch,
-        signal: control.signal,
-        recordUsage: (amount) => recordUsage(input.userKey, input.threadId, amount),
-        ...(options.audit ? { audit: options.audit } : {}),
-      });
-      const inner = memoryStream({ runId: input.runId });
-      const adapter = {
+    sessions: state.sessions,
+    usage: (userKey, day, threadId) => index.usage(userKey, day, threadId),
+    retentionMs: options.retentionMs ?? 30 * DAY,
+    caps: { ...DEFAULT_CONVERSATION_CAPS, ...options.caps },
+    beforeEach: sweep,
+  });
+  return { ...backend, sweep };
+}
+
+/**
+ * One conversation in process memory: its record, `memoryPersistence()` stores, the run-id
+ * ledger and `memoryStream` logs. `memoryStream` keeps its logs in a process-global map keyed by
+ * run id, so each claim gets a fresh key prefix: a run id reused in another conversation, or
+ * after a delete, never meets an old log.
+ */
+export function memoryConversationStorage(): ConversationStorage {
+  let record: ConversationRecord | undefined;
+  let persistence = memoryPersistence();
+  let ledger = new Set<string>();
+  let prefix = `${crypto.randomUUID()}/`;
+  /** Producer logs still open, closed by `clear()` so their readers end. */
+  const producers = new Map<string, StreamDurability>();
+
+  return {
+    record: () => record,
+    create(next) {
+      record ??= { ...next };
+      return record;
+    },
+    update(patch) {
+      if (record) record = { ...record, ...patch };
+    },
+    get persistence() {
+      return persistence;
+    },
+    runIdUsed: (runId) => ledger.has(runId),
+    reserveRunId: (runId) => {
+      ledger.add(runId);
+    },
+    openLog(runId, maxChunkBytes) {
+      const inner = memoryStream({ runId: prefix + runId });
+      producers.set(runId, inner);
+      return {
         ...inner,
+        append: (chunks) => inner.append(chunks.map((chunk) => capJsonSize(chunk, maxChunkBytes))),
         close: async () => {
+          producers.delete(runId);
           await inner.close();
-          control.done();
-          conversation.controllers.delete(input.runId);
-          conversation.lastActive = now();
         },
       };
-      return toServerSentEventsResponse(stream, { durability: { adapter }, abortController: control.pipe });
     },
-    async join(userKey, threadId, request) {
-      const conversation = owned(userKey, threadId);
-      if (!conversation) return notFound();
-      const url = new URL(request.url);
-      const offset = request.headers.get("Last-Event-ID") ?? url.searchParams.get("offset");
-      const runId = request.headers.get(DO_HEADERS.runId) ?? url.searchParams.get("runId");
-      if (!offset || !runId) return Response.json({ error: "Last-Event-ID and X-Run-Id required", code: "invalid_query" }, { status: 400 });
-      if (!conversation.runIds.has(runId)) return notFound();
-      return resumeServerSentEventsResponse({ adapter: memoryStream({ runId, offset }) });
+    readLog(runId, offset) {
+      if (!ledger.has(runId)) return null;
+      return memoryStream({ runId: prefix + runId, offset });
     },
-    async stop(userKey, threadId, runId) {
-      const control = owned(userKey, threadId)?.controllers.get(runId);
-      control?.stop();
-      return Boolean(control);
+    runIdOfOffset(offset) {
+      // `memory:v1:<encoded run id>:<seq>` (TanStack's format), where the run id carries our prefix.
+      const match = /^memory:v1:(.+):\d+$/.exec(offset);
+      if (!match) return null;
+      try {
+        const key = decodeURIComponent(match[1]!);
+        return key.startsWith(prefix) ? key.slice(prefix.length) : null;
+      } catch {
+        return null;
+      }
     },
-    async hydrate(userKey, threadId, request) {
-      const conversation = owned(userKey, threadId);
-      if (!conversation) return Response.json(EMPTY_HYDRATION);
-      const url = new URL(request.url);
-      url.searchParams.set("threadId", threadId);
-      return reconstructChat(conversation.persistence, new Request(url, { headers: request.headers }), { includeRuns: true });
+    // `memoryStream` evicts finished logs itself, a few minutes after they complete.
+    pruneLogs: () => {},
+    async clear() {
+      const open = [...producers.values()];
+      producers.clear();
+      record = undefined;
+      persistence = memoryPersistence();
+      ledger = new Set();
+      prefix = `${crypto.randomUUID()}/`;
+      await Promise.all(open.map((log) => log.close().catch(() => {})));
     },
-    async list(userKey, listOptions = {}) {
-      sweep();
-      return sessions.list({ ...listOptions, tenantId: userKey, memberId: userKey, parentThreadId: null });
-    },
-    async rename(userKey, threadId, title) {
-      if (!owned(userKey, threadId)) return false;
-      const current = await sessions.get({ tenantId: userKey, threadId });
-      if (!current) return false;
-      await sessions.upsert({ ...current, title, updatedAt: now() });
-      return true;
-    },
-    async remove(userKey, threadId) {
-      const conversation = owned(userKey, threadId);
-      if (!conversation) return false;
-      for (const control of conversation.controllers.values()) control.kill();
-      conversations.delete(threadId);
-      await sessions.delete({ tenantId: userKey, threadId });
-      return true;
+    // Swept lazily: `memoryConversations` calls `expire()` before every call.
+    schedule: async () => {},
+  };
+}
+
+const usageKey = (userKey: string, day: string) => `${userKey} ${day}`;
+
+/** The owners' lists and usage in process memory: the memory twin of `AssistantConversationIndex`. */
+export function memoryConversationIndex(state: Pick<MemoryConversationState, "sessions" | "usage">): ConversationIndex & {
+  usage(userKey: string, day: string, threadId?: string): Promise<UsageSnapshot>;
+} {
+  const { sessions, usage } = state;
+  /** Change an entry with its revision, so concurrent writers (a rename, a usage write) don't overwrite each other. */
+  const updateEntry = async (key: SessionIndexKey, change: (entry: SessionIndexEntry) => SessionIndexEntry) => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const current = await sessions.getVersioned(key);
+      if (!current) return;
+      if ((await sessions.upsertIf({ entry: change(current.entry), revision: current.revision })).ok) return;
+    }
+  };
+  return {
+    create: (entry) => sessions.upsert(entry),
+    remove: (key) => sessions.delete(key),
+    touch: (tenantId, threadId, updatedAt) => updateEntry({ tenantId, threadId }, (entry) => ({ ...entry, updatedAt })),
+    async addUsage(tenantId, threadId, day, amount) {
+      const key = usageKey(tenantId, day);
+      const total = usage.get(key) ?? { costUsd: 0, tokens: 0 };
+      usage.set(key, { costUsd: total.costUsd + amount.costUsd, tokens: total.tokens + amount.tokens });
+      const oldest = usageKey(tenantId, dayBefore(day, USAGE_RETENTION_DAYS));
+      for (const stored of usage.keys()) if (stored.startsWith(`${tenantId} `) && stored < oldest) usage.delete(stored);
+      if (!threadId) return;
+      await updateEntry({ tenantId, threadId }, (entry) => {
+        const current = entryUsage(entry) ?? { costUsd: 0, tokens: 0 };
+        return {
+          ...entry,
+          metadata: { ...entry.metadata, costUsd: current.costUsd + amount.costUsd, tokens: current.tokens + amount.tokens },
+        };
+      });
     },
     async usage(userKey, day, threadId) {
       const total = usage.get(usageKey(userKey, day)) ?? { costUsd: 0, tokens: 0 };
-      const snapshot = { day, ...total };
+      const snapshot: UsageSnapshot = { day, ...total };
       if (threadId === undefined) return snapshot;
-      const metadata = (await sessions.get({ tenantId: userKey, threadId }))?.metadata as { costUsd?: unknown; tokens?: unknown } | undefined;
-      const has = metadata && (metadata.costUsd !== undefined || metadata.tokens !== undefined);
-      return {
-        ...snapshot,
-        conversation: has
-          ? { costUsd: typeof metadata.costUsd === "number" ? metadata.costUsd : 0, tokens: typeof metadata.tokens === "number" ? metadata.tokens : 0 }
-          : null,
-      };
+      return { ...snapshot, conversation: entryUsage(await sessions.get({ tenantId: userKey, threadId })) };
     },
   };
-  return backend;
 }
 
 const missingMcpFetch: typeof fetch = (async () => {

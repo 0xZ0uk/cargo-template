@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { hashConfig, SeoCache, SeoSharedCache } from '../cache.js'
+import { SeoCache, SeoSharedCache } from '../cache.js'
 import { buildAuditToFile } from '../endpoints/audit.js'
 import { createIndexationAuditHandler } from '../endpoints/indexationAudit.js'
 import { createIndexNowHook, createIndexNowSubmitHandler } from '../endpoints/indexNow.js'
@@ -195,15 +195,5 @@ describe('excludeDocs', () => {
       meta: { title: true, robots: true },
     })
     expect(withExclusionSelect(payload, ['pages'], undefined, { test, fields: ['x'] })).toBeUndefined()
-  })
-
-  it('changes the persisted-audit config hash', () => {
-    const base = { v: 2, collections: ['pages'], globals: [], seoConfig: { siteUrl: SITE } }
-    const withExclusion = { ...base, seoConfig: { siteUrl: SITE, excludeDocs: seoConfig.excludeDocs } }
-    const otherExclusion = { ...base, seoConfig: { siteUrl: SITE, excludeDocs: () => false } }
-    expect(hashConfig(withExclusion)).not.toBe(hashConfig(base))
-    expect(hashConfig(otherExclusion)).not.toBe(hashConfig(withExclusion))
-    // A config without functions hashes as before.
-    expect(hashConfig(base)).toBe(hashConfig(JSON.parse(JSON.stringify(base))))
   })
 })

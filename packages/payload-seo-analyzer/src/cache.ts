@@ -294,19 +294,6 @@ function parseJson<T>(raw: string | null): T | null {
   }
 }
 
-/** FNV-1a (32-bit) of a JSON-serialisable value, base36. Used to scope persisted keys by config. */
-export function hashConfig(value: unknown): string {
-  // Functions in the config (`excludeDocs`) shape the output too: hash their source rather
-  // than let JSON drop them, so adding or changing one never reuses an entry built without it.
-  const text = JSON.stringify(value, (_key, v: unknown) => (typeof v === 'function' ? `fn:${String(v)}` : v)) ?? ''
-  let h = 0x811c9dc5
-  for (let i = 0; i < text.length; i++) {
-    h ^= text.charCodeAt(i)
-    h = Math.imul(h, 0x01000193)
-  }
-  return (h >>> 0).toString(36)
-}
-
 /** The slice of a request the best-effort cache helpers need: only the logger. */
 interface CacheLogReq {
   payload?: { logger?: { warn?: (message: string) => void } }

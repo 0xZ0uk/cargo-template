@@ -100,15 +100,6 @@ describe("usage in the index object", () => {
     await stub.addUsage(user, undefined, "2031-04-20", { costUsd: 0.1, tokens: 1 });
     expect(await stub.usage(user, "2031-03-04")).toMatchObject({ costUsd: 0, tokens: 0 });
   });
-
-  it("a deleted conversation's spend still counts for the day", async () => {
-    const conversations = backend();
-    const [user, threadId] = [newId("users"), newId("thread")];
-    await readEvents(await conversations.startTurn(turn(user, threadId, chatBody([{ text: "Hi." }]))));
-    const spent = (await conversations.usage(user, utcDay())).costUsd;
-    expect(await conversations.remove(user, threadId)).toBe(true);
-    expect(await conversations.usage(user, utcDay(), threadId)).toMatchObject({ costUsd: spent, conversation: null });
-  });
 });
 
 describe("audit and redaction in the object", () => {

@@ -1,6 +1,10 @@
+import { describeCall, parseResult, resultText, type ToolCall } from "../toolCalls";
+
 /**
  * Pure helpers for rendering tool calls: their status, target collection, a readable (and
- * truncated) result, and the documents they reference. No React, so they are unit tested.
+ * truncated) result, and the documents they reference. What a call means comes from
+ * `describeCall` / `parseResult` (`src/toolCalls.ts`), as on the server. No React, so they are
+ * unit tested.
  */
 
 export type ToolStatus = "running" | "awaiting-approval" | "done" | "error" | "denied" | "cancelled";
@@ -40,29 +44,19 @@ export const MAX_RESULT_CHARS = 4_000;
 /** At most this many document links per tool call. */
 export const MAX_DOCUMENT_LINKS = 10;
 
-/** The tool input as an object, from `input` or the (possibly partial) `arguments` string. */
-export function toolInput(call: ToolCallLike): Record<string, unknown> | undefined {
-  if (call.input && typeof call.input === "object") return call.input as Record<string, unknown>;
-  if (typeof call.arguments === "string" && call.arguments.trim()) {
-    try {
-      const parsed: unknown = JSON.parse(call.arguments);
-      if (parsed && typeof parsed === "object") return parsed as Record<string, unknown>;
-    } catch {
-      // Still streaming.
-    }
-  }
-  return undefined;
+/**
+ * What a call in the transcript means, from its `input` or its (possibly partial) `arguments`
+ * string. A call that asked for approval says so (`approval.needsApproval`); a reloaded transcript
+ * doesn't keep that, and the tool's name decides.
+ */
+export function describeToolCall(call: ToolCallLike): ToolCall {
+  const input = call.input && typeof call.input === "object" ? call.input : call.arguments;
+  return describeCall(call.name, input, call.approval?.needsApproval ? { needsApproval: true } : {});
 }
 
-/** plugin-mcp names the collection (or global) `slug`; tolerate `collection` too. */
+/** The collection or global a call is about (plugin-mcp's `slug` argument). */
 export function toolTarget(call: ToolCallLike): string | undefined {
-  const input = toolInput(call);
-  const value = input?.slug ?? input?.collection ?? input?.collectionSlug ?? input?.global;
-  return typeof value === "string" && value ? value : undefined;
-}
-
-export function isGlobalTool(name: string): boolean {
-  return /global/i.test(name);
+  return describeToolCall(call).target?.slug;
 }
 
 export function toolStatus(call: ToolCallLike, result?: ToolResultLike): ToolStatus {
@@ -96,18 +90,10 @@ export const TOOL_STATUS_LABEL: Record<ToolStatus, string> = {
 };
 
 /** A tool error comes back as a result (`{ error: "…" }`), not a failed run (README, "Access denials"). */
-function looksLikeToolError(content: unknown): boolean {
-  const value = structuredResult(content);
-  return Boolean(
-    value &&
-    typeof value === "object" &&
-    !Array.isArray(value) &&
-    typeof (value as { error?: unknown }).error === "string"
-  );
-}
+const looksLikeToolError = (content: unknown): boolean => parseResult(content).error !== undefined;
 
 /** Parses a JSON string; returns other values (and non-JSON strings) as they are. */
-export function parseMaybeJson(content: unknown): unknown {
+function parseMaybeJson(content: unknown): unknown {
   if (typeof content !== "string") return content;
   const trimmed = content.trim();
   if (!trimmed || !/^[[{"]/.test(trimmed)) return content;
@@ -118,20 +104,9 @@ export function parseMaybeJson(content: unknown): unknown {
   }
 }
 
-/** Text parts of a tool result's content, joined. */
-function contentText(content: unknown): unknown {
-  if (Array.isArray(content) && content.every((p) => p && typeof p === "object" && "type" in p)) {
-    const texts = content
-      .filter((p): p is { type: "text"; text?: string; content?: string } => (p as { type: string }).type === "text")
-      .map((p) => p.text ?? p.content ?? "");
-    if (texts.length) return texts.join("\n");
-  }
-  return content;
-}
-
 /** A readable, bounded rendering of a tool result: pretty JSON when it parses, cut at `max` characters. */
 export function formatToolResult(content: unknown, max = MAX_RESULT_CHARS): { text: string; truncated: boolean } {
-  let value = parseMaybeJson(contentText(content));
+  let value = parseMaybeJson(resultText(content) ?? content);
   // JSON encoded twice: show the text it holds.
   if (typeof value === "string") value = parseMaybeJson(value);
   let text: string;
@@ -159,46 +134,6 @@ function labelOf(doc: Record<string, unknown>, id: string): string {
 }
 
 /**
- * The structured part of a tool result. plugin-mcp answers in text with the data in a fenced
- * JSON block ("Created 1 of 1 documents…\n```json\n{…}\n```"); a result may also be plain JSON,
- * or JSON encoded twice (a string holding the text).
- */
-export function structuredResult(content: unknown): unknown {
-  let value = parseMaybeJson(contentText(content));
-  if (typeof value === "string") value = parseMaybeJson(value);
-  if (typeof value !== "string") return value;
-  const fenced = /```(?:json)?\s*\n([\s\S]*?)\n```/.exec(value);
-  if (!fenced?.[1]) return undefined;
-  try {
-    return JSON.parse(fenced[1]);
-  } catch {
-    return undefined;
-  }
-}
-
-/**
- * The documents in a tool's result: `{ docs: [...] }` (each a document, or `{ doc }` as plugin-mcp's
- * creates return), `{ doc }`, an array, or one document.
- */
-function documentsIn(value: unknown): Record<string, unknown>[] {
-  if (!value || typeof value !== "object") return [];
-  if (Array.isArray(value)) {
-    return value
-      .map((v) =>
-        v && typeof v === "object" && (v as { doc?: unknown }).doc && typeof (v as { doc?: unknown }).doc === "object"
-          ? (v as { doc: unknown }).doc
-          : v
-      )
-      .filter((v): v is Record<string, unknown> => Boolean(v && typeof v === "object" && !Array.isArray(v)));
-  }
-  const record = value as Record<string, unknown>;
-  if (Array.isArray(record.docs)) return documentsIn(record.docs);
-  if (record.doc && typeof record.doc === "object") return [record.doc as Record<string, unknown>];
-  if (idOf(record.id)) return [record];
-  return [];
-}
-
-/**
  * The documents a tool call touched or returned, as links to their admin edit views. Only for a
  * collection or global that exists in the admin config, and only from the tool's structured input
  * and result: never from free model text.
@@ -208,41 +143,41 @@ export function documentRefs(
   result: ToolResultLike | undefined,
   slugs: EntitySlugs
 ): DocumentRef[] {
-  const target = toolTarget(call);
+  const described = describeToolCall(call);
+  const { target } = described;
   if (!target) return [];
 
-  if (isGlobalTool(call.name)) {
-    return slugs.globals.has(target) ? [{ kind: "global", slug: target, label: target }] : [];
+  if (target.kind === "global") {
+    return slugs.globals.has(target.slug) ? [{ kind: "global", slug: target.slug, label: target.slug }] : [];
   }
-  if (!slugs.collections.has(target)) return [];
+  if (!slugs.collections.has(target.slug)) return [];
   // A delete leaves nothing to open: its documents' edit views would be "not found".
-  if (/^delete/i.test(call.name)) return [];
+  if (described.operation === "delete") return [];
+  // A versions read lists versions: their ids (and the `id` argument) are not documents.
+  if (described.versions && described.operation === "read") return [];
 
   const refs = new Map<string, DocumentRef>();
   const add = (id: string | undefined, label?: string) => {
     if (!id || refs.has(id) || refs.size >= MAX_DOCUMENT_LINKS) return;
-    refs.set(id, { kind: "collection", slug: target, id, label: label ?? id });
+    refs.set(id, { kind: "collection", slug: target.slug, id, label: label ?? id });
   };
 
   const status = toolStatus(call, result);
   if (status !== "error" && status !== "denied" && status !== "cancelled") {
-    const output = structuredResult(result ? result.content : call.output);
-    for (const doc of documentsIn(output)) {
+    for (const doc of parseResult(result ? result.content : call.output).documents) {
       const id = idOf(doc.id);
       if (id) add(id, labelOf(doc, id));
     }
   }
-  const inputId = idOf(toolInput(call)?.id);
-  if (inputId) add(inputId);
+  // A restore's `id` is the version's: the restored document is in the result.
+  if (!described.versions) add(described.id);
   return [...refs.values()];
 }
 
-/** Tools that only read (plugin-mcp's find/count/schema/config tools). Everything else writes. */
-export const isReadTool = (name: string): boolean => /^(find|count|get)/i.test(name);
-
 /**
- * Write tool calls that finished successfully (an approved change was applied), in transcript
- * order: the tool result is there and is not an error, a rejection or a cancellation.
+ * Write tool calls (tools that need approval) that finished successfully (an approved change was
+ * applied), in transcript order: the tool result is there and is not an error, a rejection or a
+ * cancellation.
  */
 export function appliedWrites(
   messages: ReadonlyArray<{ parts: ReadonlyArray<{ type: string; [key: string]: unknown }> }>,
@@ -253,7 +188,7 @@ export function appliedWrites(
     for (const part of message.parts) {
       if (part.type !== "tool-call") continue;
       const call = part as unknown as ToolCallLike;
-      if (typeof call.id !== "string" || typeof call.name !== "string" || isReadTool(call.name)) continue;
+      if (typeof call.id !== "string" || typeof call.name !== "string" || !describeToolCall(call).needsApproval) continue;
       const result = results.get(call.id);
       if (result && toolStatus(call, result) === "done") out.push({ call, result });
     }
@@ -271,10 +206,11 @@ export function writeTouches(
   result: ToolResultLike | undefined,
   target: { kind: "collection" | "global"; slug: string; id?: string }
 ): boolean {
-  if (isReadTool(call.name) || /^delete/i.test(call.name)) return false;
-  if (toolTarget(call) !== target.slug) return false;
-  if (target.kind === "global") return isGlobalTool(call.name);
-  if (isGlobalTool(call.name) || !target.id) return false;
-  if (idOf(toolInput(call)?.id) === target.id) return true;
-  return documentsIn(structuredResult(result?.content)).some((doc) => idOf(doc.id) === target.id);
+  const described = describeToolCall(call);
+  if (!described.needsApproval || described.operation === "delete") return false;
+  if (described.target?.slug !== target.slug) return false;
+  if (target.kind === "global") return described.target.kind === "global";
+  if (described.target.kind === "global" || !target.id) return false;
+  if (!described.versions && described.id === target.id) return true;
+  return parseResult(result?.content).documents.some((doc) => idOf(doc.id) === target.id);
 }

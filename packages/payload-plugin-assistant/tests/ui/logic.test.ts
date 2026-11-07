@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { pendingApprovalFrom } from "../../src/ui/ApprovalControl";
+import { recorded } from "../fixtures/pluginMcp";
 import { assistantUrl, chatUrl, isValidThreadId, newThreadId, readApiError, recordingFetch } from "../../src/ui/api";
 import { noticeForClientError, noticeForHttpError, noticeForRunError } from "../../src/ui/errors";
 import { adminPathOf, withInternalLinksAsAdminPaths } from "../../src/ui/MessageView";
@@ -7,7 +8,6 @@ import {
   documentRefs,
   formatToolResult,
   MAX_DOCUMENT_LINKS,
-  structuredResult,
   toolStatus,
   toolTarget,
 } from "../../src/ui/tools";
@@ -149,13 +149,6 @@ describe("tool calls", () => {
     ).toBe("error");
   });
 
-  it("unwraps plugin-mcp's fenced JSON, also when encoded twice", () => {
-    const text = fenced("Found 1 document.", { docs: [{ id: 3 }] });
-    expect(structuredResult(text)).toEqual({ docs: [{ id: 3 }] });
-    expect(structuredResult(JSON.stringify(text))).toEqual({ docs: [{ id: 3 }] });
-    expect(structuredResult("No JSON here")).toBeUndefined();
-  });
-
   it("links the documents a tool returned or touched, only in known collections", () => {
     const created = documentRefs(
       { id: "c", name: "createDocuments", input: { slug: "pages" } },
@@ -191,8 +184,29 @@ describe("tool calls", () => {
     ]);
   });
 
+  it("links every document of a recorded findDocuments page; a versions read links no version as a document", () => {
+    const page = recorded("find, a page");
+    expect(documentRefs({ id: "f", name: page.name, input: page.args }, { toolCallId: "f", content: page.result }, slugs)).toEqual([
+      { kind: "collection", slug: "pages", id: "2", label: "About" },
+      { kind: "collection", slug: "pages", id: "1", label: "Home" },
+    ]);
+    for (const label of ["find versions", "find a version"]) {
+      const call = recorded(label);
+      expect(documentRefs({ id: "v", name: call.name, input: call.args }, { toolCallId: "v", content: call.result }, slugs), label).toEqual([]);
+    }
+    // A restore links the restored document, not the version its `id` names.
+    const restore = recorded("restore a version");
+    expect(
+      documentRefs({ id: "r", name: restore.name, input: { ...restore.args, id: "v9" } }, { toolCallId: "r", content: restore.result }, slugs)
+    ).toEqual([{ kind: "collection", slug: "pages", id: "1", label: "Home" }]);
+  });
+
+  it("the target is plugin-mcp's slug argument, the same rule as the server's", () => {
+    expect(toolTarget({ id: "1", name: "findDocuments", input: { collection: "pages" } })).toBeUndefined();
+  });
+
   it("never links the documents of a delete: they no longer exist", () => {
-    for (const name of ["deleteDocuments", "deleteDocument"]) {
+    for (const name of ["deleteDocuments"]) {
       expect(
         documentRefs(
           { id: "d", name, input: { slug: "pages", id: 7 } },

@@ -131,4 +131,23 @@ describe('indexation-audit', () => {
     const res = await createIndexationAuditHandler(['pages'], undefined, [], cache)(second.req as any)
     expect(((await res.json()) as { cached: boolean }).cached).toBe(true)
   })
+
+  it('does not serve a stored result built with other config or other extractors', async () => {
+    const store = fakeStore()
+    const run = async (seoConfig?: { siteUrl: string }, extractContent?: Record<string, () => object>) => {
+      const { req } = makeReq([richDoc(1)])
+      ;(req.payload.config as Record<string, unknown>).custom = { seoAnalyzer: { extractContent } }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const res = await createIndexationAuditHandler(['pages'], seoConfig, [], isolate(store))(req as any)
+      return { cached: ((await res.json()) as { cached: boolean }).cached }
+    }
+    expect((await run()).cached).toBe(false)
+    expect((await run()).cached).toBe(true)
+    // Another config, then another extractor: each is a miss, and a repeat of it a hit.
+    expect((await run({ siteUrl: 'https://a.example' })).cached).toBe(false)
+    expect((await run({ siteUrl: 'https://a.example' })).cached).toBe(true)
+    expect((await run(undefined, { pages: () => ({}) })).cached).toBe(false)
+    expect((await run(undefined, { pages: () => ({}) })).cached).toBe(true)
+    expect((await run(undefined, { pages: () => ({ text: ['x'] }) })).cached).toBe(false)
+  })
 })

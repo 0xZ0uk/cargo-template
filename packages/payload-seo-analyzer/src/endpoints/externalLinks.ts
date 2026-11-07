@@ -18,6 +18,7 @@
 
 import type { PayloadHandler } from 'payload'
 import { defaultSeoSharedCache, type SeoSharedCache } from '../cache.js'
+import { keyFor } from '../cacheKey.js'
 import { type ContentExtractorSource, extractDocBlocks } from '../helpers/contentExtractor.js'
 import { fetchAllDocs } from '../helpers/fetchAllDocs.js'
 import { checkLinks, type LinkCheckResult, type LinkCheckerOptions } from '../helpers/linkChecker.js'
@@ -27,7 +28,6 @@ import { docExclusion } from '../helpers/excludeDocs.js'
 import { resolveSiteUrl } from '../helpers/siteUrl.js'
 import { parseJsonBody } from '../helpers/parseBody.js'
 import { isSeoAdminRequest, isSeoPanelUser } from '../helpers/isAdmin.js'
-import { safeCacheLocale } from '../helpers/safeCacheLocale.js'
 
 // ---------------------------------------------------------------------------
 // Limits
@@ -202,9 +202,12 @@ export function createExternalLinksHandler(
       // it is reserved to SEO admins — the same gate as /audit?nocache=1. A panel user
       // without the role silently gets the cached result instead of a 403.
       const bypass = (url.searchParams.get('nocache') === '1' || forceRefresh) && isSeoAdminRequest(req)
-      // Locale-scoped: content differs per locale, so cache must not collide across locales.
-      const reqLocale = safeCacheLocale(req)
-      const CACHE_KEY = reqLocale ? `${EXTERNAL_LINKS_BASE}:${reqLocale}` : EXTERNAL_LINKS_BASE
+      // Persisted entries outlive deploys: the key carries the config (and extractors) that
+      // shape which links are found.
+      const CACHE_KEY = await keyFor(EXTERNAL_LINKS_BASE, req, {
+        cache: sharedCache,
+        config: { collections, globals, seoConfig: seoConfig ?? null },
+      })
       // Read the generation BEFORE scanning: a save during the scan makes the result stale.
       const lookup = await sharedCache.lookup<Record<string, unknown>>(EXTERNAL_LINKS_BASE, CACHE_KEY)
       if (!bypass && lookup.data) {

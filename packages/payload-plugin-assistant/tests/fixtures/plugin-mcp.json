@@ -1,0 +1,397 @@
+{
+  "recordedWith": "@cargo/payload-plugin-mcp 4.0.0-beta.6-cargo.0",
+  "tools": {
+    "countDocuments": {
+      "needsApproval": false
+    },
+    "countGlobalVersions": {
+      "needsApproval": false
+    },
+    "countVersions": {
+      "needsApproval": false
+    },
+    "createDocuments": {
+      "needsApproval": true
+    },
+    "deleteDocuments": {
+      "needsApproval": true
+    },
+    "duplicateDocument": {
+      "needsApproval": true
+    },
+    "findDistinct": {
+      "needsApproval": false
+    },
+    "findDocuments": {
+      "needsApproval": false
+    },
+    "findGlobal": {
+      "needsApproval": false
+    },
+    "findGlobalVersionByID": {
+      "needsApproval": false
+    },
+    "findGlobalVersions": {
+      "needsApproval": false
+    },
+    "findVersionByID": {
+      "needsApproval": false
+    },
+    "findVersions": {
+      "needsApproval": false
+    },
+    "getCollectionSchema": {
+      "needsApproval": false
+    },
+    "getConfigInfo": {
+      "needsApproval": false
+    },
+    "getGlobalSchema": {
+      "needsApproval": false
+    },
+    "restoreGlobalVersion": {
+      "needsApproval": true
+    },
+    "restoreVersion": {
+      "needsApproval": true
+    },
+    "setRichTextFromMarkdown": {
+      "needsApproval": true
+    },
+    "updateDocument": {
+      "needsApproval": true
+    },
+    "updateGlobal": {
+      "needsApproval": true
+    }
+  },
+  "calls": [
+    {
+      "label": "config",
+      "name": "getConfigInfo",
+      "args": {},
+      "result": "Collections: users, pages, strict, locked\nGlobals: settings"
+    },
+    {
+      "label": "collection schema",
+      "name": "getCollectionSchema",
+      "args": {
+        "slug": "pages"
+      },
+      "result": "Schema for collection \"pages\":\n```json\n{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"additionalProperties\":false,\"title\":\"PageInput\",\"properties\":{\"id\":{\"type\":\"number\"},\"title\":{\"type\":[\"string\",\"null\"]},\"body\":{\"description\":\"Rich text, read as Markdown (findDocuments). Write it only with setRichTextFromMarkdown (Markdown, after the document exists), never in createDocuments or updateDocument data.\"},\"_status\":{\"type\":[\"string\",\"null\"],\"enum\":[\"draft\",\"published\"]}},\"required\":[]}\n```\nUpload configuration:\n```json\n{\"enabled\":false}\n```"
+    },
+    {
+      "label": "find, a page",
+      "name": "findDocuments",
+      "args": {
+        "slug": "pages",
+        "select": {
+          "title": true
+        },
+        "limit": 5,
+        "depth": 0
+      },
+      "result": "Collection: \"pages\"\nTotal: 2 documents\nPage: 1 of 1\n\n```json\n{\"id\":2,\"title\":\"About\"}\n```\n```json\n{\"id\":1,\"title\":\"Home\"}\n```"
+    },
+    {
+      "label": "find by id",
+      "name": "findDocuments",
+      "args": {
+        "slug": "pages",
+        "id": "1",
+        "depth": 0
+      },
+      "result": "Document from collection \"pages\":\n{\"id\":1,\"title\":\"Home\",\"body\":null,\"updatedAt\":\"2026-01-01T00:00:00.000Z\",\"createdAt\":\"2026-01-01T00:00:00.000Z\",\"_status\":\"draft\"}"
+    },
+    {
+      "label": "count",
+      "name": "countDocuments",
+      "args": {
+        "slug": "pages",
+        "where": {
+          "title": {
+            "like": "o"
+          }
+        }
+      },
+      "result": "Collection \"pages\" contains 2 matching documents.\n```json\n{\"totalDocs\":2}\n```"
+    },
+    {
+      "label": "distinct values",
+      "name": "findDistinct",
+      "args": {
+        "slug": "pages",
+        "field": "title"
+      },
+      "result": "Distinct values for \"title\" in collection \"pages\":\n```json\n{\"hasNextPage\":false,\"hasPrevPage\":false,\"limit\":0,\"page\":1,\"pagingCounter\":1,\"totalDocs\":2,\"totalPages\":1,\"values\":[{\"title\":\"About\"},{\"title\":\"Home\"}]}\n```"
+    },
+    {
+      "label": "create two",
+      "name": "createDocuments",
+      "args": {
+        "slug": "pages",
+        "draft": true,
+        "documents": [
+          {
+            "data": {
+              "title": "Pricing"
+            }
+          },
+          {
+            "data": {
+              "title": "Team"
+            }
+          }
+        ]
+      },
+      "result": "Created 2 of 2 documents in collection \"pages\".\nResults:\n```json\n{\"docs\":[{\"id\":3,\"index\":0},{\"id\":4,\"index\":1}],\"errors\":[]}\n```"
+    },
+    {
+      "label": "create, one fails",
+      "name": "createDocuments",
+      "args": {
+        "slug": "strict",
+        "documents": [
+          {
+            "data": {
+              "title": "Fine"
+            }
+          },
+          {
+            "data": {}
+          }
+        ]
+      },
+      "result": "Created 1 of 2 documents in collection \"strict\".\nRetry failed indexes only.\nResults:\n```json\n{\"docs\":[{\"id\":1,\"index\":0}],\"errors\":[{\"index\":1,\"message\":\"Error creating document in collection \\\"strict\\\": data.title: Invalid input: expected string, received undefined\"}]}\n```\n\nUse this schema for data:\n```json\n{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"additionalProperties\":false,\"title\":\"StrictInput\",\"properties\":{\"id\":{\"type\":\"number\"},\"title\":{\"type\":\"string\"},\"createdBy\":{\"$ref\":\"#/$defs/shared_0\"},\"updatedBy\":{\"$ref\":\"#/$defs/shared_0\"}},\"required\":[\"title\"],\"$defs\":{\"shared_0\":{\"oneOf\":[{\"type\":[\"object\",\"null\"],\"additionalProperties\":false,\"properties\":{\"relationTo\":{\"const\":\"users\"},\"value\":{\"type\":\"number\"}},\"required\":[\"value\",\"relationTo\"]}]}}}\n```"
+    },
+    {
+      "label": "create, all fail",
+      "name": "createDocuments",
+      "args": {
+        "slug": "strict",
+        "documents": [
+          {
+            "data": {}
+          }
+        ]
+      },
+      "result": "{\"error\":\"MCP tool \\\"createDocuments\\\" returned an error: Created 0 of 1 documents in collection \\\"strict\\\".\\nRetry failed indexes only.\\nResults:\\n```json\\n{\\\"docs\\\":[],\\\"errors\\\":[{\\\"index\\\":0,\\\"message\\\":\\\"Error creating document in collection \\\\\\\"strict\\\\\\\": data.title: Invalid input: expected string, received undefined\\\"}]}\\n```\\n\\nUse this schema for data:\\n```json\\n{\\\"$schema\\\":\\\"https://json-schema.org/draft/2020-12/schema\\\",\\\"type\\\":\\\"object\\\",\\\"additionalProperties\\\":false,\\\"title\\\":\\\"StrictInput\\\",\\\"properties\\\":{\\\"id\\\":{\\\"type\\\":\\\"number\\\"},\\\"title\\\":{\\\"type\\\":\\\"string\\\"},\\\"createdBy\\\":{\\\"$ref\\\":\\\"#/$defs/shared_0\\\"},\\\"updatedBy\\\":{\\\"$ref\\\":\\\"#/$defs/shared_0\\\"}},\\\"required\\\":[\\\"title\\\"],\\\"$defs\\\":{\\\"shared_0\\\":{\\\"oneOf\\\":[{\\\"type\\\":[\\\"object\\\",\\\"null\\\"],\\\"additionalProperties\\\":false,\\\"properties\\\":{\\\"relationTo\\\":{\\\"const\\\":\\\"users\\\"},\\\"value\\\":{\\\"type\\\":\\\"number\\\"}},\\\"required\\\":[\\\"value\\\",\\\"relationTo\\\"]}]}}}\\n```\"}"
+    },
+    {
+      "label": "update by id",
+      "name": "updateDocument",
+      "args": {
+        "slug": "pages",
+        "id": "1",
+        "data": {
+          "title": "Home page"
+        },
+        "locale": "en"
+      },
+      "result": "Document updated successfully in collection \"pages\"!\nResult:\n```json\n{\"id\":1}\n```"
+    },
+    {
+      "label": "update by where",
+      "name": "updateDocument",
+      "args": {
+        "slug": "pages",
+        "where": {
+          "title": {
+            "in": [
+              "About",
+              "Pricing"
+            ]
+          }
+        },
+        "data": {
+          "title": "Renamed"
+        }
+      },
+      "result": "Multiple documents updated in collection \"pages\"!\nUpdated: 2 documents\nErrors: 0\n---\n\nUpdated documents:\n```json\n[{\"id\":3},{\"id\":2}]\n```"
+    },
+    {
+      "label": "update by where, none match",
+      "name": "updateDocument",
+      "args": {
+        "slug": "pages",
+        "where": {
+          "title": {
+            "equals": "Nothing"
+          }
+        },
+        "data": {
+          "title": "x"
+        }
+      },
+      "result": "Multiple documents updated in collection \"pages\"!\nUpdated: 0 documents\nErrors: 0\n---"
+    },
+    {
+      "label": "update, refused",
+      "name": "updateDocument",
+      "args": {
+        "slug": "locked",
+        "id": "1",
+        "data": {
+          "title": "Changed"
+        }
+      },
+      "result": "{\"error\":\"MCP tool \\\"updateDocument\\\" returned an error: Error: MCP access to \\\"updateDocument\\\" is not enabled for collection \\\"locked\\\"\"}"
+    },
+    {
+      "label": "rich text from Markdown",
+      "name": "setRichTextFromMarkdown",
+      "args": {
+        "slug": "pages",
+        "id": "1",
+        "path": "body",
+        "markdown": "Hello **world**"
+      },
+      "result": "Updated \"body\" of pages 1 (saved as a draft)."
+    },
+    {
+      "label": "duplicate",
+      "name": "duplicateDocument",
+      "args": {
+        "slug": "pages",
+        "id": "2"
+      },
+      "result": "Document duplicated successfully in collection \"pages\"!\nDuplicated document:\n```json\n{\"id\":5,\"title\":\"Renamed\",\"body\":null,\"createdBy\":{\"relationTo\":\"users\",\"value\":1},\"updatedBy\":{\"relationTo\":\"users\",\"value\":1},\"updatedAt\":\"2026-01-01T00:00:00.000Z\",\"createdAt\":\"2026-01-01T00:00:00.000Z\",\"_status\":\"draft\"}\n```"
+    },
+    {
+      "label": "find versions",
+      "name": "findVersions",
+      "args": {
+        "slug": "pages",
+        "where": {
+          "version.title": {
+            "equals": "Home"
+          }
+        },
+        "sort": "-updatedAt",
+        "limit": 2
+      },
+      "result": "Versions for collection \"pages\":\n```json\n{\"docs\":[{\"id\":1,\"parent\":1,\"version\":{\"title\":\"Home\",\"body\":null,\"updatedAt\":\"2026-01-01T00:00:00.000Z\",\"createdAt\":\"2026-01-01T00:00:00.000Z\",\"_status\":\"draft\"},\"createdAt\":\"2026-01-01T00:00:00.000Z\",\"updatedAt\":\"2026-01-01T00:00:00.000Z\",\"latest\":false}],\"hasNextPage\":false,\"hasPrevPage\":false,\"limit\":2,\"nextPage\":null,\"page\":1,\"pagingCounter\":1,\"prevPage\":null,\"totalDocs\":1,\"totalPages\":1}\n```"
+    },
+    {
+      "label": "count versions",
+      "name": "countVersions",
+      "args": {
+        "slug": "pages",
+        "where": {
+          "parent": {
+            "equals": 1
+          }
+        }
+      },
+      "result": "Collection \"pages\" contains 3 matching versions.\n```json\n{\"totalDocs\":3}\n```"
+    },
+    {
+      "label": "find a version",
+      "name": "findVersionByID",
+      "args": {
+        "slug": "pages",
+        "id": "1"
+      },
+      "result": "Version \"1\" from collection \"pages\":\n```json\n{\"id\":1,\"parent\":1,\"version\":{\"title\":\"Home\",\"body\":null,\"updatedAt\":\"2026-01-01T00:00:00.000Z\",\"createdAt\":\"2026-01-01T00:00:00.000Z\",\"_status\":\"draft\"},\"createdAt\":\"2026-01-01T00:00:00.000Z\",\"updatedAt\":\"2026-01-01T00:00:00.000Z\",\"latest\":false}\n```"
+    },
+    {
+      "label": "restore a version",
+      "name": "restoreVersion",
+      "args": {
+        "slug": "pages",
+        "id": "1"
+      },
+      "result": "Version \"1\" restored successfully in collection \"pages\"!\nRestored document:\n```json\n{\"title\":\"Home\",\"body\":null,\"updatedBy\":{\"relationTo\":\"users\",\"value\":1},\"updatedAt\":\"2026-01-01T00:00:00.000Z\",\"createdAt\":\"2026-01-01T00:00:00.000Z\",\"_status\":\"draft\",\"id\":1}\n```"
+    },
+    {
+      "label": "delete by id",
+      "name": "deleteDocuments",
+      "args": {
+        "slug": "pages",
+        "id": "2"
+      },
+      "result": "Document deleted successfully from collection \"pages\"!\nDeleted document:\n```json\n{\"id\":2,\"title\":\"Renamed\",\"body\":null,\"updatedBy\":{\"relationTo\":\"users\",\"value\":1},\"updatedAt\":\"2026-01-01T00:00:00.000Z\",\"createdAt\":\"2026-01-01T00:00:00.000Z\",\"_status\":\"draft\"}\n```"
+    },
+    {
+      "label": "delete by where",
+      "name": "deleteDocuments",
+      "args": {
+        "slug": "pages",
+        "where": {
+          "title": {
+            "equals": "Renamed"
+          }
+        }
+      },
+      "result": "Document deleted successfully from collection \"pages\"!\nDeleted: 2 documents\nErrors: 0\n---\n\nDeleted documents:\n```json\n[{\"id\":5,\"title\":\"Renamed\",\"body\":null,\"createdBy\":{\"relationTo\":\"users\",\"value\":1},\"updatedBy\":{\"relationTo\":\"users\",\"value\":1},\"updatedAt\":\"2026-01-01T00:00:00.000Z\",\"createdAt\":\"2026-01-01T00:00:00.000Z\",\"_status\":\"draft\"},{\"id\":3,\"title\":\"Renamed\",\"body\":null,\"createdBy\":{\"relationTo\":\"users\",\"value\":1},\"updatedBy\":{\"relationTo\":\"users\",\"value\":1},\"updatedAt\":\"2026-01-01T00:00:00.000Z\",\"createdAt\":\"2026-01-01T00:00:00.000Z\",\"_status\":\"draft\"}]\n```"
+    },
+    {
+      "label": "global",
+      "name": "findGlobal",
+      "args": {
+        "slug": "settings"
+      },
+      "result": "Global \"settings\":\n```json\n{\"_status\":\"draft\"}\n```"
+    },
+    {
+      "label": "global schema",
+      "name": "getGlobalSchema",
+      "args": {
+        "slug": "settings"
+      },
+      "result": "Schema for global \"settings\":\n```json\n{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"additionalProperties\":false,\"title\":\"SettingInput\",\"properties\":{\"id\":{\"type\":\"number\"},\"siteName\":{\"type\":[\"string\",\"null\"]},\"_status\":{\"type\":[\"string\",\"null\"],\"enum\":[\"draft\",\"published\"]}},\"required\":[],\"$defs\":{}}\n```"
+    },
+    {
+      "label": "update global",
+      "name": "updateGlobal",
+      "args": {
+        "slug": "settings",
+        "data": {
+          "siteName": "Cargo"
+        },
+        "draft": true
+      },
+      "result": "Global \"settings\" updated successfully!\n```json\n{\"siteName\":\"Cargo\",\"updatedBy\":{\"relationTo\":\"users\",\"value\":1},\"_status\":\"draft\",\"updatedAt\":\"2026-01-01T00:00:00.000Z\",\"createdAt\":null}\n```"
+    },
+    {
+      "label": "global versions",
+      "name": "findGlobalVersions",
+      "args": {
+        "slug": "settings",
+        "where": {
+          "version.siteName": {
+            "exists": true
+          }
+        },
+        "limit": 2
+      },
+      "result": "Versions for global \"settings\":\n```json\n{\"docs\":[{\"id\":2,\"version\":{\"siteName\":\"Cargo 2\",\"updatedBy\":{\"relationTo\":\"users\",\"value\":1},\"_status\":\"draft\",\"updatedAt\":\"2026-01-01T00:00:00.000Z\",\"createdAt\":\"2026-01-01T00:00:00.000Z\",\"globalType\":\"settings\"},\"createdAt\":\"2026-01-01T00:00:00.000Z\",\"updatedAt\":\"2026-01-01T00:00:00.000Z\",\"latest\":true},{\"id\":1,\"version\":{\"siteName\":\"Cargo\",\"updatedBy\":{\"relationTo\":\"users\",\"value\":1},\"_status\":\"draft\",\"updatedAt\":\"2026-01-01T00:00:00.000Z\",\"createdAt\":null,\"globalType\":\"settings\"},\"createdAt\":\"2026-01-01T00:00:00.000Z\",\"updatedAt\":\"2026-01-01T00:00:00.000Z\",\"latest\":false}],\"hasNextPage\":false,\"hasPrevPage\":false,\"limit\":2,\"nextPage\":null,\"page\":1,\"pagingCounter\":1,\"prevPage\":null,\"totalDocs\":2,\"totalPages\":1}\n```"
+    },
+    {
+      "label": "count global versions",
+      "name": "countGlobalVersions",
+      "args": {
+        "slug": "settings"
+      },
+      "result": "Global \"settings\" contains 2 matching versions.\n```json\n{\"totalDocs\":2}\n```"
+    },
+    {
+      "label": "a global version",
+      "name": "findGlobalVersionByID",
+      "args": {
+        "slug": "settings",
+        "id": "1"
+      },
+      "result": "Version \"1\" from global \"settings\":\n```json\n{\"id\":1,\"version\":{\"siteName\":\"Cargo\",\"updatedBy\":{\"relationTo\":\"users\",\"value\":1},\"_status\":\"draft\",\"updatedAt\":\"2026-01-01T00:00:00.000Z\",\"createdAt\":null,\"globalType\":\"settings\"},\"createdAt\":\"2026-01-01T00:00:00.000Z\",\"updatedAt\":\"2026-01-01T00:00:00.000Z\",\"latest\":false}\n```"
+    },
+    {
+      "label": "restore a global version",
+      "name": "restoreGlobalVersion",
+      "args": {
+        "slug": "settings",
+        "id": "1"
+      },
+      "result": "Version \"1\" restored successfully for global \"settings\"!\nRestored global:\n```json\n{\"siteName\":\"Cargo\",\"updatedBy\":{\"relationTo\":\"users\",\"value\":1},\"_status\":\"draft\",\"updatedAt\":\"2026-01-01T00:00:00.000Z\",\"createdAt\":null,\"globalType\":\"settings\"}\n```"
+    }
+  ]
+}

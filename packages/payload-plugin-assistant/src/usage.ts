@@ -61,6 +61,19 @@ export function dayBefore(day: string, days: number): string {
 }
 
 /**
+ * A conversation's running total, from its index entry's metadata (`metadata.costUsd` /
+ * `metadata.tokens`), or `null` when it has none yet (or there is no entry).
+ */
+export function entryUsage(entry: { metadata?: unknown } | undefined): UsageAmount | null {
+  const metadata = entry?.metadata as { costUsd?: unknown; tokens?: unknown } | undefined;
+  if (!metadata || (metadata.costUsd === undefined && metadata.tokens === undefined)) return null;
+  return {
+    costUsd: typeof metadata.costUsd === "number" ? metadata.costUsd : 0,
+    tokens: typeof metadata.tokens === "number" ? metadata.tokens : 0,
+  };
+}
+
+/**
  * Normalise what a model call reports (TanStack's `UsageInfo`: `promptTokens`, `completionTokens`,
  * `totalTokens`, OpenRouter's `cost`) to an amount. Bad or missing numbers count as 0.
  */
