@@ -215,7 +215,8 @@ Use `serializeJsonLd`, not `JSON.stringify`. It escapes `<`, `>`, `&`, U+2028 an
 | `validateRedirectTarget`, `normalizeFromPath` | root, `/shared` | The redirect policy the plugin enforces (no `//host`, dangerous schemes or CRLF) |
 | `buildDocPath`, `buildDocUrl` | root | The exact public path or URL the sitemap, canonical and JSON-LD use |
 | `buildSeoMetadata` | root | Title, description, canonical, robots, Open Graph and Twitter tags. The shape is Next.js `Metadata`; with TanStack Start, map it into `head().meta` yourself |
-| `analyzeSeo` | root | The whole analysis engine, outside Payload |
+| `analyzeSeo` | root | The whole analysis engine, outside Payload. Returns the score, the checks and `stats` (word count, sentences, Flesch readability, headings, h1s, internal and external links, images), counted on the same text the checks read |
+| `buildSeoInputFromDoc` | root | Maps a Payload document to `analyzeSeo`'s input, as the plugin's endpoints do |
 
 There's no TanStack `head()` adapter for `buildSeoMetadata`. `apps/web` takes its meta tags from `@payloadcms/plugin-seo` instead.
 
@@ -304,7 +305,7 @@ seoAnalyzerPlugin({
 
 `BlocksContent` fields: `text` (word count and keyword density), `readability` (the same parts with sentence ends; defaults to `text`), `headings` (`{ tag, text }`), `links` (`{ url, text }`), `images` (`{ total, withAlt, altTexts }`), `media` (populated upload documents, for the filename, size and format checks), `lexicalRoots` (Lexical values, for the list and structure checks), `hasFaq` and `faqPairs`. Leave the upstream `hero` and post `content` fields out: the analyzer reads those itself.
 
-The extractor replaces the walker everywhere a document's content is read: the score (`/validate`, the dashboard audit, score history, indexation audit), the sidebar, the link graph and sitemap audit, the external-links scan, keyword research, duplicate content, content grade, the AI endpoints and the FAQPage builder (`/schema-generator`; pass `extractors` in `buildJsonLd` options to use it in your frontend). It is a plain function on the server: the sidebar runs it through `/sidebar-content`, never in the browser. It gets the document as the caller read it, which is `depth: 1` for the score and the sidebar, so uploads and relations are populated there. Collections without an entry keep the walker. The persisted audit, indexation audit and sitemap audit results are keyed by the source of your extractors, so changing one (or deploying a new build of it) recomputes them instead of reusing results built with the old one.
+The extractor replaces the walker everywhere a document's content is read: the score (`/validate`, the dashboard audit, score history, indexation audit), the sidebar, the link graph and sitemap audit, the external-links scan, keyword research, duplicate content, content grade, the AI endpoints and the FAQPage builder (`/schema-generator`; pass `extractors` in `buildJsonLd` options to use it in your frontend). It is a plain function on the server: the sidebar runs it through `/sidebar-content`, never in the browser. It gets the document as the caller read it, which is `depth: 1` for the score and the sidebar, so uploads and relations are populated there. Collections without an entry keep the walker, and so do globals (extractors are keyed by collection). The extractor's `maxDepth` is the analyzer's `maxRecursionDepth` (default 50). The persisted audit, indexation audit and sitemap audit results are keyed by the source of your extractors, so changing one (or deploying a new build of it) recomputes them instead of reusing results built with the old one.
 
 ### Feature flags
 

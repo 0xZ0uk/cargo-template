@@ -458,9 +458,8 @@ describe('createPostDeleteEndpoints — cancel queued post', () => {
   })
 
   it('cancelled status makes the row re-claimable for republish', async () => {
-    // After cancellation, status is 'cancelled'. publicationReservation already
-    // includes 'cancelled' in RECLAIMABLE_STATUSES, so this row can be
-    // republished in-place. This test verifies the endpoint writes the right
+    // After cancellation, status is 'cancelled', which the ledger's publishNow
+    // takes back, so this row can be republished in-place. This test verifies the endpoint writes the right
     // status so that invariant holds.
     const findByID = vi.fn().mockResolvedValue(queuedRow)
     const update = vi.fn().mockResolvedValue({ docs: [{ id: 'queued_1' }] })
@@ -661,7 +660,7 @@ describe('createPostDeleteEndpoints — localOnly (?localOnly=true)', () => {
 describe('createPostDeleteEndpoints — deletedLocalOnly row is re-claimable', () => {
   it('localOnly=true produces a deleted row with status "deleted" that the publish path can reuse', async () => {
     // After localOnly soft-delete, the row has status "deleted".
-    // The publish path (publicationReservation) treats "deleted" as re-claimable.
+    // The publish path (the ledger's publishNow) treats "deleted" as re-claimable.
     // This test verifies the endpoint writes status: 'deleted' so the invariant holds.
     const req = makeLocalOnlyReq(igRow as AnyRow)
     const res = await run(getEndpoint(), req)

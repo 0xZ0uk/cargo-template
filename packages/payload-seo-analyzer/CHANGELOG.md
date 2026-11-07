@@ -19,8 +19,48 @@ No schema change: nothing to migrate.
 - **`POST /sidebar-content`.** Populates the edit form's values like a `depth: 1` read (Payload's
   own `afterRead` traversal, with the caller's access) and maps them like `/validate`.
 
+- **`SeoAnalysis.stats`** (cargo-template #129): what the analysis counted, from the walk the
+  checks read: `wordCount`, `sentenceCount`, `readabilityScore` (Flesch, 0 for 30 words or fewer),
+  `headingCount`, `h1Count`, `internalLinkCount`, `externalLinkCount`, `imageCount`,
+  `imagesWithAlt`. The type is exported as `SeoContentStats`.
+
+### Changed
+
+- **One "analyse a document" module behind every server analysis** (cargo-template #129).
+  `/validate`, the dashboard audit, score history, the indexation audit, keyword research,
+  duplicate content, content grade and the AI endpoints go through `helpers/analyzeDocument`, which
+  owns the read, the merged config, the extractor lookup, the Lexical depth and globals. The second
+  walker (`extractDocContent`) is gone: the dashboard, the history and the sidebar show
+  `SeoAnalysis.stats`, so their numbers are the checks' numbers. This shifts some of them:
+  - The dashboard's word count, reading time and readability, and the history's `wordCount`, no
+    longer count the title, `meta.title` and `meta.description`, and now count the hero CTA links
+    and the hero and meta images like the checks do. History snapshots taken before and after this
+    change measure different text.
+  - A post's title is its h1 only when the content has none (as the heading checks have it), so the
+    dashboard no longer reports two h1s for a post with an h1 in its content.
+  - The dashboard's internal and external link counts include the hero CTA links.
+  - Duplicate content's 50-word floor uses the analyzer's word count.
+  - Term matching keeps the title and meta fields: content grade's query coverage, keyword
+    research's term and n-gram counts, duplicate content's trigrams and the AI prompts' page
+    context read `DocumentAnalysis.pageText` (title, `meta.title`, `meta.description`, then the
+    body), as they did before; only the stats count the body alone.
+  - The persisted audit's cache key changes (`v: 3`), so stored audits are rebuilt once.
+- **`buildSeoInputFromDoc` blanks the slug of a global.** Globals have no URL; the audit already
+  did this, `/validate`, score history and the indexation audit didn't, so a global with a `slug`
+  field got self-link and evergreen checks for a path that doesn't exist.
+
 ### Fixed
 
+- **`maxRecursionDepth` reaches the `extractContent` extractors.** They always got a depth of 10;
+  they now get the analyzer's setting (default 50), like the built-in walker.
+- **The global score history reads the same content as `/validate`.** It analysed globals with no
+  extractor lookup and a different text walk for the word count.
+- **The sidebar's word count no longer parses a check message.** It read the number out of the
+  `content-wordcount` message, which showed 0 when the `content` rules were disabled.
+- **The sidebar's score delta survives an edit made before the server first answers.** The
+  baseline waited for `/sidebar-content` to answer, and an edit inside its 400 ms debounce meant
+  that answer was for the edited form, so the baseline was the edited score and no delta showed.
+  The last reading of the form as opened is now the baseline (`useSidebarContent` reports `edited`).
 - **The sidebar scores the same content as `/validate`.** Uploads, `reference` links and reusable
   sections are IDs in the form, so the live score skipped image alt texts, linked page URLs and
   reusable section text, and the meta image. The sidebar now reads its content through

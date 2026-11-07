@@ -11,11 +11,7 @@
 
 import type { CollectionAfterChangeHook, GlobalAfterChangeHook } from 'payload'
 import type { SeoConfig } from '../types.js'
-import { analyzeSeo } from '../index.js'
-import { buildSeoInputFromDoc } from '../endpoints/validate.js'
-import { countWords } from '../helpers.js'
-import { extractDocContent } from '../helpers/extractDocContent.js'
-import { loadMergedConfig } from '../helpers/loadMergedConfig.js'
+import { analyzeDocument } from '../helpers/analyzeDocument.js'
 import type { SeoWaitUntil } from '../cache.js'
 import { payloadStoreResolver, type SeoDataStoreResolver } from '../store/index.js'
 
@@ -50,16 +46,10 @@ export function createTrackSeoScoreHook(seoConfig?: SeoConfig, options: TrackSeo
         // Rate limit: at most one snapshot per document per hour.
         if (await tooSoon(resolveStore, req, collectionSlug, String(doc.id))) return
 
-        // Build SEO input and run analysis with the dashboard's config: SeoSettings
-        // merged in, or the history drifts from the scores shown everywhere else.
-        const seoInput = buildSeoInputFromDoc(doc, collectionSlug, { extractors: req.payload })
-        const { config: mergedConfig } = await loadMergedConfig(req.payload, seoConfig)
-        const analysis = analyzeSeo(seoInput, mergedConfig)
-
-        // Compute word count using shared extraction helper
-        const wordCount = countWords(
-          extractDocContent(doc, undefined, { collection: collectionSlug, extractors: req.payload }).text,
-        )
+        // The saved document, scored with the dashboard's config (SeoSettings merged in),
+        // or the history drifts from the scores shown everywhere else.
+        const { input: seoInput, analysis } = await analyzeDocument(req, { collection: collectionSlug, doc }, { seoConfig })
+        const wordCount = analysis.stats.wordCount
 
         // Compute checks summary
         const checksSummary = {
@@ -118,16 +108,8 @@ export function createTrackSeoScoreGlobalHook(seoConfig?: SeoConfig, options: Tr
         // Rate limit: at most one snapshot per document per hour.
         if (await tooSoon(resolveStore, req, discriminator, documentId)) return
 
-        // Build SEO input and run analysis
-        const seoInput = {
-          ...buildSeoInputFromDoc(doc, discriminator),
-          isGlobal: true,
-        }
-        const { config: mergedConfig } = await loadMergedConfig(req.payload, seoConfig)
-        const analysis = analyzeSeo(seoInput, mergedConfig)
-
-        // Compute word count using shared extraction helper
-        const wordCount = countWords(extractDocContent(doc).text)
+        const { input: seoInput, analysis } = await analyzeDocument(req, { global: globalSlug, doc }, { seoConfig })
+        const wordCount = analysis.stats.wordCount
 
         // Compute checks summary
         const checksSummary = {

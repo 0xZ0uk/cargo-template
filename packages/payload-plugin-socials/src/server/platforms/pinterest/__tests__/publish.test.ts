@@ -8,12 +8,7 @@ import type {
   SocialSourceContext,
 } from '../../../../types/index.js'
 
-import {
-  PlatformApiError,
-  PublicationPersistenceError,
-  ValidationError,
-} from '../../../utilities/errors.js'
-import { buildPublicationIdentity } from '../../../utilities/publicationIdentity.js'
+import { PlatformApiError, ValidationError } from '../../../utilities/errors.js'
 
 vi.mock('../api.js', () => ({
   makePinterestRequest: vi.fn(),
@@ -124,70 +119,22 @@ describe('publishPinterestPin — validation', () => {
   })
 })
 
-describe('publishPinterestPin — idempotency', () => {
-  it('short-circuits when a published row already exists for the same key', async () => {
-    payload.find.mockResolvedValue({
-      docs: [
-        {
-          id: 'row_existing',
-          externalId: 'pin_existing',
-          externalUrl: 'https://www.pinterest.com/pin/pin_existing/',
-          idempotencyKey: 'k',
-          status: 'published',
-        },
-      ],
-    })
-    const result = await publishPinterestPin({
-      ctx: ctx(),
-      input: { boardId: 'b1' },
-      options,
-      payload: asPayload(payload),
-    })
-    expect(result.alreadyExisted).toBe(true)
-    expect(result.publishedRef.externalId).toBe('pin_existing')
-    expect(mockedPinterestJson).not.toHaveBeenCalled()
-    expect(payload.create).not.toHaveBeenCalled()
-  })
-
-  it('republishes (updates in place) when the existing row is cancelled', async () => {
-    payload.find.mockResolvedValue({
-      docs: [{ id: 'row_cancelled', idempotencyKey: 'k', status: 'cancelled' }],
-    })
-    payload.update.mockResolvedValue({ id: 'row_cancelled' })
+describe('publishPinterestPin — the ledger owns the row', () => {
+  it('never reads or writes social-posts', async () => {
     mockedPinterestJson.mockResolvedValue({ id: 'pin_new', link: 'https://pin/url' })
-    const result = await publishPinterestPin({
+    await publishPinterestPin({
       ctx: ctx(),
       input: { boardId: 'b1' },
       options,
       payload: asPayload(payload),
     })
-    expect(result.alreadyExisted).toBe(false)
-    expect(result.postId).toBe('row_cancelled')
-    expect(payload.update).toHaveBeenCalledWith(expect.objectContaining({ id: 'row_cancelled' }))
+    expect(payload.find).not.toHaveBeenCalled()
     expect(payload.create).not.toHaveBeenCalled()
+    expect(payload.update).not.toHaveBeenCalled()
   })
 })
 
 describe('publishPinterestPin — create + body', () => {
-  it('captures the Pin id and fences retries when audit persistence fails', async () => {
-    mockedPinterestJson.mockResolvedValue({ id: 'pin_created' })
-    payload.create.mockRejectedValue(new Error('database unavailable'))
-
-    const publication = publishPinterestPin({
-      ctx: ctx(),
-      input: { boardId: 'board_1' },
-      options,
-      payload: asPayload(payload),
-    })
-
-    await expect(publication).rejects.toBeInstanceOf(PublicationPersistenceError)
-    await expect(publication).rejects.toMatchObject({
-      outcome: 'unknown',
-      publishedRef: { externalId: 'pin_created', platform: 'pinterest' },
-    })
-    expect(mockedPinterestJson).toHaveBeenCalledOnce()
-  })
-
   it('rejects a successful create response without a Pin id', async () => {
     mockedPinterestJson.mockResolvedValue({ link: 'https://example.com/outbound' })
     await expect(
@@ -200,7 +147,7 @@ describe('publishPinterestPin — create + body', () => {
     ).rejects.toThrow('did not include an id')
   })
 
-  it('creates the pin with an image_url media source and persists a published row', async () => {
+  it('creates the pin with an image_url media source and reports a published record', async () => {
     mockedPinterestJson.mockResolvedValue({ id: 'pin_1', link: 'https://pin/url/1' })
     const result = await publishPinterestPin({
       ctx: ctx(),
@@ -209,8 +156,8 @@ describe('publishPinterestPin — create + body', () => {
       payload: asPayload(payload),
     })
 
-    expect(result.alreadyExisted).toBe(false)
-    expect(result.publishedRef.externalId).toBe('pin_1')
+    expect(result.externalId).toBe('pin_1')
+    expect(result.state).toBeUndefined()
 
     const [, , path, init] = mockedPinterestJson.mock.calls[0]
     expect(path).toBe('/v5/pins')
@@ -221,11 +168,13 @@ describe('publishPinterestPin — create + body', () => {
       url: 'https://cdn.example.com/main.jpg',
     })
 
-    const created = payload.create.mock.calls[0][0].data
-    expect(created.status).toBe('published')
-    expect(created.externalId).toBe('pin_1')
-    expect(typeof created.idempotencyKey).toBe('string')
-    expect(typeof created.sourceHash).toBe('string')
+    expect(result.record).toMatchObject({
+      body: expect.any(String),
+      destination: { label: 'Statues' },
+      imageUrl: 'https://cdn.example.com/main.jpg',
+      sourceHash: expect.any(String),
+      title: 'Marble Lion',
+    })
   })
 
   it('truncates title, description, and alt text to Pinterest limits', async () => {
@@ -255,7 +204,7 @@ describe('publishPinterestPin — create + body', () => {
       options,
       payload: asPayload(payload),
     })
-    expect(result.publishedRef.externalUrl).toBe('https://www.pinterest.com/pin/pin_42/')
+    expect(result.externalUrl).toBe('https://www.pinterest.com/pin/pin_42/')
   })
 
   it('uploads and publishes a video Pin with its required cover image', async () => {
@@ -359,7 +308,7 @@ describe('deletePinterestPin', () => {
   })
 })
 
-describe('publishPinterestPin — idempotency key uses ORIGINAL url when autoConvert fires', () => {
+describe('publishPinterestPin — the record uses the ORIGINAL url when autoConvert fires', () => {
   const ORIGINAL_URL = 'https://cdn.example.com/image.avif'
   const CONVERTED_URL = 'https://cdn.example.com/renditions/socials-rendition-abcd1234.jpg'
 
@@ -380,32 +329,21 @@ describe('publishPinterestPin — idempotency key uses ORIGINAL url when autoCon
     mockedPinterestJson.mockResolvedValue({ id: 'pin_converted', link: 'https://pin/url' })
   })
 
-  it('idempotencyKey and primaryAssetUrl match buildPublicationIdentity for the ORIGINAL url', async () => {
+  it('records the ORIGINAL url and sends the converted one', async () => {
     const input = {
       boardId: 'board_1',
       imageUrl: ORIGINAL_URL,
     }
     const testCtx = ctx({ images: [{ format: 'avif', role: 'main', url: ORIGINAL_URL }] })
 
-    await publishPinterestPin({
+    const result = await publishPinterestPin({
       ctx: testCtx,
       input,
       options: autoConvertOptions,
       payload: asPayload(payload),
     })
 
-    const saved = payload.create.mock.calls[0][0].data
-    const expected = buildPublicationIdentity({
-      ctx: testCtx,
-      input,
-      platform: 'pinterest',
-      sourceId: testCtx.sourceId,
-      sourceKind: testCtx.sourceKind,
-    })
-
-    // Keys must be derived from the ORIGINAL url, not the converted one.
-    expect(saved.idempotencyKey).toBe(expected.idempotencyKey)
-    expect(saved.imageUrl).toBe(ORIGINAL_URL)
+    expect(result.record?.imageUrl).toBe(ORIGINAL_URL)
 
     // The outbound API request body must carry the CONVERTED url.
     const pinBody = JSON.parse(
@@ -419,28 +357,15 @@ describe('publishPinterestPin — idempotency key uses ORIGINAL url when autoCon
     const input = { boardId: 'board_1', imageUrl: ORIGINAL_URL }
     const testCtx = ctx({ images: [{ format: 'avif', role: 'main', url: ORIGINAL_URL }] })
 
-    await publishPinterestPin({
+    const result = await publishPinterestPin({
       ctx: testCtx,
       input,
       options: autoConvertOptions,
       payload: asPayload(payload),
     })
 
-    // Rebuild expected sourceHash independently using original url.
     const { sha256Hex } = await import('../../../utilities/hash.js')
-    const expectedHash = sha256Hex(
-      JSON.stringify({
-        altText: expect.any(String) as unknown as string,
-        assetUrl: ORIGINAL_URL,
-        boardId: 'board_1',
-        description: expect.any(String) as unknown as string,
-        link: expect.any(String) as unknown as string,
-        mediaType: 'IMAGE',
-        title: expect.any(String) as unknown as string,
-      }),
-    )
-
-    const saved = payload.create.mock.calls[0][0].data
+    const saved = result.record ?? {}
     // The saved sourceHash must NOT be based on the converted url.
     // We verify this by recomputing with the original url and confirming they match.
     const recomputedWithOriginal = sha256Hex(
@@ -467,8 +392,6 @@ describe('publishPinterestPin — idempotency key uses ORIGINAL url when autoCon
     )
     expect(saved.sourceHash).toBe(recomputedWithOriginal)
     expect(saved.sourceHash).not.toBe(recomputedWithConverted)
-    // Suppress the unused variable warning from expectedHash.
-    void expectedHash
   })
 
   it('with autoConvert OFF and an allowed format, passes through unchanged', async () => {
@@ -485,29 +408,20 @@ describe('publishPinterestPin — idempotency key uses ORIGINAL url when autoCon
     const input = { boardId: 'board_1', imageUrl: JPEG_URL }
     const testCtx = ctx({ images: [{ format: 'jpeg', role: 'main', url: JPEG_URL }] })
 
-    await publishPinterestPin({
+    const result = await publishPinterestPin({
       ctx: testCtx,
       input,
       options: passthroughOptions,
       payload: asPayload(payload),
     })
 
-    const saved = payload.create.mock.calls[0][0].data
+    const saved = result.record ?? {}
     const pinBody = JSON.parse(
       (mockedPinterestJson.mock.calls.find((c) => c[2] === '/v5/pins')?.[3] as { body: string })
         .body,
     )
-    // With no conversion, both the key and outbound body use the same original url.
+    // With no conversion, the record and the outbound body use the same original url.
     expect(saved.imageUrl).toBe(JPEG_URL)
     expect(pinBody.media_source.url).toBe(JPEG_URL)
-
-    const expected = buildPublicationIdentity({
-      ctx: testCtx,
-      input,
-      platform: 'pinterest',
-      sourceId: testCtx.sourceId,
-      sourceKind: testCtx.sourceKind,
-    })
-    expect(saved.idempotencyKey).toBe(expected.idempotencyKey)
   })
 })

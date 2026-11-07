@@ -194,6 +194,18 @@ describe('retry, insights, and connections endpoints', () => {
     )
   })
 
+  it('retry-post answers 409 for a published post, even with confirmNotPublished', async () => {
+    const res = await byPath('/posts/:postId/retry').handler(
+      withPost(
+        { id: 7, externalId: 'pin_1', platform: 'pinterest', status: 'published' },
+        { data: { confirmNotPublished: true } },
+      ),
+    )
+    expect(res.status).toBe(409)
+    expect(JSON.stringify(await res.json())).toContain('social-posts/7 is already published')
+    expect(queueSocialPostRetry).not.toHaveBeenCalled()
+  })
+
   it('retry-post answers 404 for a missing post', async () => {
     const res = await byPath('/posts/:postId/retry').handler(withPost(null))
     expect(res.status).toBe(404)

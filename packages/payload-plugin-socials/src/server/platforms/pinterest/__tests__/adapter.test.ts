@@ -140,24 +140,19 @@ describe('pinterest adapter — isConnected', () => {
 
 describe('pinterest adapter — publish', () => {
   it('publishes a valid input and returns the published ref', async () => {
-    vi.mocked(publishPinterestPin).mockResolvedValue({
-      alreadyExisted: false,
-      postId: 'row_1',
-      publishedRef: { externalId: 'pin_1', platform: 'pinterest' },
-    })
+    vi.mocked(publishPinterestPin).mockResolvedValue({ externalId: 'pin_1', platform: 'pinterest' })
     const ref = await adapter.publish({
       ctx: ctx(),
       input: { boardId: 'b1' },
       options,
       payload,
-      postId: '',
     })
     expect(ref.externalId).toBe('pin_1')
   })
 
   it('throws a ValidationError and never calls the publish path on invalid input', async () => {
     await expect(
-      adapter.publish({ ctx: ctx(), input: { boardId: '' }, options, payload, postId: '' }),
+      adapter.publish({ ctx: ctx(), input: { boardId: '' }, options, payload }),
     ).rejects.toBeInstanceOf(ValidationError)
     expect(publishPinterestPin).not.toHaveBeenCalled()
   })
@@ -165,7 +160,7 @@ describe('pinterest adapter — publish', () => {
   it('records a connection error and rethrows when the publish path fails', async () => {
     vi.mocked(publishPinterestPin).mockRejectedValue(new Error('upstream 500'))
     await expect(
-      adapter.publish({ ctx: ctx(), input: { boardId: 'b1' }, options, payload, postId: '' }),
+      adapter.publish({ ctx: ctx(), input: { boardId: 'b1' }, options, payload }),
     ).rejects.toThrow('upstream 500')
     expect(recordConnectionError).toHaveBeenCalledWith(payload, 'pinterest', expect.any(Error))
   })

@@ -9,14 +9,9 @@ import type {
 } from '../../types/index.js'
 
 import { getPlatformAdapter } from '../platforms/registry.js'
-import { queuePublicationReconciliation } from '../services/publicationReconciliation.js'
-import {
-  failPublicationReservation,
-  reservePublication,
-} from '../services/publicationReservation.js'
+import { publishNow } from '../services/publicationLedger.js'
 import { sha256Hex } from '../utilities/hash.js'
 import { publicErrorMessage } from '../utilities/http.js'
-import { buildPublicationIdentity } from '../utilities/publicationIdentity.js'
 
 /**
  * Multi-channel publish orchestrator. Given one source context and a set of
@@ -66,45 +61,15 @@ const publishOne = async (
         .join('; ')
       return { error: message || 'Input is invalid', ok: false, platform: target.platform }
     }
-    const identity = buildPublicationIdentity({
+    const { publishedRef } = await publishNow({
+      adapter,
       ctx: args.ctx,
       input: target.input,
-      platform: target.platform,
-      sourceId: args.ctx.sourceId,
-      sourceKind: args.ctx.sourceKind,
-    })
-    const reservation = await reservePublication({
-      destinationId: identity.destinationId,
-      idempotencyKey: identity.idempotencyKey,
-      imageUrl: identity.primaryAssetUrl,
+      options: args.options,
       payload: args.payload,
       platform: target.platform,
-      sourceHash: sha256Hex(JSON.stringify({ input: target.input, platform: target.platform })),
-      sourceId: args.ctx.sourceId,
-      sourceKind: args.ctx.sourceKind,
-      title: args.ctx.baseTitle,
-    })
-    let publishedRef = reservation.publishedRef
-    if (!publishedRef) {
-      try {
-        publishedRef = await adapter.publish({
-          ctx: args.ctx,
-          input: target.input,
-          options: args.options,
-          payload: args.payload,
-          postId: reservation.postId,
-          req: args.req,
-        })
-      } catch (error) {
-        await failPublicationReservation(args.payload, reservation, error)
-        throw error
-      }
-    }
-    await queuePublicationReconciliation({
-      payload: args.payload,
-      postId: reservation.postId,
-      publishedRef,
       req: args.req,
+      sourceHash: sha256Hex(JSON.stringify({ input: target.input, platform: target.platform })),
     })
     return { ok: true, platform: target.platform, publishedRef }
   } catch (error) {

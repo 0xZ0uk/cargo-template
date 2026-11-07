@@ -12,10 +12,8 @@ import {
   classifyRequestFailure,
   isAutoRetrySafe,
   PlatformApiError,
-  PublicationPersistenceError,
   ValidationError,
 } from '../../../utilities/errors.js'
-import { buildPublicationIdentity } from '../../../utilities/publicationIdentity.js'
 
 vi.mock('../../_meta/api.js', async (importOriginal) => ({
   // The real response reader, so failures are classified as in production.
@@ -120,27 +118,6 @@ beforeEach(() => {
 })
 
 describe('publishFacebookPost — formats', () => {
-  it('captures the post id and fences retries when audit persistence fails', async () => {
-    setupPublish()
-    payload.create.mockRejectedValue(new Error('database unavailable'))
-
-    const publication = publishFacebookPost({
-      ctx: ctx(),
-      input: { format: 'LINK', pageId: 'p1' },
-      options,
-      payload: asPayload(payload),
-    })
-
-    await expect(publication).rejects.toBeInstanceOf(PublicationPersistenceError)
-    await expect(publication).rejects.toMatchObject({
-      outcome: 'unknown',
-      publishedRef: { externalId: 'p1_123', platform: 'facebook' },
-    })
-    // The publish POST plus the best-effort permalink lookup, both before the
-    // failing audit persistence.
-    expect(mockedRequest).toHaveBeenCalledTimes(2)
-  })
-
   it('publishes a LINK post to /feed using the Page token', async () => {
     setupPublish()
     const result = await publishFacebookPost({
@@ -149,9 +126,9 @@ describe('publishFacebookPost — formats', () => {
       options,
       payload: asPayload(payload),
     })
-    expect(result.publishedRef.externalId).toBe('p1_123')
+    expect(result.externalId).toBe('p1_123')
     // Canonical permalink from Graph, not a string-constructed /{page}/posts/{id}.
-    expect(result.publishedRef.externalUrl).toBe('https://www.facebook.com/canonical-post')
+    expect(result.externalUrl).toBe('https://www.facebook.com/canonical-post')
   })
 
   it('falls back to the redirect-safe bare /{post_id} URL when the canonical lookup fails', async () => {
@@ -172,7 +149,7 @@ describe('publishFacebookPost — formats', () => {
     })
     // Bare /{post_id} redirects on both classic and new-experience Pages —
     // never the /{page_id}/posts/{post_id} form, which 404s on the latter.
-    expect(result.publishedRef.externalUrl).toBe('https://www.facebook.com/123')
+    expect(result.externalUrl).toBe('https://www.facebook.com/123')
     const params = requestParams('/feed')
     expect(params.get('access_token')).toBeNull()
     expect(params.get('link')).toBe('https://example.com/p')
@@ -342,15 +319,13 @@ describe('publishFacebookPost — scheduling', () => {
       options,
       payload: asPayload(payload),
     })
-    expect(payload.create.mock.calls[0][0].data.status).toBe('scheduled')
-    expect(payload.create.mock.calls[0][0].data.platformPublicationStatus).toBe('pending')
-    expect(payload.create.mock.calls[0][0].data.publishedAt).toBeUndefined()
-    expect(payload.create.mock.calls[0][0].data.scheduledAt).toBe(
+    expect(result.state).toBe('scheduled')
+    expect(result.scheduledAt).toBe(
       new Date(Math.floor(Date.parse(when) / 1000) * 1000).toISOString(),
     )
     expect(requestParams('/feed').get('published')).toBe('false')
-    expect(result.publishedRef.meta?.scheduled).toBe(true)
-    expect(result.publishedRef.externalUrl).toBeUndefined()
+    expect(result.meta?.scheduled).toBe(true)
+    expect(result.externalUrl).toBeUndefined()
     expect(
       mockedRequest.mock.calls.filter((call) => String(call[3]).includes('permalink_url')),
     ).toHaveLength(0)
@@ -439,7 +414,7 @@ describe('reconcileFacebookScheduledPost', () => {
   })
 })
 
-describe('publishFacebookPost — validation + idempotency', () => {
+describe('publishFacebookPost — validation', () => {
   it('requires a pageId', async () => {
     await expect(
       publishFacebookPost({
@@ -461,20 +436,6 @@ describe('publishFacebookPost — validation + idempotency', () => {
         payload: asPayload(payload),
       }),
     ).rejects.toThrow(/message, link, photo, or video/)
-  })
-
-  it('short-circuits when a published row already exists', async () => {
-    payload.find.mockResolvedValue({
-      docs: [{ id: 'row_x', externalId: 'p1_999', status: 'published' }],
-    })
-    const result = await publishFacebookPost({
-      ctx: ctx(),
-      input: { format: 'LINK', link: 'https://example.com/p', pageId: 'p1' },
-      options,
-      payload: asPayload(payload),
-    })
-    expect(result.alreadyExisted).toBe(true)
-    expect(mockedRequest).not.toHaveBeenCalled()
   })
 })
 
@@ -533,7 +494,7 @@ describe('deleteFacebookPost', () => {
   })
 })
 
-describe('publishFacebookPost — idempotency key uses ORIGINAL url when autoConvert fires', () => {
+describe('publishFacebookPost — the record uses the ORIGINAL url when autoConvert fires', () => {
   const ORIGINAL_URL = 'https://cdn.example.com/image.avif'
   const CONVERTED_URL = 'https://cdn.example.com/renditions/socials-rendition-abcd1234.jpg'
 
@@ -554,7 +515,7 @@ describe('publishFacebookPost — idempotency key uses ORIGINAL url when autoCon
     setupPublish({ id: 'photo_1', post_id: 'p1_999' })
   })
 
-  it('PHOTO: idempotencyKey matches buildPublicationIdentity for the ORIGINAL url', async () => {
+  it('PHOTO: records the ORIGINAL url and sends the converted one', async () => {
     const input = {
       format: 'PHOTO' as const,
       imageUrl: ORIGINAL_URL,
@@ -562,24 +523,15 @@ describe('publishFacebookPost — idempotency key uses ORIGINAL url when autoCon
     }
     const testCtx = ctx({ images: [{ format: 'avif', role: 'main', url: ORIGINAL_URL }] })
 
-    await publishFacebookPost({
+    const result = await publishFacebookPost({
       ctx: testCtx,
       input,
       options: autoConvertOptions,
       payload: asPayload(payload),
     })
 
-    const saved = payload.create.mock.calls[0][0].data
-    const expected = buildPublicationIdentity({
-      ctx: testCtx,
-      input,
-      platform: 'facebook',
-      sourceId: testCtx.sourceId,
-      sourceKind: testCtx.sourceKind,
-    })
+    const saved = result.record ?? {}
 
-    // Key must be derived from the ORIGINAL url, not the converted one.
-    expect(saved.idempotencyKey).toBe(expected.idempotencyKey)
     // The stored imageUrl must be the original.
     expect(saved.imageUrl).toBe(ORIGINAL_URL)
 
@@ -596,14 +548,14 @@ describe('publishFacebookPost — idempotency key uses ORIGINAL url when autoCon
     }
     const testCtx = ctx({ images: [{ format: 'avif', role: 'main', url: ORIGINAL_URL }] })
 
-    await publishFacebookPost({
+    const result = await publishFacebookPost({
       ctx: testCtx,
       input,
       options: autoConvertOptions,
       payload: asPayload(payload),
     })
 
-    const saved = payload.create.mock.calls[0][0].data
+    const saved = result.record ?? {}
     const { sha256Hex } = await import('../../../utilities/hash.js')
 
     const recomputedWithOriginal = sha256Hex(
@@ -627,7 +579,7 @@ describe('publishFacebookPost — idempotency key uses ORIGINAL url when autoCon
     expect(saved.sourceHash).not.toBe(recomputedWithConverted)
   })
 
-  it('PHOTO_MULTI: idempotencyKey uses the ORIGINAL first url; each outbound photo uses converted', async () => {
+  it('PHOTO_MULTI: records the ORIGINAL first url; each outbound photo uses converted', async () => {
     const ORIG_1 = 'https://cdn.example.com/1.avif'
     const ORIG_2 = 'https://cdn.example.com/2.avif'
     const CONV_1 = 'https://cdn.example.com/renditions/1.jpg'
@@ -650,24 +602,14 @@ describe('publishFacebookPost — idempotency key uses ORIGINAL url when autoCon
     }
     const testCtx = ctx()
 
-    await publishFacebookPost({
+    const result = await publishFacebookPost({
       ctx: testCtx,
       input,
       options: autoConvertOptions,
       payload: asPayload(payload),
     })
 
-    const saved = payload.create.mock.calls[0][0].data
-    const expected = buildPublicationIdentity({
-      ctx: testCtx,
-      input,
-      platform: 'facebook',
-      sourceId: testCtx.sourceId,
-      sourceKind: testCtx.sourceKind,
-    })
-
-    // Key must use original first url.
-    expect(saved.idempotencyKey).toBe(expected.idempotencyKey)
+    expect(result.record?.imageUrl).toBe(ORIG_1)
 
     // Outbound /photos calls must use the converted urls.
     const photoCalls = mockedRequest.mock.calls.filter((c) => String(c[3]).includes('/photos'))
@@ -694,22 +636,14 @@ describe('publishFacebookPost — idempotency key uses ORIGINAL url when autoCon
     const input = { format: 'PHOTO' as const, imageUrl: JPEG_URL, pageId: 'p1' }
     const testCtx = ctx({ images: [{ format: 'jpeg', role: 'main', url: JPEG_URL }] })
 
-    await publishFacebookPost({
+    const result = await publishFacebookPost({
       ctx: testCtx,
       input,
       options: passthroughOptions,
       payload: asPayload(payload),
     })
 
-    const saved = payload.create.mock.calls[0][0].data
-    const expected = buildPublicationIdentity({
-      ctx: testCtx,
-      input,
-      platform: 'facebook',
-      sourceId: testCtx.sourceId,
-      sourceKind: testCtx.sourceKind,
-    })
-    expect(saved.idempotencyKey).toBe(expected.idempotencyKey)
+    expect(result.record?.imageUrl).toBe(JPEG_URL)
 
     // No conversion: outbound body also uses the original url.
     const params = requestParams('/photos')

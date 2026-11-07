@@ -62,6 +62,34 @@ export interface SeoAnalysis {
     /** Number of checks contributing to this indicator */
     checkCount: number
   }
+  /**
+   * What the analysis counted, from the same walk the rules read: the dashboard, the score
+   * history and the sidebar show these, so their numbers match the checks'.
+   */
+  stats: SeoContentStats
+}
+
+/**
+ * Content counts from one analysis (the hero, blocks or extractor output, the post content,
+ * and for posts the title as h1 when the content has none). The meta title and description
+ * are not body text and are not counted.
+ */
+export interface SeoContentStats {
+  /** Words in the body text (what `content-wordcount` checks). */
+  wordCount: number
+  /** Sentences, split at sentence ends and block ends. */
+  sentenceCount: number
+  /** Flesch reading ease of the body (English formula); 0 for 30 words or fewer. */
+  readabilityScore: number
+  headingCount: number
+  h1Count: number
+  /** Links to a relative URL, an anchor or anything that isn't `http(s)://…`. */
+  internalLinkCount: number
+  /** Links to an `http(s)://…` URL. */
+  externalLinkCount: number
+  /** Images in the content, the hero media and the meta image. */
+  imageCount: number
+  imagesWithAlt: number
 }
 
 export interface SeoInput {

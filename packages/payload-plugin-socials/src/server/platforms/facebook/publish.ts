@@ -1,16 +1,15 @@
 import type { Payload, PayloadRequest } from 'payload'
 
-import type { PostStatus } from '../../../constants.js'
 import type {
   NormalizedPluginOptions,
   PublishedRef,
+  PublishResult,
   SocialSourceContext,
 } from '../../../types/index.js'
 
 import { SOCIAL_POSTS_SLUG } from '../../../constants.js'
 import { resolvePlatformImageUrl } from '../../assets/resolvePlatformImage.js'
 import { resolveConfiguredText } from '../../copy/resolveConfiguredCopy.js'
-import { persistPublicationAudit } from '../../services/publicationPersistence.js'
 import {
   classifyRequestFailure,
   PlatformApiError,
@@ -19,7 +18,6 @@ import {
 } from '../../utilities/errors.js'
 import { sha256Hex } from '../../utilities/hash.js'
 import { createPluginLogger } from '../../utilities/logger.js'
-import { resolvePublicationIdempotencyKey } from '../../utilities/publicationIdentity.js'
 import { makeMetaRequest, readMetaJson } from '../_meta/api.js'
 import { buildDefaultFacebookMessage } from './copy.js'
 import { getPageAccessToken } from './pages.js'
@@ -40,13 +38,12 @@ import { getPageAccessToken } from './pages.js'
  * `_meta/api` client passes whatever token is in the Authorization header
  * verbatim, so we override it inline for these calls.
  *
- * Idempotency key:
- *   sha256("facebook:" + sourceKind + ":" + sourceId + ":" + pageId + ":" + format + ":" + primaryAssetUrl)
+ * Returns the post and the audit fields; the publication ledger owns the
+ * `social-posts` row and the idempotency key (`buildPublicationIdentity`).
  *
  * Image conversion (assets.autoConvert) happens ONLY when constructing the
- * outbound Facebook API request body, AFTER the idempotency key and
- * primaryAssetUrl are locked to the ORIGINAL input URL. The converted URL
- * never touches the key, primaryAssetUrl, sourceHash, or the reservation row.
+ * outbound Facebook API request body. The converted URL never touches the
+ * audit record or the sourceHash, which use the ORIGINAL input URL.
  */
 
 export const FACEBOOK_FORMATS = ['LINK', 'PHOTO', 'PHOTO_MULTI', 'VIDEO'] as const
@@ -89,30 +86,9 @@ type FeedResponse = { id: string; post_id?: string }
 type PhotoResponse = { id: string; post_id?: string }
 type VideoResponse = { id: string; post_id?: string }
 
-type SocialPostRow = {
-  attempts?: number
-  externalId?: null | string
-  externalUrl?: null | string
-  id: number | string
-  status: PostStatus
-}
-
 const SCHEDULE_MIN_OFFSET_MS = 10 * 60 * 1000
 const SCHEDULE_FEED_MAX_OFFSET_MS = 75 * 24 * 60 * 60 * 1000
 const SCHEDULE_VIDEO_MAX_OFFSET_MS = 6 * 30 * 24 * 60 * 60 * 1000
-
-const buildIdempotencyKey = (
-  ctx: SocialSourceContext,
-  input: FacebookPublishInput,
-  pageId: string,
-  format: FacebookFormat,
-  primaryAssetUrl: string,
-): string =>
-  resolvePublicationIdempotencyKey({
-    defaultValue: `facebook:${ctx.sourceKind}:${ctx.sourceId}:${pageId}:${format}:${primaryAssetUrl}`,
-    input: input as unknown as Record<string, unknown>,
-    platform: 'facebook',
-  })
 
 const resolveMessage = (
   ctx: SocialSourceContext,
@@ -150,20 +126,6 @@ const validateSchedule = (
   }
   // Meta expects seconds since epoch.
   return Math.floor(ms / 1000)
-}
-
-const findExistingByIdempotencyKey = async (
-  payload: Payload,
-  key: string,
-): Promise<null | SocialPostRow> => {
-  const result = await payload.find({
-    collection: SOCIAL_POSTS_SLUG as never,
-    depth: 0,
-    limit: 1,
-    overrideAccess: true,
-    where: { idempotencyKey: { equals: key } },
-  })
-  return (result.docs[0] as SocialPostRow | undefined) ?? null
 }
 
 /**
@@ -316,7 +278,7 @@ const uploadPhotoUnpublished = async (
 
 /**
  * Publish a single PHOTO using the outbound URL (may be converted).
- * The idempotency key and primaryAssetUrl use the ORIGINAL input.imageUrl.
+ * The sourceHash uses the ORIGINAL input.imageUrl.
  */
 const publishSinglePhoto = async (
   payload: Payload,
@@ -356,7 +318,7 @@ const publishSinglePhoto = async (
 /**
  * Publish a PHOTO_MULTI post. Each image is resolved to its outbound URL
  * (possibly converted) just before the individual upload. The
- * primaryAssetUrl (for the idempotency key) uses the ORIGINAL first URL.
+ * sourceHash uses the ORIGINAL first URL.
  */
 const publishMultiPhoto = async (
   payload: Payload,
@@ -450,35 +412,13 @@ const resolvePrimaryAssetUrl = (input: FacebookPublishInput): string => {
   }
 }
 
-/**
- * Pure derivation of the Facebook idempotency identity — identical logic to
- * the publish path. Exported for parity testing against `buildPublicationIdentity`.
- */
-export const deriveFacebookIdentity = (
-  ctx: SocialSourceContext,
-  input: FacebookPublishInput,
-): { idempotencyKey: string; primaryAssetUrl: string } => {
-  const format: FacebookFormat = input.format ?? 'LINK'
-  const primaryAssetUrl = resolvePrimaryAssetUrl(input)
-  return {
-    idempotencyKey: buildIdempotencyKey(ctx, input, input.pageId, format, primaryAssetUrl),
-    primaryAssetUrl,
-  }
-}
-
-export type FacebookPublishResult = {
-  alreadyExisted: boolean
-  postId: number | string
-  publishedRef: PublishedRef
-}
-
 export const publishFacebookPost = async (args: {
   ctx: SocialSourceContext
   input: FacebookPublishInput
   options: NormalizedPluginOptions
   payload: Payload
   req?: PayloadRequest
-}): Promise<FacebookPublishResult> => {
+}): Promise<PublishResult> => {
   const { ctx, input, options, payload } = args
   if (!input.pageId) {
     throw new ValidationError('pageId is required')
@@ -487,28 +427,13 @@ export const publishFacebookPost = async (args: {
 
   const message = resolveMessage(ctx, input, options)
 
-  // Derive primaryAssetUrl and idempotencyKey from the ORIGINAL input URL.
-  // These must never be touched by format conversion.
+  // The sourceHash uses the ORIGINAL input URL, never a converted one.
   const primaryAssetUrl = resolvePrimaryAssetUrl(input)
 
   if (format === 'LINK' && !input.link && !primaryAssetUrl) {
     // /feed accepts a text-only post if `message` is non-empty.
     if (!message.trim()) {
       throw new ValidationError('Facebook posts need message, link, photo, or video')
-    }
-  }
-
-  const idempotencyKey = buildIdempotencyKey(ctx, input, input.pageId, format, primaryAssetUrl)
-  const existing = await findExistingByIdempotencyKey(payload, idempotencyKey)
-  if (existing && existing.status === 'published' && existing.externalId) {
-    return {
-      alreadyExisted: true,
-      postId: existing.id,
-      publishedRef: {
-        externalId: existing.externalId,
-        externalUrl: existing.externalUrl ?? undefined,
-        platform: 'facebook',
-      },
     }
   }
 
@@ -537,7 +462,6 @@ export const publishFacebookPost = async (args: {
     }
     case 'PHOTO': {
       // Resolve the outbound image URL here, just before building the API body.
-      // The idempotency key above already used the original input.imageUrl.
       const resolved = await resolvePlatformImageUrl({
         imageUrl: input.imageUrl ?? '',
         options,
@@ -621,36 +545,7 @@ export const publishFacebookPost = async (args: {
     JSON.stringify({ format, message, pageId: input.pageId, primaryAssetUrl }),
   )
 
-  const baseFields = {
-    altText: input.altText,
-    attempts: ((existing as unknown as { attempts?: number })?.attempts ?? 0) + 1,
-    body: message,
-    destination: {
-      meta: { format, scheduledPublishTime: input.scheduledPublishTime },
-    },
-    destinationId: input.pageId,
-    externalId,
-    externalUrl,
-    idempotencyKey,
-    imageUrl: input.imageUrl ?? input.imageUrls?.[0],
-    lastAttemptedAt: new Date().toISOString(),
-    lastError: null,
-    link: input.link ?? ctx.link,
-    meta: { format, pageId: input.pageId, raw, scheduledSeconds },
-    nextRetryAt: scheduledSeconds ? new Date(scheduledSeconds * 1000 + 60_000).toISOString() : null,
-    platform: 'facebook' as const,
-    platformPublicationStatus: scheduledSeconds ? 'pending' : 'published',
-    publishedAt: scheduledSeconds ? undefined : new Date().toISOString(),
-    scheduledAt: scheduledSeconds ? new Date(scheduledSeconds * 1000).toISOString() : undefined,
-    ...(options.authCollection ? { publishedBy: input.publishedByUserId } : {}),
-    sourceHash,
-    sourceId: ctx.sourceId,
-    sourceKind: ctx.sourceKind,
-    status: scheduledSeconds ? ('scheduled' as const) : ('published' as const),
-    title: ctx.baseTitle,
-  }
-
-  const publishedRef: PublishedRef = {
+  return {
     externalId,
     externalUrl,
     meta: {
@@ -660,32 +555,22 @@ export const publishFacebookPost = async (args: {
       scheduledPublishTime: scheduledSeconds,
     },
     platform: 'facebook',
-  }
-  const savedId = await persistPublicationAudit({
-    persist: async () => {
-      if (existing) {
-        const updated = (await payload.update({
-          id: existing.id as never,
-          collection: SOCIAL_POSTS_SLUG as never,
-          data: baseFields as never,
-          overrideAccess: true,
-        })) as unknown as { id: number | string }
-        return updated.id
-      }
-      const created = (await payload.create({
-        collection: SOCIAL_POSTS_SLUG as never,
-        data: baseFields as never,
-        overrideAccess: true,
-      })) as unknown as { id: number | string }
-      return created.id
+    record: {
+      altText: input.altText,
+      body: message,
+      destination: { meta: { format, scheduledPublishTime: input.scheduledPublishTime } },
+      imageUrl: input.imageUrl ?? input.imageUrls?.[0],
+      link: input.link ?? ctx.link,
+      meta: { format, pageId: input.pageId, raw, scheduledSeconds },
+      sourceHash,
+      title: ctx.baseTitle,
     },
-    publishedRef,
-  })
-
-  return {
-    alreadyExisted: false,
-    postId: savedId,
-    publishedRef,
+    ...(scheduledSeconds
+      ? {
+          scheduledAt: new Date(scheduledSeconds * 1000).toISOString(),
+          state: 'scheduled' as const,
+        }
+      : {}),
   }
 }
 

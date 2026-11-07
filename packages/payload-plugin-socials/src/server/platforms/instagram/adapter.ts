@@ -7,6 +7,7 @@ import type {
   PreviewResult,
   PublishArgs,
   PublishedRef,
+  PublishResult,
   ValidationResult,
 } from '../../../types/index.js'
 
@@ -232,7 +233,7 @@ export const createInstagramAdapter = (
       return { issues, ok: !hasError }
     },
 
-    async publish(args: PublishArgs<InstagramPublishInput>): Promise<PublishedRef> {
+    async publish(args: PublishArgs<InstagramPublishInput>): Promise<PublishResult> {
       const validation = this.validate({
         ctx: args.ctx,
         input: args.input,
@@ -255,7 +256,7 @@ export const createInstagramAdapter = (
           payload: args.payload,
           req: args.req,
         })
-        return result.publishedRef
+        return result
       } catch (error) {
         await recordConnectionError(args.payload, 'instagram', error)
         throw error

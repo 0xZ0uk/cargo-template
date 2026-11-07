@@ -10,10 +10,9 @@
 
 import type { PayloadHandler } from 'payload'
 import { seoCache } from '../cache.js'
-import { normalizeForComparison, countWords } from '../helpers.js'
+import { normalizeForComparison } from '../helpers.js'
 import { getStopWords as getBaseStopWords } from '../constants.js'
-import { extractDocContent } from '../helpers/extractDocContent.js'
-import type { ContentExtractorSource } from '../helpers/contentExtractor.js'
+import { analyzeLoadedDocument } from '../helpers/analyzeDocument.js'
 import { docExclusion } from '../helpers/excludeDocs.js'
 import { fetchAllDocs } from '../helpers/fetchAllDocs.js'
 import type { SeoConfig } from '../types.js'
@@ -134,15 +133,6 @@ function simpleStem(word: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Extract text from a document (delegates to shared helper)
-// ---------------------------------------------------------------------------
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function extractDocText(doc: any, collection: string, extractors: ContentExtractorSource): string {
-  return extractDocContent(doc, undefined, { collection, extractors }).text
-}
-
-// ---------------------------------------------------------------------------
 // Handler
 // ---------------------------------------------------------------------------
 
@@ -187,7 +177,12 @@ export function createKeywordResearchHandler(
         kProcessed++
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const d = doc as any
-        const fullText = extractDocText(d, sourceType === 'global' ? '' : sourceSlug, req.payload)
+        const { pageText: fullText, analysis } = analyzeLoadedDocument(
+          req.payload,
+          d,
+          sourceType === 'global' ? { global: sourceSlug } : { collection: sourceSlug },
+          { purpose: 'content' },
+        )
         allDocs.push({
           id: sourceType === 'global' ? sourceSlug : d.id,
           title: d.title || '(untitled)',
@@ -195,7 +190,7 @@ export function createKeywordResearchHandler(
           collection: sourceType === 'global' ? `global:${sourceSlug}` : sourceSlug,
           focusKeyword: d.focusKeyword || '',
           fullText,
-          wordCount: countWords(fullText),
+          wordCount: analysis.stats.wordCount,
         })
       }
 
