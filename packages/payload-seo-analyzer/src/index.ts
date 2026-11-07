@@ -66,7 +66,7 @@ export { fetchAllDocs } from './helpers/fetchAllDocs.js'
 export type { FetchedDoc, FetchAllDocsOptions, DocSourceType } from './helpers/fetchAllDocs.js'
 
 // Document → analyzer input (the mapping `/validate`, the audit and score history use)
-export { buildSeoInputFromDoc } from './helpers/analyzeDocument.js'
+export { buildSeoInputFromDoc } from './helpers/seoInputFromDoc.js'
 
 // Content extraction: the block walker and the `extractContent` option's types
 export { extractBlocksContent } from './helpers/blockContent.js'

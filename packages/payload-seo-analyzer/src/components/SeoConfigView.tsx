@@ -18,7 +18,7 @@ import { useDashboardT } from '../hooks/useSeoAdmin.js'
 import { type DashboardTranslations } from '../dashboard-i18n.js'
 import { Card, cx, DataTable, Field, Grid, LoadingState, ViewBody, ViewHeader } from '../ui/index.js'
 import { useSeoApi } from '../hooks/useSeoApi.js'
-import { invalidateSeoThresholds } from '../hooks/useSeoThresholds.js'
+import { invalidateSeoConfig } from '../hooks/useSeoConfig.js'
 import './SeoConfigView.css'
 
 // ---------------------------------------------------------------------------
@@ -300,7 +300,7 @@ export function SeoConfigView() {
       const data = await res.json()
       if (data.success) {
         // The editor's counters share one cached /settings response: drop it.
-        invalidateSeoThresholds()
+        invalidateSeoConfig()
         setSettings(data.settings)
         setToast({ message: t.seoConfig.saved, type: 'success' })
       } else {

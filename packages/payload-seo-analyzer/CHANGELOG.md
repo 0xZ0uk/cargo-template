@@ -26,6 +26,36 @@ No schema change: nothing to migrate.
 
 ### Changed
 
+- **The sidebar scores exactly what `/validate` scores** (cargo-template #130). One client-safe
+  mapping (`helpers/seoInputFromDoc`, behind `buildSeoInputFromDoc`) turns a document into the
+  whole `SeoInput`, on the server and in the browser. `POST /sidebar-content` now returns
+  `{ input, config }`: the full input of the populated form, and the effective config
+  (`loadMergedConfig`, minus functions and regular expressions). It accepts `{ global, data }`
+  for the plugin's globals. The sidebar scores `analyzeSeo(input, config)`; until the first
+  answer it scores the form's own mapping with the plugin's config (now forwarded whole in
+  `admin.custom.seoAnalyzer.config`, replacing `thresholds`) and the saved settings, merged by
+  the same `mergeSavedSettings` the server uses. Sidebar scores change for apps that set these:
+  - the plugin's `disabledRules`, `overrideWeights`, `localSeoSlugs` (page type), `siteUrl`
+    (cross-domain canonical check) and `collectionRoutes`, and the saved `disabledRules` and
+    `siteName`, now apply in the sidebar;
+  - author, dates (`publishedAt` falling back to `createdAt`, `displayedDate`), the canonical
+    URL, hreflang alternates and `isGlobal` are now read in the sidebar, so the E-E-A-T,
+    freshness, technical and hreflang checks match `/validate`;
+  - every focus keyword counts, not the first ten, and they are no longer trimmed by the sidebar
+    (the analyzer normalises them);
+  - on a global, the sidebar asks `/sidebar-content` too (it read the form only), and a `slug`
+    field on a global is not a URL in the sidebar either.
+- **The score delta compares like with like.** The baseline is the input of the document as
+  opened, scored with the same config as the current score, so the server's config arriving
+  after an early edit no longer shows up as a change.
+- **Limits are resolved once per analysis** (`AnalysisContext.limits`). Rules read `ctx.limits`
+  instead of each calling `resolveThresholds`; a context built by hand needs `limits`.
+- `/sidebar-content` keeps `blocks` in its answer when an extractor ran (the input is
+  `/validate`'s, as is).
+- Removed: `helpers/docContentInput` (`contentInputFromDoc`, `DOC_CONTENT_INPUT_KEYS`),
+  `pickDocContentInput` and `buildSidebarContentInput`; the hook `useSeoThresholds` is now
+  `useSeoConfig` (and `invalidateSeoThresholds` is `invalidateSeoConfig`). All were internal.
+
 - **One "analyse a document" module behind every server analysis** (cargo-template #129).
   `/validate`, the dashboard audit, score history, the indexation audit, keyword research,
   duplicate content, content grade and the AI endpoints go through `helpers/analyzeDocument`, which

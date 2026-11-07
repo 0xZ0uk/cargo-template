@@ -15,9 +15,11 @@ vi.mock('../helpers/blockContent', async (importOriginal) => {
 })
 
 import { analyzeSeo } from '../index'
-import { analyzeLoadedDocument, buildSeoInputFromDoc } from '../helpers/analyzeDocument'
+import { analyzeLoadedDocument } from '../helpers/analyzeDocument'
 import { extractBlocksContent } from '../helpers/blockContent'
-import { buildSidebarContentInput } from '../helpers/sidebarContent'
+import { buildSeoInputFromDoc, seoInputFromDoc } from '../helpers/seoInputFromDoc'
+import { formStateToDoc } from '../helpers/sidebarContent'
+import { toFormState } from './helpers/formState'
 import { buildJsonLd } from '../helpers/buildSchema'
 import { extractAllInternalLinks } from '../helpers/linkExtractor'
 import { extractDocExternalLinks } from '../endpoints/externalLinks'
@@ -260,26 +262,9 @@ describe('page-builder blocks: server extraction', () => {
 // Sidebar parity: the sidebar reads Payload form state, flattened by path.
 // ---------------------------------------------------------------------------
 
-type FormState = Record<string, { value: unknown; disableFormData?: boolean }>
 
-const isLexical = (v: unknown) =>
-  !!v && typeof v === 'object' && 'root' in (v as Record<string, unknown>)
-
-/** Flatten a document into form state the way Payload's admin form holds it. */
-function toFormState(value: unknown, path = '', state: FormState = {}): FormState {
-  if (Array.isArray(value)) {
-    // Array and blocks fields hold their row count and are left out of form data.
-    if (path) state[path] = { value: value.length, disableFormData: true }
-    value.forEach((row, i) => toFormState(row, path ? `${path}.${i}` : String(i), state))
-  } else if (value && typeof value === 'object' && !isLexical(value)) {
-    for (const [key, child] of Object.entries(value)) {
-      toFormState(child, path ? `${path}.${key}` : key, state)
-    }
-  } else if (path) {
-    state[path] = { value }
-  }
-  return state
-}
+/** The sidebar's own reading of a form: the form reduced to a document, then the one mapping. */
+const sidebarInput = (formState: Record<string, unknown>) => seoInputFromDoc(formStateToDoc(formState), { collection: 'pages' })
 
 describe('page-builder blocks: sidebar parity', () => {
   const pick = (analysis: ReturnType<typeof analyzeSeo>) =>
@@ -287,18 +272,14 @@ describe('page-builder blocks: sidebar parity', () => {
       .filter((c) => c.group === 'headings' || c.id === 'content-wordcount')
       .map((c) => ({ id: c.id, status: c.status, message: c.message }))
 
-  it('the sidebar and /validate derive the same headings and word count', () => {
+  it('the sidebar and /validate derive the same input and score from the same document', () => {
     const fromValidate = analyzeSeo(buildSeoInputFromDoc(blockPage, 'pages'))
-    const sidebar = buildSidebarContentInput(toFormState(blockPage))
-    const fromSidebar = analyzeSeo({
-      metaTitle: blockPage.meta.title,
-      metaDescription: blockPage.meta.description,
-      slug: blockPage.slug,
-      ...sidebar,
-    })
+    const sidebar = sidebarInput(toFormState(blockPage))
+    const fromSidebar = analyzeSeo(sidebar)
 
     expect(sidebar.blocks).toHaveLength(blockPage.layout.length)
     expect(pick(fromSidebar)).toEqual(pick(fromValidate))
+    expect(fromSidebar.score).toBe(fromValidate.score)
     expect(fromSidebar.checks.find((c) => c.id === 'h1-missing')).toBeUndefined()
   })
 })
@@ -394,18 +375,14 @@ describe('page-builder blocks: link graph, external links, FAQPage, GEO', () => 
   })
 
   it('carries robotsMeta from the noindex checkbox, so robots-noindex shows live', () => {
-    const ticked = buildSidebarContentInput(toFormState({ ...blockPage, noindex: true }))
+    const ticked = sidebarInput(toFormState({ ...blockPage, noindex: true }))
     expect(ticked.robotsMeta).toBe('noindex')
-    const check = analyzeSeo({ metaTitle: blockPage.meta.title, slug: blockPage.slug, ...ticked }).checks.find(
-      (c) => c.id === 'robots-noindex',
-    )
-    expect(check?.status).toBe('fail')
+    expect(analyzeSeo(ticked).checks.find((c) => c.id === 'robots-noindex')?.status).toBe('fail')
 
-    expect(buildSidebarContentInput(toFormState({ ...blockPage, noindex: false })).robotsMeta).toBeUndefined()
+    expect(sidebarInput(toFormState({ ...blockPage, noindex: false })).robotsMeta).toBeUndefined()
     // Same precedence as /validate: a raw robots string wins over the checkbox.
     expect(
-      buildSidebarContentInput(toFormState({ ...blockPage, noindex: true, meta: { ...blockPage.meta, robots: 'nofollow' } }))
-        .robotsMeta,
+      sidebarInput(toFormState({ ...blockPage, noindex: true, meta: { ...blockPage.meta, robots: 'nofollow' } })).robotsMeta,
     ).toBe('nofollow')
   })
 })

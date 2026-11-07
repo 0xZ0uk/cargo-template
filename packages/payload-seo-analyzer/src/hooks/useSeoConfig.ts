@@ -2,34 +2,35 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useConfig } from '@payloadcms/ui'
-import type { SeoThresholds } from '../types.js'
-import { mergeThresholds, resolveThresholds, type ResolvedThresholds } from '../helpers/thresholds.js'
+import type { SeoConfig } from '../types.js'
+import { mergeSavedSettings, type SavedSeoSettings } from '../helpers/seoConfig.js'
+import { resolveThresholds, type ResolvedThresholds } from '../helpers/thresholds.js'
 import { useSeoApi } from './useSeoApi.js'
 
-type SavedThresholds = Record<string, unknown> | null
+type SavedSettings = SavedSeoSettings | null
 
 /**
  * One `/settings` request shared by every consumer on the page (the sidebar, the field
  * counters, the previews), keyed by the endpoint URL. The entry expires after a short time
- * and `invalidateSeoThresholds()` drops it on save, so an edited range shows up without a
+ * and `invalidateSeoConfig()` drops it on save, so an edited setting shows up without a
  * reload. A failed request is not kept: the next consumer retries.
  */
 const SETTINGS_TTL_MS = 30_000
-const settingsCache = new Map<string, { at: number; promise: Promise<SavedThresholds> }>()
+const settingsCache = new Map<string, { at: number; promise: Promise<SavedSettings> }>()
 
-function fetchSavedThresholds(url: string): Promise<SavedThresholds> {
+function fetchSavedSettings(url: string): Promise<SavedSettings> {
   const hit = settingsCache.get(url)
   if (hit && Date.now() - hit.at < SETTINGS_TTL_MS) return hit.promise
   const promise = fetch(url, { credentials: 'include', cache: 'no-store' })
     .then((res) => (res.ok ? res.json() : null))
-    .then((data: { settings?: { thresholds?: Record<string, unknown> } } | null) => {
-      const thresholds = data?.settings?.thresholds ?? null
+    .then((data: { settings?: SavedSeoSettings } | null) => {
+      const settings = data?.settings && typeof data.settings === 'object' ? data.settings : null
       // Nothing usable (error, empty): do not pin it, the next consumer tries again.
-      if (!thresholds && settingsCache.get(url)?.promise === promise) settingsCache.delete(url)
-      return thresholds
+      if (!settings && settingsCache.get(url)?.promise === promise) settingsCache.delete(url)
+      return settings
     })
     .catch(() => {
-      // Non-critical: the plugin option (or the defaults) apply.
+      // Non-critical: the plugin's config applies.
       if (settingsCache.get(url)?.promise === promise) settingsCache.delete(url)
       return null
     })
@@ -38,28 +39,30 @@ function fetchSavedThresholds(url: string): Promise<SavedThresholds> {
 }
 
 /** Forget the shared `/settings` response (after the settings are saved, and in tests). */
-export function invalidateSeoThresholds(): void {
+export function invalidateSeoConfig(): void {
   settingsCache.clear()
 }
 
 /**
- * The thresholds the sidebar scores with: the plugin `thresholds` option (forwarded in
- * `admin.custom.seoAnalyzer`) with the saved `/admin/seo-config` values on top, the same
- * precedence as `loadMergedConfig` on the server. Until the settings arrive (or when the
- * request fails) the plugin option alone applies. Returns a stable reference between
- * renders so it is safe in a dependency array.
+ * The effective analyzer config in the admin: the plugin's config (forwarded, JSON-safe, in
+ * `admin.custom.seoAnalyzer.config`) with the saved `/admin/seo-config` settings merged by
+ * `mergeSavedSettings`, the merge `loadMergedConfig` applies on the server. Until the settings
+ * arrive (or when the request fails) the plugin's config alone applies. Returns a stable
+ * reference between renders so it is safe in a dependency array.
+ *
+ * The sidebar uses it only until `/sidebar-content` answers with the server's config.
  */
-export function useSeoThresholds(): SeoThresholds | undefined {
+export function useSeoConfig(): SeoConfig {
   const seoApi = useSeoApi()
-  const pluginThresholds = (
-    useConfig()?.config?.admin?.custom as { seoAnalyzer?: { thresholds?: SeoThresholds } } | undefined
-  )?.seoAnalyzer?.thresholds
-  const [saved, setSaved] = useState<SavedThresholds>(null)
+  const pluginConfig = (
+    useConfig()?.config?.admin?.custom as { seoAnalyzer?: { config?: SeoConfig } } | undefined
+  )?.seoAnalyzer?.config
+  const [saved, setSaved] = useState<SavedSettings>(null)
 
   useEffect(() => {
     let cancelled = false
-    void fetchSavedThresholds(seoApi('/settings')).then((thresholds) => {
-      if (!cancelled && thresholds) setSaved(thresholds)
+    void fetchSavedSettings(seoApi('/settings')).then((settings) => {
+      if (!cancelled && settings) setSaved(settings)
     })
     return () => {
       cancelled = true
@@ -67,17 +70,17 @@ export function useSeoThresholds(): SeoThresholds | undefined {
   }, [seoApi])
 
   // Keyed on the serialised inputs: the config object may be a new reference every render.
-  const pluginKey = JSON.stringify(pluginThresholds ?? null)
+  const pluginKey = JSON.stringify(pluginConfig ?? null)
   const savedKey = JSON.stringify(saved)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  return useMemo(() => mergeThresholds(pluginThresholds, saved), [pluginKey, savedKey])
+  return useMemo(() => mergeSavedSettings(pluginConfig, saved), [pluginKey, savedKey])
 }
 
 /**
- * Every limit resolved (override or default), for the length counters and their tones, so
- * they agree with the rules. Same sources as `useSeoThresholds`.
+ * Every limit resolved (override or default), for the length counters, previews and tips,
+ * so they agree with the rules (which read the same resolution as `ctx.limits`).
  */
 export function useResolvedThresholds(): ResolvedThresholds {
-  const thresholds = useSeoThresholds()
-  return useMemo(() => resolveThresholds(thresholds), [thresholds])
+  const config = useSeoConfig()
+  return useMemo(() => resolveThresholds(config.thresholds), [config])
 }

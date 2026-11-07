@@ -16,7 +16,7 @@ vi.mock('@payloadcms/ui', async () => ({
   useConfig: () => ({
     config: {
       routes: { api: '/api', admin: '/admin' },
-      admin: { custom: { seoAnalyzer: { endpointBasePath: '/seo-plugin', thresholds: pluginThresholds } } },
+      admin: { custom: { seoAnalyzer: { endpointBasePath: '/seo-plugin', config: { thresholds: pluginThresholds } } } },
     },
   }),
 }))
@@ -25,7 +25,7 @@ import { MetaDescriptionField } from '../components/MetaDescriptionField.js'
 import { MetaTitleField } from '../components/MetaTitleField.js'
 import { SeoSocialPreview } from '../components/SeoSocialPreview.js'
 import { SerpPreview } from '../components/SerpPreview.js'
-import { invalidateSeoThresholds } from '../hooks/useSeoThresholds.js'
+import { invalidateSeoConfig } from '../hooks/useSeoConfig.js'
 import { resolveThresholds } from '../helpers/thresholds.js'
 import { getDashboardT } from '../dashboard-i18n.js'
 
@@ -35,7 +35,7 @@ beforeEach(() => {
   pluginThresholds = undefined
   saved = undefined
   fieldValue = ''
-  invalidateSeoThresholds()
+  invalidateSeoConfig()
   fetchMock = vi.fn(async (url: string) => ({
     ok: true,
     status: 200,
@@ -147,11 +147,11 @@ describe('shared settings request', () => {
     expect(settingsCalls()).toBe(2)
   })
 
-  it('invalidateSeoThresholds forces the next consumer to refetch', async () => {
+  it('invalidateSeoConfig forces the next consumer to refetch', async () => {
     const first = render(<MetaDescriptionField path="meta.description" field={{} as never} />)
     await waitFor(() => expect(settingsCalls()).toBe(1))
     first.unmount()
-    invalidateSeoThresholds()
+    invalidateSeoConfig()
     render(<MetaDescriptionField path="meta.description" field={{} as never} />)
     await waitFor(() => expect(settingsCalls()).toBe(2))
   })

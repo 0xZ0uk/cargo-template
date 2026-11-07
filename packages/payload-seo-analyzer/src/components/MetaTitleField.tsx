@@ -19,7 +19,7 @@ import { useDashboardT } from '../hooks/useSeoAdmin.js'
 import { withSeoErrorBoundary } from './withSeoErrorBoundary.js'
 import { resolveMetaFieldOptions, type MetaFieldOptionProps } from './metaFieldOptions.js'
 import { useSeoApi } from '../hooks/useSeoApi.js'
-import { useResolvedThresholds } from '../hooks/useSeoThresholds.js'
+import { useResolvedThresholds } from '../hooks/useSeoConfig.js'
 import './MetaField.css'
 
 // ---------------------------------------------------------------------------

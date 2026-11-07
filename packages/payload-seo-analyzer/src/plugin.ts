@@ -27,6 +27,7 @@ import { seoFields } from './fields.js'
 import { metaFields } from './metaFields.js'
 import { createValidateHandler } from './endpoints/validate.js'
 import { createSidebarContentHandler } from './endpoints/sidebarContent.js'
+import { clientSeoConfig } from './helpers/seoConfig.js'
 import { fingerprintContentExtractors, type SeoContentExtractors } from './helpers/contentExtractor.js'
 import { createCheckKeywordHandler } from './endpoints/checkKeyword.js'
 import { createAuditHandler } from './endpoints/audit.js'
@@ -759,12 +760,12 @@ export const seoAnalyzerPlugin =
         method: 'get',
         handler: createValidateHandler(targetCollections, targetGlobals, seoConfig),
       },
-      // The sidebar's content, populated and extracted on the server (IDs → documents,
-      // `extractContent`), so the live score reads what /validate reads.
+      // The sidebar's input and effective config, read on the server (IDs → documents,
+      // `extractContent`, saved settings), so the live score is what /validate scores.
       {
         path: `${basePath}/sidebar-content`,
         method: 'post',
-        handler: createSidebarContentHandler(targetCollections),
+        handler: createSidebarContentHandler(targetCollections, targetGlobals, seoConfig),
       },
       {
         path: `${basePath}/check-keyword`,
@@ -1163,9 +1164,11 @@ export const seoAnalyzerPlugin =
         endpointBasePath: basePath,
         // The analyzed collections that exist in this config (the schema builder's page picker).
         collections: targetCollections.filter((slug) => config.collections?.some((c) => c.slug === slug)),
-        // The `thresholds` option, so the sidebar scores with the same limits as the audit
-        // (saved settings are layered over it by hooks/useSeoThresholds.ts).
-        ...(pluginConfig.thresholds && { thresholds: pluginConfig.thresholds }),
+        // The analyzer config (rules, weights, local-SEO slugs, thresholds…) without what
+        // can't travel as JSON. The admin layers the saved settings over it
+        // (hooks/useSeoConfig.ts) for the length counters and the sidebar's first reading;
+        // the sidebar then scores with the config `/sidebar-content` returns.
+        config: clientSeoConfig(seoConfig),
       },
     }
 

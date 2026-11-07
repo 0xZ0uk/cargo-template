@@ -18,6 +18,7 @@ import {
 } from '@payloadcms/ui'
 import {
   analyzeSeo,
+  type SeoInput,
   type SeoAnalysis,
   type SeoCheck,
   type CheckCategory,
@@ -34,7 +35,7 @@ import { sidebarContentText } from '../helpers/sidebarContent.js'
 import { useSidebarContent } from '../hooks/useSidebarContent.js'
 import { Card, Checklist, cx, ScoreRing, statusTone, TonePill, type Tone } from '../ui/index.js'
 import { useAdminRoute, useSeoApi } from '../hooks/useSeoApi.js'
-import { useSeoThresholds } from '../hooks/useSeoThresholds.js'
+import { useSeoConfig } from '../hooks/useSeoConfig.js'
 import { resolveThresholds } from '../helpers/thresholds.js'
 import './SeoAnalyzer.css'
 
@@ -525,9 +526,11 @@ const SeoAnalyzerInner: React.FC = () => {
   const aiEnabled = useSeoFeature('aiFeatures') !== false
   const t = useDashboardT()
   const [formFields, dispatchFields] = useAllFormFields()
-  const initialScoreRef = useRef<number | null>(null)
-  // The latest score of the document as opened, before the server has read it.
-  const openedScoreRef = useRef<number | null>(null)
+  // The input the score delta is measured from (the document as opened), scored with the
+  // current config, so the delta never mixes two configs.
+  const [baselineInput, setBaselineInput] = useState<SeoInput | null>(null)
+  // The latest local reading of the document as opened, before the server has read it.
+  const openedInputRef = useRef<SeoInput | null>(null)
   const [suggestionsOpen, setSuggestionsOpen] = useState(true)
   const [cannibalizationExpanded, setCannibalizationExpanded] = useState(false)
   const [linkingSectionOpen, setLinkingSectionOpen] = useState(false)
@@ -556,80 +559,43 @@ const SeoAnalyzerInner: React.FC = () => {
     [formFields],
   )
 
-  // Extract focusKeyword, cornerstone flag and document ID
-  const focusKeyword = getFieldValue('focusKeyword') as string | undefined
-  const isCornerstone = getFieldValue('isCornerstone') as boolean | undefined
-  // The document id and collection come from the edit view: Payload 4 keeps no `id` in the
+  // The document id and target come from the edit view: Payload 4 keeps no `id` in the
   // form state, so reading it from the fields left every saved document "unsaved".
-  const { id: docInfoId, collectionSlug } = useDocumentInfo()
+  const { id: docInfoId, collectionSlug, globalSlug } = useDocumentInfo()
   const documentId =
     docInfoId != null && docInfoId !== '' ? String(docInfoId) : (getFieldValue('id') as string | undefined)
-  const updatedAt = getFieldValue('updatedAt') as string | undefined
-  const contentLastReviewed = getFieldValue('contentLastReviewed') as string | undefined
+  const target = useMemo(
+    () => (collectionSlug ? { collection: collectionSlug } : globalSlug ? { global: globalSlug } : undefined),
+    [collectionSlug, globalSlug],
+  )
 
-  // The page's content, populated and extracted on the server like /validate reads it
-  // (uploads, reference links and reusable sections are IDs in the form).
+  // What /validate would score: the form's values populated and mapped on the server (uploads,
+  // authors, reference links and reusable sections are IDs in the form), with the effective
+  // config (plugin options and saved settings). Until the first answer, the form's own mapping
+  // and the admin's reading of the same config.
   const locale = useLocale()?.code
   const {
-    content: contentInput,
+    input,
+    config: serverConfig,
     resolved: contentResolved,
     edited: contentEdited,
-  } = useSidebarContent(
-    formFields,
-    collectionSlug,
-    seoApi('/sidebar-content'),
-    locale,
-  )
+  } = useSidebarContent(formFields, target, seoApi('/sidebar-content'), locale)
+  const provisionalConfig = useSeoConfig()
+  const config = serverConfig ?? provisionalConfig
+  // Every limit, resolved once from the config the score uses (the rules' `ctx.limits`).
+  const limits = useMemo(() => resolveThresholds(config.thresholds), [config])
+
+  const focusKeyword = input.focusKeyword
+  const focusKeywords = input.focusKeywords ?? []
 
   // Check if the primary keyword is already used by another document
   const keywordUsage = useKeywordDuplicateCheck(focusKeyword, documentId)
 
-  // Custom thresholds (plugin option + saved /admin/seo-config values)
-  const thresholds = useSeoThresholds()
-  const limits = useMemo(() => resolveThresholds(thresholds), [thresholds])
-
-  // Extract secondary keywords from form state (array field: focusKeywords.N.keyword)
-  const focusKeywords: string[] = useMemo(() => {
-    if (!formFields) return []
-    const keywords: string[] = []
-    let idx = 0
-    while (true) {
-      const kw = getFieldValue(`focusKeywords.${idx}.keyword`) as string | undefined
-      if (kw === undefined && idx > 0) break
-      if (kw && kw.trim()) keywords.push(kw.trim())
-      idx++
-      if (idx > 10) break // safety
-    }
-    return keywords
-  }, [formFields, getFieldValue])
-
-  // Extract values from form state and run analysis
-  const { analysis, wordCount } = useMemo(() => {
-    if (!formFields) return { analysis: EMPTY_ANALYSIS, wordCount: 0 }
-
-    const metaTitle = getFieldValue('meta.title') as string | undefined
-    const metaDescription = getFieldValue('meta.description') as string | undefined
-    const slug = getFieldValue('slug') as string | undefined
-
-    // Content (hero, layout blocks, post content, the meta image): the form reduced to a
-    // document, populated on the server and mapped like /validate maps a saved document.
-    const result = analyzeSeo(
-      {
-        metaTitle,
-        metaDescription,
-        slug,
-        focusKeyword,
-        focusKeywords: focusKeywords.length > 0 ? focusKeywords : undefined,
-        ...contentInput,
-        isCornerstone: !!isCornerstone,
-        updatedAt: updatedAt || undefined,
-        contentLastReviewed: contentLastReviewed || undefined,
-      },
-      thresholds ? { thresholds } : undefined,
-    )
-
-    return { analysis: result, wordCount: result.stats.wordCount }
-  }, [formFields, contentInput, focusKeyword, focusKeywords, isCornerstone, updatedAt, contentLastReviewed, getFieldValue, thresholds])
+  const analysis = useMemo(
+    () => (formFields ? analyzeSeo(input, config) : EMPTY_ANALYSIS),
+    [formFields, input, config],
+  )
+  const wordCount = analysis.stats.wordCount
 
   // The page host for the social preview. Read after mount: during SSR there is no
   // window, and reading it in render made the server and client markup disagree
@@ -641,11 +607,9 @@ const SeoAnalyzerInner: React.FC = () => {
 
   // Social preview data — extracted from form state
   const socialPreviewData = useMemo(() => {
-    const metaTitle = getFieldValue('meta.title') as string | undefined
-    const metaDescription = getFieldValue('meta.description') as string | undefined
+    const { metaTitle, metaDescription, slug } = input
     // Populated by the server read (an ID in the form).
-    const metaImage = contentInput.metaImage ?? getFieldValue('meta.image')
-    const slug = getFieldValue('slug') as string | undefined
+    const metaImage = input.metaImage
 
     // Try to build image URL from meta image
     let imageUrl: string | undefined
@@ -654,13 +618,13 @@ const SeoAnalyzerInner: React.FC = () => {
     }
 
     return { metaTitle, metaDescription, imageUrl, hostname, slug }
-  }, [contentInput, getFieldValue, hostname])
+  }, [input, hostname])
 
   // Internal linking — extract text content for suggestions
   const textContentForLinks = useMemo(() => {
     if (!formFields) return ''
-    return sidebarContentText(contentInput)
-  }, [formFields, contentInput])
+    return sidebarContentText(input)
+  }, [formFields, input])
 
   // Detect collection from current URL
   const currentCollection = useMemo(() => {
@@ -676,26 +640,31 @@ const SeoAnalyzerInner: React.FC = () => {
   // Reading time: ~200 words per minute, minimum 1 minute
   const readingTime = Math.max(1, Math.round(wordCount / 200))
 
-  // Feature 1: Capture the score of the document as opened, once the server has read the
-  // content (the first, local reading counts no uploads, so the delta would start skewed).
-  // An edit before that answer must not move the baseline to the edited document: the last
-  // local reading of the opened document becomes the baseline instead. That reading counts
-  // uploads, `reference` links and reusable sections as nothing, so in this case (an edit
-  // within the first debounce and request) the delta can include their checks flipping once
-  // the server answers. Accepted: posting the opened form as well would cost a second request
-  // on every early edit for a rare, cosmetic skew.
+  // Feature 1: Capture the document as opened, once the server has read it (the first, local
+  // reading counts no uploads, so the delta would start skewed). An edit before that answer
+  // must not move the baseline to the edited document: the last local reading of the opened
+  // document becomes the baseline instead. That reading counts uploads, `reference` links and
+  // reusable sections as nothing, so in this case (an edit within the first debounce and
+  // request) the delta can include their checks flipping once the server answers. Accepted:
+  // posting the opened form as well would cost a second request on every early edit for a
+  // rare, cosmetic skew. The config is not part of that skew: the baseline is an input, scored
+  // with the same config as the current score (the server's once it has answered).
   useEffect(() => {
-    if (initialScoreRef.current !== null || analysis.checks.length === 0) return
-    if (contentEdited && openedScoreRef.current !== null) {
-      initialScoreRef.current = openedScoreRef.current
-    } else if (contentResolved || !collectionSlug) {
-      initialScoreRef.current = analysis.score
+    if (baselineInput !== null || !formFields) return
+    if (contentEdited && openedInputRef.current !== null) {
+      setBaselineInput(openedInputRef.current)
+    } else if (contentResolved || !target) {
+      setBaselineInput(input)
     } else if (!contentEdited) {
-      openedScoreRef.current = analysis.score
+      openedInputRef.current = input
     }
-  }, [analysis.score, analysis.checks.length, contentResolved, contentEdited, collectionSlug])
+  }, [baselineInput, formFields, input, contentResolved, contentEdited, target])
 
-  const scoreDelta = initialScoreRef.current !== null ? analysis.score - initialScoreRef.current : null
+  const baselineScore = useMemo(
+    () => (baselineInput ? analyzeSeo(baselineInput, config).score : null),
+    [baselineInput, config],
+  )
+  const scoreDelta = baselineScore !== null ? analysis.score - baselineScore : null
 
   const levelLabel = getLevelLabel(analysis.level, t)
 
@@ -770,7 +739,7 @@ const SeoAnalyzerInner: React.FC = () => {
       const title = getFieldValue('title') as string || ''
       const slug = getFieldValue('slug') as string || ''
       // Extract text from the page content (hero, layout blocks, post content) for the AI endpoint
-      const textContent = sidebarContentText(contentInput)
+      const textContent = sidebarContentText(input)
 
       const res = await fetch(seoApi('/ai-generate'), {
         method: 'POST',
@@ -851,7 +820,7 @@ const SeoAnalyzerInner: React.FC = () => {
           <div className="seo-stack seo-stack--tight seo-analyzer__score-meta">
             <div className="seo-row">
               <TonePill tone={getLevelTone(analysis.level)}>{levelLabel}</TonePill>
-              {isCornerstone && <TonePill tone="brand">{t.seoAnalyzer.cornerstoneLabel}</TonePill>}
+              {input.isCornerstone && <TonePill tone="brand">{t.seoAnalyzer.cornerstoneLabel}</TonePill>}
               {analysis.aiReadiness && (
                 <span title={t.seoAnalyzer.aiReadinessTooltip}>
                   <TonePill tone={getLevelTone(analysis.aiReadiness.level)}>

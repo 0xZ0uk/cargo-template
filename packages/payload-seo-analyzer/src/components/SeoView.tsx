@@ -42,7 +42,7 @@ import {
   type Tone,
 } from '../ui/index.js'
 import { usePayloadApi, useSeoApi } from '../hooks/useSeoApi.js'
-import { useResolvedThresholds } from '../hooks/useSeoThresholds.js'
+import { useResolvedThresholds } from '../hooks/useSeoConfig.js'
 import './SeoView.css'
 
 // ---------------------------------------------------------------------------
