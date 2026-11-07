@@ -679,7 +679,11 @@ const SeoAnalyzerInner: React.FC = () => {
   // Feature 1: Capture the score of the document as opened, once the server has read the
   // content (the first, local reading counts no uploads, so the delta would start skewed).
   // An edit before that answer must not move the baseline to the edited document: the last
-  // local reading of the opened document becomes the baseline instead.
+  // local reading of the opened document becomes the baseline instead. That reading counts
+  // uploads, `reference` links and reusable sections as nothing, so in this case (an edit
+  // within the first debounce and request) the delta can include their checks flipping once
+  // the server answers. Accepted: posting the opened form as well would cost a second request
+  // on every early edit for a rare, cosmetic skew.
   useEffect(() => {
     if (initialScoreRef.current !== null || analysis.checks.length === 0) return
     if (contentEdited && openedScoreRef.current !== null) {
