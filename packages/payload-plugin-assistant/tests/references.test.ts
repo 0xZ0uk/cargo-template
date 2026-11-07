@@ -146,7 +146,9 @@ describe("applied writes and the open document", () => {
     ["an update by id", call("updateDocument", { slug: "pages", id: 12 }), undefined, true],
     ["the Markdown rich text tool", call("setRichTextFromMarkdown", { slug: "pages", id: "12", path: "body" }), undefined, true],
     ["an update by where that returned it", call("updateDocument", { slug: "pages", where: {} }), fenced({ docs: [{ id: 12 }] }), true],
-    ["a restore", call("restoreVersion", { slug: "pages", id: "12" }), undefined, true],
+    ["a restore of its version (the result is the document)", call("restoreVersion", { slug: "pages", id: "v7" }), fenced({ id: 12, title: "Home" }), true],
+    // A restore's id is the version's: version 12 is not document 12.
+    ["a restore of version 12 of another document", call("restoreVersion", { slug: "pages", id: "12" }), fenced({ id: 30 }), false],
     ["another document", call("updateDocument", { slug: "pages", id: 13 }), undefined, false],
     ["another collection", call("updateDocument", { slug: "posts", id: 12 }), undefined, false],
     ["a delete", call("deleteDocuments", { slug: "pages", id: 12 }), undefined, false],

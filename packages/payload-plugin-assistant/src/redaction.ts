@@ -1,4 +1,5 @@
 import type { ModelMessage } from "@tanstack/ai";
+import { describeCall, DOCUMENT_WRAPPERS, jsonSpansIn, type ToolCall } from "./toolCalls";
 
 /**
  * Field redaction (#68): fields the model never sees. Pure and dependency-free (type imports
@@ -209,9 +210,6 @@ function redactPolymorphic(node: Json, policy: RedactionPolicy, depth: number): 
   return copy ?? current;
 }
 
-/** Wrappers around documents of the call's collection: pages, `{ doc }`, versions and their `parent`, `{ result }`. */
-const WRAPPERS = ["docs", "doc", "version", "parent", "result"] as const;
-
 /**
  * `findDistinct` rows: `{ values: [{ [field]: value }] }`, keyed by the literal (possibly dotted)
  * field path. A redacted field is refused before the call ({@link redactedReference}); a
@@ -263,7 +261,7 @@ export function redactFor<T = Json>(value: T, slug: string | undefined, policy: 
     if (!isRecord(node)) return node;
     const current = redactEntity(node, slug, policy, 0) as Record<string, unknown>;
     let copy: Record<string, unknown> | undefined;
-    for (const key of WRAPPERS) {
+    for (const key of DOCUMENT_WRAPPERS) {
       const child = current[key];
       if (child === undefined || child === null || typeof child !== "object") continue;
       const result = visit(child, depth + 1);
@@ -288,52 +286,6 @@ const leavesOf = (policy: RedactionPolicy) => [
   ),
 ];
 
-/** The end (exclusive) of the JSON object or array starting at `start`, string-aware; -1 if unbalanced. */
-function matchingEnd(text: string, start: number): number {
-  let depth = 0;
-  let inString = false;
-  for (let i = start; i < text.length; i++) {
-    const char = text[i];
-    if (inString) {
-      if (char === "\\") i++;
-      else if (char === '"') inString = false;
-      continue;
-    }
-    if (char === '"') inString = true;
-    else if (char === "{" || char === "[") depth++;
-    else if (char === "}" || char === "]") {
-      depth--;
-      if (depth === 0) return i + 1;
-    }
-  }
-  return -1;
-}
-
-/** Every JSON object or array in `text` (fenced or not), parsed, in order. */
-export function jsonValuesIn(text: string): unknown[] {
-  const values: unknown[] = [];
-  let i = 0;
-  while (i < text.length) {
-    const char = text[i];
-    if (char !== "{" && char !== "[") {
-      i++;
-      continue;
-    }
-    const end = matchingEnd(text, i);
-    if (end === -1) {
-      i++;
-      continue;
-    }
-    try {
-      values.push(JSON.parse(text.slice(i, end)));
-      i = end;
-    } catch {
-      i++;
-    }
-  }
-  return values;
-}
-
 /**
  * A tool result's text without redacted fields ({@link redactFor}). plugin-mcp answers in text
  * with the data as JSON, fenced or not ("Document from collection …:\n{…}", "Collection: …\n```json\n{…}\n```",
@@ -345,32 +297,12 @@ export function redactTextFor(text: string, slug: string | undefined, policy: Re
   if (!policy || isEmptyPolicy(policy) || !leavesOf(policy).some((leaf) => text.includes(`"${leaf}"`))) return text;
   let out = "";
   let cursor = 0;
-  let i = 0;
-  while (i < text.length) {
-    const char = text[i];
-    if (char !== "{" && char !== "[") {
-      i++;
-      continue;
-    }
-    const end = matchingEnd(text, i);
-    if (end === -1) {
-      i++;
-      continue;
-    }
-    const span = text.slice(i, end);
-    let parsed: Json;
-    try {
-      parsed = JSON.parse(span);
-    } catch {
-      i++;
-      continue;
-    }
-    const redacted = redactFor(parsed, slug, policy);
-    if (redacted !== parsed) {
-      out += text.slice(cursor, i) + (span.includes("\n") ? JSON.stringify(redacted, null, 2) : JSON.stringify(redacted));
-      cursor = end;
-    }
-    i = end;
+  for (const span of jsonSpansIn(text)) {
+    const redacted = redactFor(span.value, slug, policy);
+    if (redacted === span.value) continue;
+    const raw = text.slice(span.start, span.end);
+    out += text.slice(cursor, span.start) + (raw.includes("\n") ? JSON.stringify(redacted, null, 2) : JSON.stringify(redacted));
+    cursor = span.end;
   }
   return cursor === 0 ? text : out + text.slice(cursor);
 }
@@ -396,22 +328,9 @@ export function redactResultFor<T = Json>(result: T, slug: string | undefined, p
   return redactFor(result, slug, policy);
 }
 
-/** The collection or global a tool call is about: its `slug` argument (plugin-mcp's convention). */
-export function toolSlug(input: unknown): string | undefined {
-  let value = input;
-  if (typeof value === "string") {
-    try {
-      value = JSON.parse(value);
-    } catch {
-      return undefined;
-    }
-  }
-  return isRecord(value) && typeof value.slug === "string" ? value.slug : undefined;
-}
-
 /**
  * A transcript without redacted fields in its tool results: each `tool` message is redacted as a
- * result about the slug its call named ({@link redactResultFor}). What the conversation stores
+ * result about the collection or global its call targets ({@link redactResultFor}). What the conversation stores
  * goes through this, so a value that reached the transcript some other way (an older message, a
  * custom runner) never stays there.
  */
@@ -420,7 +339,7 @@ export function redactTranscript(messages: ModelMessage[], policy: RedactionPoli
   const slugOfCall = new Map<string, string>();
   for (const message of messages) {
     for (const call of message.toolCalls ?? []) {
-      const slug = toolSlug(call.function?.arguments);
+      const slug = describeCall(call.function?.name ?? "", call.function?.arguments).target?.slug;
       if (slug) slugOfCall.set(call.id, slug);
     }
   }
@@ -469,66 +388,33 @@ function reachesRedacted(policy: RedactionPolicy, slug: string, segments: readon
   return false;
 }
 
-/** The field paths a `where` names: its keys, through `and` / `or`. */
-function wherePaths(where: unknown, depth = 0): string[] {
-  if (depth > 16) return [];
-  if (Array.isArray(where)) return where.flatMap((item) => wherePaths(item, depth + 1));
-  if (!isRecord(where)) return [];
-  return Object.entries(where).flatMap(([key, value]) =>
-    key === "and" || key === "or" || key === "AND" || key === "OR" ? wherePaths(value, depth + 1) : [key]
-  );
-}
-
-/** The field paths a `select` turns on (`{ group: { field: true } }` → `group.field`). */
-function selectPaths(select: unknown, prefix = "", depth = 0): string[] {
-  if (!isRecord(select) || depth > 16) return [];
-  return Object.entries(select).flatMap(([key, value]) => {
-    const path = prefix ? `${prefix}.${key}` : key;
-    if (isRecord(value)) return selectPaths(value, path, depth + 1);
-    return value ? [path] : [];
-  });
-}
-
-const sortPaths = (sort: unknown): string[] =>
-  (Array.isArray(sort) ? sort : typeof sort === "string" ? sort.split(",") : [])
-    .filter((item): item is string => typeof item === "string")
-    .map((item) => item.trim().replace(/^[-+]/, ""));
-
 /**
  * Document paths the way the versions tools (`findVersions`, `countVersions`, `findVersionByID`
  * and the globals' equivalents) take them: the document's fields sit under `version.`, and
  * `parent` is the collection document the version belongs to, so `version.createdBy.email` and
- * `parent.email` are the document's `createdBy.email` and `email`. Only for tools whose name says
- * "version": elsewhere a field may well be called `version`.
+ * `parent.email` are the document's `createdBy.email` and `email`. Only for the versions tools
+ * (`ToolCall.versions`): elsewhere a field may well be called `version`.
  */
 const VERSION_ROOTS = new Set(["version", "parent"]);
-const isVersionsTool = (toolName: string | undefined) => toolName !== undefined && /version/i.test(toolName);
 
 /**
- * The first redacted field a tool call's arguments query, or `undefined`: a `where` (filtering by
- * a hidden field would let the model guess its values), a `sort` (ordering reveals them too), a
- * `select` that asks for one, or `findDistinct`'s `field`. Paths through relations count
- * (`createdBy.email`). Array indexes in paths (`layout.0.secret`) are ignored. For the versions
- * tools (`toolName` names a version) a leading `version.` (or `parent.`) is the document's root, so
+ * The first redacted field a tool call queries ({@link ToolCall.queriedPaths}), or `undefined`: a
+ * `where` (filtering by a hidden field would let the model guess its values), a `sort` (ordering
+ * reveals them too), a `select` that asks for one, or `findDistinct`'s `field`. Paths through
+ * relations count (`createdBy.email`). Array indexes in paths (`layout.0.secret`) are ignored. For
+ * the versions tools a leading `version.` (or `parent.`) is the document's root, so
  * `version.email` is refused like `email`; the returned path is the one the call used.
  */
-export function redactedReference(policy: RedactionPolicy | undefined, args: unknown, toolName?: string): string | undefined {
-  if (!policy || isEmptyPolicy(policy) || !isRecord(args)) return undefined;
-  const slug = typeof args.slug === "string" ? args.slug : undefined;
+export function redactedReference(policy: RedactionPolicy | undefined, call: ToolCall): string | undefined {
+  if (!policy || isEmptyPolicy(policy)) return undefined;
+  const slug = call.target?.slug;
   if (!slug) return undefined;
-  const versions = isVersionsTool(toolName);
-  const candidates = [
-    ...wherePaths(args.where),
-    ...sortPaths(args.sort),
-    ...selectPaths(args.select),
-    ...(typeof args.field === "string" ? [args.field] : []),
-  ];
-  return candidates.find((path) => {
+  return call.queriedPaths.find((path) => {
     const segments = splitPath(path).filter((segment) => !/^\d+$/.test(segment));
     if (reachesRedacted(policy, slug, segments)) return true;
     // A versions tool: the same path with its leading `version` / `parent` dropped.
     let rest = segments;
-    while (versions && rest.length > 0 && VERSION_ROOTS.has(rest[0]!)) {
+    while (call.versions && rest.length > 0 && VERSION_ROOTS.has(rest[0]!)) {
       rest = rest.slice(1);
       if (reachesRedacted(policy, slug, rest)) return true;
     }

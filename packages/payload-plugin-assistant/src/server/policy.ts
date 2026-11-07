@@ -3,7 +3,8 @@ import type { MessageStore } from "@tanstack/ai-persistence";
 import { auditDocumentIds, auditEventsFor, type AssistantAuditSink } from "../audit";
 import type { TurnInput, TurnSettings } from "../conversations/types";
 import { PLUGIN_NAME } from "../constants";
-import { isEmptyPolicy, redactResultFor, redactTranscript, redactedReference, toolSlug, type RedactionPolicy } from "../redaction";
+import { isEmptyPolicy, redactResultFor, redactTranscript, redactedReference, type RedactionPolicy } from "../redaction";
+import { describeCall } from "../toolCalls";
 import { usageAmountOf, type UsageAmount } from "../usage";
 
 /** What the policy middleware needs from the turn. */
@@ -17,20 +18,6 @@ export interface TurnPolicyOptions {
 }
 
 const defaultLogError = (message: string, error: unknown) => console.error(`[${PLUGIN_NAME}] ${message}`, error);
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
-function argumentsOf(raw: unknown): Record<string, unknown> {
-  if (isRecord(raw)) return raw;
-  if (typeof raw !== "string") return {};
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    return isRecord(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
-}
 
 /**
  * The turn's policies (#68), as one `chat()` middleware, where every model call and every tool
@@ -77,22 +64,22 @@ export function turnPolicyMiddleware(options: TurnPolicyOptions): ChatMiddleware
     },
     onBeforeToolCall(_ctx, hook) {
       if (!redacting) return undefined;
-      const args = isRecord(hook.args) ? hook.args : argumentsOf(hook.toolCall.function.arguments);
-      const field = redactedReference(policy, args, hook.toolName);
+      const call = describeCall(hook.toolName, hook.args ?? hook.toolCall.function.arguments);
+      const field = redactedReference(policy, call);
       if (!field) return undefined;
       refused.add(hook.toolCallId);
       return {
         type: "skip",
-        result: `Error: "${field}" is a hidden field of "${String(args.slug)}": the assistant can't filter, sort, select or list distinct values by it. Leave it out of where, sort, select and field, and don't ask for its values.`,
+        result: `Error: "${field}" is a hidden field of "${String(call.target?.slug)}": the assistant can't filter, sort, select or list distinct values by it. Leave it out of where, sort, select and field, and don't ask for its values.`,
       };
     },
     async onAfterToolCall(_ctx, info) {
-      const args = argumentsOf(info.toolCall.function.arguments);
-      const slug = toolSlug(args);
+      const call = describeCall(info.toolName, info.toolCall.function.arguments, info.tool ? { needsApproval: Boolean(info.tool.needsApproval) } : {});
+      const slug = call.target?.slug;
       // Errors too: a validation message can echo document values.
       const redacted = redacting ? redactResultFor(info.result, slug, policy) : info.result;
 
-      if (audit && info.ok && info.tool?.needsApproval && !refused.has(info.toolCallId)) {
+      if (audit && info.ok && info.tool && call.needsApproval && !refused.has(info.toolCallId)) {
         const { events, emitted } = auditEventsFor(
           {
             userKey: input.userKey,
@@ -104,7 +91,7 @@ export function turnPolicyMiddleware(options: TurnPolicyOptions): ChatMiddleware
             model: settings.model,
             timestamp: Date.now(),
           },
-          auditDocumentIds(info.toolName, args, info.result),
+          auditDocumentIds(call, info.result),
           auditEmitted
         );
         auditEmitted = emitted;

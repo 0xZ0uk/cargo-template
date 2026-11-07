@@ -655,6 +655,20 @@ server declares read-only run without asking; no annotations means approval. Wit
 annotations: find/count/schema/config/versions tools run, create/update/delete/duplicate/restore
 pause with an approval interrupt (`metadata: { kind: 'approval', toolName, input }`).
 
+**What a call means (`src/toolCalls.ts`, #134).** One pure, client-safe module reads tool calls
+for the server and the UI. `describeCall(name, args, { needsApproval? })` → operation (`read`,
+`create`, `update`, `delete`, `duplicate`, `restore`, or `other` for a tool it doesn't know),
+target (`{ kind: 'collection' | 'global', slug }`, from the `slug` argument, the only name
+plugin-mcp gives it), `id`, `versions` (the versions tools: `id` is a version, paths sit under
+`version.`), the queried paths (`where`, `sort`, `select`, `field`), `locale` and `needsApproval`
+(the tool definition's flag when the caller has it, else the rule above applied to its table of
+tools; unknown tools need approval). `parseResult(result)` → the documents a result lists, their
+ids, `nothingChanged` (`Updated: 0 documents`…) and chat()'s `{ error }`. Approval cards, the
+audit log, redaction, the hidden-field check and the tool rows all use it. It is tested against
+real plugin-mcp calls and results in `tests/fixtures/plugin-mcp.json`; after a plugin-mcp bump,
+re-record them with `RECORD_PLUGIN_MCP_FIXTURES=1 pnpm vitest run tests/integration/toolFixtures.test.ts`
+(which also fails when plugin-mcp lists a tool the table doesn't know, or annotates one differently).
+
 **Access denials** come back to the model as an ordinary tool error, e.g. `{ error: 'MCP tool
 "updateDocument" returned an error: MCP access to "updateDocument" is not enabled for collection
 "pages"' }`, and nothing changes. `chat()` doesn't retry it; the system prompt tells the model to
@@ -1019,7 +1033,7 @@ conversation's Durable Object (or the Node process with the in-memory backend).
   `findVersion` are always `overrideAccess: false` with the request's user, `depth: 0` unless
   asked, the latest draft when the collection or global has drafts, and return documents already
   redacted; `find` refuses a `where` on a hidden field (`HiddenFieldError`); `title(slug, doc, id)`
-  is the only way documents are named; `hiddenField(args, toolName)` is the hidden-field check.
+  is the only way documents are named; `hiddenField(call)` is the hidden-field check.
   Its `policy` (`{ paths, relations }`, plain JSON) is what the endpoint sends with the turn
   (`settings.redaction`), and the turn's middleware and message store use it as sent.
 - **Titles.** A document is named by `admin.useAsTitle` (its id when there is none) in the
@@ -1051,8 +1065,8 @@ conversation's Durable Object (or the Node process with the in-memory backend).
   keyed by the literal dotted path, which the document walker wouldn't match). A write is checked
   when it is applied, since `chat()` asks no hook before the approval: its card shows a notice
   that it will be refused, and if approved anyway it is refused (and not audited). The versions
-  tools (`findVersions`, `countVersions`, the globals' versions tools: any tool whose name says
-  "version") hold the document's fields under `version.` and the collection document under
+  tools (`findVersions`, `countVersions`, `findVersionByID` and the globals' equivalents:
+  `describeCall(…).versions`) hold the document's fields under `version.` and the collection document under
   `parent`, so for them `version.createdBy.email`, `version.email` and `parent.email` are
   refused like `createdBy.email` and `email`. On other tools a field called `version` is just a field.
 - **Tool results → model.** `onAfterToolCall` returns `replaceResult` with the redacted result, so
