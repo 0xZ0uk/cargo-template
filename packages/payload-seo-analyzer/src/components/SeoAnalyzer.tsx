@@ -526,6 +526,8 @@ const SeoAnalyzerInner: React.FC = () => {
   const t = useDashboardT()
   const [formFields, dispatchFields] = useAllFormFields()
   const initialScoreRef = useRef<number | null>(null)
+  // The latest score of the document as opened, before the server has read it.
+  const openedScoreRef = useRef<number | null>(null)
   const [suggestionsOpen, setSuggestionsOpen] = useState(true)
   const [cannibalizationExpanded, setCannibalizationExpanded] = useState(false)
   const [linkingSectionOpen, setLinkingSectionOpen] = useState(false)
@@ -568,7 +570,11 @@ const SeoAnalyzerInner: React.FC = () => {
   // The page's content, populated and extracted on the server like /validate reads it
   // (uploads, reference links and reusable sections are IDs in the form).
   const locale = useLocale()?.code
-  const { content: contentInput, resolved: contentResolved } = useSidebarContent(
+  const {
+    content: contentInput,
+    resolved: contentResolved,
+    edited: contentEdited,
+  } = useSidebarContent(
     formFields,
     collectionSlug,
     seoApi('/sidebar-content'),
@@ -670,13 +676,20 @@ const SeoAnalyzerInner: React.FC = () => {
   // Reading time: ~200 words per minute, minimum 1 minute
   const readingTime = Math.max(1, Math.round(wordCount / 200))
 
-  // Feature 1: Capture initial score on first valid analysis, once the server has read the
+  // Feature 1: Capture the score of the document as opened, once the server has read the
   // content (the first, local reading counts no uploads, so the delta would start skewed).
+  // An edit before that answer must not move the baseline to the edited document: the last
+  // local reading of the opened document becomes the baseline instead.
   useEffect(() => {
-    if (initialScoreRef.current === null && analysis.checks.length > 0 && (contentResolved || !collectionSlug)) {
+    if (initialScoreRef.current !== null || analysis.checks.length === 0) return
+    if (contentEdited && openedScoreRef.current !== null) {
+      initialScoreRef.current = openedScoreRef.current
+    } else if (contentResolved || !collectionSlug) {
       initialScoreRef.current = analysis.score
+    } else if (!contentEdited) {
+      openedScoreRef.current = analysis.score
     }
-  }, [analysis.score, analysis.checks.length, contentResolved, collectionSlug])
+  }, [analysis.score, analysis.checks.length, contentResolved, contentEdited, collectionSlug])
 
   const scoreDelta = initialScoreRef.current !== null ? analysis.score - initialScoreRef.current : null
 

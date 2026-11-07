@@ -53,6 +53,10 @@ No schema change: nothing to migrate.
   extractor lookup and a different text walk for the word count.
 - **The sidebar's word count no longer parses a check message.** It read the number out of the
   `content-wordcount` message, which showed 0 when the `content` rules were disabled.
+- **The sidebar's score delta survives an edit made before the server first answers.** The
+  baseline waited for `/sidebar-content` to answer, and an edit inside its 400 ms debounce meant
+  that answer was for the edited form, so the baseline was the edited score and no delta showed.
+  The last reading of the form as opened is now the baseline (`useSidebarContent` reports `edited`).
 - **The sidebar scores the same content as `/validate`.** Uploads, `reference` links and reusable
   sections are IDs in the form, so the live score skipped image alt texts, linked page URLs and
   reusable section text, and the meta image. The sidebar now reads its content through
