@@ -1,7 +1,7 @@
 /**
  * Page-builder blocks (cargo-template #47): a page built only from section blocks in
  * `layout` (Hero, Features, Columns, FAQ…) must contribute its headings, text and FAQ to
- * the analysis — in `/validate`, the sidebar and `extractDocContent` alike.
+ * the analysis — in `analyzeDocument` (`/validate`, the audit, score history) and the sidebar alike.
  *
  * The fixture mirrors the block `example`s in `apps/web/src/blocks/<Name>/meta.ts`
  * (hand-written: the plugin never imports from the app).
@@ -15,8 +15,7 @@ vi.mock('../helpers/blockContent', async (importOriginal) => {
 })
 
 import { analyzeSeo } from '../index'
-import { buildSeoInputFromDoc } from '../endpoints/validate'
-import { extractDocContent } from '../helpers/extractDocContent'
+import { analyzeLoadedDocument, buildSeoInputFromDoc } from '../helpers/analyzeDocument'
 import { extractBlocksContent } from '../helpers/blockContent'
 import { buildSidebarContentInput } from '../helpers/sidebarContent'
 import { buildJsonLd } from '../helpers/buildSchema'
@@ -128,8 +127,9 @@ const blockPage = {
 }
 
 describe('page-builder blocks: server extraction', () => {
-  it('extractDocContent reads block headings, item text, columns and FAQ', () => {
-    const extracted = extractDocContent(blockPage)
+  it('reads block headings, item text, columns and FAQ', () => {
+    const { text, analysis } = analyzeLoadedDocument(null, blockPage, { collection: 'pages' })
+    const extracted = { ...extractBlocksContent(blockPage.layout), text }
 
     expect(extracted.headings).toEqual(
       expect.arrayContaining([
@@ -142,6 +142,7 @@ describe('page-builder blocks: server extraction', () => {
       ]),
     )
     expect(extracted.headings.filter((h) => h.tag === 'h1')).toHaveLength(1)
+    expect(analysis.stats.h1Count).toBe(1)
 
     for (const fragment of [
       'New: reporting',
@@ -169,14 +170,15 @@ describe('page-builder blocks: server extraction', () => {
   })
 
   it('/validate: a block-built page with a Hero has an h1 and counts its words', () => {
-    const analysis = analyzeSeo(buildSeoInputFromDoc(blockPage, 'pages'))
+    const { analysis } = analyzeLoadedDocument(null, blockPage, { collection: 'pages' })
     const check = (id: string) => analysis.checks.find((c) => c.id === id)
 
     expect(check('h1-missing')).toBeUndefined()
     expect(check('h1-unique')?.status).toBe('pass')
     expect(check('heading-hierarchy')?.status).toBe('pass')
-    const words = Number(check('content-wordcount')?.message.match(/(\d+)\s*words/)?.[1])
-    expect(words).toBeGreaterThan(60)
+    expect(analysis.stats.wordCount).toBeGreaterThan(60)
+    // The stats are what the rule measured.
+    expect(check('content-wordcount')?.message).toContain(`${analysis.stats.wordCount} words`)
   })
 
   it('detects the FAQ from its question/answer items', () => {
@@ -199,13 +201,12 @@ describe('page-builder blocks: server extraction', () => {
         },
       ],
     }
-    const extracted = extractDocContent(doc)
-    expect(extracted.text).toContain('Future words count too.')
-    expect(extracted.headings).toContainEqual({ tag: 'h2', text: 'Future heading' })
-
-    const analysis = analyzeSeo(buildSeoInputFromDoc(doc, 'pages'))
-    const message = analysis.checks.find((c) => c.id === 'content-wordcount')?.message ?? ''
-    expect(Number(message.match(/(\d+)\s*words/)?.[1])).toBe(6)
+    const { text, analysis } = analyzeLoadedDocument(null, doc, { collection: 'pages' })
+    expect(text).toContain('Future words count too.')
+    expect(extractBlocksContent(doc.layout).headings).toContainEqual({ tag: 'h2', text: 'Future heading' })
+    expect(analysis.stats.headingCount).toBe(1)
+    // The page title is not body text.
+    expect(analysis.stats.wordCount).toBe(6)
   })
 
   it('PageHeader titles are the h1; Logos and Embed titles are not headings', () => {
@@ -241,18 +242,17 @@ describe('page-builder blocks: server extraction', () => {
   })
 
   it('keeps reading the upstream shapes (columns[].richText, services, testimonials)', () => {
-    const extracted = extractDocContent({
-      layout: [
-        { blockType: 'content', columns: [{ richText: richText(paragraph('Old column text.')) }] },
-        { blockType: 'services', services: [{ title: 'SEO', description: 'Rank higher.', link: '/seo' }] },
-        { blockType: 'testimonials', testimonials: [{ quote: 'Great work.' }] },
-        { blockType: 'banner', content: 'Banner copy.' },
-      ],
-    })
+    const layout = [
+      { blockType: 'content', columns: [{ richText: richText(paragraph('Old column text.')) }] },
+      { blockType: 'services', services: [{ title: 'SEO', description: 'Rank higher.', link: '/seo' }] },
+      { blockType: 'testimonials', testimonials: [{ quote: 'Great work.' }] },
+      { blockType: 'banner', content: 'Banner copy.' },
+    ]
+    const { text } = analyzeLoadedDocument(null, { layout }, { collection: 'pages' })
     for (const fragment of ['Old column text.', 'SEO', 'Rank higher.', 'Great work.', 'Banner copy.']) {
-      expect(extracted.text).toContain(fragment)
+      expect(text).toContain(fragment)
     }
-    expect(extracted.links).toContainEqual({ url: '/seo', text: 'SEO' })
+    expect(extractBlocksContent(layout).links).toContainEqual({ url: '/seo', text: 'SEO' })
   })
 })
 
@@ -316,7 +316,7 @@ describe('page-builder blocks: link graph, external links, FAQPage, GEO', () => 
   it('extractAllInternalLinks keeps the upstream block shapes', () => {
     const urls = extractAllInternalLinks({
       layout: [
-        { blockType: 'services', services: [{ title: 'Web', link: '/web' }] },
+      { blockType: 'services', services: [{ title: 'Web', link: '/web' }] },
         { blockType: 'latestPosts', ctaLink: '/blog', ctaLabel: 'All posts' },
         { blockType: 'banner', link: { type: 'custom', url: '/promo', label: 'Promo' } },
         { columns: [{ richText: richText('x'), enableLink: true, link: { type: 'custom', url: '/col' } }] },
@@ -385,10 +385,12 @@ describe('page-builder blocks: link graph, external links, FAQPage, GEO', () => 
     expect(geo(blockPage.layout.filter((b) => b.blockType === 'features'))?.status).toBe('warning')
   })
 
-  it('walks the blocks once per analysis', () => {
+  it('walks the blocks once per analysis, score and stats together', () => {
     vi.mocked(extractBlocksContent).mockClear()
-    analyzeSeo(buildSeoInputFromDoc({ ...blockPage, slug: 'planning-software' }, 'pages'))
+    const { analysis, text } = analyzeLoadedDocument(null, { ...blockPage, slug: 'planning-software' }, { collection: 'pages' })
     expect(extractBlocksContent).toHaveBeenCalledTimes(1)
+    expect(analysis.stats.wordCount).toBeGreaterThan(0)
+    expect(text).toContain('Weekly status reports')
   })
 
   it('carries robotsMeta from the noindex checkbox, so robots-noindex shows live', () => {

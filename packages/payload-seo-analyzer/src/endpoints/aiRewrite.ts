@@ -10,9 +10,7 @@
 
 import type { PayloadHandler } from 'payload'
 import type { SeoConfig } from '../types.js'
-import { readAccessOpts } from '../helpers/readAccess.js'
-import { extractDocContent as extractDocContentHelper } from '../helpers/extractDocContent.js'
-import type { ContentExtractorSource } from '../helpers/contentExtractor.js'
+import { analyzeDocument, DocumentReadError, type DocumentAnalysis } from '../helpers/analyzeDocument.js'
 import { parseJsonBody } from '../helpers/parseBody.js'
 import { aiApiKey, aiChat, aiModel } from '../helpers/aiClient.js'
 import {
@@ -59,14 +57,6 @@ Generate the optimized ${fieldLabel}:`
 }
 
 // ---------------------------------------------------------------------------
-// Extract text content from a document (delegates to shared helper)
-// ---------------------------------------------------------------------------
-
-function extractDocContent(doc: Record<string, unknown>, collection: string, extractors: ContentExtractorSource): string {
-  return extractDocContentHelper(doc, undefined, { collection, extractors }).text
-}
-
-// ---------------------------------------------------------------------------
 // Endpoint handler factory
 // ---------------------------------------------------------------------------
 
@@ -104,23 +94,18 @@ export function createAiRewriteHandler(targetCollections?: string[], seoConfig?:
       }
 
       // Fetch the document
-      let doc: Record<string, unknown>
+      let read: DocumentAnalysis
       try {
-        const result = await req.payload.findByID({
-          collection,
-          id,
-          depth: 1,
-          ...readAccessOpts(req),
-        })
-        doc = result as Record<string, unknown>
-      } catch {
-        return Response.json({ error: `Document not found: ${collection}/${id}` }, { status: 404 })
+        read = await analyzeDocument(req, { collection, id }, { purpose: 'content', seoConfig })
+      } catch (error) {
+        if (error instanceof DocumentReadError) return Response.json({ error: error.message }, { status: 404 })
+        throw error
       }
+      const { doc, text: pageContent } = read
 
       const title = (doc.title as string) || ''
       const slug = (doc.slug as string) || ''
       const focusKeyword = (doc.focusKeyword as string) || ''
-      const pageContent = extractDocContent(doc, collection, req.payload)
 
       const heuristic = (): string =>
         field === 'title'

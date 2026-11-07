@@ -97,6 +97,24 @@ const GROUP_ORDER: RuleGroup[] = [
 /** Same cut-offs as the analyzer's levels, so the ring and the level pill agree. */
 const LEVEL_THRESHOLDS = { good: SCORE_GOOD, ok: SCORE_OK }
 
+/** The analysis before the form state arrives. */
+const EMPTY_ANALYSIS: SeoAnalysis = {
+  score: 0,
+  level: 'poor',
+  checks: [],
+  stats: {
+    wordCount: 0,
+    sentenceCount: 0,
+    readabilityScore: 0,
+    headingCount: 0,
+    h1Count: 0,
+    internalLinkCount: 0,
+    externalLinkCount: 0,
+    imageCount: 0,
+    imagesWithAlt: 0,
+  },
+}
+
 function getLevelTone(level: SeoAnalysis['level']): Tone {
   switch (level) {
     case 'excellent':
@@ -581,7 +599,7 @@ const SeoAnalyzerInner: React.FC = () => {
 
   // Extract values from form state and run analysis
   const { analysis, wordCount } = useMemo(() => {
-    if (!formFields) return { analysis: { score: 0, level: 'poor' as const, checks: [] }, wordCount: 0 }
+    if (!formFields) return { analysis: EMPTY_ANALYSIS, wordCount: 0 }
 
     const metaTitle = getFieldValue('meta.title') as string | undefined
     const metaDescription = getFieldValue('meta.description') as string | undefined
@@ -604,15 +622,7 @@ const SeoAnalyzerInner: React.FC = () => {
       thresholds ? { thresholds } : undefined,
     )
 
-    // Compute word count from the content check (reuse the check message or compute separately)
-    let wc = 0
-    const wcCheck = result.checks.find((c) => c.id === 'content-wordcount')
-    if (wcCheck) {
-      const match = wcCheck.message.match(/(\d+)\s*words/)
-      if (match) wc = parseInt(match[1], 10)
-    }
-
-    return { analysis: result, wordCount: wc }
+    return { analysis: result, wordCount: result.stats.wordCount }
   }, [formFields, contentInput, focusKeyword, focusKeywords, isCornerstone, updatedAt, contentLastReviewed, getFieldValue, thresholds])
 
   // The page host for the social preview. Read after mount: during SSR there is no

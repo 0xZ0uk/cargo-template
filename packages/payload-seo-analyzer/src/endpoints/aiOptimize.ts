@@ -23,11 +23,8 @@
  */
 
 import type { Payload, PayloadHandler } from 'payload'
-import { analyzeSeo } from '../index.js'
-import { buildSeoInputFromDoc } from './validate.js'
-import { loadMergedConfig } from '../helpers/loadMergedConfig.js'
 import { parseJsonBody } from '../helpers/parseBody.js'
-import { extractDocContent } from '../helpers/extractDocContent.js'
+import { analyzeDocument, DocumentReadError, type DocumentAnalysis } from '../helpers/analyzeDocument.js'
 import {
   truncateWords,
   generateMetaTitle as heuristicTitle,
@@ -205,25 +202,32 @@ export interface OptimizeMetaResult {
 
 /**
  * Core "scan → propose (meta)" for one document, reusable by the single endpoint and the bulk
- * pipeline. Pure server logic — no auth/HTTP. The caller pre-loads `mergedConfig` (once for a
+ * pipeline. Pure server logic — no auth/HTTP. A batch pre-loads `mergedConfig` (once for a
  * whole batch). Suggestions are already sanitized/clamped to the SEO rules.
  */
 export async function optimizeDocMeta(
   payload: Payload,
-  opts: { collection: string; id: string; mergedConfig: SeoConfig; apiKey?: string; model?: string },
+  opts: {
+    collection: string
+    id: string
+    /** The merged config (a batch loads it once); else `seoConfig` is merged with the settings. */
+    mergedConfig?: SeoConfig
+    seoConfig?: SeoConfig
+    apiKey?: string
+    model?: string
+  },
 ): Promise<OptimizeMetaResult> {
-  const { collection, id, mergedConfig } = opts
-
-  let doc: Record<string, unknown>
-  try {
-    doc = (await payload.findByID({ collection, id, depth: 1, overrideAccess: true })) as Record<string, unknown>
-  } catch {
-    return { ok: false, error: `Document not found: ${collection}/${id}`, status: 404 }
-  }
+  const { collection, id, mergedConfig, seoConfig } = opts
 
   // 1. SCAN
-  const seoInput = buildSeoInputFromDoc(doc, collection, { extractors: payload })
-  const analysis = analyzeSeo(seoInput, mergedConfig)
+  let scanned: DocumentAnalysis
+  try {
+    scanned = await analyzeDocument({ payload }, { collection, id }, { mergedConfig, seoConfig, overrideAccess: true })
+  } catch (error) {
+    if (error instanceof DocumentReadError) return { ok: false, error: error.message, status: 404 }
+    throw error
+  }
+  const { doc, input: seoInput, analysis, text: content } = scanned
   const metaGroups = new Set(['title', 'meta-description', 'content', 'url', 'headings'])
   const issues = analysis.checks
     .filter((c) => (c.status === 'fail' || c.status === 'warning') && metaGroups.has(c.group))
@@ -235,7 +239,6 @@ export async function optimizeDocMeta(
   const currentFocusKeyword = (doc.focusKeyword as string) || ''
   const currentMetaTitle = seoInput.metaTitle || ''
   const currentMetaDescription = seoInput.metaDescription || ''
-  const content = extractDocContent(doc, undefined, { collection, extractors: payload }).text
 
   // 2. PROPOSE — the LLM if configured, else heuristic fallback
   const apiKey = opts.apiKey
@@ -320,12 +323,10 @@ export function createAiOptimizeHandler(
         return Response.json({ error: 'Collection not allowed' }, { status: 403 })
       }
 
-      const { config: mergedConfig } = await loadMergedConfig(req.payload, seoConfig)
-
       const r = await optimizeDocMeta(req.payload, {
         collection,
         id,
-        mergedConfig,
+        seoConfig,
         apiKey: aiApiKey(),
         model: aiModel(),
       })

@@ -36,8 +36,8 @@ import {
   type GscRow,
 } from '../helpers/gscClient.js'
 import { expectedCtrForPosition } from './ctrOpportunities.js'
-import { extractDocContent } from '../helpers/extractDocContent.js'
-import { normalizeForComparison, countWords } from '../helpers.js'
+import { analyzeDocument, DocumentReadError, type DocumentAnalysis } from '../helpers/analyzeDocument.js'
+import { normalizeForComparison } from '../helpers.js'
 import { getStopWords } from '../constants.js'
 import { payloadApiRoute } from '../helpers/seoApiUrl.js'
 
@@ -495,22 +495,19 @@ export function createContentGradeHandler(
         return Response.json({ error: 'Collection not allowed' }, { status: 403 })
       }
 
-      // Load the document. depth:1 (NOT depth:0 — a known crasher on large posts) and matches
-      // the analyzer's own extraction depth.
-      let doc: Record<string, unknown>
+      // Read the document (depth 1, like the analyzer) and take its body text.
+      let extracted: DocumentAnalysis
       try {
-        doc = (await req.payload.findByID({
-          collection,
-          id,
-          depth: 1,
-          overrideAccess: true,
-          ...(localeParam ? { locale: localeParam } : {}),
-        })) as Record<string, unknown>
-      } catch {
-        return Response.json({ error: 'Document not found' }, { status: 404 })
+        extracted = await analyzeDocument(
+          req,
+          { collection, id },
+          { purpose: 'content', seoConfig, overrideAccess: true, locale: localeParam },
+        )
+      } catch (error) {
+        if (error instanceof DocumentReadError) return Response.json({ error: 'Document not found' }, { status: 404 })
+        throw error
       }
-
-      const extracted = extractDocContent(doc, undefined, { collection, extractors: req.payload })
+      const { doc } = extracted
       const slug = typeof doc.slug === 'string' ? doc.slug : ''
 
       // --- GSC connection — clean 200 + gscConnected:false when unavailable (never raw 404/500) ---
@@ -600,7 +597,7 @@ export function createContentGradeHandler(
           id,
           slug,
           matchedUrl,
-          wordCount: countWords(extracted.text),
+          wordCount: extracted.analysis.stats.wordCount,
           ...grade,
         },
         { headers: { 'Cache-Control': 'no-store' } },
