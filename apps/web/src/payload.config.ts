@@ -30,6 +30,7 @@ import { abStorage } from './plugins/abTesting'
 import { assistantAuditSink, assistantConversations, assistantTestModel } from './plugins/assistant'
 import { workersAssistantRateLimit } from './plugins/assistantRateLimit'
 import { limitVersions } from './plugins/limitVersions'
+import { oauthRateLimit } from './plugins/oauthRateLimit'
 import { r2SeoCacheStore } from './plugins/seoCacheStore'
 import { workersSeoRateLimit } from './plugins/seoRateLimit'
 import { SocialsPlugin } from './plugins/socials'
@@ -147,8 +148,9 @@ export default buildConfig({
         serverOptions: { serverInfo: { name: 'Cargo Template' } },
       },
       // The consent page and `resource_name` use the server name above. Every user may connect a
-      // client (there are no roles); set `canConnect` to restrict it.
-      oauth: true,
+      // client (there are no roles); set `canConnect` to restrict it. Registration is public: the
+      // plugin caps pending clients, and this limits it per IP (src/plugins/oauthRateLimit.ts).
+      oauth: { rateLimit: oauthRateLimit(cloudflare.OAUTH_RATE_LIMIT_REGISTER) },
     }),
     // Admin assistant (packages/payload-plugin-assistant): /admin/assistant chats with the content
     // through the MCP tools above, as the signed-in user, on OpenRouter (`OPENROUTER_API_KEY`,

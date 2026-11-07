@@ -33,6 +33,20 @@ export type MCPOAuthConfig = {
    */
   consentDescription?: Record<string, string> | string
   /**
+   * Most registered clients that haven't completed an authorization yet. Registration is public, so
+   * this bounds what anonymous callers can store (about 10 KB per client at most); past it,
+   * registration answers `429` until stale clients are cleaned up (`ttl.unusedClient`).
+   *
+   * @default 1000
+   */
+  maxPendingClients?: number
+  /**
+   * Rate limit for the public endpoints that anonymous callers reach: return `false` to answer
+   * `429`. Key it by client IP (`CF-Connecting-IP` on Workers), e.g. with a Workers Rate Limiting
+   * binding. Without it, only `maxPendingClients` applies.
+   */
+  rateLimit?: (args: { endpoint: 'register' | 'token'; req: PayloadRequest }) => MaybePromise<boolean>
+  /**
    * Shown on the consent page ("Allow ChatGPT to access <resourceName>?") and as `resource_name`
    * in the protected resource metadata.
    *
@@ -69,9 +83,10 @@ export type OAuthTTL = {
 }
 
 export type SanitizedOAuthConfig = {
+  maxPendingClients: number
   ttl: OAuthTTL
   userCollection: AuthCollectionSlug
-} & Omit<MCPOAuthConfig, 'ttl' | 'userCollection'>
+} & Omit<MCPOAuthConfig, 'maxPendingClients' | 'ttl' | 'userCollection'>
 
 export const DEFAULT_TTL: OAuthTTL = {
   access: 60 * 60,
@@ -108,6 +123,7 @@ export const sanitizeOAuthConfig = (
   }
   return {
     ...options,
+    maxPendingClients: options.maxPendingClients ?? 1000,
     serverURL: options.serverURL?.replace(/\/+$/, ''),
     ttl: { ...DEFAULT_TTL, ...options.ttl },
     userCollection,

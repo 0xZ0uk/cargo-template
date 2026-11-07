@@ -34,10 +34,12 @@ Per the [MCP authorization spec](https://modelcontextprotocol.io/specification/2
 | --- | --- |
 | Discovery | RFC 9728 protected resource metadata and RFC 8414 authorization server metadata, at `/api/oauth/well-known/*` and, through the app, at `/.well-known/*`. |
 | `401` | `/api/mcp` without credentials, or with an unknown, expired or revoked one, answers `401` with `WWW-Authenticate: Bearer resource_metadata="…"`. |
-| Registration | `POST /api/oauth/register` (RFC 7591), public clients only (`token_endpoint_auth_method: none`), `https` redirect URIs (or `http` on loopback), matched exactly. A client that never completes an authorization is deleted after a day. |
+| Registration | `POST /api/oauth/register` (RFC 7591), public clients only (`token_endpoint_auth_method: none`), `https` redirect URIs (or `http` on loopback), matched exactly. A client that never completes an authorization is deleted after a day. Registration is public, so at most `maxPendingClients` such clients are kept (past it: `429`), and `rateLimit` can throttle it per IP. |
 | Authorize | `GET /api/oauth/authorize`: the admin login if signed out, then a consent page (client name, the host it returns to, the user). PKCE `S256` only. The page can't be framed (`frame-ancestors 'none'`); the decision is a same-origin `POST` with an HMAC CSRF token bound to the user and the request. |
 | Token | `POST /api/oauth/token`: `authorization_code` and `refresh_token`. Codes are single use and live 60 s, access tokens an hour; refresh tokens rotate, and presenting a used one revokes the whole connection. |
 | Use | `Authorization: Bearer pmcp_at_…` on `/api/mcp`. The token acts as its user (`req.user`, `_strategy: 'mcp-oauth'`) with `overrideAccess: false`, and is re-checked on every request: a revoked connection, a deleted user or one `canConnect` now refuses stops working at once. |
+
+**Credentials stay out of reach.** Revoking a connection must end the client's access, so a request made with an OAuth token can't create accounts in any auth collection, restore their versions, run the auth operations, or write credentials (`email`, `username`, `password`, `apiKey`, `enableAPIKey`, and the other auth fields): a `beforeOperation` hook on every auth collection (`src/oauth/guard.ts`) refuses it. Other fields stay editable within the user's access.
 
 API keys and the admin's session keep working on `/api/mcp` as before (the assistant uses the session).
 
@@ -51,6 +53,8 @@ API keys and the admin's session keep working on `/api/mcp` as before (the assis
 | --- | --- | --- |
 | `canConnect({ req, user })` | every user of `userCollection` | Who may approve a client, and whose connections keep working (checked on every request). |
 | `canManageAllConnections({ req, user })` | nobody | Who sees and revokes every user's connections; everyone else only their own. |
+| `maxPendingClients` | 1000 | Most registered clients that haven't authorized yet (about 10 KB each at most); past it, registration answers `429`. |
+| `rateLimit({ endpoint, req })` | none | Return `false` to answer `429` on `register` or `token`. Key it by client IP (`CF-Connecting-IP` on Workers). |
 | `consentDescription` | a generic sentence | What a client can do, on the consent page: a string, or `{ en, pt }`. |
 | `resourceName` | `mcp.serverOptions.serverInfo.name`, else "Payload" | Shown on the consent page and as `resource_name`. |
 | `serverURL` | `serverURL` of the Payload config, else each request's origin | The public origin (issuer). |

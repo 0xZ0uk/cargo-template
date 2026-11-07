@@ -177,6 +177,17 @@ export const registerClient = async (
     ...SYSTEM,
   })) as unknown as OAuthClient
 
+/** Registered clients that haven't completed an authorization (`maxPendingClients`). */
+export const countPendingClients = async (req: PayloadRequest): Promise<number> =>
+  (
+    await req.payload.count({
+      collection: slug(OAUTH_SLUGS.clients),
+      req,
+      where: { authorizedAt: { exists: false } },
+      ...SYSTEM,
+    })
+  ).totalDocs
+
 /**
  * The user approved: records the connection and returns its authorization code. The connection
  * expires shortly after the code unless the code is exchanged.

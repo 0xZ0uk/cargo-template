@@ -5,6 +5,7 @@ import type { SanitizedMCPPluginConfig } from '../types.js'
 import { oauthCollections } from './collections.js'
 import { oauthEndpoints } from './endpoints.js'
 import { CONTINUE_VIEW_PATH } from './config.js'
+import { guardCredentials } from './guard.js'
 import { revokeUserConnections } from './store.js'
 
 /** Deleting a user revokes their connections (their tokens would fail anyway, but leave rows). */
@@ -14,7 +15,7 @@ const revokeOnUserDelete: CollectionBeforeDeleteHook = async ({ id, req }) => {
 
 /**
  * Fork addition: adds the OAuth server to the config when `oauth` is set. The collections, the
- * user hook and the admin view always (a disabled plugin keeps the same schema and import map);
+ * auth-collection hooks and the admin view always (a disabled plugin keeps the same schema and import map);
  * the endpoints only when enabled.
  */
 export const withOAuth = ({
@@ -47,12 +48,21 @@ export const withOAuth = ({
     },
     collections: [
       ...(config.collections ?? []).map((collection) =>
-        collection.slug === oauth.userCollection
+        collection.auth
           ? {
               ...collection,
               hooks: {
                 ...collection.hooks,
-                beforeDelete: [...(collection.hooks?.beforeDelete ?? []), revokeOnUserDelete],
+                // OAuth clients never write credentials (`guard.ts`).
+                beforeOperation: [...(collection.hooks?.beforeOperation ?? []), guardCredentials],
+                ...(collection.slug === oauth.userCollection
+                  ? {
+                      beforeDelete: [
+                        ...(collection.hooks?.beforeDelete ?? []),
+                        revokeOnUserDelete,
+                      ],
+                    }
+                  : {}),
               },
             }
           : collection,

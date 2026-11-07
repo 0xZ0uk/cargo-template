@@ -99,6 +99,14 @@
       "namespace_id": "1005",
       "simple": { "limit": 20, "period": 60 },
     },
+    // MCP OAuth client registration (`POST /api/oauth/register`, unauthenticated), per client IP.
+    // ChatGPT and claude.ai register once per connector; this stops a script filling the pending
+    // clients (the plugin also caps them at `maxPendingClients`). See src/plugins/oauthRateLimit.ts.
+    {
+      "name": "OAUTH_RATE_LIMIT_REGISTER",
+      "namespace_id": "1006",
+      "simple": { "limit": 10, "period": 60 },
+    },
   ],
   // The admin assistant (packages/payload-plugin-assistant): one Durable Object per conversation
   // (transcript, runs, approvals, stream log, in its own SQLite: nothing in D1) and one per user
@@ -182,6 +190,11 @@
           "name": "ASSISTANT_RATE_LIMIT",
           "namespace_id": "1105",
           "simple": { "limit": 20, "period": 60 },
+        },
+        {
+          "name": "OAUTH_RATE_LIMIT_REGISTER",
+          "namespace_id": "1106",
+          "simple": { "limit": 10, "period": 60 },
         },
       ],
       "durable_objects": {

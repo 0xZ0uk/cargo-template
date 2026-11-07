@@ -14,6 +14,7 @@ import { buildConfig, getPayload, handleEndpoints } from 'payload'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { mcpPlugin, OAUTH_SLUGS } from '../src/index.js'
+import { getPluginConfig } from '../src/utils/getPluginConfig.js'
 import { oauthWellKnownTarget } from '../src/exports/wellKnown.js'
 
 const ORIGIN = 'http://localhost:3000'
@@ -666,6 +667,112 @@ describe('/api/mcp with an OAuth access token', () => {
   it("still accepts API keys and the admin's session (the assistant)", async () => {
     expect(await toolNames({ Authorization: `users API-Key ${apiKey}` })).toContain('findDocuments')
     expect(await toolNames({ Cookie: users.editor!.cookie })).toContain('findDocuments')
+  })
+})
+
+describe('limits on anonymous callers', () => {
+  it('refuses registration past maxPendingClients, until clients authorize or expire', async () => {
+    const oauth = getPluginConfig({ config }).oauth!
+    const before = oauth.maxPendingClients
+    const { totalDocs } = await payload.count({
+      collection: slug(OAUTH_SLUGS.clients),
+      overrideAccess: true,
+      where: { authorizedAt: { exists: false } },
+    })
+    oauth.maxPendingClients = totalDocs + 1
+    try {
+      expect((await register({ redirect_uris: [REDIRECT_URI] })).status).toBe(201)
+      const refused = await call('POST', '/api/oauth/register', {
+        body: JSON.stringify({ redirect_uris: [REDIRECT_URI] }),
+        headers: { 'Content-Type': 'application/json' },
+      })
+      expect(refused.status).toBe(429)
+      expect(refused.headers.get('Retry-After')).toBe('60')
+      expect(((await refused.json()) as OAuthJson).error).toBe('temporarily_unavailable')
+    } finally {
+      oauth.maxPendingClients = before
+    }
+  })
+
+  it('applies the rateLimit hook to registration and the token endpoint', async () => {
+    const oauth = getPluginConfig({ config }).oauth!
+    const seen: string[] = []
+    oauth.rateLimit = ({ endpoint }) => {
+      seen.push(endpoint)
+      return false
+    }
+    try {
+      expect((await register({ redirect_uris: [REDIRECT_URI] })).status).toBe(429)
+      expect((await tokenRequest({ grant_type: 'refresh_token' })).status).toBe(429)
+      expect(seen).toEqual(['register', 'token'])
+    } finally {
+      oauth.rateLimit = undefined
+    }
+  })
+})
+
+describe('credentials stay out of reach of OAuth clients', () => {
+  const callTool = async (token: string, name: string, args: Record<string, unknown>) => {
+    const { body, status } = await mcp(bearer(token), 'tools/call', { name, arguments: args })
+    expect(status).toBe(200)
+    return body!.result!
+  }
+  const editor = async () =>
+    (await payload.findByID({
+      id: users.editor!.id,
+      collection: slug('users'),
+      overrideAccess: true,
+      showHiddenFields: true,
+    })) as unknown as { email: string }
+
+  it("can't set an API key, a password or an email, or create an account", async () => {
+    const { access_token } = await connect('editor')
+    const id = String(users.editor!.id)
+    const chosenKey = randomUUID()
+    for (const data of [
+      { apiKey: chosenKey, enableAPIKey: true },
+      { password: 'chosen-by-the-client' },
+      { email: 'attacker@example.com' },
+    ]) {
+      const result = await callTool(access_token, 'updateDocument', { data, id, slug: 'users' })
+      expect(result.isError).toBe(true)
+    }
+    // The key the client chose doesn't authenticate; the user's own still does.
+    expect((await mcp({ Authorization: `users API-Key ${chosenKey}` })).status).toBe(401)
+    expect((await mcp({ Authorization: `users API-Key ${apiKey}` })).status).toBe(200)
+    expect((await editor()).email).toBe('editor@example.com')
+    // The password still works, unchanged.
+    await payload.login({ collection: slug('users') as never, data: { email: 'editor@example.com', password } })
+
+    const created = await callTool(access_token, 'createDocuments', {
+      data: { email: 'new@example.com', password: 'chosen-by-the-client' },
+      slug: 'users',
+    })
+    expect(created.isError).toBe(true)
+    const { totalDocs } = await payload.count({
+      collection: slug('users'),
+      overrideAccess: true,
+      where: { email: { equals: 'new@example.com' } },
+    })
+    expect(totalDocs).toBe(0)
+  })
+
+  it('can still edit the other fields of a user, within their access', async () => {
+    const { access_token } = await connect('editor')
+    const result = await callTool(access_token, 'updateDocument', {
+      data: { roles: ['editor'] },
+      id: String(users.other!.id),
+      slug: 'users',
+    })
+    expect(result.isError).toBeFalsy()
+  })
+
+  it('leaves API keys and the session unaffected', async () => {
+    const response = await mcp({ Authorization: `users API-Key ${apiKey}` }, 'tools/call', {
+      name: 'updateDocument',
+      arguments: { data: { email: 'other2@example.com' }, id: String(users.other!.id), slug: 'users' },
+    })
+    expect(response.body?.result?.isError).toBeFalsy()
   })
 })
 

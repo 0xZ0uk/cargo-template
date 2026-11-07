@@ -17,6 +17,7 @@ import {
 import {
   approve,
   claim,
+  countPendingClients,
   findClient,
   findPresented,
   isExpired,
@@ -52,6 +53,13 @@ const preflight: PayloadHandler = () =>
 const discovery = (body: unknown): Response =>
   Response.json(body, {
     headers: { ...PUBLIC_CORS_HEADERS, 'Cache-Control': 'public, max-age=300' },
+  })
+
+/** Rate limited, or too many pending registrations: try again later. */
+const tooMany = (description: string): Response =>
+  new Response(JSON.stringify({ error: 'temporarily_unavailable', error_description: description }), {
+    headers: { ...NO_STORE, ...PUBLIC_CORS_HEADERS, 'Content-Type': 'application/json', 'Retry-After': '60' },
+    status: 429,
   })
 
 const redirect = (location: string): Response =>
@@ -125,6 +133,9 @@ export const oauthEndpoints = (oauth: SanitizedOAuthConfig): Endpoint[] => {
    * server substitute values), and only the name and the redirect URIs are kept.
    */
   const register: PayloadHandler = async (req) => {
+    if (oauth.rateLimit && !(await oauth.rateLimit({ endpoint: 'register', req }))) {
+      return tooMany('Too many registrations: try again later.')
+    }
     let body: Record<string, unknown>
     try {
       body = (await req.json!()) as Record<string, unknown>
@@ -164,6 +175,10 @@ export const oauthEndpoints = (oauth: SanitizedOAuthConfig): Endpoint[] => {
         : ''
 
     await sweep(req, oauth)
+    // Registration is public: bound what anonymous callers can store in the database.
+    if ((await countPendingClients(req)) >= oauth.maxPendingClients) {
+      return tooMany('Too many pending registrations: try again later.')
+    }
     const client = await registerClient(req, {
       clientName: name || 'MCP client',
       redirectUris: [...new Set(redirectUris)],
@@ -475,6 +490,9 @@ export const oauthEndpoints = (oauth: SanitizedOAuthConfig): Endpoint[] => {
 
   /** The token endpoint: `authorization_code` and `refresh_token` grants, public clients only. */
   const token: PayloadHandler = async (req) => {
+    if (oauth.rateLimit && !(await oauth.rateLimit({ endpoint: 'token', req }))) {
+      return tooMany('Too many token requests: try again later.')
+    }
     if (!req.headers.get('Content-Type')?.startsWith('application/x-www-form-urlencoded')) {
       return oauthError('invalid_request', 'Use application/x-www-form-urlencoded.')
     }
