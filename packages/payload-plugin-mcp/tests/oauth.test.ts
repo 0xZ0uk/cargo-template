@@ -382,13 +382,13 @@ describe('client registration', () => {
     expect(body.error).toBe('invalid_client_metadata')
   })
 
-  it('deletes clients that never completed an authorization within a day', async () => {
+  it('deletes clients that never completed an authorization within an hour', async () => {
     const stale = await newClient('Stale')
     const used = await newClient('Used')
-    // `used` completes an authorization; then both are made two days old.
+    // `used` completes an authorization; then both are made two hours old.
     const { challenge, verifier } = pkce()
     expect((await exchangeCode(used, await authorize('editor', used, challenge), verifier)).status).toBe(200)
-    const twoDaysAgo = new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString()
+    const twoHoursAgo = new Date(Date.now() - 2 * 3600 * 1000).toISOString()
     for (const clientId of [stale, used]) {
       const { docs } = await payload.find({
         collection: slug(OAUTH_SLUGS.clients),
@@ -398,7 +398,7 @@ describe('client registration', () => {
       await payload.db.updateOne({
         id: docs[0]!.id,
         collection: slug(OAUTH_SLUGS.clients),
-        data: { createdAt: twoDaysAgo },
+        data: { createdAt: twoHoursAgo },
       })
     }
     await newClient('Trigger') // registration runs the clean-up

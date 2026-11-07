@@ -204,7 +204,7 @@ These clients only connect over OAuth. The site is its own OAuth 2.1 authorizati
 
 The client opens the site in a browser: sign in to the admin (if you aren't), check the client and the address it returns to, and click **Allow**. The client then acts as you, with your permissions. Every user may connect a client; set `oauth.canConnect` to restrict that. See and revoke connections in the admin panel under **AI connections** (each user sees their own; `oauth.canManageAllConnections` can see everyone's). Deleting a connection revokes it at once; removing the connector in ChatGPT or claude.ai doesn't, so delete it in the panel too. Deleting a user revokes their connections, and a connection nobody uses expires after 30 days. Tokens are stored as hashes; access tokens last an hour, refresh tokens rotate. The details are in the [plugin's README](../../packages/payload-plugin-mcp/README.md#oauth).
 
-A connected client can't create users or change anyone's email, password or API key, so revoking the connection really ends its access. Client registration is public: the plugin keeps at most 1,000 never-used registrations, and `OAUTH_RATE_LIMIT_REGISTER` (wrangler.jsonc, 10 per minute per IP) throttles it.
+A connected client can't create users or change anyone's email, password or API key, so revoking the connection really ends its access. Client registration is public: the plugin keeps at most 1,000 never-used registrations, each for an hour, and `OAUTH_RATE_LIMIT_REGISTER` (wrangler.jsonc, 10 per minute per IP) throttles it.
 
 These clients connect from their own servers, so OAuth needs the site on a public HTTPS URL (staging or production, or a tunnel to `localhost`).
 

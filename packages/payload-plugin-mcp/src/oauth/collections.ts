@@ -48,7 +48,7 @@ export const oauthCollections = (oauth: SanitizedOAuthConfig): CollectionConfig[
         // Chosen by whoever registered the client: shown on the consent page next to the redirect host.
         { name: 'clientName', type: 'text', required: true },
         { name: 'redirectUris', type: 'json', required: true },
-        // Set by the first completed authorization. Clients without it are deleted after a day.
+        // Set by the first completed authorization. Clients without it are deleted after `ttl.unusedClient` (an hour).
         { name: 'authorizedAt', type: 'date' },
       ],
     },

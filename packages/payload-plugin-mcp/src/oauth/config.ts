@@ -78,7 +78,12 @@ export type OAuthTTL = {
   consent: number
   /** Each refresh token; refreshing issues a new one, so a connection in use never expires. @default 30 days */
   refresh: number
-  /** A registered client that hasn't completed an authorization by then is deleted. @default a day */
+  /**
+   * A registered client that hasn't completed an authorization by then is deleted. Real clients
+   * authorize within minutes of registering; a short lifetime also means one IP can't keep
+   * `maxPendingClients` full (1,000 an hour is more than a 10/min per-IP limit allows).
+   * @default 3600 (an hour)
+   */
   unusedClient: number
 }
 
@@ -93,7 +98,7 @@ export const DEFAULT_TTL: OAuthTTL = {
   code: 60,
   consent: 10 * 60,
   refresh: 30 * 24 * 60 * 60,
-  unusedClient: 24 * 60 * 60,
+  unusedClient: 60 * 60,
 }
 
 /** Slugs of the plugin's collections (closed to every API but the connections' read and delete). */
