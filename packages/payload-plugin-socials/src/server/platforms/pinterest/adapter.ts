@@ -6,7 +6,7 @@ import type {
   PreviewArgs,
   PreviewResult,
   PublishArgs,
-  PublishedRef,
+  PublishResult,
   ValidationResult,
 } from '../../../types/index.js'
 
@@ -187,7 +187,7 @@ export const createPinterestAdapter = (
       return { issues, ok: !hasError }
     },
 
-    async publish(args: PublishArgs<PinterestPublishInput>): Promise<PublishedRef> {
+    async publish(args: PublishArgs<PinterestPublishInput>): Promise<PublishResult> {
       const validation = this.validate({
         ctx: args.ctx,
         input: args.input,
@@ -210,7 +210,7 @@ export const createPinterestAdapter = (
           payload: args.payload,
           req: args.req,
         })
-        return result.publishedRef
+        return result
       } catch (error) {
         await recordConnectionError(args.payload, 'pinterest', error)
         throw error

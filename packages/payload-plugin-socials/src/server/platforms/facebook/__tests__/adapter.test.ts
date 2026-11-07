@@ -115,24 +115,19 @@ describe('facebook adapter — isConnected', () => {
 
 describe('facebook adapter — publish + delete', () => {
   it('publishes a valid input', async () => {
-    vi.mocked(publishFacebookPost).mockResolvedValue({
-      alreadyExisted: false,
-      postId: 'r',
-      publishedRef: { externalId: 'p1_1', platform: 'facebook' },
-    })
+    vi.mocked(publishFacebookPost).mockResolvedValue({ externalId: 'p1_1', platform: 'facebook' })
     const ref = await adapter.publish({
       ctx: ctx(),
       input: { format: 'LINK', link: 'https://x', pageId: 'p1' },
       options,
       payload,
-      postId: '',
     })
     expect(ref.externalId).toBe('p1_1')
   })
 
   it('throws on invalid input', async () => {
     await expect(
-      adapter.publish({ ctx: ctx(), input: { pageId: '' }, options, payload, postId: '' }),
+      adapter.publish({ ctx: ctx(), input: { pageId: '' }, options, payload }),
     ).rejects.toBeInstanceOf(ValidationError)
     expect(publishFacebookPost).not.toHaveBeenCalled()
   })
@@ -145,7 +140,6 @@ describe('facebook adapter — publish + delete', () => {
         input: { format: 'LINK', link: 'https://x', pageId: 'p1' },
         options,
         payload,
-        postId: '',
       }),
     ).rejects.toThrow('boom')
     expect(recordConnectionError).toHaveBeenCalledWith(payload, 'facebook', expect.any(Error))

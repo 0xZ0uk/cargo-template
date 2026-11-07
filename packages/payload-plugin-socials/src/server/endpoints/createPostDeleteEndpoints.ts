@@ -2,12 +2,18 @@ import type { Endpoint } from 'payload'
 
 import type { NormalizedPluginOptions, PlatformId, PublishedRef } from '../../types/index.js'
 
-import { PLATFORM_IDS, SOCIAL_POSTS_SLUG } from '../../constants.js'
+import { PLATFORM_IDS } from '../../constants.js'
 import { INSTAGRAM_DELETE_UNSUPPORTED_MESSAGE } from '../platforms/instagram/adapter.js'
 import { getPlatformAdapter } from '../platforms/registry.js'
-import { cancelQueuedSocialPost } from '../services/postCancellation.js'
+import {
+  assertDeletable,
+  cancelQueuedSocialPost,
+  markDeleted,
+  requirePost,
+  resolveUnknownOutcome,
+} from '../services/publicationLedger.js'
 import { assertAccess } from '../utilities/access.js'
-import { NotFoundError, ValidationError } from '../utilities/errors.js'
+import { ValidationError } from '../utilities/errors.js'
 import { errorResponse, getRouteParam, jsonResponse, parseRequestBody } from '../utilities/http.js'
 
 /**
@@ -19,8 +25,8 @@ import { errorResponse, getRouteParam, jsonResponse, parseRequestBody } from '..
  *   Cancels a queued post without calling any platform adapter (nothing has
  *   been published yet). Sets status to 'cancelled' and records
  *   meta.cancelledAt / meta.cancelledBy. Returns { ok, postId, status: 'cancelled' }.
- *   The cancelled row remains re-claimable for republish-in-place via
- *   reservePublication (which already includes 'cancelled' in RECLAIMABLE_STATUSES).
+ *   The cancelled row remains re-claimable for republish-in-place (the
+ *   publication ledger's `publishNow` takes back cancelled rows).
  *
  * **Soft-delete mode (status = 'published')**
  *   Two sub-modes:
@@ -68,53 +74,24 @@ export const createPostDeleteEndpoints = (options: NormalizedPluginOptions): End
           'localOnly' in req.query &&
           req.query.localOnly === 'true'
 
-        // Load the social-posts row.
-        let row: Record<string, unknown>
-        try {
-          row = (await req.payload.findByID({
-            id: postId as never,
-            collection: SOCIAL_POSTS_SLUG as never,
-            depth: 0,
-            overrideAccess: true,
-          })) as unknown as Record<string, unknown>
-        } catch {
-          throw new NotFoundError(`social-posts/${postId} not found`)
-        }
-
-        if (!row || !row.id) {
-          throw new NotFoundError(`social-posts/${postId} not found`)
-        }
+        const row = await requirePost(req.payload, postId)
 
         const userId =
           req.user && typeof (req.user as { id?: number | string }).id !== 'undefined'
             ? (req.user as { id: number | string }).id
             : undefined
 
-        const existingMeta =
-          row.meta && typeof row.meta === 'object' ? (row.meta as Record<string, unknown>) : {}
-
         // A queued row has no upstream post, so status is the cancellation fence.
         if (row.status === 'queued') {
           const cancelled = await cancelQueuedSocialPost({
             payload: req.payload,
-            postId: row.id as number | string,
+            postId: row.id,
             userId,
           })
           return jsonResponse({ ok: true, ...cancelled })
         }
 
-        // Only published rows (or queued, handled above) can be acted on via
-        // this endpoint.
-        if (!['published', 'publishing', 'unknown'].includes(String(row.status))) {
-          throw new ValidationError(
-            `Cannot delete a post with status "${String(row.status)}"; only published, publishing, unknown, or queued posts may be acted on`,
-          )
-        }
-        if (!row.externalId && !localOnly) {
-          throw new ValidationError(
-            'Cannot delete a published post without an externalId (the post has no upstream reference)',
-          )
-        }
+        assertDeletable(row, { localOnly })
 
         const platform = row.platform as PlatformId
         if (!PLATFORM_IDS.includes(platform)) {
@@ -125,7 +102,7 @@ export const createPostDeleteEndpoints = (options: NormalizedPluginOptions): End
         const publishedRef: PublishedRef = {
           externalId: typeof row.externalId === 'string' ? row.externalId : '',
           externalUrl: typeof row.externalUrl === 'string' ? row.externalUrl : undefined,
-          meta: existingMeta,
+          meta: row.meta ?? {},
           platform,
         }
 
@@ -154,24 +131,7 @@ export const createPostDeleteEndpoints = (options: NormalizedPluginOptions): End
           }
         }
 
-        // Soft-delete: update the row to status 'deleted'. Record deletion
-        // metadata in the existing meta json field.
-        const updatedMeta: Record<string, unknown> = {
-          ...existingMeta,
-          deletedAt: new Date().toISOString(),
-          ...(userId !== undefined ? { deletedBy: userId } : {}),
-          ...(localOnly ? { deletedLocalOnly: true } : {}),
-        }
-
-        await req.payload.update({
-          id: row.id as never,
-          collection: SOCIAL_POSTS_SLUG as never,
-          data: {
-            meta: updatedMeta,
-            status: 'deleted',
-          } as never,
-          overrideAccess: true,
-        })
+        await markDeleted({ localOnly, payload: req.payload, post: row, userId })
 
         return jsonResponse({ ok: true, postId: row.id, status: 'deleted' })
       } catch (error) {
@@ -194,52 +154,18 @@ export const createPostDeleteEndpoints = (options: NormalizedPluginOptions): End
         if (outcome !== 'published' && outcome !== 'not-published') {
           throw new ValidationError('outcome must be "published" or "not-published"')
         }
-        const row = (await req.payload.findByID({
-          id: postId as never,
-          collection: SOCIAL_POSTS_SLUG as never,
-          depth: 0,
-          overrideAccess: true,
-        })) as unknown as Record<string, unknown>
-        if (row.status !== 'unknown') {
-          throw new ValidationError('Only a post with unknown provider outcome can be resolved')
-        }
         const externalId = typeof body.externalId === 'string' ? body.externalId.trim() : ''
-        if (outcome === 'published' && !externalId) {
-          throw new ValidationError('externalId is required when outcome is "published"')
-        }
-        const existingMeta =
-          row.meta && typeof row.meta === 'object' ? (row.meta as Record<string, unknown>) : {}
         const actorId =
           req.user && typeof (req.user as { id?: number | string }).id !== 'undefined'
             ? (req.user as { id: number | string }).id
             : undefined
-        await req.payload.update({
-          id: postId as never,
-          collection: SOCIAL_POSTS_SLUG as never,
-          data: {
-            ...(outcome === 'published'
-              ? {
-                  externalId,
-                  externalUrl:
-                    typeof body.externalUrl === 'string' ? body.externalUrl.trim() : undefined,
-                  lastError: null,
-                  platformPublicationStatus: 'published',
-                  publishedAt: new Date().toISOString(),
-                  status: 'published',
-                }
-              : {
-                  lastError: 'Operator confirmed that the provider did not create this post.',
-                  platformPublicationStatus: 'failed',
-                  status: 'failed',
-                }),
-            meta: {
-              ...existingMeta,
-              reconciledAt: new Date().toISOString(),
-              ...(actorId !== undefined ? { reconciledBy: actorId } : {}),
-              reconciledOutcome: outcome,
-            },
-          } as never,
-          overrideAccess: true,
+        await resolveUnknownOutcome({
+          actorId,
+          externalId: externalId || undefined,
+          externalUrl: typeof body.externalUrl === 'string' ? body.externalUrl.trim() : undefined,
+          outcome,
+          payload: req.payload,
+          postId,
         })
         return jsonResponse({ ok: true, outcome, postId })
       } catch (error) {

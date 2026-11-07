@@ -207,22 +207,36 @@ describe('scheduleSocialPostPublish', () => {
     expect(payload.jobs.queue).not.toHaveBeenCalled()
   })
 
-  it('updates an existing non-published row in place', async () => {
+  it('reschedules an existing row through a guarded update', async () => {
     payload.find.mockResolvedValue({
       docs: [{ id: 'post_old', status: 'cancelled' }],
     })
-    payload.update.mockResolvedValue({ id: 'post_old' })
+    payload.update.mockResolvedValue({ docs: [{ id: 'post_old' }], errors: [] })
     const result = await scheduleSocialPostPublish(baseArgs())
     expect(result.postId).toBe('post_old')
     expect(payload.create).not.toHaveBeenCalled()
-    expect(payload.update).toHaveBeenCalledWith(expect.objectContaining({ id: 'post_old' }))
+    expect(payload.update.mock.calls[0][0].where).toEqual({
+      and: [
+        { id: { equals: 'post_old' } },
+        { status: { in: ['cancelled', 'deleted', 'draft', 'failed', 'queued'] } },
+      ],
+    })
+  })
+
+  it('refuses to reschedule a row that may already be on the platform', async () => {
+    payload.find.mockResolvedValue({
+      docs: [{ id: 'post_old', platform: 'pinterest', status: 'unknown' }],
+    })
+    payload.update.mockResolvedValue({ docs: [], errors: [] })
+    await expect(scheduleSocialPostPublish(baseArgs())).rejects.toMatchObject({ statusCode: 409 })
+    expect(payload.jobs.queue).not.toHaveBeenCalled()
   })
 
   it('cancels the previous queued job when rescheduling', async () => {
     payload.find.mockResolvedValue({
       docs: [{ id: 'post_old', queuedJobId: 'job_old', status: 'queued' }],
     })
-    payload.update.mockResolvedValue({ id: 'post_old' })
+    payload.update.mockResolvedValue({ docs: [{ id: 'post_old' }], errors: [] })
     await scheduleSocialPostPublish(baseArgs())
     expect(payload.jobs.cancelByID).toHaveBeenCalledWith({ id: 'job_old', overrideAccess: true })
   })

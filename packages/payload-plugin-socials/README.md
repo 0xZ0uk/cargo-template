@@ -326,7 +326,24 @@ Content-Type: application/json
 
 or `{ "outcome": "not-published" }`. This prevents retry logic from creating duplicate public posts when the provider accepted a request but its response was lost.
 
-The manual retry (`POST /api/socials/internal/posts/{postId}/retry`, or queueing `socialPostRetry`) refuses, with `409`, a post that may already be on the platform: `unknown`, `publishing`, or any row with an `externalId`. Check the platform first. If the post is there, resolve it as `published`. If it is not, resolve an `unknown` post as `not-published` and retry, or retry with `{ "confirmNotPublished": true }` in the request body (or the task input).
+The manual retry (`POST /api/socials/internal/posts/{postId}/retry`, or queueing `socialPostRetry`) refuses, with `409`, a post that may already be on the platform: `unknown`, `publishing`, or any row with an `externalId`. Check the platform first. If the post is there, resolve it as `published`. If it is not, resolve an `unknown` post as `not-published` and retry, or retry with `{ "confirmNotPublished": true }` in the request body (or the task input). The endpoint also answers `409` for a post that is already `published`.
+
+### Post lifecycle
+
+One module, the publication ledger (`src/server/services/publicationLedger.ts`), writes a `social-posts` row's `status`. The publish endpoint, the composer, the tasks and the post endpoints call it; platform adapters only call the platform and return a `PublishResult` (the provider reference, where the post stands, and the audit fields), and never read or write the row.
+
+| From | To | Trigger |
+| --- | --- | --- |
+| no row, `draft`, `failed`, `cancelled`, `deleted` | `publishing` | Immediate publish (endpoint, composer). A `queued` or in-flight row answers `409`; a `published` one returns its reference. |
+| no row, `draft`, `queued`, `failed`, `cancelled`, `deleted` | `queued` | Scheduled publish (`scheduledAt`, `scheduleSocialPostPublish`). A `publishing`, `unknown` or `scheduled` row answers `409`. |
+| `queued`; `failed` without an `externalId` | `publishing` | The publish task's claim (`failed` so Payload's retry of a safe-to-repeat failure can re-run). |
+| `publishing` | `published`, `scheduled` (Facebook native schedule), `publishing` with an `externalId` (Business Profile moderation), `failed`, `unknown` | The platform's answer or error. |
+| any but `published`, unless it may be live | `queued` | Manual retry. |
+| `unknown` | `published`, `failed` | `POST /posts/{postId}/resolve`. |
+| `queued` | `cancelled` | `DELETE /posts/{postId}`, `POST /posts/{postId}/cancel`. |
+| `published`, `publishing`, `unknown` | `deleted` | `DELETE /posts/{postId}` after the platform delete (or `?localOnly=true`). |
+
+Reconciliation of Facebook scheduled posts and Business Profile moderation (`scheduled` or `publishing` with an `externalId`, to `published` or `failed`) is still written by those platform modules.
 
 ## Scheduling
 
@@ -362,7 +379,7 @@ export default buildConfig({
 })
 ```
 
-Scheduling uses a per-revision token, rechecks the due time in the task, and cancels superseded Payload jobs when possible. The token and status checks remain the correctness fence if cancellation races with a worker.
+Scheduling uses a per-revision token, rechecks the due time in the task, and cancels superseded Payload jobs when possible. The token and status checks remain the correctness fence if cancellation races with a worker. Rescheduling refuses (`409`) a post that may already be on the platform (`publishing`, `unknown`, `scheduled`).
 
 Facebook's `scheduledPublishTime` is provider-native scheduling. The generic source-publish `scheduledAt` is plugin scheduling. Accepted GBP posts and native Facebook schedules remain pending until reconciliation confirms the provider state; sweep jobs provide the backstop.
 
@@ -406,7 +423,9 @@ The clients never replay a `create` request themselves after a 5xx or a lost res
 | `socialPostSweep` (0) | The due-post query failed, or no due post could be queued | unchanged (`queued`) | Failed; the next sweep picks the posts up |
 | | Some due posts could not be queued | unchanged (`queued`) | Succeeded; `output.failed` counts them |
 
-Double posting is prevented by four fences: Payload retries a publish only when `isAutoRetrySafe` holds, so never after a write the platform may have applied; every publish attempt (first run or retry) must atomically claim the row from `queued` or `failed`, so an `unknown`, `publishing` or `published` row is never published by a job; an unknown outcome stays `unknown` until an operator resolves it; and the manual retry refuses a post that may already be live unless the operator confirms it is not (`confirmNotPublished: true`).
+Double posting is prevented by four fences: Payload retries a publish only when `isAutoRetrySafe` holds, so never after a write the platform may have applied; every publish attempt (first run or retry) must claim the row from `queued`, or from `failed` without an `externalId`, before calling the platform, so an `unknown`, `publishing`, `scheduled` or `published` row is never published by a job; an unknown outcome stays `unknown` until an operator resolves it; and the manual retry refuses a post that may already be live unless the operator confirms it is not (`confirmNotPublished: true`).
+
+The claim is a conditional update through Payload's Local API, which reads and then writes. A first publish of new content is atomic (the row's unique `idempotencyKey`), but two publish jobs for the same existing row that run at the same instant can both pass the claim. Avoid queueing duplicate publish jobs for one post (for example, overlapping sweeps drained concurrently).
 
 ## Image safety
 
