@@ -133,6 +133,9 @@ describe("parseResult, on every recorded plugin-mcp result", () => {
   it("a write that changed nothing", () => {
     expect(parseRecorded("update by where, none match")).toEqual({ documents: [], ids: [], nothingChanged: true, error: undefined });
     expect(parseResult(`Created 0 of 2 documents in collection "pages".`).nothingChanged).toBe(true);
+    // Only plugin-mcp's own header lines count: a listed document's text can't fake "nothing changed".
+    const deletedTwo = `Deleted: 2 documents\nErrors: 0\n---\n${JSON.stringify({ docs: [{ id: 5, title: "Created 0 of 3 documents" }, { id: 6, title: "Updated: 0 documents" }] })}`;
+    expect(parseResult(deletedTwo).nothingChanged).toBe(false);
     expect(parseResult(`Document deleted successfully from collection "pages"!\nDeleted: 0 documents\nErrors: 0\n---`).nothingChanged).toBe(true);
   });
 

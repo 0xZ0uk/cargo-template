@@ -299,7 +299,7 @@ export function parseResult(result: unknown): ToolResult {
     const documents = documentsOf(value);
     return { documents: documents ?? [], ids: documents?.map((doc) => idText(doc.id)), nothingChanged: false, error: undefined };
   }
-  if (/^(?:Updated|Deleted): 0 documents$/m.test(value) || /\bCreated 0 of \d+ documents\b/.test(value)) {
+  if (/^(?:Updated|Deleted): 0 documents$/m.test(value) || /^Created 0 of \d+ documents\b/m.test(value)) {
     return { documents: [], ids: [], nothingChanged: true, error: undefined };
   }
   // plugin-mcp lists documents that failed (`Errors:`) and the schema (`Use this schema for data:`) after the result.
