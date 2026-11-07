@@ -12,12 +12,8 @@ import {
 } from "../src/audit";
 import {
   DEFAULT_AUTH_REDACTIONS,
-  redactDocument,
   redactFor,
   redactResultFor,
-  redactText,
-  redactToolResult,
-  redactTranscript,
   redactedReference,
   withAuthRedactions,
   type RedactionPolicy,
@@ -27,51 +23,25 @@ import { redactedMessageStore, turnPolicyMiddleware } from "../src/server/policy
 import { budgetExceeded, dayBefore, nextUtcMidnight, usageAmountOf, usageResponse, utcDay } from "../src/usage";
 import { normalizeOptions } from "../src/utils/normalizeOptions";
 
-describe("redactDocument", () => {
-  const doc = {
-    id: 1,
-    email: "a@example.com",
-    name: "Ann",
-    profile: { phone: "123", city: "Porto" },
-    layout: [
-      { blockType: "cta", label: "Buy", secret: "s1", nested: [{ secret: "s2", keep: "k" }] },
-      { blockType: "text", body: "Hi" },
-    ],
-  };
+/**
+ * Tool results and stored messages in the turn: the policy the endpoint's `UserReader` sends
+ * (`settings.redaction`), applied by the turn's middleware and message store (#133). Reads on the
+ * Worker are covered on a real Payload in `tests/integration/reader.test.ts`.
+ */
+const AUTH: RedactionPolicy = { paths: { users: [...DEFAULT_AUTH_REDACTIONS] } };
 
-  it("drops top-level, group, array and blocks paths, and copies", () => {
-    const frozen = structuredClone(doc);
-    const out = redactDocument(doc, ["email", "profile.phone", "layout.secret", "layout.nested.secret"]);
-    expect(out).toEqual({
-      id: 1,
-      name: "Ann",
-      profile: { city: "Porto" },
-      layout: [
-        { blockType: "cta", label: "Buy", nested: [{ keep: "k" }] },
-        { blockType: "text", body: "Hi" },
-      ],
-    });
-    expect(doc).toEqual(frozen); // never mutated
-  });
+/** What the model gets for a tool result: the middleware's replacement, or the result as is. */
+async function seenByModel(policy: RedactionPolicy, result: unknown, args: Record<string, unknown> = { slug: "users" }, toolName = "findDocuments") {
+  const middleware = turnPolicyMiddleware({ input: { threadId: "t", runId: "r", userKey: "users:1" }, settings: { model: "m", redaction: policy } });
+  const replaced = await (middleware.onAfterToolCall as (ctx: unknown, info: unknown) => Promise<{ result: unknown } | undefined>)(
+    {},
+    { toolCallId: "c", toolName, toolCall: { id: "c", type: "function", function: { name: toolName, arguments: JSON.stringify(args) } }, ok: true, result }
+  );
+  return replaced ? replaced.result : result;
+}
 
-  it("walks lists, pages, versions and { doc } wrappers", () => {
-    const user = { id: 2, email: "b@example.com", name: "Bo" };
-    expect(redactDocument([user], ["email"])).toEqual([{ id: 2, name: "Bo" }]);
-    expect(redactDocument({ docs: [user], totalDocs: 1 }, ["email"])).toEqual({ docs: [{ id: 2, name: "Bo" }], totalDocs: 1 });
-    expect(redactDocument({ docs: [{ id: "v1", parent: 2, version: user }] }, ["email"])).toEqual({
-      docs: [{ id: "v1", parent: 2, version: { id: 2, name: "Bo" } }],
-    });
-    expect(redactDocument({ doc: user }, ["email"])).toEqual({ doc: { id: 2, name: "Bo" } });
-  });
-
-  it("returns the same object when there is nothing to drop", () => {
-    expect(redactDocument(doc, ["missing"])).toBe(doc);
-    expect(redactDocument(doc, [])).toBe(doc);
-  });
-});
-
-describe("redactText: plugin-mcp's text results", () => {
-  it("fenced JSON blocks (findDocuments by where), keeping the text around them", () => {
+describe("tool results: plugin-mcp's text", () => {
+  it("fenced JSON blocks (findDocuments by where), keeping the text around them", async () => {
     const text = [
       'Collection: "users"',
       "Total: 2 documents",
@@ -79,33 +49,46 @@ describe("redactText: plugin-mcp's text results", () => {
       '```json\n{"id":1,"email":"a@example.com","name":"Ann","sessions":[{"id":"s"}]}\n```',
       '```json\n{"id":2,"email":"b@example.com","name":"Bo"}\n```',
     ].join("\n");
-    const out = redactText(text, DEFAULT_AUTH_REDACTIONS);
-    expect(out).toBe(['Collection: "users"', "Total: 2 documents", "", '```json\n{"id":1,"name":"Ann"}\n```', '```json\n{"id":2,"name":"Bo"}\n```'].join("\n"));
+    expect(await seenByModel(AUTH, text)).toBe(['Collection: "users"', "Total: 2 documents", "", '```json\n{"id":1,"name":"Ann"}\n```', '```json\n{"id":2,"name":"Bo"}\n```'].join("\n"));
   });
 
-  it("unfenced JSON (findDocuments by id), pretty-printed JSON keeps its style", () => {
-    expect(redactText('Document from collection "users":\n{"id":1,"email":"a@x.io","name":"A"}', ["email"])).toBe(
-      'Document from collection "users":\n{"id":1,"name":"A"}'
-    );
+  it("unfenced JSON (findDocuments by id), pretty-printed JSON keeps its style", async () => {
+    expect(await seenByModel(AUTH, 'Document from collection "users":\n{"id":1,"email":"a@x.io","name":"A"}')).toBe('Document from collection "users":\n{"id":1,"name":"A"}');
     const pretty = `Result:\n${JSON.stringify({ doc: { id: 1, email: "a@x.io" } }, null, 2)}\nDone.`;
-    expect(redactText(pretty, ["email"])).toBe(`Result:\n${JSON.stringify({ doc: { id: 1 } }, null, 2)}\nDone.`);
+    expect(await seenByModel(AUTH, pretty)).toBe(`Result:\n${JSON.stringify({ doc: { id: 1 } }, null, 2)}\nDone.`);
   });
 
-  it("leaves text without JSON, broken JSON and braces in strings alone", () => {
-    for (const text of ["no json here", 'a { "email": broken', 'quote "{not json}" end', ""]) expect(redactText(text, ["email"])).toBe(text);
-    const tricky = '{"title":"a } in a string","email":"x@y.z"}';
-    expect(redactText(tricky, ["email"])).toBe('{"title":"a } in a string"}');
+  it("leaves text without JSON, broken JSON and braces in strings alone", async () => {
+    for (const text of ["no json here", 'a { "email": broken', 'quote "{not json}" end', ""]) expect(await seenByModel(AUTH, text)).toBe(text);
+    expect(await seenByModel(AUTH, '{"title":"a } in a string","email":"x@y.z"}')).toBe('{"title":"a } in a string"}');
+  });
+
+  it("group, array and blocks paths; lists, pages, versions and { doc } wrappers", async () => {
+    const policy: RedactionPolicy = { paths: { pages: ["profile.phone", "layout.secret", "layout.nested.secret"], users: ["email"] } };
+    const page = { id: 1, profile: { phone: "123", city: "Porto" }, layout: [{ blockType: "cta", secret: "s1", nested: [{ secret: "s2", keep: "k" }] }] };
+    expect(await seenByModel(policy, page, { slug: "pages" })).toEqual({ id: 1, profile: { city: "Porto" }, layout: [{ blockType: "cta", nested: [{ keep: "k" }] }] });
+    const user = { id: 2, email: "b@example.com", name: "Bo" };
+    expect(await seenByModel(policy, [user])).toEqual([{ id: 2, name: "Bo" }]);
+    expect(await seenByModel(policy, { docs: [user], totalDocs: 1 })).toEqual({ docs: [{ id: 2, name: "Bo" }], totalDocs: 1 });
+    expect(await seenByModel(policy, { docs: [{ id: "v1", parent: 2, version: user }] }, { slug: "users" }, "findVersions")).toEqual({ docs: [{ id: "v1", parent: 2, version: { id: 2, name: "Bo" } }] });
+    expect(await seenByModel(policy, { doc: user })).toEqual({ doc: { id: 2, name: "Bo" } });
+    expect(JSON.stringify(page)).toContain("s1"); // never mutated
+  });
+
+  it("strings, text parts and structured results; nothing to drop leaves the result alone", async () => {
+    const policy: RedactionPolicy = { paths: { users: ["email"] } };
+    expect(await seenByModel(policy, '{"email":"a","id":1}')).toBe('{"id":1}');
+    expect(await seenByModel(policy, [{ type: "text", content: '{"email":"a","id":1}' }])).toEqual([{ type: "text", content: '{"id":1}' }]);
+    expect(await seenByModel(policy, { email: "a", id: 1 })).toEqual({ id: 1 });
+    const other = { id: 1, name: "n" };
+    expect(await seenByModel(policy, other)).toBe(other);
+    expect(await seenByModel({ paths: {} }, { email: "a" })).toEqual({ email: "a" });
   });
 });
 
-describe("redactToolResult / redactTranscript", () => {
-  it("strings, text parts and structured results", () => {
-    expect(redactToolResult('{"email":"a","id":1}', ["email"])).toBe('{"id":1}');
-    expect(redactToolResult([{ type: "text", content: '{"email":"a","id":1}' }], ["email"])).toEqual([{ type: "text", content: '{"id":1}' }]);
-    expect(redactToolResult({ email: "a", id: 1 }, ["email"])).toEqual({ id: 1 });
-  });
-
-  it("redacts each tool message with the paths of its call's slug", () => {
+describe("the stored transcript", () => {
+  it("each tool message is redacted with the paths of its call's slug; the user's own words are theirs", async () => {
+    const store = memoryPersistence().stores.messages;
     const messages: ModelMessage[] = [
       { role: "user", content: "my email is me@example.com" },
       {
@@ -119,20 +102,11 @@ describe("redactToolResult / redactTranscript", () => {
       { role: "tool", toolCallId: "c1", content: '{"email":"a@example.com","id":1}' },
       { role: "tool", toolCallId: "c2", content: '{"email":"page-field","id":2}' },
     ];
-    const out = redactTranscript(messages, { paths: { users: ["email"] } });
-    expect(out[2]!.content).toBe('{"id":1}');
-    expect(out[3]!.content).toBe('{"email":"page-field","id":2}'); // another collection's paths
-    expect(out[0]).toBe(messages[0]); // the user's own words are theirs
-  });
-
-  it("the message store saves the redacted transcript", async () => {
-    const store = memoryPersistence().stores.messages;
-    const redacted = redactedMessageStore(store, { paths: { users: ["email"] } });
-    await redacted.saveThread("t", [
-      { role: "assistant", content: null, toolCalls: [{ id: "c1", type: "function", function: { name: "findDocuments", arguments: '{"slug":"users"}' } }] },
-      { role: "tool", toolCallId: "c1", content: '{"email":"a@example.com","id":1}' },
-    ]);
-    expect(JSON.stringify(await store.loadThread("t"))).not.toContain("a@example.com");
+    await redactedMessageStore(store, { paths: { users: ["email"] } }).saveThread("t", messages);
+    const saved = (await store.loadThread("t")) as ModelMessage[];
+    expect(saved[2]!.content).toBe('{"id":1}');
+    expect(saved[3]!.content).toBe('{"email":"page-field","id":2}'); // another collection's paths
+    expect(saved[0]!.content).toBe("my email is me@example.com");
   });
 });
 
@@ -301,7 +275,7 @@ describe("redactedReference: queries on hidden fields", () => {
     expect(redactedReference(policy, { slug: "users", where: { email: { like: "a" } } }, "findVersions")).toBe("email");
   });
   it("the policy refuses findVersions and countVersions on a hidden field, and answers the model why", async () => {
-    const middleware = turnPolicyMiddleware({ input: { threadId: "t", runId: "r", userKey: "users:1" }, settings: { model: "m", redact: policy.paths, ...(policy.relations ? { relations: policy.relations } : {}) } });
+    const middleware = turnPolicyMiddleware({ input: { threadId: "t", runId: "r", userKey: "users:1" }, settings: { model: "m", redaction: policy } });
     const before = middleware.onBeforeToolCall as (ctx: unknown, hook: unknown) => unknown;
     const hook = (toolName: string, args: Record<string, unknown>) => ({ toolCallId: `${toolName}-${JSON.stringify(args)}`, toolName, args, toolCall: { id: "x", type: "function", function: { name: toolName, arguments: "{}" } } });
     for (const toolName of ["findVersions", "countVersions"]) {

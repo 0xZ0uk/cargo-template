@@ -1011,14 +1011,22 @@ conversation's Durable Object (or the Node process with the in-memory backend).
 - **Defaults.** Every auth collection of the config hides `DEFAULT_AUTH_REDACTIONS`: `email`,
   `apiKey`, `apiKeyIndex`, `apiKeyLast4`, `enableAPIKey`, `sessions`, `salt`, `hash`,
   `resetPasswordToken`, `resetPasswordExpiration`, `_verificationToken`, `loginAttempts`,
-  `lockUntil` (some of which Payload strips already). `redact` adds to them. The endpoint resolves
-  the policy from the running (sanitized) config, so auth collections added by later plugins count
-  too, and sends it with the turn (`settings.redact`, `settings.relations`).
-- **Titles.** A document is named by `admin.useAsTitle` in the reference note, the stored message
-  (`metadata.assistant`), the `@` search and the chips. When that field is redacted (by the
-  defaults or `redact`, the same policy the tools use) its value is never read or used: the
-  document is `<singular label> #<id>` (`User #12`). Approval cards take their title from the
-  redacted document, so they never show it either.
+  `lockUntil` (some of which Payload strips already). `redact` adds to them. The policy is resolved
+  from the running (sanitized) config, so auth collections added by later plugins count too.
+- **One reader on the Worker (#133).** Every read the endpoints make (approval cards, references,
+  the config endpoint's `redactedTitles`) goes through the request's `UserReader`
+  (`src/server/reader.ts`, `readerFor(req, options)`): `findByID`, `find`, `findGlobal` and
+  `findVersion` are always `overrideAccess: false` with the request's user, `depth: 0` unless
+  asked, the latest draft when the collection or global has drafts, and return documents already
+  redacted; `find` refuses a `where` on a hidden field (`HiddenFieldError`); `title(slug, doc, id)`
+  is the only way documents are named; `hiddenField(args, toolName)` is the hidden-field check.
+  Its `policy` (`{ paths, relations }`, plain JSON) is what the endpoint sends with the turn
+  (`settings.redaction`), and the turn's middleware and message store use it as sent.
+- **Titles.** A document is named by `admin.useAsTitle` (its id when there is none) in the
+  reference note, the stored message (`metadata.assistant`), the `@` search, the chips and the
+  approval cards, all through `UserReader.title`. When that field is redacted (by the defaults or
+  `redact`, the same policy the tools use) its value is never read or used: the document is
+  `<singular label> #<id>` (`User #12`).
 - **Paths.** Dotted field names (`profile.phone`); arrays and blocks rows are walked implicitly
   (`layout.trackingId` drops it from every row). Documents of the call's collection are found at
   the top of a result and inside `docs`, `doc`, `version` and `parent` (the versions tools) and
@@ -1058,8 +1066,9 @@ conversation's Durable Object (or the Node process with the in-memory backend).
 - **Stored messages.** The turn's message store also redacts every tool message on save
   (`redactedMessageStore`), whatever put it there.
 - **Approval cards.** The documents read for a diff (the current document, the version to
-  restore, the documents a `where` matches) lose the redacted fields first, populated relations
-  included, so their current values never show. Values the model proposes to write are shown: it
+  restore, the documents a `where` matches, the document of a rich text edit) come from the
+  `UserReader`, so they arrive without the redacted fields, populated relations included, and their
+  current values never show (a rich text field that is itself redacted can't be shown as "before"). Values the model proposes to write are shown: it
   authored them.
 - **Limits.** Free text is not redacted: an error message that quotes a value (a validation error
   echoing what was sent) passes through, and so does a redacted value the user types into the chat.
@@ -1120,8 +1129,12 @@ proposals, approve, reject with a reason, batches, stale proposals, an access er
 time and ownership end to end; `tests/integration/richText.test.ts`: the Markdown tool and reads
 through plugin-mcp on app-shaped editors (block references, columns → content blocks) plus a list
 fixture, paths and errors, ids kept, formatting loss, access, the card and the system prompt; `tests/ui/approvals.test.tsx`: the card, and the chat panel's
-batch, stale and refused-send handling with a fake `useChat`; `tests/policies.test.ts`: redaction,
-usage and audit helpers; `tests/integration/policies.test.ts` (#68): budgets recorded, refused with
+batch, stale and refused-send handling with a fake `useChat`; `tests/integration/reader.test.ts`
+(#133): the `UserReader` on a real Payload: redacted paths through groups, arrays and blocks,
+populated relations, drafts, versions, access, refused hidden-field queries (the versions tools'
+`version.` / `parent.` paths included), titles, and the policy the turn applies as sent;
+`tests/policies.test.ts`: tool results and the stored transcript through the turn's middleware and
+message store, relations, hidden-field checks, usage and audit helpers; `tests/integration/policies.test.ts` (#68): budgets recorded, refused with
 402 before any model call, per user, reset at midnight UTC, recorded after a disconnect, approving
 refused but rejecting let through over the cap with one closing model call; one audit event per
 approved write and none for reads, rejections or failures, also past `maxToolCalls` (only the calls

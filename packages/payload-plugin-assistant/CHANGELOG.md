@@ -39,6 +39,14 @@
 - Several approvals in one turn are answered card by card (with Undo) or with Approve all / Reject all, and sent as one batch, since TanStack resumes a batch all or nothing.
 - Stale proposals: `changedSinceProposal` when the document changed after the interrupt (the card asks to confirm again), and `seenUpdatedAt` on approve: a document changed since the card showed it refuses the resume with `409 { code: "stale", interruptIds }`.
 
+### Changed
+
+- One "reads as this user" module (#133): `readerFor(req, options)` in `src/server/reader.ts` returns a `UserReader` that owns every read the endpoints make for the assistant (`findByID`, `find`, `findGlobal`, `findVersion`: `overrideAccess: false`, `depth: 0` unless asked, drafts when the entity has them, already redacted, populated relations included), document titles (`title`, `titleField`, `redactedTitles`), the hidden-field check (`hiddenField`; `find` throws `HiddenFieldError` for a `where` on a hidden field) and the serialised policy (`policy`). Approval cards, references, the `@` search's titles and the config endpoint go through it; the hand-placed `hide()` calls, the three title functions and the duplicate policy resolution (`policyOf`, `policyFor`, `redactionSettings`) are gone.
+  - The turn settings carry the policy as one field, `settings.redaction: { paths, relations? }` (was `settings.redact` and `settings.relations`), which the turn's middleware and message store use as sent instead of rebuilding it.
+  - `redactDocument`, `redactText` and `redactToolResult` (used only by tests) are removed; the tests go through the reader on a Payload instance (`tests/integration/reader.test.ts`) and through the turn's middleware and message store.
+  - Approval cards name a document by `admin.useAsTitle` like references and the admin (its id when there is none), no longer by the first of `title`, `name`, `label`, `slug`, `email`, `filename`.
+  - The approval card of a rich text edit reads the document through the reader too, so a rich text field that is itself redacted no longer shows its current value as "before" (the card shows a notice instead).
+
 ### Fixed
 
 - `RUN_STARTED` and `RUN_FINISHED` carry the server's run id (`X-Run-Id`), not the id OpenRouter's adapter mints per model call, so stop and rejoin work with the first event's `runId` (#116).

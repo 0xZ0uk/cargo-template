@@ -59,8 +59,8 @@ export const defaultAdapter: CreateAdapter = (settings) =>
  *   the stop signal.
  * - Provider routing is fixed: `{ requireParameters: true, dataCollection: 'deny' }`, camelCase.
  * - Policies (#68, `turnPolicyMiddleware`): each model call's usage goes to `recordUsage`, tool
- *   results lose the redacted fields (`settings.redact`, populated relations by their own
- *   collection through `settings.relations`) before the model sees them, calls that query a
+ *   results lose the redacted fields (`settings.redaction`, populated relations by their own
+ *   collection) before the model sees them, calls that query a
  *   redacted field are refused, and each document an applied write changed goes to `audit`.
  */
 export function createTurnRunner(options: TurnRunnerOptions = {}): TurnRunner {
@@ -90,11 +90,7 @@ export function createTurnRunner(options: TurnRunnerOptions = {}): TurnRunner {
     // Redacted fields never reach the stored transcript, whatever put them there (#68).
     const persistence = {
       ...context.persistence,
-      stores: { ...context.persistence.stores, messages: redactedMessageStore(context.persistence.stores.messages, {
-          paths: settings.redact ?? {},
-          ...(settings.relations ? { relations: settings.relations } : {}),
-        }),
-      },
+      stores: { ...context.persistence.stores, messages: redactedMessageStore(context.persistence.stores.messages, settings.redaction) },
     };
 
     const stream = chat({

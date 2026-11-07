@@ -9,7 +9,7 @@ import { usageAmountOf, type UsageAmount } from "../usage";
 /** What the policy middleware needs from the turn. */
 export interface TurnPolicyOptions {
   input: Pick<TurnInput, "threadId" | "runId" | "userKey">;
-  settings: Pick<TurnSettings, "model" | "redact" | "relations">;
+  settings: Pick<TurnSettings, "model" | "redaction">;
   /** Adds one model call's usage to the user's day and the conversation (the index object). */
   recordUsage?: (amount: UsageAmount) => Promise<void>;
   audit?: AssistantAuditSink;
@@ -54,7 +54,7 @@ function argumentsOf(raw: unknown): Record<string, unknown> {
 export function turnPolicyMiddleware(options: TurnPolicyOptions): ChatMiddleware {
   const { input, settings, recordUsage, audit } = options;
   const logError = options.logError ?? defaultLogError;
-  const policy: RedactionPolicy = { paths: settings.redact ?? {}, ...(settings.relations ? { relations: settings.relations } : {}) };
+  const policy = settings.redaction;
   const redacting = !isEmptyPolicy(policy);
   /** Calls `onBeforeToolCall` refused: `chat()` still reports them to `onAfterToolCall` as `ok`. */
   const refused = new Set<string>();
