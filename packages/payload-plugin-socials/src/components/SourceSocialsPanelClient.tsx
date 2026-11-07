@@ -27,7 +27,12 @@ import { PLATFORM_IDS, PLATFORM_LABELS } from '../constants.js'
 import { isSocialsDisabled, resolveSocialsEndpointBase } from './accessModel.js'
 import { fetchSocialPublish } from './fetchSocialPublish.js'
 import {
-  acceptedMediaTypes,
+  type ComposerDestination,
+  type ComposerFieldKey,
+  getPlatformDescriptor,
+  type ResolvedTemplateContent,
+} from './platforms/index.js'
+import {
   buildInitialComposerState,
   compileComposerInput,
   type ComposerState,
@@ -43,15 +48,8 @@ import {
   reorderSelectedMedia,
   resolveMediaLibraryOptions,
   shouldFetchEnvelope,
-  supportsMultipleMedia,
 } from './socialComposerModel.js'
-import {
-  asRecord,
-  type ComposerDestination,
-  destinationPath,
-  inferMediaFormat,
-  platformFormats,
-} from './socialComposerViewModel.js'
+import { asRecord, inferMediaFormat } from './socialComposerViewModel.js'
 import { VideoPreviewPane, VideoTile } from './SocialMediaPreview.js'
 import { StandaloneSocialComposer } from './StandaloneSocialComposer.js'
 import {
@@ -92,15 +90,7 @@ type ResolvedTemplate = {
   id: number | string
   isDefault?: boolean
   name: string
-  resolved: {
-    facebookMessage?: string
-    gbpSummary?: string
-    instagramCaption?: string
-    pinterestAltText?: string
-    pinterestDescription?: string
-    pinterestHashtags?: string[]
-    pinterestTitle?: string
-  }
+  resolved: ResolvedTemplateContent
   sourceKind?: string
 }
 /** Pill tone for a history row's status. */
@@ -328,7 +318,8 @@ const SourceComposerAuthorized: React.FC<{ sourceKind: string }> = ({ sourceKind
     const controller = new AbortController()
     const load = async (): Promise<void> => {
       try {
-        const response = await fetch(`${endpointBase}${destinationPath[platform]}`, {
+        const descriptor = getPlatformDescriptor(platform)
+        const response = await fetch(`${endpointBase}${descriptor.destination.path}`, {
           signal: controller.signal,
         })
         const body = (await response.json()) as Record<string, unknown>
@@ -337,29 +328,7 @@ const SourceComposerAuthorized: React.FC<{ sourceKind: string }> = ({ sourceKind
             typeof body.error === 'string' ? body.error : 'Destination discovery failed',
           )
         }
-        const values =
-          platform === 'pinterest'
-            ? body.boards
-            : platform === 'facebook'
-              ? body.pages
-              : platform === 'instagram'
-                ? body.accounts
-                : body.locations
-        const rows = Array.isArray(values)
-          ? values.map(asRecord).filter((row): row is Record<string, unknown> => row !== undefined)
-          : []
-        const next = rows.flatMap((row) => {
-          const idValue =
-            platform === 'instagram' ? row.igUserId : platform === 'gbp' ? row.resourceName : row.id
-          if (typeof idValue !== 'string') {
-            return []
-          }
-          const label =
-            [row.name, row.pageName, row.title, row.storeCode].find(
-              (value): value is string => typeof value === 'string',
-            ) ?? idValue
-          return [{ id: idValue, label }]
-        })
+        const next = descriptor.destination.parse(body)
         setDestinations(next)
         if (next.length === 1) {
           setStates((current) => {
@@ -414,20 +383,13 @@ const SourceComposerAuthorized: React.FC<{ sourceKind: string }> = ({ sourceKind
       if (!template) {
         return
       }
-      const resolved = template.resolved
-      if (platform === 'pinterest') {
-        const tags = resolved.pinterestHashtags?.join(' ')
-        updateState({
-          altText: resolved.pinterestAltText ?? state?.altText,
-          copy: [resolved.pinterestDescription, tags].filter(Boolean).join('\n\n') || state?.copy,
-          title: resolved.pinterestTitle ?? state?.title,
-        })
-      } else if (platform === 'instagram' && resolved.instagramCaption) {
-        updateState({ copy: resolved.instagramCaption })
-      } else if (platform === 'facebook' && resolved.facebookMessage) {
-        updateState({ copy: resolved.facebookMessage })
-      } else if (platform === 'gbp' && resolved.gbpSummary) {
-        updateState({ copy: resolved.gbpSummary })
+      const patch = getPlatformDescriptor(platform).applyTemplate(template.resolved, {
+        altText: state?.altText ?? '',
+        copy: state?.copy ?? '',
+        title: state?.title ?? '',
+      })
+      if (patch) {
+        updateState(patch)
       }
     },
     [platform, state?.altText, state?.copy, state?.title, templates, updateState],
@@ -459,7 +421,7 @@ const SourceComposerAuthorized: React.FC<{ sourceKind: string }> = ({ sourceKind
     if (!state) {
       return
     }
-    if (!supportsMultipleMedia(platform, state.format)) {
+    if (!getPlatformDescriptor(platform).supportsMultipleMedia(state.format)) {
       updateState({ selectedMedia: [url] })
       return
     }
@@ -641,8 +603,10 @@ const SourceComposerAuthorized: React.FC<{ sourceKind: string }> = ({ sourceKind
 
   const filteredTemplates = filterTemplatesForContext(templates, sourceKind, platform)
   const assets = mergedDraft.media
-  const accepted = acceptedMediaTypes(platform, state.format)
-  const isMultiMedia = supportsMultipleMedia(platform, state.format)
+  const descriptor = getPlatformDescriptor(platform)
+  const accepted = descriptor.acceptedMedia(state.format)
+  const isMultiMedia = descriptor.supportsMultipleMedia(state.format)
+  const visibleFields = descriptor.visibleFields(state.format)
   const moveSelected = (from: number, to: number): void => {
     updateState({ selectedMedia: reorderSelectedMedia(state.selectedMedia, from, to) })
   }
@@ -659,8 +623,7 @@ const SourceComposerAuthorized: React.FC<{ sourceKind: string }> = ({ sourceKind
     : assets
   const visibleAssets = filterMediaBySearch(orderedAssets, mediaSearch)
   const previewAsset = getEffectiveAssets(platform, state, mergedDraft)[0]
-  const mediaRequired =
-    state.format !== 'LINK' && state.format !== 'STANDARD' && state.format !== 'ALERT'
+  const mediaRequired = descriptor.mediaRequired(state.format)
   const copyLimit = envelope.capabilities.limits.captionMaxChars
 
   // Whether the active platform uses the localOnly reconcile path instead of a
@@ -671,6 +634,201 @@ const SourceComposerAuthorized: React.FC<{ sourceKind: string }> = ({ sourceKind
   const scheduleMin = formatLocalDateTimeMin(new Date())
 
   const errorIssues = validation?.issues.filter((issue) => issue.severity === 'error') ?? []
+
+  // One control per field key the platform descriptor lists for this format.
+  const fieldControls: Record<ComposerFieldKey, React.ReactNode> = {
+    pinTitle: (
+      <Field label="Pin title">
+        <input
+          aria-label="Pin title"
+          className="socials-input"
+          maxLength={100}
+          onChange={(event) => updateState({ title: event.target.value })}
+          value={state.title}
+        />
+      </Field>
+    ),
+    firstLineTitle: (
+      <Field
+        description="Instagram and Facebook have no separate title field; this becomes the first line of the caption/message."
+        label="Title (first line)"
+      >
+        <input
+          aria-label="Title (first line)"
+          className="socials-input"
+          onChange={(event) => updateState({ title: event.target.value })}
+          placeholder="Optional. Becomes the first line of the caption/message."
+          value={state.title}
+        />
+      </Field>
+    ),
+    copy: (
+      <Field
+        description={`${state.copy.length}${copyLimit ? ` / ${copyLimit}` : ''} characters`}
+        descriptionTone={copyLimit && state.copy.length > copyLimit ? 'danger' : undefined}
+        label={descriptor.copyLabel}
+      >
+        <textarea
+          aria-label="Post copy"
+          className="socials-textarea"
+          onChange={(event) => updateState({ copy: event.target.value })}
+          rows={7}
+          value={state.copy}
+        />
+      </Field>
+    ),
+    link: (
+      <Field label="Outbound link">
+        <input
+          aria-label="Outbound link"
+          className="socials-input"
+          onChange={(event) => updateState({ link: event.target.value })}
+          type="url"
+          value={state.link}
+        />
+      </Field>
+    ),
+    altText: (
+      <Field label="Accessibility text">
+        <textarea
+          aria-label="Accessibility text"
+          className="socials-textarea"
+          onChange={(event) => updateState({ altText: event.target.value })}
+          rows={3}
+          value={state.altText}
+        />
+      </Field>
+    ),
+    videoTitle: (
+      <Field label="Video title">
+        <input
+          aria-label="Video title"
+          className="socials-input"
+          onChange={(event) => updateState({ videoTitle: event.target.value })}
+          value={state.videoTitle}
+        />
+      </Field>
+    ),
+    shareToFeed: (
+      <Check
+        aria-label="Also share Reel to Feed"
+        checked={state.shareToFeed}
+        label="Also share Reel to Feed"
+        onChange={(event) => updateState({ shareToFeed: event.target.checked })}
+      />
+    ),
+    gbpDetails: (
+      <>
+        <div className="socials-pair">
+          <Field label="CTA">
+            <select
+              className="socials-select"
+              onChange={(event) =>
+                updateState({
+                  callToAction: event.target.value as ComposerState['callToAction'],
+                })
+              }
+              value={state.callToAction}
+            >
+              <option value="">No button</option>
+              {['BOOK', 'ORDER', 'SHOP', 'LEARN_MORE', 'SIGN_UP', 'CALL'].map((value) => (
+                <option key={value} value={value}>
+                  {value.replace('_', ' ')}
+                </option>
+              ))}
+            </select>
+          </Field>
+          {state.callToAction !== 'CALL' && (
+            <Field label={state.format === 'OFFER' ? 'Redeem URL' : 'CTA URL'}>
+              <input
+                aria-label={state.format === 'OFFER' ? 'Redeem URL' : 'CTA URL'}
+                className="socials-input"
+                onChange={(event) => updateState({ callToActionUrl: event.target.value })}
+                type="url"
+                value={state.callToActionUrl}
+              />
+            </Field>
+          )}
+        </div>
+        {(state.format === 'EVENT' || state.format === 'OFFER') && (
+          <>
+            <Field label="Event title">
+              <input
+                aria-label="Event title"
+                className="socials-input"
+                onChange={(event) => updateState({ eventTitle: event.target.value })}
+                value={state.eventTitle}
+              />
+            </Field>
+            <div className="socials-pair">
+              <Field label="Starts">
+                <input
+                  aria-label="Event starts"
+                  className="socials-input"
+                  onChange={(event) => updateState({ eventStart: event.target.value })}
+                  type="datetime-local"
+                  value={state.eventStart}
+                />
+              </Field>
+              <Field label="Ends">
+                <input
+                  aria-label="Event ends"
+                  className="socials-input"
+                  onChange={(event) => updateState({ eventEnd: event.target.value })}
+                  type="datetime-local"
+                  value={state.eventEnd}
+                />
+              </Field>
+            </div>
+          </>
+        )}
+        {state.format === 'OFFER' && (
+          <div className="socials-pair">
+            <Field label="Coupon code">
+              <input
+                aria-label="Coupon code"
+                className="socials-input"
+                onChange={(event) => updateState({ offerCode: event.target.value })}
+                value={state.offerCode}
+              />
+            </Field>
+            <Field label="Terms">
+              <textarea
+                aria-label="Offer terms"
+                className="socials-textarea"
+                onChange={(event) => updateState({ offerTerms: event.target.value })}
+                rows={3}
+                value={state.offerTerms}
+              />
+            </Field>
+          </div>
+        )}
+        {state.format === 'ALERT' && (
+          <Field label="Alert type">
+            <select
+              className="socials-select"
+              onChange={(event) =>
+                updateState({ alertType: event.target.value as ComposerState['alertType'] })
+              }
+              value={state.alertType}
+            >
+              <option value="">Select…</option>
+              <option value="COVID_19">COVID-19</option>
+            </select>
+          </Field>
+        )}
+        <Field label="Language code (optional)">
+          <input
+            aria-label="Language code"
+            className="socials-input"
+            onChange={(event) => updateState({ languageCode: event.target.value })}
+            placeholder="en-US"
+            value={state.languageCode}
+          />
+        </Field>
+      </>
+    ),
+  }
 
   return (
     <Card
@@ -740,7 +898,7 @@ const SourceComposerAuthorized: React.FC<{ sourceKind: string }> = ({ sourceKind
                 onChange={(event) => handleFormatChange(event.target.value)}
                 value={state.format}
               >
-                {platformFormats[platform].map((format) => (
+                {descriptor.formats.map((format) => (
                   <option key={format.value} value={format.value}>
                     {format.label}
                   </option>
@@ -749,214 +907,12 @@ const SourceComposerAuthorized: React.FC<{ sourceKind: string }> = ({ sourceKind
             </Field>
           </div>
 
-          {platform === 'pinterest' && (
-            <Field label="Pin title">
-              <input
-                aria-label="Pin title"
-                className="socials-input"
-                maxLength={100}
-                onChange={(event) => updateState({ title: event.target.value })}
-                value={state.title}
-              />
-            </Field>
-          )}
-
-          {(platform === 'instagram' || platform === 'facebook') && (
-            <Field
-              description="Instagram and Facebook have no separate title field; this becomes the first line of the caption/message."
-              label="Title (first line)"
-            >
-              <input
-                aria-label="Title (first line)"
-                className="socials-input"
-                onChange={(event) => updateState({ title: event.target.value })}
-                placeholder="Optional. Becomes the first line of the caption/message."
-                value={state.title}
-              />
-            </Field>
-          )}
-
-          <Field
-            description={`${state.copy.length}${copyLimit ? ` / ${copyLimit}` : ''} characters`}
-            descriptionTone={copyLimit && state.copy.length > copyLimit ? 'danger' : undefined}
-            label={
-              platform === 'gbp'
-                ? 'Summary'
-                : platform === 'instagram'
-                  ? 'Caption'
-                  : platform === 'facebook'
-                    ? 'Message'
-                    : 'Description'
-            }
-          >
-            <textarea
-              aria-label="Post copy"
-              className="socials-textarea"
-              onChange={(event) => updateState({ copy: event.target.value })}
-              rows={7}
-              value={state.copy}
-            />
-          </Field>
-
-          {(platform === 'pinterest' || (platform === 'facebook' && state.format === 'LINK')) && (
-            <Field label="Outbound link">
-              <input
-                aria-label="Outbound link"
-                className="socials-input"
-                onChange={(event) => updateState({ link: event.target.value })}
-                type="url"
-                value={state.link}
-              />
-            </Field>
-          )}
-          {((platform === 'pinterest' && state.format === 'IMAGE') ||
-            (platform === 'instagram' && state.format === 'IMAGE') ||
-            (platform === 'facebook' && state.format === 'PHOTO')) && (
-            <Field label="Accessibility text">
-              <textarea
-                aria-label="Accessibility text"
-                className="socials-textarea"
-                onChange={(event) => updateState({ altText: event.target.value })}
-                rows={3}
-                value={state.altText}
-              />
-            </Field>
-          )}
-          {platform === 'facebook' && state.format === 'VIDEO' && (
-            <Field label="Video title">
-              <input
-                aria-label="Video title"
-                className="socials-input"
-                onChange={(event) => updateState({ videoTitle: event.target.value })}
-                value={state.videoTitle}
-              />
-            </Field>
-          )}
-          {platform === 'instagram' && state.format === 'REELS' && (
-            <Check
-              aria-label="Also share Reel to Feed"
-              checked={state.shareToFeed}
-              label="Also share Reel to Feed"
-              onChange={(event) => updateState({ shareToFeed: event.target.checked })}
-            />
-          )}
-
-          {platform === 'gbp' && (
-            <>
-              <div className="socials-pair">
-                <Field label="CTA">
-                  <select
-                    className="socials-select"
-                    onChange={(event) =>
-                      updateState({
-                        callToAction: event.target.value as ComposerState['callToAction'],
-                      })
-                    }
-                    value={state.callToAction}
-                  >
-                    <option value="">No button</option>
-                    {['BOOK', 'ORDER', 'SHOP', 'LEARN_MORE', 'SIGN_UP', 'CALL'].map((value) => (
-                      <option key={value} value={value}>
-                        {value.replace('_', ' ')}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                {state.callToAction !== 'CALL' && (
-                  <Field label={state.format === 'OFFER' ? 'Redeem URL' : 'CTA URL'}>
-                    <input
-                      aria-label={state.format === 'OFFER' ? 'Redeem URL' : 'CTA URL'}
-                      className="socials-input"
-                      onChange={(event) => updateState({ callToActionUrl: event.target.value })}
-                      type="url"
-                      value={state.callToActionUrl}
-                    />
-                  </Field>
-                )}
-              </div>
-              {(state.format === 'EVENT' || state.format === 'OFFER') && (
-                <>
-                  <Field label="Event title">
-                    <input
-                      aria-label="Event title"
-                      className="socials-input"
-                      onChange={(event) => updateState({ eventTitle: event.target.value })}
-                      value={state.eventTitle}
-                    />
-                  </Field>
-                  <div className="socials-pair">
-                    <Field label="Starts">
-                      <input
-                        aria-label="Event starts"
-                        className="socials-input"
-                        onChange={(event) => updateState({ eventStart: event.target.value })}
-                        type="datetime-local"
-                        value={state.eventStart}
-                      />
-                    </Field>
-                    <Field label="Ends">
-                      <input
-                        aria-label="Event ends"
-                        className="socials-input"
-                        onChange={(event) => updateState({ eventEnd: event.target.value })}
-                        type="datetime-local"
-                        value={state.eventEnd}
-                      />
-                    </Field>
-                  </div>
-                </>
-              )}
-              {state.format === 'OFFER' && (
-                <div className="socials-pair">
-                  <Field label="Coupon code">
-                    <input
-                      aria-label="Coupon code"
-                      className="socials-input"
-                      onChange={(event) => updateState({ offerCode: event.target.value })}
-                      value={state.offerCode}
-                    />
-                  </Field>
-                  <Field label="Terms">
-                    <textarea
-                      aria-label="Offer terms"
-                      className="socials-textarea"
-                      onChange={(event) => updateState({ offerTerms: event.target.value })}
-                      rows={3}
-                      value={state.offerTerms}
-                    />
-                  </Field>
-                </div>
-              )}
-              {state.format === 'ALERT' && (
-                <Field label="Alert type">
-                  <select
-                    className="socials-select"
-                    onChange={(event) =>
-                      updateState({ alertType: event.target.value as ComposerState['alertType'] })
-                    }
-                    value={state.alertType}
-                  >
-                    <option value="">Select…</option>
-                    <option value="COVID_19">COVID-19</option>
-                  </select>
-                </Field>
-              )}
-              <Field label="Language code (optional)">
-                <input
-                  aria-label="Language code"
-                  className="socials-input"
-                  onChange={(event) => updateState({ languageCode: event.target.value })}
-                  placeholder="en-US"
-                  value={state.languageCode}
-                />
-              </Field>
-            </>
-          )}
+          {visibleFields.map((key) => (
+            <React.Fragment key={key}>{fieldControls[key]}</React.Fragment>
+          ))}
 
           {(mediaRequired || assets.length > 0) && (
-            <Fieldset
-              legend={`Media ${supportsMultipleMedia(platform, state.format) ? '(choose and order 2-10)' : ''}`}
-            >
+            <Fieldset legend={`Media ${isMultiMedia ? '(choose and order 2-10)' : ''}`}>
               {assets.length === 0 && (
                 <p className="socials-text--secondary">No source media is available.</p>
               )}
@@ -1124,10 +1080,7 @@ const SourceComposerAuthorized: React.FC<{ sourceKind: string }> = ({ sourceKind
               <Banner type={errorIssues.length > 0 ? 'danger' : 'warning'}>
                 <ul className="socials-banner-list">
                   {validation.issues.map((issue, index) => (
-                    <li
-                      data-severity={issue.severity}
-                      key={`${issue.field ?? 'general'}-${index}`}
-                    >
+                    <li data-severity={issue.severity} key={`${issue.field ?? 'general'}-${index}`}>
                       {issue.message}
                     </li>
                   ))}
@@ -1174,7 +1127,7 @@ const SourceComposerAuthorized: React.FC<{ sourceKind: string }> = ({ sourceKind
           )}
           <strong>{state.title || envelope.draft.content.title}</strong>
           <p className="socials-preview__copy">{state.copy}</p>
-          {state.link && (platform === 'pinterest' || state.format === 'LINK') && (
+          {state.link && visibleFields.includes('link') && (
             <small className="socials-text--secondary">{state.link}</small>
           )}
           <p className="socials-text--secondary">

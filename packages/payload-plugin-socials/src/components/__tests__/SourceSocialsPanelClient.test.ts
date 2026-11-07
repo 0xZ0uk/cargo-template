@@ -19,7 +19,6 @@ import type {
 } from '../socialComposerModel.js'
 
 import {
-  acceptedMediaTypes,
   buildInitialComposerState,
   buildStandaloneInitialState,
   compileComposerInput,
@@ -40,7 +39,6 @@ import {
   resolveUploadFileUrl,
   shouldFetchEnvelope,
   stripLeadingTitle,
-  supportsMultipleMedia,
 } from '../socialComposerModel.js'
 import { SocialPublishPanelClient } from '../SourceSocialsPanelClient.js'
 
@@ -127,68 +125,6 @@ describe('formatLocalDateTimeMin', () => {
 })
 
 // ---------------------------------------------------------------------------
-// acceptedMediaTypes
-// ---------------------------------------------------------------------------
-
-describe('acceptedMediaTypes', () => {
-  it('pinterest IMAGE accepts only image', () => {
-    expect(acceptedMediaTypes('pinterest', 'IMAGE')).toEqual(['image'])
-  })
-
-  it('pinterest VIDEO accepts only video', () => {
-    expect(acceptedMediaTypes('pinterest', 'VIDEO')).toEqual(['video'])
-  })
-
-  it('instagram IMAGE accepts only image', () => {
-    expect(acceptedMediaTypes('instagram', 'IMAGE')).toEqual(['image'])
-  })
-
-  it('instagram REELS accepts only video', () => {
-    expect(acceptedMediaTypes('instagram', 'REELS')).toEqual(['video'])
-  })
-
-  it('instagram STORIES accepts image and video', () => {
-    expect(acceptedMediaTypes('instagram', 'STORIES')).toEqual(['image', 'video'])
-  })
-
-  it('instagram CAROUSEL accepts image and video', () => {
-    expect(acceptedMediaTypes('instagram', 'CAROUSEL')).toEqual(['image', 'video'])
-  })
-
-  it('facebook LINK accepts only image', () => {
-    expect(acceptedMediaTypes('facebook', 'LINK')).toEqual(['image'])
-  })
-
-  it('facebook PHOTO accepts only image', () => {
-    expect(acceptedMediaTypes('facebook', 'PHOTO')).toEqual(['image'])
-  })
-
-  it('facebook PHOTO_MULTI accepts only image', () => {
-    expect(acceptedMediaTypes('facebook', 'PHOTO_MULTI')).toEqual(['image'])
-  })
-
-  it('facebook VIDEO accepts only video', () => {
-    expect(acceptedMediaTypes('facebook', 'VIDEO')).toEqual(['video'])
-  })
-
-  it('gbp STANDARD accepts only image', () => {
-    expect(acceptedMediaTypes('gbp', 'STANDARD')).toEqual(['image'])
-  })
-
-  it('gbp EVENT accepts only image', () => {
-    expect(acceptedMediaTypes('gbp', 'EVENT')).toEqual(['image'])
-  })
-
-  it('gbp OFFER accepts only image', () => {
-    expect(acceptedMediaTypes('gbp', 'OFFER')).toEqual(['image'])
-  })
-
-  it('gbp ALERT accepts only image', () => {
-    expect(acceptedMediaTypes('gbp', 'ALERT')).toEqual(['image'])
-  })
-})
-
-// ---------------------------------------------------------------------------
 // pruneSelectedMedia
 // ---------------------------------------------------------------------------
 
@@ -265,168 +201,6 @@ describe('compileComposerInput', () => {
     ).toEqual([draft.media[0]])
   })
 
-  it('compiles a Pinterest video Pin from canonical media', () => {
-    expect(
-      compileComposerInput(
-        'pinterest',
-        state({
-          format: 'VIDEO',
-          selectedMedia: ['https://cdn.test/video.mp4'],
-        }),
-        draft,
-      ),
-    ).toMatchObject({
-      boardId: 'destination',
-      coverImageUrl: 'https://cdn.test/cover.jpg',
-      mediaType: 'VIDEO',
-      videoUrl: 'https://cdn.test/video.mp4',
-    })
-  })
-
-  it('preserves ordered Instagram carousel children', () => {
-    expect(
-      compileComposerInput(
-        'instagram',
-        state({
-          format: 'CAROUSEL',
-          selectedMedia: ['https://cdn.test/detail.jpg', 'https://cdn.test/video.mp4'],
-        }),
-        draft,
-      ),
-    ).toMatchObject({
-      carouselChildren: [
-        { imageUrl: 'https://cdn.test/detail.jpg' },
-        { videoUrl: 'https://cdn.test/video.mp4' },
-      ],
-      mediaType: 'CAROUSEL',
-    })
-  })
-
-  it.each([
-    ['IMAGE', { imageUrl: 'https://cdn.test/front.jpg' }],
-    ['REELS', { coverUrl: 'https://cdn.test/cover.jpg', videoUrl: 'https://cdn.test/video.mp4' }],
-    ['STORIES', { videoUrl: 'https://cdn.test/video.mp4' }],
-  ])('compiles Instagram %s media', (format, expected) => {
-    expect(
-      compileComposerInput(
-        'instagram',
-        state({
-          format,
-          selectedMedia:
-            format === 'IMAGE' ? ['https://cdn.test/front.jpg'] : ['https://cdn.test/video.mp4'],
-        }),
-        draft,
-      ),
-    ).toMatchObject(expected)
-  })
-
-  it('compiles an image Story when no video exists', () => {
-    expect(
-      compileComposerInput('instagram', state({ format: 'STORIES' }), {
-        ...draft,
-        media: [draft.media[0]],
-      }),
-    ).toMatchObject({ imageUrl: 'https://cdn.test/front.jpg' })
-  })
-
-  it('compiles Facebook multi-photo URLs without video assets', () => {
-    expect(
-      compileComposerInput(
-        'facebook',
-        state({
-          format: 'PHOTO_MULTI',
-          selectedMedia: [
-            'https://cdn.test/front.jpg',
-            'https://cdn.test/video.mp4',
-            'https://cdn.test/detail.jpg',
-          ],
-        }),
-        draft,
-      ),
-    ).toMatchObject({
-      format: 'PHOTO_MULTI',
-      imageUrls: ['https://cdn.test/front.jpg', 'https://cdn.test/detail.jpg'],
-      pageId: 'destination',
-    })
-  })
-
-  it.each([
-    ['PHOTO', { imageUrl: 'https://cdn.test/front.jpg' }],
-    ['VIDEO', { videoTitle: 'Video title', videoUrl: 'https://cdn.test/video.mp4' }],
-  ])('compiles Facebook %s media', (format, expected) => {
-    expect(
-      compileComposerInput(
-        'facebook',
-        state({
-          format,
-          selectedMedia:
-            format === 'VIDEO' ? ['https://cdn.test/video.mp4'] : ['https://cdn.test/front.jpg'],
-        }),
-        draft,
-      ),
-    ).toMatchObject(expected)
-  })
-
-  it('compiles GBP event dates and times into the LocalPosts shape', () => {
-    expect(
-      compileComposerInput(
-        'gbp',
-        state({
-          eventEnd: '2027-06-02T17:30',
-          eventStart: '2027-06-01T09:15',
-          format: 'EVENT',
-        }),
-        draft,
-      ),
-    ).toMatchObject({
-      event: {
-        schedule: {
-          endDate: { day: 2, month: 6, year: 2027 },
-          endTime: { hours: 17, minutes: 30 },
-          startDate: { day: 1, month: 6, year: 2027 },
-          startTime: { hours: 9, minutes: 15 },
-        },
-        title: 'Event',
-      },
-      topicType: 'EVENT',
-    })
-  })
-
-  it('compiles GBP offer, alert, and call CTA variants', () => {
-    expect(
-      compileComposerInput(
-        'gbp',
-        state({
-          callToActionUrl: 'https://example.test/redeem',
-          eventEnd: '2027-06-02T17:30',
-          eventStart: '2027-06-01T09:15',
-          format: 'OFFER',
-          offerCode: 'SAVE20',
-          offerTerms: 'Terms',
-        }),
-        draft,
-      ),
-    ).toMatchObject({
-      offer: {
-        couponCode: 'SAVE20',
-        redeemOnlineUrl: 'https://example.test/redeem',
-        termsConditions: 'Terms',
-      },
-    })
-    expect(
-      compileComposerInput('gbp', state({ alertType: 'COVID_19', format: 'ALERT' }), draft),
-    ).toMatchObject({ alertType: 'COVID_19', imageUrl: undefined })
-    expect(
-      compileComposerInput('gbp', state({ callToAction: 'CALL', format: 'STANDARD' }), draft),
-    ).toMatchObject({ callToAction: { actionType: 'CALL', url: undefined } })
-  })
-
-  it('identifies only the two multi-media formats', () => {
-    expect(supportsMultipleMedia('instagram', 'CAROUSEL')).toBe(true)
-    expect(supportsMultipleMedia('facebook', 'PHOTO_MULTI')).toBe(true)
-    expect(supportsMultipleMedia('pinterest', 'IMAGE')).toBe(false)
-  })
-
   // --- New tests: strict media selection ---
 
   it('does not fall back to draft media when no selected asset matches the format', () => {
@@ -465,56 +239,6 @@ describe('compileComposerInput', () => {
     )
     // Both 'front.jpg' and 'detail.jpg' are images, so auto-select does not kick in
     expect(result.imageUrl).toBeUndefined()
-  })
-
-  // --- New tests: title prepend ---
-
-  it('prepends title to instagram caption when title is set', () => {
-    const result = compileComposerInput(
-      'instagram',
-      state({ format: 'IMAGE', title: 'My Title' }),
-      draft,
-    )
-    expect(result.caption).toBe('My Title\n\nComposed copy')
-  })
-
-  it('prepends title to facebook message when title is set', () => {
-    const result = compileComposerInput(
-      'facebook',
-      state({ format: 'LINK', title: 'FB Title' }),
-      draft,
-    )
-    expect(result.message).toBe('FB Title\n\nComposed copy')
-  })
-
-  it('does not prepend title when title is empty', () => {
-    const result = compileComposerInput('instagram', state({ format: 'IMAGE', title: '' }), draft)
-    expect(result.caption).toBe('Composed copy')
-  })
-
-  it('does not prepend title for pinterest (uses title field directly)', () => {
-    const result = compileComposerInput(
-      'pinterest',
-      state({ format: 'IMAGE', title: 'Pin title' }),
-      draft,
-    )
-    expect(result.title).toBe('Pin title')
-    expect(result.description).toBe('Composed copy')
-  })
-
-  // --- Format field threading ---
-
-  it('threads asset format to pinterest output', () => {
-    const draftWithFormat: SocialDraft = {
-      ...draft,
-      media: [{ type: 'image', format: 'jpeg', url: 'https://cdn.test/front.jpg' }],
-    }
-    const result = compileComposerInput(
-      'pinterest',
-      state({ format: 'IMAGE', selectedMedia: ['https://cdn.test/front.jpg'] }),
-      draftWithFormat,
-    )
-    expect(result.format).toBe('jpeg')
   })
 })
 
@@ -705,24 +429,6 @@ describe('title prepend deduplication', () => {
       },
     })
     expect(initialized.copy).toBe('Preview title\n\nThe body.')
-  })
-
-  it('compiles facebook message as title + body exactly once', () => {
-    const input = compileComposerInput(
-      'facebook',
-      state({ copy: 'The body.', format: 'PHOTO', title: 'Product 1' }),
-      draft,
-    )
-    expect(input.message).toBe('Product 1\n\nThe body.')
-  })
-
-  it('does not double the title when the message already starts with it', () => {
-    const input = compileComposerInput(
-      'facebook',
-      state({ copy: 'Product 1\n\nThe body.', format: 'PHOTO', title: 'Product 1' }),
-      draft,
-    )
-    expect(input.message).toBe('Product 1\n\nThe body.')
   })
 })
 

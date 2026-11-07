@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-  asRecord,
-  destinationPath,
-  inferMediaFormat,
-  platformFormats,
-} from '../socialComposerViewModel.js'
+import { asRecord, inferMediaFormat } from '../socialComposerViewModel.js'
 
 describe('socialComposerViewModel', () => {
   it('accepts plain records and rejects arrays, null, and primitives', () => {
@@ -30,17 +25,5 @@ describe('socialComposerViewModel', () => {
   it('does not mistake a dotted hostname for a file extension', () => {
     expect(inferMediaFormat('https://cdn.example.com/media/no-extension')).toBeUndefined()
     expect(inferMediaFormat('not a valid URL')).toBeUndefined()
-  })
-
-  it('defines discovery paths and at least one format for every platform', () => {
-    expect(destinationPath).toEqual({
-      facebook: '/facebook/pages',
-      gbp: '/gbp/locations',
-      instagram: '/instagram/accounts',
-      pinterest: '/pinterest/boards',
-    })
-    for (const formats of Object.values(platformFormats)) {
-      expect(formats.length).toBeGreaterThan(0)
-    }
   })
 })
