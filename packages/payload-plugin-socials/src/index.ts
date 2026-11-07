@@ -269,6 +269,7 @@ export type {
   PublishArgs,
   PublishedRef,
   PublishResult,
+  ReconcileVerdict,
   SocialCopyFieldKey,
   SocialCopyFieldTransforms,
   SocialCopyTransform,

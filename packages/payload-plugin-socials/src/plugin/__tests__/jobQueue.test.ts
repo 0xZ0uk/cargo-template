@@ -148,8 +148,9 @@ describe('sweepDueSocialPosts', () => {
       ],
     })
     const result = await sweepDueSocialPosts(asPayload(payload), options)
-    expect(result).toEqual({ queued: 2, scanned: 2 })
+    expect(result).toEqual({ failed: 0, queued: 2, scanned: 2 })
     expect(payload.jobs.queue).toHaveBeenCalledTimes(2)
+    expect(payload.find.mock.calls[0][0]).toMatchObject({ limit: 50 })
   })
 
   it('counts only the rows it successfully queued', async () => {
@@ -163,7 +164,7 @@ describe('sweepDueSocialPosts', () => {
       .mockResolvedValueOnce({ id: 'job_1' })
       .mockRejectedValueOnce(new Error('queue full'))
     const result = await sweepDueSocialPosts(asPayload(payload), options)
-    expect(result).toEqual({ queued: 1, scanned: 2 })
+    expect(result).toEqual({ failed: 1, queued: 1, scanned: 2 })
   })
 })
 

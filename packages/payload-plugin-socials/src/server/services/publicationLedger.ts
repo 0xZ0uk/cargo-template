@@ -9,6 +9,7 @@ import type {
   PostStatus,
   PublishedRef,
   PublishResult,
+  ReconcileVerdict,
   SocialSourceContext,
 } from '../../types/index.js'
 
@@ -23,9 +24,9 @@ import {
   PublicationPersistenceError,
   ValidationError,
 } from '../utilities/errors.js'
-import { redactSecretString } from '../utilities/logger.js'
+import { logAsyncOperationFailure, redactSecretString } from '../utilities/logger.js'
 import { buildPublicationIdentity } from '../utilities/publicationIdentity.js'
-import { queuePublicationReconciliation } from './publicationReconciliation.js'
+import { queueReconciliationCheck } from './publicationReconciliation.js'
 
 /**
  * The publication ledger: the one module that writes a `social-posts` row's
@@ -52,6 +53,8 @@ import { queuePublicationReconciliation } from './publicationReconciliation.js'
  * | publishing                                    | published, scheduled,   | `publishClaimed`, from the platform's   |
  * |                                               | publishing (pending),   | answer or error                         |
  * |                                               | failed, unknown         |                                         |
+ * | scheduled, publishing (with an `externalId`)  | published, failed,      | `reconcilePublication`, from the        |
+ * |                                               | unchanged (pending)     | adapter's `reconcile` verdict or error  |
  * | queued (anything else before claim)           | failed                  | `recordFailure` (task cannot start)     |
  * | any but published, unless it may be live      | queued                  | `requeueForRetry` (manual retry)        |
  * | unknown                                       | published, failed       | `resolveUnknownOutcome` (operator)      |
@@ -68,9 +71,13 @@ import { queuePublicationReconciliation } from './publicationReconciliation.js'
  * so an id on a failed row always comes from its latest attempt, never from an
  * earlier publication of the same content.
  *
- * Reconciliation of Facebook scheduled posts and Business Profile moderation
- * (`scheduled`/`publishing` with an `externalId` → published or failed) is
- * still written by the platform modules; see #132.
+ * A post the platform holds (`scheduled`, or `publishing` with an
+ * `externalId`: Facebook native scheduling, Business Profile moderation) waits
+ * for reconciliation. `nextRetryAt` says when to ask the platform next; it is
+ * set only on those rows (a claim clears it), so "due" is generic:
+ * `dueForWorkWhere` is the one query the sweeps use. Reconciliation reads the
+ * platform and records its verdict; it never publishes, and a failed check
+ * leaves the post `failed` with its `externalId`, which no claim takes back.
  */
 
 export type LedgerPost = {
@@ -79,7 +86,9 @@ export type LedgerPost = {
   externalUrl?: null | string
   id: number | string
   idempotencyKey?: string
+  destinationId?: null | string
   meta?: null | Record<string, unknown>
+  nextRetryAt?: null | string
   platform: PlatformId
   queuedJobId?: null | string
   scheduledAt?: null | string
@@ -93,6 +102,12 @@ const RESERVABLE_STATUSES = ['cancelled', 'deleted', 'draft', 'failed'] as const
 
 /** Statuses a scheduled publish may overwrite with a new schedule. */
 const SCHEDULABLE_STATUSES = ['cancelled', 'deleted', 'draft', 'failed', 'queued'] as const
+
+/** Statuses of a post the platform holds, when it has an `externalId`: reconciliation checks them. */
+const AWAITING_PLATFORM_STATUSES = ['publishing', 'scheduled'] as const
+
+/** How long after a publish (or a pending verdict without `checkAt`) to ask the platform again. */
+const RECONCILE_DELAY_MS = 60_000
 
 /** Statuses `markDeleted` accepts (the platform post may exist). */
 const DELETABLE_STATUSES = ['published', 'publishing', 'unknown'] as const
@@ -189,6 +204,7 @@ const startAttempt = (post: Pick<LedgerPost, 'attempts'>): Record<string, unknow
   externalId: null,
   externalUrl: null,
   lastAttemptedAt: now(),
+  nextRetryAt: null,
   status: 'publishing',
 })
 
@@ -258,7 +274,26 @@ const recordUnknown = async (
   }
 }
 
+/**
+ * When to check a post the platform holds after `publishClaimed`: a minute
+ * after a native schedule's time, or a minute from now for a pending one. Only
+ * for an adapter that can `reconcile`; otherwise the post waits for an operator.
+ */
+const firstCheckAt = (result: PublishResult, reconcilable: boolean): string | null => {
+  if (!reconcilable || (result.state !== 'scheduled' && result.state !== 'pending')) {
+    return null
+  }
+  const soonest = Date.now() + RECONCILE_DELAY_MS
+  const scheduledMs = result.scheduledAt ? Date.parse(result.scheduledAt) : NaN
+  return new Date(
+    result.state === 'scheduled' && Number.isFinite(scheduledMs)
+      ? Math.max(soonest, scheduledMs + RECONCILE_DELAY_MS)
+      : soonest,
+  ).toISOString()
+}
+
 const recordResult = async (args: {
+  checkAt: null | string
   input: Record<string, unknown>
   options: NormalizedPluginOptions
   payload: Payload
@@ -271,7 +306,6 @@ const recordResult = async (args: {
   const record = Object.fromEntries(
     Object.entries(result.record ?? {}).filter(([, value]) => value !== undefined),
   )
-  const scheduledMs = result.scheduledAt ? Date.parse(result.scheduledAt) : NaN
   const status = {
     pending: 'publishing',
     published: 'published',
@@ -294,13 +328,8 @@ const recordResult = async (args: {
       lastAttemptedAt: timestamp,
       lastError:
         state === 'rejected' ? (result.rejectionReason ?? 'Rejected by the platform.') : null,
-      // When the reconciliation pass looks at the post next.
-      nextRetryAt:
-        state === 'scheduled' && Number.isFinite(scheduledMs)
-          ? new Date(scheduledMs + 60_000).toISOString()
-          : state === 'pending'
-            ? new Date(Date.now() + 60_000).toISOString()
-            : null,
+      // When reconciliation asks the platform about the post next.
+      nextRetryAt: args.checkAt,
       platformPublicationStatus,
       ...(state === 'published' ? { publishedAt: timestamp } : {}),
       ...(state === 'scheduled' && result.scheduledAt ? { scheduledAt: result.scheduledAt } : {}),
@@ -369,8 +398,16 @@ export const publishClaimed = async (args: {
     return recordError(payload, postId, error)
   }
   const publishedRef = toPublishedRef(result)
+  const checkAt = firstCheckAt(result, typeof args.adapter.reconcile === 'function')
   try {
-    await recordResult({ input: args.input, options: args.options, payload, postId, result })
+    await recordResult({
+      checkAt,
+      input: args.input,
+      options: args.options,
+      payload,
+      postId,
+      result,
+    })
   } catch (cause) {
     // The platform has the post: fence it as unknown, with its id, so nothing repeats it.
     return recordError(payload, postId, new PublicationPersistenceError(publishedRef, cause))
@@ -388,8 +425,214 @@ export const publishClaimed = async (args: {
       status: 'failed',
     }
   }
-  await queuePublicationReconciliation({ payload, postId, publishedRef, req: args.req })
+  if (checkAt) {
+    // The row is due at `checkAt` already, so a failed queue only delays the check to the next sweep.
+    await queueCheck({ checkAt, payload, postId, req: args.req })
+  }
   return { publishedRef, status: 'published' }
+}
+
+// ---------------------------------------------------------------------------
+// Reconciliation (publish task, for a post the platform holds)
+// ---------------------------------------------------------------------------
+
+/**
+ * The one "due" query, for the sweeps: queued posts whose `scheduledAt` has
+ * passed, and posts the platform holds whose next check (`nextRetryAt`) is due.
+ */
+export const dueForWorkWhere = (at: Date = new Date()): Record<string, unknown> => {
+  const iso = at.toISOString()
+  return {
+    or: [
+      { and: [{ status: { equals: 'queued' } }, { scheduledAt: { less_than_equal: iso } }] },
+      {
+        and: [
+          { status: { in: [...AWAITING_PLATFORM_STATUSES] } },
+          { externalId: { exists: true } },
+          { nextRetryAt: { less_than_equal: iso } },
+        ],
+      },
+    ],
+  }
+}
+
+/**
+ * Whether the platform holds this post (natively scheduled, or accepted and
+ * still processing), so the publish task must reconcile it, never publish it.
+ */
+export const awaitsReconciliation = (post: LedgerPost): boolean =>
+  Boolean(post.externalId) &&
+  (AWAITING_PLATFORM_STATUSES as readonly string[]).includes(post.status)
+
+/**
+ * The platform reference stored on a row, for an adapter's `reconcile`,
+ * `delete` or `getInsights`: `externalId`, `externalUrl`, and the row's `meta`
+ * plus its `destinationId` (the board, Page, account or location).
+ */
+export const refFromPost = (
+  post: Pick<LedgerPost, 'destinationId' | 'externalId' | 'externalUrl' | 'meta' | 'platform'>,
+): PublishedRef => ({
+  externalId: post.externalId ?? '',
+  ...(post.externalUrl ? { externalUrl: post.externalUrl } : {}),
+  meta: {
+    ...(post.meta ?? {}),
+    ...(post.destinationId ? { destinationId: post.destinationId } : {}),
+  },
+  platform: post.platform,
+})
+
+/**
+ * The outcome of one reconciliation:
+ *
+ * - `published`, `failed`, `pending`: the adapter's verdict, recorded on the
+ *   row (a pending post is due again at the verdict's `checkAt`).
+ * - `skipped`: nothing asked or recorded. `notDue`: the next check is later (a
+ *   duplicate job); `unsupported`: the adapter cannot reconcile; `changed`: the
+ *   row left its state while the platform was asked (an operator deleted it).
+ * - `error`: the check failed. The row is `failed` and keeps its
+ *   `externalId`: the platform may have the post, so nothing may publish it
+ *   again automatically.
+ */
+export type ReconcileAttempt =
+  | { error: unknown; status: 'error' }
+  | { reason: 'changed' | 'notDue' | 'unsupported'; status: 'skipped' }
+  | { status: ReconcileVerdict['state']; verdict: ReconcileVerdict }
+
+const verdictData = (post: LedgerPost, verdict: ReconcileVerdict): Record<string, unknown> => {
+  const timestamp = now()
+  const base = {
+    ...(verdict.externalUrl ? { externalUrl: verdict.externalUrl } : {}),
+    lastAttemptedAt: timestamp,
+  }
+  if (verdict.state === 'published') {
+    return {
+      ...base,
+      lastError: null,
+      nextRetryAt: null,
+      platformPublicationStatus: 'published',
+      publishedAt: timestamp,
+      status: 'published',
+    }
+  }
+  if (verdict.state === 'failed') {
+    return {
+      ...base,
+      lastError: verdict.reason,
+      nextRetryAt: null,
+      platformPublicationStatus: 'failed',
+      status: 'failed',
+    }
+  }
+  const checkAtMs = verdict.checkAt ? Date.parse(verdict.checkAt) : NaN
+  return {
+    ...base,
+    lastError: null,
+    nextRetryAt: new Date(
+      Number.isFinite(checkAtMs) ? checkAtMs : Date.now() + RECONCILE_DELAY_MS,
+    ).toISOString(),
+    // The status stays; the platform's view of it, as `recordResult` writes it.
+    platformPublicationStatus: post.status === 'scheduled' ? 'pending' : 'publishing',
+  }
+}
+
+const nextRetryAtIs = (value: null | string | undefined): Record<string, unknown> =>
+  value ? { nextRetryAt: { equals: value } } : { nextRetryAt: { exists: false } }
+
+/**
+ * Note the job queued to check a held post on its row (`queuedJobId`), so the
+ * sweep does not queue a second check of the same post while this one waits
+ * (`sweepDueSocialPosts`). Written only while the row still awaits that check
+ * (`nextRetryAt` is `checkAt`); never fails the caller.
+ */
+export const recordCheckJob = async (
+  payload: Payload,
+  args: { checkAt: null | string | undefined; jobId: number | string; postId: number | string },
+): Promise<void> => {
+  try {
+    await conditionalUpdate(payload, { queuedJobId: String(args.jobId) }, [
+      { id: { equals: args.postId } },
+      { status: { in: [...AWAITING_PLATFORM_STATUSES] } },
+      nextRetryAtIs(args.checkAt),
+    ])
+  } catch (error) {
+    logAsyncOperationFailure(payload, 'socials.publication.reconciliation.record-job', error)
+  }
+}
+
+/** Queue the next check of a held post (`queueReconciliationCheck`) and note its job on the row. */
+const queueCheck = async (args: {
+  checkAt: string
+  payload: Payload
+  postId: number | string
+  req?: PayloadRequest
+}): Promise<void> => {
+  const jobId = await queueReconciliationCheck(args)
+  if (jobId !== undefined) {
+    await recordCheckJob(args.payload, { checkAt: args.checkAt, jobId, postId: args.postId })
+  }
+}
+
+/**
+ * Ask the platform where a post it holds stands (`adapter.reconcile`) and
+ * record the verdict. Call only for a post that `awaitsReconciliation`. Never
+ * publishes, and never throws for a platform failure: the attempt carries it.
+ * The verdict is written with a guard on the row's status, `externalId` and
+ * `nextRetryAt`, so it never overwrites a row an operator changed meanwhile,
+ * and of two jobs checking the post at once only the first records a verdict.
+ */
+export const reconcilePublication = async (args: {
+  adapter: PlatformAdapter
+  options: NormalizedPluginOptions
+  payload: Payload
+  post: LedgerPost
+  req?: PayloadRequest
+}): Promise<ReconcileAttempt> => {
+  const { adapter, payload, post } = args
+  if (!awaitsReconciliation(post)) {
+    throw new ValidationError(
+      `social-posts/${String(post.id)} is ${post.status}; only a post the platform holds can be reconciled`,
+    )
+  }
+  if (typeof adapter.reconcile !== 'function') {
+    return { reason: 'unsupported', status: 'skipped' }
+  }
+  if (post.nextRetryAt && Date.parse(post.nextRetryAt) > Date.now()) {
+    return { reason: 'notDue', status: 'skipped' }
+  }
+  let verdict: ReconcileVerdict
+  try {
+    verdict = await adapter.reconcile({
+      options: args.options,
+      payload,
+      publishedRef: refFromPost(post),
+      req: args.req,
+    })
+  } catch (error) {
+    await recordFailure(payload, post.id, error)
+    return { error, status: 'error' }
+  }
+  const data = verdictData(post, verdict)
+  // `nextRetryAt` as this job read it: a verdict moves it, so when two jobs
+  // check the same post (a sweep across isolates, an overlapping drain), the
+  // later write no longer matches and only the first verdict queues a check.
+  const recorded = await conditionalUpdate(payload, data, [
+    { id: { equals: post.id } },
+    { status: { equals: post.status } },
+    { externalId: { equals: post.externalId } },
+    nextRetryAtIs(post.nextRetryAt),
+  ])
+  if (!recorded) {
+    return { reason: 'changed', status: 'skipped' }
+  }
+  if (verdict.state === 'pending') {
+    await queueCheck({
+      checkAt: data.nextRetryAt as string,
+      payload,
+      postId: post.id,
+      req: args.req,
+    })
+  }
+  return { status: verdict.state, verdict }
 }
 
 // ---------------------------------------------------------------------------

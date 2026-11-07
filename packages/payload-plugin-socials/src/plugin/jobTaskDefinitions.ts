@@ -13,18 +13,18 @@ import {
   SOCIAL_POST_SWEEP_TASK_SLUG,
   SOCIAL_POSTS_SLUG,
 } from '../constants.js'
-import { reconcileFacebookScheduledPost } from '../server/platforms/facebook/publish.js'
-import { reconcileGbpLocalPostState } from '../server/platforms/gbp/publish.js'
 import { getPlatformAdapter } from '../server/platforms/registry.js'
 import {
+  awaitsReconciliation,
   claimForPublish,
   decideRetry,
   loadPost,
   publishClaimed,
+  reconcilePublication,
   recordFailure,
+  refFromPost,
   requeueForRetry,
 } from '../server/services/publicationLedger.js'
-import { queuePublicationReconciliation } from '../server/services/publicationReconciliation.js'
 import { resolveSourceContext } from '../server/sources/registry.js'
 import { createPluginLogger, redactSecretString } from '../server/utilities/logger.js'
 
@@ -117,11 +117,6 @@ const metaString = (meta: unknown, key: string): string | undefined => {
   return typeof value === 'string' ? value : undefined
 }
 
-const metaNumber = (meta: unknown, key: string): number | undefined => {
-  const value = (meta as Record<string, unknown> | null | undefined)?.[key]
-  return typeof value === 'number' ? value : undefined
-}
-
 const buildPublishTaskConfig = () =>
   ({
     slug: SOCIAL_POST_PUBLISH_TASK_SLUG,
@@ -149,80 +144,40 @@ const buildPublishTaskConfig = () =>
       if (post.status === 'cancelled') {
         throw new SocialsTaskFailure('post is cancelled')
       }
-      if (post.platform === 'facebook' && post.status === 'scheduled' && post.externalId) {
-        const pageId = metaString(post.meta, 'pageId')
-        if (!pageId) {
-          await recordFailure(
-            req.payload,
-            post.id,
-            'scheduled Facebook post is missing meta.pageId',
-          )
-          throw new SocialsTaskFailure('scheduled Facebook post is missing meta.pageId')
-        }
+      if (awaitsReconciliation(post)) {
+        // The platform holds this post (scheduled, or still processing): ask
+        // where it stands. This branch always returns or throws; it never
+        // reaches the publish path below.
+        let adapter
         try {
-          const scheduledPublishTime =
-            metaNumber(post.meta, 'scheduledSeconds') ??
-            metaNumber(post.meta, 'scheduledPublishTime')
-          const reconciliation = await reconcileFacebookScheduledPost({
-            externalId: post.externalId,
-            options,
-            pageId,
-            payload: req.payload,
-            postId: post.id,
-            scheduledPublishTime,
-          })
-          if (reconciliation.pending) {
-            await queuePublicationReconciliation({
-              payload: req.payload,
-              postId: post.id,
-              publishedRef: {
-                externalId: post.externalId,
-                meta: { pageId, scheduled: true, scheduledPublishTime },
-                platform: 'facebook',
-              },
-              req,
-            })
-          }
-          return { output: { pending: reconciliation.pending, postId: post.id } }
+          adapter = getPlatformAdapter(post.platform, options)
         } catch (error) {
-          // No Payload retry: the post is now `failed` with an externalId, and a
-          // re-run would take the publish path and post it a second time.
+          // No Payload retry: the post is now `failed` with its externalId, which
+          // no claim takes back, so nothing posts it a second time.
           await recordFailure(req.payload, post.id, error)
           throw new SocialsTaskFailure(safeErrorMessage(error))
         }
-      }
-      if (post.platform === 'gbp' && post.status === 'publishing' && post.externalId) {
-        try {
-          const reconciliation = await reconcileGbpLocalPostState({
-            options,
-            payload: req.payload,
+        const reconciliation = await reconcilePublication({
+          adapter,
+          options,
+          payload: req.payload,
+          post,
+          req,
+        })
+        if (reconciliation.status === 'error') {
+          // Same as above: `failed` with its externalId, and no Payload retry.
+          log.error('reconciliation failed', { error: safeErrorMessage(reconciliation.error) })
+          throw new SocialsTaskFailure(safeErrorMessage(reconciliation.error))
+        }
+        if (reconciliation.status === 'skipped') {
+          return { output: { postId: post.id, reconcileSkipped: reconciliation.reason } }
+        }
+        return {
+          output: {
+            pending: reconciliation.status === 'pending',
             postId: post.id,
-            postName: post.externalId,
-          })
-          if (reconciliation.pending) {
-            await queuePublicationReconciliation({
-              payload: req.payload,
-              postId: post.id,
-              publishedRef: {
-                externalId: post.externalId,
-                meta: { state: reconciliation.state },
-                platform: 'gbp',
-              },
-              req,
-            })
-          }
-          return {
-            output: {
-              pending: reconciliation.pending,
-              postId: post.id,
-              state: reconciliation.state,
-            },
-          }
-        } catch (error) {
-          // No Payload retry: the post is now `failed` with an externalId, and a
-          // re-run would take the publish path and post it a second time.
-          await recordFailure(req.payload, post.id, error)
-          throw new SocialsTaskFailure(safeErrorMessage(error))
+            reconciled: reconciliation.status,
+          },
         }
       }
 
@@ -448,18 +403,7 @@ const refreshInsightsForPlatform = async (
         const snapshot = await getInsights({
           options,
           payload,
-          publishedRef: {
-            externalId: row.externalId,
-            externalUrl: row.externalUrl ?? undefined,
-            meta: {
-              ...(row.meta ?? {}),
-              ...(row.destinationId ? { destinationId: row.destinationId } : {}),
-              ...(platform === 'facebook' && row.destinationId
-                ? { pageId: row.destinationId }
-                : {}),
-            },
-            platform,
-          },
+          publishedRef: refFromPost({ ...row, platform }),
           range: { end: rangeEnd, start: rangeStart },
         })
         await payload.update({
@@ -643,7 +587,7 @@ const buildConnectionRefreshTaskConfig = () =>
   }) as const
 
 // ---------------------------------------------------------------------------
-// social-post-sweep — finds due queued posts and queues publish tasks
+// social-post-sweep — queues publish tasks for due posts (sweepDueSocialPosts)
 // ---------------------------------------------------------------------------
 
 type SweepTaskInput = {
@@ -657,46 +601,18 @@ const buildSweepTaskConfig = () =>
     handler: async ({ input, req }: { input: SweepTaskInput; req: PayloadRequest }) => {
       const options = getPluginOptions(req.payload)
       const log = createPluginLogger(req.payload.logger, { task: SOCIAL_POST_SWEEP_TASK_SLUG })
-      const limit = input.limit ?? options.scheduling.sweepBatchSize
-
-      const now = new Date().toISOString()
-      const result = await req.payload.find({
-        collection: SOCIAL_POSTS_SLUG as never,
-        depth: 0,
-        limit,
-        overrideAccess: true,
-        sort: 'scheduledAt',
-        where: {
-          and: [{ status: { equals: 'queued' } }, { scheduledAt: { less_than_equal: now } }],
-        },
+      const { sweepDueSocialPosts } = await import('./jobQueue.js')
+      // The same due query as the cron, the HTTP endpoint and worker loops.
+      const { failed, queued, scanned } = await sweepDueSocialPosts(req.payload, options, req, {
+        limit: input.limit,
       })
-
-      const { queueSocialPostPublish } = await import('./jobQueue.js')
-      let queued = 0
-      let failed = 0
-      for (const row of result.docs as unknown as Array<{ id: number | string }>) {
-        try {
-          await queueSocialPostPublish({ payload: req.payload, postId: row.id, req })
-          queued++
-        } catch (error) {
-          failed++
-          log.error('failed to queue publish for due post', {
-            error: error instanceof Error ? error.message : String(error),
-            postId: row.id,
-          })
-        }
-      }
-      log.info(`sweep queued ${queued} of ${result.docs.length} due posts`)
+      log.info(`sweep queued ${queued} of ${scanned} due posts`)
       if (failed > 0 && queued === 0) {
         // `retries: 0`: the job is marked failed and the next sweep picks the
-        // still-`queued` posts up again.
-        throw new Error(`sweep could not queue any of ${result.docs.length} due posts`)
+        // still-due posts up again.
+        throw new Error(`sweep could not queue any of ${scanned} due posts`)
       }
-      return {
-        output: failed
-          ? { failed, queued, scanned: result.docs.length }
-          : { queued, scanned: result.docs.length },
-      }
+      return { output: failed ? { failed, queued, scanned } : { queued, scanned } }
     },
     inputSchema: [],
     interfaceName: 'SocialsSweepTaskInput',

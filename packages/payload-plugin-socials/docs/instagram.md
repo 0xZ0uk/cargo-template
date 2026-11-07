@@ -174,12 +174,11 @@ API surface before changing the reconciliation policy.
 
 The plugin removes Instagram API deletion as a capability:
 
-- `DELETE {basePath}/posts/:postId` on an Instagram row returns **HTTP 422**
-  with an actionable message rather than attempting the upstream call. The local
-  row is left untouched.
-- The Instagram adapter's `delete` method throws immediately with the same
-  message so programmatic callers see a clear error rather than a cryptic Meta
-  API failure.
+- The Instagram adapter has no `delete` method (delete is an optional adapter
+  capability).
+- `DELETE {basePath}/posts/:postId` on an Instagram row therefore returns
+  **HTTP 422** with an actionable message rather than attempting the upstream
+  call. The local row is left untouched.
 
 ### Reconcile flow: mark-deleted
 

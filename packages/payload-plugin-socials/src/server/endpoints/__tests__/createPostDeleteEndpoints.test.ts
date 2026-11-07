@@ -350,11 +350,18 @@ describe('createPostDeleteEndpoints — Facebook plain delete', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Instagram plain delete — 422, adapter NOT called
+// A platform whose adapter has no `delete` (Instagram) — 422, row untouched
 // ---------------------------------------------------------------------------
 
-describe('createPostDeleteEndpoints — Instagram plain delete (unsupported)', () => {
-  it('returns HTTP 422 for an instagram row without calling adapter or touching the row', async () => {
+describe('createPostDeleteEndpoints — plain delete on a platform that cannot delete', () => {
+  beforeEach(() => {
+    vi.mocked(getPlatformAdapter).mockReturnValue({
+      id: 'instagram',
+      label: 'Instagram',
+    } as unknown as PlatformAdapter)
+  })
+
+  it('returns HTTP 422 for an instagram row without touching the row', async () => {
     const req = makeIgReq()
     const res = await run(getEndpoint(), req)
 
@@ -364,8 +371,7 @@ describe('createPostDeleteEndpoints — Instagram plain delete (unsupported)', (
     expect(body.error).toMatch(/Instagram does not support/)
     expect(body.error).toMatch(/localOnly=true/)
 
-    // Adapter must NOT be called.
-    expect(adapterDelete).not.toHaveBeenCalled()
+    expect(vi.mocked(getPlatformAdapter)).toHaveBeenCalledWith('instagram', options)
     // Row must NOT be touched.
     expect(req.payload.update).not.toHaveBeenCalled()
   })
@@ -376,6 +382,7 @@ describe('createPostDeleteEndpoints — Instagram plain delete (unsupported)', (
     const { error } = (await res.json()) as { error: string }
     expect(error).toContain('Instagram app')
     expect(error).toContain('mark-deleted')
+    expect(error).toContain(`DELETE ${options.api.basePath}/posts/:postId?localOnly=true`)
   })
 })
 

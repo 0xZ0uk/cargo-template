@@ -4,10 +4,10 @@ import type {
   NormalizedPluginOptions,
   PublishedRef,
   PublishResult,
+  ReconcileVerdict,
   SocialSourceContext,
 } from '../../../types/index.js'
 
-import { SOCIAL_POSTS_SLUG } from '../../../constants.js'
 import { resolvePlatformImageUrl } from '../../assets/resolvePlatformImage.js'
 import { resolveConfiguredText } from '../../copy/resolveConfiguredCopy.js'
 import {
@@ -574,14 +574,23 @@ export const publishFacebookPost = async (args: {
   }
 }
 
+/** How long Facebook gets past a scheduled time before the post counts as not published. */
+const FACEBOOK_SCHEDULE_GRACE_MS = 24 * 60 * 60 * 1000
+/** How often a natively scheduled post is checked once it is due. */
+const FACEBOOK_RECHECK_MS = 5 * 60_000
+
+/**
+ * Ask Facebook whether a natively scheduled post went live. Read-only: returns
+ * the verdict for the publication ledger to record. A post still unpublished
+ * 24 hours after its scheduled time is `failed`.
+ */
 export const reconcileFacebookScheduledPost = async (args: {
   externalId: string
   options: NormalizedPluginOptions
   pageId: string
   payload: Payload
-  postId: number | string
   scheduledPublishTime?: number
-}): Promise<{ pending: boolean }> => {
+}): Promise<ReconcileVerdict> => {
   const pageAccessToken = await getPageAccessToken(args.payload, args.options, args.pageId)
   const response = await makeMetaRequest(
     args.payload,
@@ -600,25 +609,25 @@ export const reconcileFacebookScheduledPost = async (args: {
     })
   }
   const result = (await response.json()) as { is_published?: boolean; permalink_url?: string }
-  const published = result.is_published === true
-  const overdue =
+  const externalUrl = result.permalink_url
+  if (result.is_published === true) {
+    return { externalUrl, state: 'published' }
+  }
+  if (
     args.scheduledPublishTime !== undefined &&
-    Date.now() > args.scheduledPublishTime * 1000 + 24 * 60 * 60 * 1000
-  await args.payload.update({
-    id: args.postId as never,
-    collection: SOCIAL_POSTS_SLUG as never,
-    data: {
-      externalUrl: result.permalink_url,
-      lastAttemptedAt: new Date().toISOString(),
-      lastError: overdue ? 'Facebook did not publish the scheduled post within 24 hours.' : null,
-      nextRetryAt: published || overdue ? null : new Date(Date.now() + 5 * 60_000).toISOString(),
-      platformPublicationStatus: published ? 'published' : overdue ? 'failed' : 'pending',
-      ...(published ? { publishedAt: new Date().toISOString() } : {}),
-      status: published ? 'published' : overdue ? 'failed' : 'scheduled',
-    } as never,
-    overrideAccess: true,
-  })
-  return { pending: !published && !overdue }
+    Date.now() > args.scheduledPublishTime * 1000 + FACEBOOK_SCHEDULE_GRACE_MS
+  ) {
+    return {
+      externalUrl,
+      reason: 'Facebook did not publish the scheduled post within 24 hours.',
+      state: 'failed',
+    }
+  }
+  return {
+    checkAt: new Date(Date.now() + FACEBOOK_RECHECK_MS).toISOString(),
+    externalUrl,
+    state: 'pending',
+  }
 }
 
 export const deleteFacebookPost = async (args: {

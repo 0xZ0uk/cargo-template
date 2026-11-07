@@ -3,12 +3,13 @@ import type { Config, Payload } from 'payload'
 import { sqliteAdapter } from '@payloadcms/db-sqlite'
 import { lexicalEditor } from '@payloadcms/richtext-lexical'
 import { buildConfig, getPayload } from 'payload'
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import type {
   PlatformAdapter,
   PostStatus,
   PublishResult,
+  ReconcileVerdict,
   SocialSourceContext,
 } from '../../../types/index.js'
 
@@ -17,13 +18,16 @@ import { classifyRequestFailure, PlatformApiError } from '../../utilities/errors
 import { buildPublicationIdentity } from '../../utilities/publicationIdentity.js'
 import {
   assertDeletable,
+  awaitsReconciliation,
   cancelQueuedSocialPost,
   claimForPublish,
   decideRetry,
+  dueForWorkWhere,
   loadPost,
   markDeleted,
   publishClaimed,
   publishNow,
+  reconcilePublication,
   requirePost,
   resolveUnknownOutcome,
   schedulePublication,
@@ -96,10 +100,47 @@ const nextCtx = (): SocialSourceContext => ({
 
 const input = { boardId: 'board_1' }
 
-const fakeAdapter = (publish: () => Promise<PublishResult>) => {
+const fakeAdapter = (
+  publish: () => Promise<PublishResult>,
+  reconcile?: () => Promise<ReconcileVerdict>,
+) => {
   const fn = vi.fn(publish)
-  return { adapter: { publish: fn } as unknown as PlatformAdapter, publish: fn }
+  const reconcileFn = reconcile
+    ? vi.fn((_args: Parameters<NonNullable<PlatformAdapter['reconcile']>>[0]) => reconcile())
+    : undefined
+  return {
+    adapter: {
+      publish: fn,
+      ...(reconcileFn ? { reconcile: reconcileFn } : {}),
+    } as unknown as PlatformAdapter,
+    publish: fn,
+    reconcile: reconcileFn,
+  }
 }
+
+const pendingVerdict = async (): Promise<ReconcileVerdict> => ({ state: 'pending' })
+
+/** The publish jobs queued for a post (the reconciliation checks), oldest first. */
+const publishJobsFor = async (
+  postId: number | string,
+): Promise<Array<{ waitUntil?: null | string }>> => {
+  const jobs = await payload.find({
+    collection: 'payload-jobs',
+    depth: 0,
+    limit: 100,
+    overrideAccess: true,
+    sort: 'createdAt',
+    where: { taskSlug: { equals: 'socialPostPublish' } },
+  })
+  return jobs.docs.filter(
+    (job) =>
+      String((job.input as { postId?: number | string } | undefined)?.postId) === String(postId),
+  ) as Array<{ waitUntil?: null | string }>
+}
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
 
 const published = (over: Partial<PublishResult> = {}): PublishResult => ({
   externalId: 'pin_1',
@@ -336,9 +377,13 @@ describe('publishNow (publish endpoint, composer)', () => {
 describe('publishClaimed: recording what the platform said', () => {
   const claimed = async (): Promise<Row> => createRow({ attempts: 1, status: 'publishing' })
 
-  const run = (postId: number | string, publish: () => Promise<PublishResult>) =>
+  const run = (
+    postId: number | string,
+    publish: () => Promise<PublishResult>,
+    reconcile: (() => Promise<ReconcileVerdict>) | null = pendingVerdict,
+  ) =>
     publishClaimed({
-      adapter: fakeAdapter(publish).adapter,
+      adapter: fakeAdapter(publish, reconcile ?? undefined).adapter,
       ctx: nextCtx(),
       input,
       options,
@@ -361,6 +406,46 @@ describe('publishClaimed: recording what the platform said', () => {
       status: 'scheduled',
     })
     expect(Date.parse(saved.nextRetryAt ?? '')).toBe(Date.parse(scheduledAt) + 60_000)
+    // The check is queued for the same time the row is due.
+    const jobs = await publishJobsFor(post.id)
+    expect(jobs).toHaveLength(1)
+    expect(Date.parse(jobs[0]?.waitUntil ?? '')).toBe(Date.parse(saved.nextRetryAt ?? ''))
+  })
+
+  it('checks a post scheduled in the past a minute from now, not at once', async () => {
+    const post = await claimed()
+    const before = now()
+    await run(post.id, async () =>
+      published({ scheduledAt: new Date(before - 3_600_000).toISOString(), state: 'scheduled' }),
+    )
+    expect(Date.parse((await row(post.id)).nextRetryAt ?? '')).toBeGreaterThanOrEqual(
+      before + 60_000,
+    )
+  })
+
+  it('sets no next check, and queues none, when the adapter cannot reconcile', async () => {
+    const post = await claimed()
+    await run(post.id, async () => published({ state: 'pending' }), null)
+    expect(await row(post.id)).toMatchObject({ nextRetryAt: null, status: 'publishing' })
+    expect(await publishJobsFor(post.id)).toHaveLength(0)
+  })
+
+  it('leaves the row due when the check cannot be queued, so the sweep finds it', async () => {
+    const post = await claimed()
+    vi.spyOn(payload.jobs, 'queue').mockRejectedValueOnce(new Error('queue down'))
+    const attempt = await run(post.id, async () => published({ state: 'pending' }))
+    expect(attempt.status).toBe('published')
+    const saved = await row(post.id)
+    expect(saved).toMatchObject({ nextRetryAt: expect.any(String), status: 'publishing' })
+    expect(await publishJobsFor(post.id)).toHaveLength(0)
+    const due = await payload.find({
+      collection: 'social-posts' as never,
+      depth: 0,
+      limit: 1000,
+      overrideAccess: true,
+      where: dueForWorkWhere(new Date(Date.parse(saved.nextRetryAt ?? '') + 1)) as never,
+    })
+    expect(due.docs.map((doc) => (doc as unknown as Row).id)).toContain(post.id)
   })
 
   it('records a post the platform is still processing as publishing, with its id', async () => {
@@ -735,5 +820,235 @@ describe('delete guards', () => {
       meta: expect.objectContaining({ deletedBy: 5, deletedLocalOnly: true, keep: true }),
       status: 'deleted',
     })
+  })
+})
+
+describe('reconcilePublication (publish task, for a post the platform holds)', () => {
+  const held = async (data: Record<string, unknown> = {}): Promise<Row> =>
+    createRow({
+      externalId: `held_${++keyCounter}`,
+      nextRetryAt: new Date(now() - 1_000).toISOString(),
+      platformPublicationStatus: 'pending',
+      status: 'scheduled',
+      ...data,
+    })
+
+  const reconcile = async (post: Row, verdict: () => Promise<ReconcileVerdict>) => {
+    const fake = fakeAdapter(() => Promise.reject(new Error('must not publish')), verdict)
+    const attempt = await reconcilePublication({
+      adapter: fake.adapter,
+      options,
+      payload,
+      post: (await loadPost(payload, post.id))!,
+    })
+    expect(fake.publish).not.toHaveBeenCalled()
+    return { attempt, reconcile: fake.reconcile! }
+  }
+
+  it('records a published verdict', async () => {
+    const post = await held()
+    const { attempt } = await reconcile(post, async () => ({
+      externalUrl: 'https://example.test/live',
+      state: 'published',
+    }))
+    expect(attempt.status).toBe('published')
+    expect(await row(post.id)).toMatchObject({
+      externalId: post.externalId,
+      lastError: null,
+      nextRetryAt: null,
+      platformPublicationStatus: 'published',
+      publishedAt: expect.any(String),
+      status: 'published',
+    })
+  })
+
+  it('records a failed verdict as failed with its id, which no claim takes back', async () => {
+    const post = await held({ platformPublicationStatus: 'publishing', status: 'publishing' })
+    const { attempt } = await reconcile(post, async () => ({
+      reason: 'Rejected by moderation.',
+      state: 'failed',
+    }))
+    expect(attempt.status).toBe('failed')
+    const saved = await row(post.id)
+    expect(saved).toMatchObject({
+      externalId: post.externalId,
+      lastError: 'Rejected by moderation.',
+      nextRetryAt: null,
+      platformPublicationStatus: 'failed',
+      status: 'failed',
+    })
+    expect(await claimForPublish(payload, (await loadPost(payload, post.id))!)).toBe(false)
+  })
+
+  it.each([
+    ['scheduled', 'pending'],
+    ['publishing', 'publishing'],
+  ] as const)(
+    'keeps a pending %s post as it is, due again at checkAt, with a check queued',
+    async (status, platformPublicationStatus) => {
+      const post = await held({ status })
+      const checkAt = new Date(now() + 5 * 60_000).toISOString()
+      const { attempt } = await reconcile(post, async () => ({ checkAt, state: 'pending' }))
+      expect(attempt.status).toBe('pending')
+      expect(await row(post.id)).toMatchObject({
+        nextRetryAt: checkAt,
+        platformPublicationStatus,
+        status,
+      })
+      const jobs = await publishJobsFor(post.id)
+      expect(jobs).toHaveLength(1)
+      expect(Date.parse(jobs[0]?.waitUntil ?? '')).toBe(Date.parse(checkAt))
+    },
+  )
+
+  it('checks a pending post again in a minute when the verdict names no time', async () => {
+    const post = await held()
+    const before = now()
+    await reconcile(post, pendingVerdict)
+    const next = Date.parse((await row(post.id)).nextRetryAt ?? '')
+    expect(next).toBeGreaterThanOrEqual(before + 60_000)
+    expect(next).toBeLessThanOrEqual(now() + 60_000)
+  })
+
+  it('leaves a pending post due when its next check cannot be queued', async () => {
+    const post = await held()
+    vi.spyOn(payload.jobs, 'queue').mockRejectedValueOnce(new Error('queue down'))
+    const checkAt = new Date(now() + 60_000).toISOString()
+    const { attempt } = await reconcile(post, async () => ({ checkAt, state: 'pending' }))
+    expect(attempt.status).toBe('pending')
+    expect((await row(post.id)).nextRetryAt).toBe(checkAt)
+    expect(await publishJobsFor(post.id)).toHaveLength(0)
+  })
+
+  it('fails the post, keeping its id, when the platform check throws', async () => {
+    const post = await held()
+    const error = new PlatformApiError({
+      message: 'lookup failed',
+      platform: 'facebook',
+      retryable: true,
+      statusCode: 503,
+    })
+    const { attempt } = await reconcile(post, () => Promise.reject(error))
+    expect(attempt).toEqual({ error, status: 'error' })
+    expect(await row(post.id)).toMatchObject({
+      externalId: post.externalId,
+      lastError: expect.stringContaining('lookup failed'),
+      status: 'failed',
+    })
+    const failed = (await loadPost(payload, post.id))!
+    expect(await claimForPublish(payload, failed)).toBe(false)
+    expect(decideRetry(failed, { basePath: '/socials' }).kind).toBe('refused')
+  })
+
+  it('does not ask the platform before the next check is due (a duplicate job)', async () => {
+    const post = await held({ nextRetryAt: new Date(now() + 60_000).toISOString() })
+    const { attempt, reconcile: check } = await reconcile(post, pendingVerdict)
+    expect(attempt).toEqual({ reason: 'notDue', status: 'skipped' })
+    expect(check).not.toHaveBeenCalled()
+  })
+
+  it('leaves the post to an operator when the adapter cannot reconcile', async () => {
+    const post = await held()
+    const fake = fakeAdapter(() => Promise.reject(new Error('must not publish')))
+    const attempt = await reconcilePublication({
+      adapter: fake.adapter,
+      options,
+      payload,
+      post: (await loadPost(payload, post.id))!,
+    })
+    expect(attempt).toEqual({ reason: 'unsupported', status: 'skipped' })
+    expect(fake.publish).not.toHaveBeenCalled()
+    expect((await row(post.id)).status).toBe('scheduled')
+  })
+
+  it('does not overwrite a row an operator changed while the platform was asked', async () => {
+    const post = await held()
+    const loaded = (await loadPost(payload, post.id))!
+    await markDeleted({ localOnly: true, payload, post: loaded })
+    const fake = fakeAdapter(
+      () => Promise.reject(new Error('must not publish')),
+      async () => ({ state: 'published' }),
+    )
+    const attempt = await reconcilePublication({
+      adapter: fake.adapter,
+      options,
+      payload,
+      post: loaded,
+    })
+    expect(attempt).toEqual({ reason: 'changed', status: 'skipped' })
+    expect((await row(post.id)).status).toBe('deleted')
+  })
+
+  it('passes the row’s platform reference, with its destinationId', async () => {
+    const post = await held({
+      destinationId: 'page_1',
+      externalUrl: 'https://example.test/p',
+      meta: { pageId: 'page_1', scheduledSeconds: 1_900_000_000 },
+    })
+    const { reconcile: check } = await reconcile(post, pendingVerdict)
+    expect(check.mock.calls[0]?.[0]).toMatchObject({
+      publishedRef: {
+        externalId: post.externalId,
+        externalUrl: 'https://example.test/p',
+        meta: { destinationId: 'page_1', pageId: 'page_1', scheduledSeconds: 1_900_000_000 },
+        platform: 'pinterest',
+      },
+    })
+  })
+
+  it('refuses a post the platform does not hold', async () => {
+    const post = await createRow({ status: 'queued' })
+    const loaded = (await loadPost(payload, post.id))!
+    expect(awaitsReconciliation(loaded)).toBe(false)
+    await expect(
+      reconcilePublication({
+        adapter: fakeAdapter(() => Promise.reject(new Error('no')), pendingVerdict).adapter,
+        options,
+        payload,
+        post: loaded,
+      }),
+    ).rejects.toThrow(/only a post the platform holds/)
+  })
+})
+
+describe('dueForWorkWhere (the sweeps’ one due query)', () => {
+  it('matches due queued posts and held posts whose check is due, on any platform', async () => {
+    const past = new Date(now() - 60_000).toISOString()
+    const future = new Date(now() + 3_600_000).toISOString()
+    const ids = {
+      heldDue: (await createRow({ externalId: 'x1', nextRetryAt: past, status: 'scheduled' })).id,
+      heldLater: (await createRow({ externalId: 'x2', nextRetryAt: future, status: 'scheduled' }))
+        .id,
+      inFlight: (await createRow({ nextRetryAt: past, status: 'publishing' })).id,
+      processingDue: (
+        await createRow({ externalId: 'x3', nextRetryAt: past, status: 'publishing' })
+      ).id,
+      queuedDue: (await createRow({ scheduledAt: past, status: 'queued' })).id,
+      queuedLater: (await createRow({ scheduledAt: future, status: 'queued' })).id,
+      unknown: (await createRow({ externalId: 'x4', nextRetryAt: past, status: 'unknown' })).id,
+    }
+    const result = await payload.find({
+      collection: 'social-posts' as never,
+      depth: 0,
+      limit: 1000,
+      overrideAccess: true,
+      where: dueForWorkWhere() as never,
+    })
+    const due = new Set(result.docs.map((doc) => (doc as unknown as Row).id))
+    expect(
+      [...Object.entries(ids)]
+        .filter(([, id]) => due.has(id))
+        .map(([k]) => k)
+        .sort(),
+    ).toEqual(['heldDue', 'processingDue', 'queuedDue'])
+  })
+
+  it('a claim clears the next check, so an in-flight publish is never due', async () => {
+    const post = await createRow({
+      nextRetryAt: new Date(now() - 60_000).toISOString(),
+      status: 'queued',
+    })
+    expect(await claimForPublish(payload, (await loadPost(payload, post.id))!)).toBe(true)
+    expect(await row(post.id)).toMatchObject({ nextRetryAt: null, status: 'publishing' })
   })
 })

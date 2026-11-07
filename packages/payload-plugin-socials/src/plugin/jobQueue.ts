@@ -1,6 +1,6 @@
 import type { Payload, PayloadRequest } from 'payload'
 
-import type { NormalizedPluginOptions, PlatformId, PostStatus } from '../types/index.js'
+import type { NormalizedPluginOptions, PlatformId } from '../types/index.js'
 
 import {
   SOCIAL_CONNECTION_REFRESH_TASK_SLUG,
@@ -11,7 +11,15 @@ import {
   SOCIAL_POSTS_SLUG,
   SOCIALS_QUEUE_NAME,
 } from '../constants.js'
-import { recordQueuedJob, schedulePublication } from '../server/services/publicationLedger.js'
+import type { LedgerPost } from '../server/services/publicationLedger.js'
+
+import {
+  awaitsReconciliation,
+  dueForWorkWhere,
+  recordCheckJob,
+  recordQueuedJob,
+  schedulePublication,
+} from '../server/services/publicationLedger.js'
 import { logAsyncOperationFailure } from '../server/utilities/logger.js'
 
 /**
@@ -90,68 +98,125 @@ export const runQueuedSocialsJobs = async (
 }
 
 // ---------------------------------------------------------------------------
-// Sweep — find due `queued` posts and queue their publish tasks
+// Sweep — find due posts and queue their publish tasks
 // ---------------------------------------------------------------------------
 
-type SocialPostQueueRow = {
-  id: number | string
-  meta?: { scheduleToken?: string }
-  nextRetryAt?: null | string
-  queuedJobId?: null | string
-  scheduledAt?: null | string
-  status: PostStatus
-}
-
 export type SweepResult = {
+  /** Due posts whose publish job could not be queued (logged; the next sweep tries again). */
+  failed: number
   queued: number
   scanned: number
+  /** Due posts the platform holds whose check job is already queued (not queued again). */
+  skipped?: number
 }
 
+/**
+ * The due posts (`dueForWorkWhere`, the ledger's one due query), shared by
+ * `sweepDueSocialPosts` (cron, HTTP endpoint, worker loop) and the
+ * `socialPostSweep` task (`scheduling.autoRun`): queued posts whose
+ * `scheduledAt` has passed, and posts the platform holds whose next check
+ * (`nextRetryAt`) is due.
+ */
+export const findDueSocialPosts = async (
+  payload: Payload,
+  args: { limit: number; now?: Date },
+): Promise<LedgerPost[]> => {
+  const result = await payload.find({
+    collection: SOCIAL_POSTS_SLUG as never,
+    depth: 0,
+    limit: args.limit,
+    overrideAccess: true,
+    sort: 'scheduledAt',
+    where: dueForWorkWhere(args.now) as never,
+  })
+  return result.docs as unknown as LedgerPost[]
+}
+
+/**
+ * Which of these Payload jobs will still run: not completed and not failed. A
+ * job a worker holds counts too: it is running, or, if that worker died,
+ * Payload runs it again once its lease (`processingUntil`) expires. A deleted
+ * job (`deleteJobOnComplete`) is not found, so it does not count.
+ */
+const findWaitingJobIds = async (
+  payload: Payload,
+  jobIds: string[],
+): Promise<Set<string>> => {
+  if (!jobIds.length) {
+    return new Set()
+  }
+  const result = await payload.find({
+    collection: 'payload-jobs',
+    depth: 0,
+    limit: jobIds.length,
+    overrideAccess: true,
+    pagination: false,
+    select: {},
+    where: {
+      and: [
+        { id: { in: jobIds } },
+        { completedAt: { exists: false } },
+        { hasError: { not_equals: true } },
+      ],
+    },
+  } as never)
+  return new Set((result.docs as Array<{ id: number | string }>).map((job) => String(job.id)))
+}
+
+/**
+ * Queue a publish job for every due post (`findDueSocialPosts`). The publish
+ * task decides what the job does: publish a queued post, or reconcile a post
+ * the platform holds (never publish it). A post whose job fails to queue is logged and counted
+ * in `failed`; it stays due, so the next sweep picks it up.
+ *
+ * A post the platform holds gets one check at a time. Its row notes the job
+ * queued for the next check (`queuedJobId`, the follow-up the ledger queues
+ * with `waitUntil` at `nextRetryAt`, or a sweep's job); while that job waits,
+ * the sweep counts the post in `skipped` instead of queueing a second check
+ * that the same drain would run alongside it. A follow-up that failed to
+ * queue, or that ended without a verdict, leaves no waiting job, so the sweep
+ * queues the check.
+ */
 export const sweepDueSocialPosts = async (
   payload: Payload,
   options: NormalizedPluginOptions,
   req?: PayloadRequest,
+  args: { limit?: number } = {},
 ): Promise<SweepResult> => {
-  const limit = options.scheduling.sweepBatchSize
-  const now = new Date().toISOString()
-  const result = await payload.find({
-    collection: SOCIAL_POSTS_SLUG as never,
-    depth: 0,
-    limit,
-    overrideAccess: true,
-    sort: 'scheduledAt',
-    where: {
-      or: [
-        { and: [{ status: { equals: 'queued' } }, { scheduledAt: { less_than_equal: now } }] },
-        {
-          and: [
-            { platform: { equals: 'gbp' } },
-            { status: { equals: 'publishing' } },
-            { nextRetryAt: { less_than_equal: now } },
-          ],
-        },
-        {
-          and: [
-            { platform: { equals: 'facebook' } },
-            { status: { equals: 'scheduled' } },
-            { nextRetryAt: { less_than_equal: now } },
-          ],
-        },
-      ],
-    },
+  const rows = await findDueSocialPosts(payload, {
+    limit: args.limit ?? options.scheduling.sweepBatchSize,
   })
-
-  const rows = result.docs as unknown as SocialPostQueueRow[]
+  const checkJobIds = rows.flatMap((row) =>
+    awaitsReconciliation(row) && row.queuedJobId ? [row.queuedJobId] : [],
+  )
+  let waiting = new Set<string>()
+  try {
+    waiting = await findWaitingJobIds(payload, checkJobIds)
+  } catch (error) {
+    // Queue the checks anyway: the verdict's guard keeps a duplicate from re-queueing.
+    logAsyncOperationFailure(payload, 'socials.sweep.find-jobs', error)
+  }
   let queued = 0
+  let failed = 0
+  let skipped = 0
   for (const row of rows) {
+    const held = awaitsReconciliation(row)
+    if (held && row.queuedJobId && waiting.has(row.queuedJobId)) {
+      skipped++
+      continue
+    }
     try {
-      await queueSocialPostPublish({ payload, postId: row.id, req })
+      const jobId = await queueSocialPostPublish({ payload, postId: row.id, req })
       queued++
+      if (held && jobId !== undefined) {
+        await recordCheckJob(payload, { checkAt: row.nextRetryAt, jobId, postId: row.id })
+      }
     } catch (error) {
+      failed++
       logAsyncOperationFailure(payload, 'socials.sweep.queue', error)
     }
   }
-  return { queued, scanned: rows.length }
+  return { failed, queued, scanned: rows.length, ...(skipped ? { skipped } : {}) }
 }
 
 // ---------------------------------------------------------------------------

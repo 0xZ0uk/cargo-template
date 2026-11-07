@@ -18,12 +18,13 @@ import { refreshMetaAccessToken } from '../_meta/api.js'
 import { buildAuthorizeUrl, exchangeCodeForTokens } from '../_meta/oauth.js'
 import { revokeMetaAuthorization } from '../_meta/revoke.js'
 import { buildDefaultFacebookMessage } from './copy.js'
-import { getFacebookInsightsForRef } from './insights.js'
+import { getFacebookInsightsForRef, resolveFacebookPageId } from './insights.js'
 import {
   deleteFacebookPost,
   FACEBOOK_FORMATS,
   type FacebookPublishInput,
   publishFacebookPost,
+  reconcileFacebookScheduledPost,
 } from './publish.js'
 
 const CAPABILITIES: PlatformCapabilities = {
@@ -213,6 +214,21 @@ export const createFacebookAdapter = (
 
     async delete({ options: opts, payload, publishedRef }) {
       await deleteFacebookPost({ options: opts, payload, publishedRef })
+    },
+
+    /** A natively scheduled post: did Facebook publish it at its scheduled time? */
+    async reconcile({ options: opts, payload, publishedRef }) {
+      const meta = publishedRef.meta ?? {}
+      const scheduledSeconds = [meta.scheduledSeconds, meta.scheduledPublishTime].find(
+        (value): value is number => typeof value === 'number',
+      )
+      return reconcileFacebookScheduledPost({
+        externalId: publishedRef.externalId,
+        options: opts,
+        pageId: resolveFacebookPageId(publishedRef),
+        payload,
+        scheduledPublishTime: scheduledSeconds,
+      })
     },
 
     async getInsights({ options: opts, payload, publishedRef }) {
