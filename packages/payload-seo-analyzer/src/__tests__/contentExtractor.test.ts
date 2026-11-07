@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { analyzeSeo } from '../index'
-import { buildSeoInputFromDoc } from '../endpoints/validate'
+import { analyzeLoadedDocument, buildSeoInputFromDoc } from '../helpers/analyzeDocument'
 import { extractDocExternalLinks } from '../endpoints/externalLinks'
 import { buildJsonLd } from '../helpers/buildSchema'
 import {
@@ -18,7 +18,6 @@ import {
 import { hashConfig } from '../cache'
 import { buildSeoConfig } from '../plugin'
 import { contentInputFromDoc } from '../helpers/docContentInput'
-import { extractDocContent } from '../helpers/extractDocContent'
 import { extractAllInternalLinks } from '../helpers/linkExtractor'
 import { pickDocContentInput } from '../helpers/sidebarContent'
 
@@ -117,10 +116,12 @@ describe('extractContent: every consumer', () => {
     )
   })
 
-  it('extractDocContent (audit, score history, AI endpoints)', () => {
-    const extracted = extractDocContent(doc, undefined, { collection: 'docs', extractors: payload })
-    expect(extracted.text).toContain('Install the app')
-    expect(extracted.text).not.toContain('Walker-only')
+  it('analyzeDocument (audit, score history, AI endpoints): score, stats and text', () => {
+    const { text, analysis } = analyzeLoadedDocument(payload, doc, { collection: 'docs' })
+    expect(text).toContain('Install the app')
+    expect(text).not.toContain('Walker-only')
+    expect(analysis.checks.find((c) => c.id === 'h1-unique')?.status).toBe('pass')
+    expect(analysis.stats.h1Count).toBe(1)
   })
 
   it('the link graph and the external-links scan', () => {

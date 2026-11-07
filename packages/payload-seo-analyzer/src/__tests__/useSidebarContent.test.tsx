@@ -111,6 +111,28 @@ describe('useSidebarContent', () => {
     expect(result.current.content.robotsMeta).toBe('first')
   })
 
+  it('reports an edit made before the first answer, so the sidebar keeps the opened score', async () => {
+    answers.push(served('edited'))
+    const { result, rerender } = renderHook(({ f }) => useSidebarContent(f, 'pages', ENDPOINT, 'en'), {
+      initialProps: { f: undefined as Record<string, unknown> | undefined },
+    })
+    // The form state has not arrived yet: nothing to compare with.
+    expect(result.current.edited).toBe(false)
+    rerender({ f: form('opened') })
+    expect(result.current.edited).toBe(false)
+
+    // Edited inside the debounce: the first answer is for the edited form, not the opened one.
+    rerender({ f: form('changed') })
+    await settle()
+    expect(result.current.resolved).toBe(true)
+    expect(result.current.edited).toBe(true)
+    expect(urls).toHaveLength(1)
+
+    // Back to the values as opened: no longer edited.
+    rerender({ f: form('opened') })
+    expect(result.current.edited).toBe(false)
+  })
+
   it('keys the cache by locale, and asks the server for that locale', async () => {
     answers.push(served('english'), served('portuguese'))
     const { result, rerender } = renderHook(({ locale }) => useSidebarContent(form('same'), 'pages', ENDPOINT, locale), {

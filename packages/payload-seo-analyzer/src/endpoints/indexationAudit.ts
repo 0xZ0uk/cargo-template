@@ -22,52 +22,14 @@
  * Rate limiting is applied by the plugin (`withRateLimit` in plugin.ts).
  */
 import type { PayloadHandler } from 'payload'
-import { analyzeSeo } from '../index.js'
-import type { RuleGroup, SeoConfig, SeoCheck, SeoInput } from '../types.js'
-import { buildSeoInputFromDoc } from './validate.js'
+import type { SeoConfig, SeoCheck } from '../types.js'
+import { analyzeLoadedDocument, type DocumentTarget } from '../helpers/analyzeDocument.js'
 import { docExclusion, isExcludedDoc } from '../helpers/excludeDocs.js'
 import { loadMergedConfig } from '../helpers/loadMergedConfig.js'
 import { isSeoAdminRequest, isSeoPanelUser } from '../helpers/isAdmin.js'
 import { indexationMaxDocs } from '../helpers/auditLimits.js'
 import { safeCacheLocale } from '../helpers/safeCacheLocale.js'
 import { defaultSeoSharedCache, hashConfig, type SeoSharedCache } from '../cache.js'
-
-/** Every rule group except `technical`, the only one the indexation checks come from. */
-const NON_TECHNICAL_GROUPS: RuleGroup[] = [
-  'title',
-  'meta-description',
-  'url',
-  'headings',
-  'content',
-  'images',
-  'linking',
-  'social',
-  'schema',
-  'readability',
-  'quality',
-  'secondary-keywords',
-  'cornerstone',
-  'freshness',
-  'accessibility',
-  'ecommerce',
-  'eeat',
-  'geo',
-  'hreflang',
-]
-
-/**
- * The subset of the analyzer input the technical rules read. Dropping the content skips
- * the Lexical extraction in `buildContext`, which is most of the per-doc cost.
- */
-export function technicalOnlyInput(input: SeoInput): SeoInput {
-  return {
-    slug: input.slug,
-    canonicalUrl: input.canonicalUrl,
-    robotsMeta: input.robotsMeta,
-    isGlobal: input.isGlobal,
-    isPost: input.isPost,
-  }
-}
 
 /** Technical-group check ids that represent an indexation/canonical hygiene problem. */
 const INDEXATION_CHECK_IDS = new Set([
@@ -459,11 +421,7 @@ export function createIndexationAuditHandler(
         return Response.json({ ...lookup.data, cached: true }, { headers: { 'Cache-Control': 'no-store' } })
       }
 
-      const { config: baseConfig, ignoredSlugs } = await loadMergedConfig(req.payload, seoConfig)
-      const mergedConfig: SeoConfig = {
-        ...baseConfig,
-        disabledRules: [...new Set([...(baseConfig.disabledRules ?? []), ...NON_TECHNICAL_GROUPS])],
-      }
+      const { config: mergedConfig, ignoredSlugs } = await loadMergedConfig(req.payload, seoConfig)
       const maxDocs = indexationMaxDocs()
       // The host's exclusion (A/B variants…) leaves documents out of the scan.
       const exclusion = docExclusion(seoConfig)
@@ -475,8 +433,13 @@ export function createIndexationAuditHandler(
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const inspect = (doc: any, collection: string, isGlobal = false): void => {
-        const input = buildSeoInputFromDoc(doc, collection, { isGlobal, extractors: req.payload })
-        const analysis = analyzeSeo(technicalOnlyInput(input), mergedConfig)
+        // Only the technical rules, on the slug, canonical and robots fields: they never read
+        // content, so the verdict is the same as a full analysis.
+        const target: DocumentTarget = isGlobal ? { global: collection.slice('global:'.length) } : { collection }
+        const { input, analysis } = analyzeLoadedDocument(req.payload, doc, target, {
+          purpose: 'technical',
+          config: mergedConfig,
+        })
         const issues: IndexationIssue[] = analysis.checks
           .filter(
             (c) => c.group === 'technical' && INDEXATION_CHECK_IDS.has(c.id) && c.status !== 'pass',

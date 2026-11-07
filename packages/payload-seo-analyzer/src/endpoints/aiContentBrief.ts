@@ -14,7 +14,7 @@
 import type { PayloadHandler } from 'payload'
 import type { SeoConfig } from '../types.js'
 import { parseJsonBody } from '../helpers/parseBody.js'
-import { extractDocContent } from '../helpers/extractDocContent.js'
+import { analyzeDocument } from '../helpers/analyzeDocument.js'
 import { isSeoPanelUser } from '../helpers/isAdmin.js'
 import { aiApiKey, aiChat, aiModel } from '../helpers/aiClient.js'
 
@@ -182,9 +182,13 @@ export function createAiContentBriefHandler(
       const id = body.id != null ? String(body.id) : undefined
       if (collection && id && (!targetCollections || targetCollections.includes(collection))) {
         try {
-          const doc = (await req.payload.findByID({ collection, id, depth: 1, overrideAccess: true })) as Record<string, unknown>
+          const { doc, pageText } = await analyzeDocument(
+            req,
+            { collection, id },
+            { purpose: 'content', seoConfig, overrideAccess: true },
+          )
           pageTitle = (doc.title as string) || undefined
-          existingContent = extractDocContent(doc, undefined, { collection, extractors: req.payload }).text || undefined
+          existingContent = pageText || undefined
         } catch {
           // ignore — brief without page context
         }

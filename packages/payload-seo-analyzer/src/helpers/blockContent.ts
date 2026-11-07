@@ -1,7 +1,8 @@
 /**
- * Content of a `layout` blocks array: the one walker behind `buildContext`, the rules that
- * look at blocks, `extractDocContent` and the sidebar (which feeds it form state reduced to
- * a document), so they all see the same headings, text, links and images.
+ * Content of a `layout` blocks array: the one walker behind `buildContext` (and so every
+ * server analysis, through `analyzeDocument`), the rules that look at blocks and the sidebar
+ * (which feeds it form state reduced to a document), so they all see the same headings,
+ * text, links and images.
  *
  * It reads blocks by shape, not by `blockType`, so a block it has never seen still counts:
  * - every Lexical value (`{ root: { children } }`), at any depth, as rich text;

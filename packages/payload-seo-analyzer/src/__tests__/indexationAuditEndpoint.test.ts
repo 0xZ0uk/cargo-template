@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SeoCache, SeoSharedCache, type SeoCacheStore } from '../cache.js'
-import { createIndexationAuditHandler, technicalOnlyInput } from '../endpoints/indexationAudit.js'
-import { buildSeoInputFromDoc } from '../endpoints/validate.js'
+import { createIndexationAuditHandler } from '../endpoints/indexationAudit.js'
+import { buildSeoInputFromDoc, technicalOnlyInput } from '../helpers/analyzeDocument.js'
 import { analyzeSeo } from '../index.js'
 
 function fakeStore(): SeoCacheStore {
