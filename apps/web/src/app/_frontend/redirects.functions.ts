@@ -4,7 +4,7 @@ import type { RedirectIndex, ResolvedRedirect } from '@/utilities/redirects'
 
 import { buildRedirectIndex, matchRedirect } from '@/utilities/redirects'
 import { r2SeoCacheStore } from '@/plugins/seoCacheStore'
-import { FRONTEND_REDIRECTS_CACHE_BASE } from '@cargo/payload-seo-analyzer/shared'
+import { FRONTEND_REDIRECTS_CACHE_BASE } from '@shipment/payload-seo-analyzer/shared'
 
 import { createRedirectIndexCache } from './redirectIndexCache'
 
@@ -85,7 +85,7 @@ const getIndex = createRedirectIndexCache({
 const recordNotFound = async (pathname: string) => {
   const [{ getPayload }, { recordSeoNotFound }, { getRequestHeader }, { waitUntil }] = await Promise.all([
     import('payload'),
-    import('@cargo/payload-seo-analyzer'),
+    import('@shipment/payload-seo-analyzer'),
     import('@tanstack/react-start/server'),
     import('#cloudflare-runtime'),
   ])

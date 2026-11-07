@@ -53,14 +53,14 @@ describe("assistantPlugin", () => {
     const views = config.admin?.components?.views as Record<string, any>;
     expect(Object.keys(views)).toEqual(["existing", "assistant"]);
     expect(views.assistant.path).toBe("/assistant");
-    expect(views.assistant.Component.path).toBe("@cargo/payload-plugin-assistant/admin/AssistantView#AssistantView");
+    expect(views.assistant.Component.path).toBe("@shipment/payload-plugin-assistant/admin/AssistantView#AssistantView");
   });
 
   it("adds the nav link after existing ones, in any shape Payload accepts", () => {
     const nav = (afterNavLinks: unknown) =>
       (assistantPlugin(valid)({ ...incoming, admin: { components: { afterNavLinks } } } as unknown as Config).admin?.components
         ?.afterNavLinks ?? []) as unknown as Array<string | { path: string }>;
-    const ours = { path: "@cargo/payload-plugin-assistant/admin/AssistantNavLink#AssistantNavLink", serverProps: { access: expect.any(Function) } };
+    const ours = { path: "@shipment/payload-plugin-assistant/admin/AssistantNavLink#AssistantNavLink", serverProps: { access: expect.any(Function) } };
     expect(nav(undefined)).toEqual([ours]);
     expect(nav(["a"])).toEqual(["a", ours]);
     expect(nav("b")).toEqual(["b", ours]);

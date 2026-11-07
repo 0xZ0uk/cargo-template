@@ -1,20 +1,20 @@
 /**
- * @cargo/onpage-tanstack-start — payload-onpage for TanStack Start.
+ * @shipment/onpage-tanstack-start — payload-onpage for TanStack Start.
  *
  *   // payload.config.ts (import from /session: it has no client code)
- *   import { tanstackSession } from '@cargo/onpage-tanstack-start/session'
+ *   import { tanstackSession } from '@shipment/onpage-tanstack-start/session'
  *   plugins: [onpage({ collections: ['pages'], session: tanstackSession({ secret: process.env.PAYLOAD_SECRET }) })]
  *
  *   // root route — renders nothing for visitors
  *   <OnPage />
  *
  *   // where a loader reads Payload (import from /session)
- *   import { isDraftEnabled, onpageContext } from '@cargo/onpage-tanstack-start/session'
+ *   import { isDraftEnabled, onpageContext } from '@shipment/onpage-tanstack-start/session'
  *   payload.find({ collection: 'pages', draft: await isDraftEnabled(), ...(await onpageContext()) })
  */
 import { useEffect, useState } from 'react'
 import type { ComponentType } from 'react'
-import type { OnPageMode } from '@cargo/onpage-core'
+import type { OnPageMode } from '@shipment/onpage-core'
 import { OnPageMount, type OnPageMountProps } from './client.tsx'
 import { HINT_COOKIE } from './hint.ts'
 import { getOnPageState } from './state.functions.ts'

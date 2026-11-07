@@ -1,6 +1,6 @@
 'use client'
 
-import { EditorSession, type DataSource, type DocRef } from '@cargo/onpage-core'
+import { EditorSession, type DataSource, type DocRef } from '@shipment/onpage-core'
 import { useEffect, useState } from 'react'
 import { useEvent } from '../useEvent.ts'
 

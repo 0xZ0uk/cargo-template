@@ -4,12 +4,12 @@
 
 | Package                        | Runs on        | Depends on           | Responsibility                                                                                                                                           |
 | ------------------------------ | -------------- | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@cargo/onpage-core`           | anywhere       | nothing              | Document refs, paths, field ops, the editor session, autosave, markers, sealing, **port interfaces**. `core/payload`: the default Payload REST adapters. |
-| `@cargo/onpage-plugin`         | Payload server | core, payload        | Endpoints, access, schema, marker hooks, stale-write guard, admin controls.                                                                              |
-| `@cargo/onpage-react`          | browser        | core, react          | Editor UI, field editors, locators, annotations, client mode. `react/editor-kit`: building blocks for custom editors.                                    |
-| `@cargo/onpage-lexical`        | browser        | core, react, lexical | Rich-text field editor (loaded lazily).                                                                                                                  |
-| `@cargo/onpage-next`           | Next.js        | core, react, lexical | Session adapter, `<OnPage />`, `onpageContext()`, refresh renderer, proxy.                                                                               |
-| `@cargo/onpage-tanstack-start` | TanStack Start | core, react, lexical | Session adapter, `<OnPage />`, `onpageContext()`, refresh renderer. No proxy: reads verify the sealed grant directly.                                    |
+| `@shipment/onpage-core`           | anywhere       | nothing              | Document refs, paths, field ops, the editor session, autosave, markers, sealing, **port interfaces**. `core/payload`: the default Payload REST adapters. |
+| `@shipment/onpage-plugin`         | Payload server | core, payload        | Endpoints, access, schema, marker hooks, stale-write guard, admin controls.                                                                              |
+| `@shipment/onpage-react`          | browser        | core, react          | Editor UI, field editors, locators, annotations, client mode. `react/editor-kit`: building blocks for custom editors.                                    |
+| `@shipment/onpage-lexical`        | browser        | core, react, lexical | Rich-text field editor (loaded lazily).                                                                                                                  |
+| `@shipment/onpage-next`           | Next.js        | core, react, lexical | Session adapter, `<OnPage />`, `onpageContext()`, refresh renderer, proxy.                                                                               |
+| `@shipment/onpage-tanstack-start` | TanStack Start | core, react, lexical | Session adapter, `<OnPage />`, `onpageContext()`, refresh renderer. No proxy: reads verify the sealed grant directly.                                    |
 
 Package boundaries are enforced by lint (`no-restricted-imports`): core imports no framework, react imports no Next or Payload, and so on.
 

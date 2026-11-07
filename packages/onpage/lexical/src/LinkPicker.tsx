@@ -4,8 +4,8 @@
  * Pick a page of the site for a rich-text link: search the collections the
  * schema lists as link targets (`linkTargets`), through the data source.
  */
-import type { RefKey, SearchHit } from '@cargo/onpage-core'
-import { useOnPage, useDebouncedSearch, type Translate } from '@cargo/onpage-react/editor-kit'
+import type { RefKey, SearchHit } from '@shipment/onpage-core'
+import { useOnPage, useDebouncedSearch, type Translate } from '@shipment/onpage-react/editor-kit'
 import { useCallback, useState } from 'react'
 
 export interface InternalLink {

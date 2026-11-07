@@ -1,6 +1,6 @@
 'use client'
 
-import type { RefKey } from '@cargo/onpage-core'
+import type { RefKey } from '@shipment/onpage-core'
 import { useCallback, useState } from 'react'
 
 /** Documents rendered from editor state on this page (client mode), and how they register. */

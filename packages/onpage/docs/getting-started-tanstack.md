@@ -2,7 +2,7 @@
 
 Add on-page editing and shareable draft previews to an existing **Payload 4 + TanStack Start** site. Nothing changes for visitors: no extra markup, about 0.3 KB of JavaScript.
 
-> **For coding agents:** follow these steps in order. Each names the file to edit and ends with a check. The Cargo app (`apps/web`) is the working setup.
+> **For coding agents:** follow these steps in order. Each names the file to edit and ends with a check. The Shipment app (`apps/web`) is the working setup.
 >
 > **Payload 4 is in beta.** The versions come from the workspace catalog; see [compatibility](compatibility.md).
 
@@ -11,11 +11,11 @@ Add on-page editing and shareable draft previews to an existing **Payload 4 + Ta
 The packages are private workspace packages. In the app's `package.json`:
 
 ```json
-"@cargo/onpage-core": "workspace:*",
-"@cargo/onpage-lexical": "workspace:*",
-"@cargo/onpage-plugin": "workspace:*",
-"@cargo/onpage-react": "workspace:*",
-"@cargo/onpage-tanstack-start": "workspace:*",
+"@shipment/onpage-core": "workspace:*",
+"@shipment/onpage-lexical": "workspace:*",
+"@shipment/onpage-plugin": "workspace:*",
+"@shipment/onpage-react": "workspace:*",
+"@shipment/onpage-tanstack-start": "workspace:*",
 "lexical": "catalog:"
 ```
 
@@ -23,11 +23,11 @@ plus the `@lexical/*` packages from the catalog: Lexical is a peer dependency an
 
 ## 2. Register the plugin
 
-`payload.config.ts` ([Cargo](../../../apps/web/src/payload.config.ts)):
+`payload.config.ts` ([Shipment](../../../apps/web/src/payload.config.ts)):
 
 ```ts
-import { onpage } from '@cargo/onpage-plugin'
-import { tanstackSession } from '@cargo/onpage-tanstack-start/session' // the /session entry has no client code
+import { onpage } from '@shipment/onpage-plugin'
+import { tanstackSession } from '@shipment/onpage-tanstack-start/session' // the /session entry has no client code
 
 export default buildConfig({
   // …
@@ -50,10 +50,10 @@ Unlike Next, the secret goes on the session, not on a proxy: Start request middl
 
 ## 3. Mount the editor
 
-The frontend layout route ([Cargo](../../../apps/web/src/app/_frontend.tsx)):
+The frontend layout route ([Shipment](../../../apps/web/src/app/_frontend.tsx)):
 
 ```tsx
-import { OnPage } from '@cargo/onpage-tanstack-start'
+import { OnPage } from '@shipment/onpage-tanstack-start'
 
 function FrontendLayout() {
   return (
@@ -69,10 +69,10 @@ function FrontendLayout() {
 
 ## 4. Read drafts with markers
 
-Wherever a server function or loader reads Payload ([Cargo](../../../apps/web/src/app/_frontend/pages.functions.ts)):
+Wherever a server function or loader reads Payload ([Shipment](../../../apps/web/src/app/_frontend/pages.functions.ts)):
 
 ```ts
-import { isDraftEnabled, onpageContext } from '@cargo/onpage-tanstack-start/session'
+import { isDraftEnabled, onpageContext } from '@shipment/onpage-tanstack-start/session'
 
 const draft = await isDraftEnabled()
 const { docs } = await payload.find({

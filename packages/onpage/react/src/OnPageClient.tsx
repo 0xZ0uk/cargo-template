@@ -13,7 +13,7 @@
  */
 import { useEvent } from './useEvent.ts'
 import { toRef } from './annotations.ts'
-import { encodeDocument, refKey, type DocRef } from '@cargo/onpage-core'
+import { encodeDocument, refKey, type DocRef } from '@shipment/onpage-core'
 import { useEffect, useMemo, type ReactNode } from 'react'
 import { editable, editableOff, type Editable } from './annotations.ts'
 import { useOnPageOptional, useSessionSnapshot } from './context.tsx'

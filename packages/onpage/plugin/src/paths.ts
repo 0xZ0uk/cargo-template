@@ -1,5 +1,5 @@
 /** Where a document lives on the site. */
-import { safePath, type DocRef } from '@cargo/onpage-core'
+import { safePath, type DocRef } from '@shipment/onpage-core'
 import type { PayloadRequest, TypedLocale } from 'payload'
 import { originOf } from './http.ts'
 import type { Entry } from './options.ts'

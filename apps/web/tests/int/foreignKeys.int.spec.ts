@@ -96,7 +96,9 @@ describe('D1 foreign keys after every migration', () => {
   })
 
   // What each ON DELETE does when the referenced row goes, e.g. deleting a page that is open in
-  // the admin (its lock row references it) or a page an A/B variant points at.
+  // the admin (its lock row references it) or a page an A/B variant points at. Inserts and
+  // deletes rows for every foreign key (many D1 round trips), so a slow CI runner can take
+  // longer than vitest's 5 s default.
   it('cascade or set null when the referenced row is deleted', async () => {
     const columnsOf = new Map<string, Column[]>()
     const columns = async (table: string) => {
@@ -189,5 +191,5 @@ describe('D1 foreign keys after every migration', () => {
 
     expect(failures).toEqual([])
     expect(checked).toBeGreaterThan(0)
-  })
+  }, 30_000)
 })

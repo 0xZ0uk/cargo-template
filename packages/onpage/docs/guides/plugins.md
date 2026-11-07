@@ -16,7 +16,7 @@ onpage({
 })
 ```
 
-or strip markers where you build metadata (`stegaCleanDeep(doc)`, from `@cargo/onpage-core`).
+or strip markers where you build metadata (`stegaCleanDeep(doc)`, from `@shipment/onpage-core`).
 
 ## Nested docs (`@payloadcms/plugin-nested-docs`)
 

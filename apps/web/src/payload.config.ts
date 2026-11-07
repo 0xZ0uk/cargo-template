@@ -1,10 +1,10 @@
-import { onpage } from '@cargo/onpage-plugin'
-import { tanstackSession } from '@cargo/onpage-tanstack-start/session'
-import { abTestingPlugin } from '@cargo/payload-plugin-ab'
-import { assistantPlugin } from '@cargo/payload-plugin-assistant'
-import { withMarkdownRichText } from '@cargo/payload-plugin-assistant/mcp'
-import { createSqlSeoDataStore, seoAnalyzerPlugin } from '@cargo/payload-seo-analyzer'
-import { mcpPlugin } from '@cargo/payload-plugin-mcp'
+import { onpage } from '@shipment/onpage-plugin'
+import { tanstackSession } from '@shipment/onpage-tanstack-start/session'
+import { abTestingPlugin } from '@shipment/payload-plugin-ab'
+import { assistantPlugin } from '@shipment/payload-plugin-assistant'
+import { withMarkdownRichText } from '@shipment/payload-plugin-assistant/mcp'
+import { createSqlSeoDataStore, seoAnalyzerPlugin } from '@shipment/payload-seo-analyzer'
+import { mcpPlugin } from '@shipment/payload-plugin-mcp'
 import { sqliteD1Adapter } from '@payloadcms/db-d1-sqlite'
 import { seoPlugin } from '@payloadcms/plugin-seo'
 import type { GenerateTitle, GenerateURL } from '@payloadcms/plugin-seo/types'
@@ -145,7 +145,7 @@ export default buildConfig({
         },
       },
       mcp: {
-        serverOptions: { serverInfo: { name: 'Cargo Template' } },
+        serverOptions: { serverInfo: { name: 'Shipment' } },
       },
       // The consent page and `resource_name` use the server name above. Every user may connect a
       // client (there are no roles); set `canConnect` to restrict it. Registration is public: the

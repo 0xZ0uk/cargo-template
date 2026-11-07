@@ -5,7 +5,7 @@
  * add (about the page, or the selected section), resolve; and ask for a
  * review, which notifies the site's reviewers with a share link.
  */
-import { errorText, fieldAtPath, isReady, type PageComment, type RefKey } from '@cargo/onpage-core'
+import { errorText, fieldAtPath, isReady, type PageComment, type RefKey } from '@shipment/onpage-core'
 import { useEffect, useId, useState } from 'react'
 import { useOnPage } from '../../context.tsx'
 import { relativeTime } from '../../messages.ts'

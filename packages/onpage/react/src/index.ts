@@ -1,10 +1,10 @@
 /**
- * @cargo/onpage-react — the on-page editor UI.
+ * @shipment/onpage-react — the on-page editor UI.
  *
  *   <OnPageEditor dataSource={payloadRest()} media={payloadUploads()} links={{ exit: '/api/onpage/exit' }} />
  *
- * Framework adapters (e.g. @cargo/onpage-tanstack-start) mount it for you. Building a
- * field editor? See `@cargo/onpage-react/editor-kit`.
+ * Framework adapters (e.g. @shipment/onpage-tanstack-start) mount it for you. Building a
+ * field editor? See `@shipment/onpage-react/editor-kit`.
  */
 export { OnPageEditor, type OnPageEditorProps } from './editor/OnPageEditor.tsx'
 export { OnPageClient, type OnPageClientProps } from './OnPageClient.tsx'

@@ -1,8 +1,8 @@
-import { payloadPluginSocials } from '@cargo/payload-plugin-socials'
+import { payloadPluginSocials } from '@shipment/payload-plugin-socials'
 import type {
   PayloadPluginSocialsConfig,
   SourceContextResolver,
-} from '@cargo/payload-plugin-socials'
+} from '@shipment/payload-plugin-socials'
 
 import { cloudflareEnv as cloudflare } from '#cloudflare-runtime'
 import { pageSocialContext } from '@/utilities/socialsPageSource'

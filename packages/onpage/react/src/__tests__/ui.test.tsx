@@ -8,7 +8,7 @@ import {
   type DocumentSchema,
   type MediaLibrary,
   type PageComment,
-} from '@cargo/onpage-core'
+} from '@shipment/onpage-core'
 import { OnPageClient } from '../OnPageClient.tsx'
 import { OnPageEditor } from '../editor/OnPageEditor.tsx'
 import { hub } from '../hub.ts'

@@ -9,7 +9,7 @@
  * migrations are recorded in `seo_store_migrations`. The SQL lives in the plugin
  * (`SEO_STORE_MIGRATIONS`); this app adds no tables to the main D1 for these features.
  */
-import { migrateSeoStore } from '@cargo/payload-seo-analyzer'
+import { migrateSeoStore } from '@shipment/payload-seo-analyzer'
 
 import { cloudflareEnv } from '#cloudflare-runtime'
 

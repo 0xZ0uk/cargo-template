@@ -23,7 +23,7 @@ import {
   resolveRow,
   type ArrayField,
   type RefKey,
-} from '@cargo/onpage-core'
+} from '@shipment/onpage-core'
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type RefObject } from 'react'
 import { useOnPage } from '../../context.tsx'
 import type { Translate } from '../../messages.ts'

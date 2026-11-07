@@ -4,16 +4,16 @@ import { createBreadcrumbHandler } from '../endpoints/breadcrumb.js'
 import type { SeoConfig } from '../types.js'
 
 const docs: Record<string, Record<string, unknown>> = {
-  guides: { slug: 'guides', title: 'Guides', meta: { title: 'Guides | Cargo Template' } },
-  'guides/coffee': { slug: 'guides/coffee', title: 'Coffee brewing basics', meta: { title: 'Coffee brewing basics | Cargo Template' } },
-  'guides/tea': { slug: 'guides/tea', meta: { title: 'Tea | Cargo Template' } },
+  guides: { slug: 'guides', title: 'Guides', meta: { title: 'Guides | Shipment' } },
+  'guides/coffee': { slug: 'guides/coffee', title: 'Coffee brewing basics', meta: { title: 'Coffee brewing basics | Shipment' } },
+  'guides/tea': { slug: 'guides/tea', meta: { title: 'Tea | Shipment' } },
   'guides/mate': { slug: 'guides/mate', meta: { title: 'Mate | Settings Name' } },
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function req(slug: string, settings: Record<string, unknown> | null = null): any {
   return {
-    url: `https://cargo.example/api/seo-plugin/breadcrumb?collection=pages&slug=${slug}`,
+    url: `https://shipment.example/api/seo-plugin/breadcrumb?collection=pages&slug=${slug}`,
     user: { id: 1, collection: 'users' },
     payload: {
       config: { admin: { user: 'users' } },
@@ -36,7 +36,7 @@ const names = async (handler: ReturnType<typeof createBreadcrumbHandler>, r: unk
 }
 
 describe('GET /breadcrumb names', () => {
-  const config = { siteName: 'Cargo Template' } as SeoConfig
+  const config = { siteName: 'Shipment' } as SeoConfig
 
   it("uses each page's own title, not the meta title with its suffix", async () => {
     const handler = createBreadcrumbHandler(['pages'], config)

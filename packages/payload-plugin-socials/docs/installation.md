@@ -1,6 +1,6 @@
 # Installation and configuration
 
-A production-shaped walkthrough for wiring `@cargo/payload-plugin-socials` into a Payload CMS 4 project: arbitrary source types, format-safe media, host-owned migrations, and scheduling through either Payload Jobs or external infrastructure.
+A production-shaped walkthrough for wiring `@shipment/payload-plugin-socials` into a Payload CMS 4 project: arbitrary source types, format-safe media, host-owned migrations, and scheduling through either Payload Jobs or external infrastructure.
 
 The guide uses two deliberately neutral placeholders:
 
@@ -58,7 +58,7 @@ PUBLIC_URL=https://your-site.com
 ## Step 1: Install the package
 
 ```bash
-# Cargo monorepo: "@cargo/payload-plugin-socials": "workspace:*" in the app's package.json
+# Shipment monorepo: "@shipment/payload-plugin-socials": "workspace:*" in the app's package.json
 ```
 
 ## Step 2: Scaffold the plugin config
@@ -67,8 +67,8 @@ Create a dedicated module for the plugin so the resolvers have room to grow. Thi
 
 ```ts
 // src/plugins/socials.ts
-import type { PayloadPluginSocialsConfig } from '@cargo/payload-plugin-socials'
-import { payloadPluginSocials } from '@cargo/payload-plugin-socials'
+import type { PayloadPluginSocialsConfig } from '@shipment/payload-plugin-socials'
+import { payloadPluginSocials } from '@shipment/payload-plugin-socials'
 import { campaignResolver, entryResolver } from './socials-resolvers'
 
 const base = () => (process.env.PUBLIC_URL ?? '').replace(/\/+$/, '')
@@ -141,7 +141,7 @@ A resolver maps one of your documents into a `SocialSourceContext`, the shape th
 
 ```ts
 // src/plugins/socials-resolvers.ts
-import type { SocialImage, SocialImageFormat, SourceContextResolver } from '@cargo/payload-plugin-socials'
+import type { SocialImage, SocialImageFormat, SourceContextResolver } from '@shipment/payload-plugin-socials'
 
 const base = () => (process.env.PUBLIC_URL ?? '').replace(/\/+$/, '')
 
@@ -434,7 +434,7 @@ import {
   normalizePluginOptions,
   runQueuedSocialsJobs,
   sweepDueSocialPosts,
-} from '@cargo/payload-plugin-socials'
+} from '@shipment/payload-plugin-socials'
 import { socialsOptions } from './socials'
 
 const normalizedOptions = normalizePluginOptions(socialsOptions)

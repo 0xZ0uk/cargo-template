@@ -1,6 +1,6 @@
 'use client'
 
-import type { DateField } from '@cargo/onpage-core'
+import type { DateField } from '@shipment/onpage-core'
 import type { FieldEditorProps } from '../types.ts'
 import { ApplyBar, EditorPopover, useDraft } from './kit.tsx'
 

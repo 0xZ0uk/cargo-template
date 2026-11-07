@@ -1,4 +1,4 @@
-import { oauthWellKnownTarget } from '@cargo/payload-plugin-mcp/well-known'
+import { oauthWellKnownTarget } from '@shipment/payload-plugin-mcp/well-known'
 import { createFileRoute } from '@tanstack/react-router'
 
 /**

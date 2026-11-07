@@ -3,7 +3,7 @@
  * stand-in content kept on screen until a server refresh lands). Drops active
  * elements, event handlers and unsafe URLs.
  */
-import { safeLinkUrl } from '@cargo/onpage-core'
+import { safeLinkUrl } from '@shipment/onpage-core'
 
 const DROP = new Set([
   'SCRIPT',

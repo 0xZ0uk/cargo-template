@@ -1,6 +1,6 @@
 /**
  * Auto-mapping: tag a document's displayable strings with stega
- * markers (see @cargo/onpage-core stega) so the editor can find them on the
+ * markers (see @shipment/onpage-core stega) so the editor can find them on the
  * page. The plugin runs it on reads that ask for it (`context.onpage`);
  * client mode runs it on the editor state it renders.
  *

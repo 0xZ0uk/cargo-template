@@ -1,6 +1,6 @@
-# onpage: on-page editing for Cargo
+# onpage: on-page editing for Shipment
 
-Cargo's fork of [payload-onpage](https://github.com/jellologic/payload-onpage) (MIT, by jellologic): editors press **Edit on page** in the admin, click the text, images and sections they see on the live page, and change them in place. Edits autosave as Payload drafts through Payload's REST API, so access control, hooks, validation, drafts and versions behave as in the admin. **Share** (or **Copy preview link** in the admin) makes a signed, expiring link that shows one page's draft to anyone holding it.
+Shipment's fork of [payload-onpage](https://github.com/jellologic/payload-onpage) (MIT, by jellologic): editors press **Edit on page** in the admin, click the text, images and sections they see on the live page, and change them in place. Edits autosave as Payload drafts through Payload's REST API, so access control, hooks, validation, drafts and versions behave as in the admin. **Share** (or **Copy preview link** in the admin) makes a signed, expiring link that shows one page's draft to anyone holding it.
 
 Forked from upstream `91b6117` (v0.7.0, 2026-10-25). Diff against that commit to see what we changed, or to pick up upstream fixes.
 
@@ -8,17 +8,17 @@ Forked from upstream `91b6117` (v0.7.0, 2026-10-25). Diff against that commit to
 
 | Package                        | Path              |                                                                                                            |
 | ------------------------------ | ----------------- | ---------------------------------------------------------------------------------------------------------- |
-| `@cargo/onpage-core`           | `core/`           | Framework-free: refs, schema, autosave, session, stega markers, sealing, ports. `/payload`: REST adapters. |
-| `@cargo/onpage-plugin`         | `plugin/`         | Payload plugin: `/api/onpage/*` endpoints, access, marker hooks, preview tokens. `/admin`: admin controls. |
-| `@cargo/onpage-react`          | `react/`          | Editor UI: overlay, dock, panels, field editors, annotations, client mode.                                 |
-| `@cargo/onpage-lexical`        | `lexical/`        | Inline rich-text editing on Payload's Lexical JSON (the editor loads on first use).                        |
-| `@cargo/onpage-tanstack-start` | `tanstack-start/` | `<OnPage />`, the cookie session (`/session`), the router-invalidate renderer.                             |
+| `@shipment/onpage-core`           | `core/`           | Framework-free: refs, schema, autosave, session, stega markers, sealing, ports. `/payload`: REST adapters. |
+| `@shipment/onpage-plugin`         | `plugin/`         | Payload plugin: `/api/onpage/*` endpoints, access, marker hooks, preview tokens. `/admin`: admin controls. |
+| `@shipment/onpage-react`          | `react/`          | Editor UI: overlay, dock, panels, field editors, annotations, client mode.                                 |
+| `@shipment/onpage-lexical`        | `lexical/`        | Inline rich-text editing on Payload's Lexical JSON (the editor loads on first use).                        |
+| `@shipment/onpage-tanstack-start` | `tanstack-start/` | `<OnPage />`, the cookie session (`/session`), the router-invalidate renderer.                             |
 
-All are private workspace packages. `packages/onpage` itself is the private `@cargo/onpage` package that owns the shared tests, lint and type checks.
+All are private workspace packages. `packages/onpage` itself is the private `@shipment/onpage` package that owns the shared tests, lint and type checks.
 
 ## What the fork changed
 
-- **Dropped the Next.js adapter** (`@payload-onpage/next`) and Payload 3 support. Renamed `@payload-onpage/*` to `@cargo/onpage-*`.
+- **Dropped the Next.js adapter** (`@payload-onpage/next`) and Payload 3 support. Renamed `@payload-onpage/*` to `@shipment/onpage-*`.
 - **Payload 4.0.0-beta.6** (upstream tests beta.0–beta.4):
   - `blockReferences` is gone from blocks fields; shared blocks are listed by slug in `blocks`. The schema serializer and conditions walker read `blocks` only.
   - Globals take document controls under `admin.components.edit` (like collections), not `admin.components.elements`.
@@ -26,7 +26,7 @@ All are private workspace packages. `packages/onpage` itself is the private `@ca
   - The Local API now defaults to `overrideAccess: false`. Every call in the plugin already passes it explicitly; the integration tests' seeding now does too.
 - **Lexical 0.53** (Payload beta.6's version; upstream allows `~0.50 || ~0.52`). Peers and dev dependencies come from the workspace catalog.
 - **Tooling**: pnpm + Turborepo instead of Bun + changesets. Packages still build with `tsc -b` (one output file per source, which keeps `'use client'` directives and the lazy editor chunk), not tsup.
-- **`previewGrantFor(pathname)`** (`@cargo/onpage-tanstack-start/session`): the document a live preview-link grant shares at a server-derived path. Unlike `isDraftEnabled()` it doesn't depend on the request URL, so it holds when a route loader re-runs as a server-function call; callers read the returned document by id (see the app's `loadPage`).
+- **`previewGrantFor(pathname)`** (`@shipment/onpage-tanstack-start/session`): the document a live preview-link grant shares at a server-derived path. Unlike `isDraftEnabled()` it doesn't depend on the request URL, so it holds when a route loader re-runs as a server-function call; callers read the returned document by id (see the app's `loadPage`).
 - **Link viewers' full-page navigation uses `location.replace`**: the router has already pushed the entry, and `assign` added a second one, so Back took two presses.
 - **`hideEditWhen`** (per collection/global option): the admin hides **Edit on page** while the open document has a value in the named field. The app uses it to hide the control on A/B variants (`_abVariantOf`), which the Variants panel edits.
 - **Docs** trimmed to what applies here (`docs/`); screenshots, the Next guides and the upstream issue links are gone.
@@ -37,10 +37,10 @@ From the repo root:
 
 ```bash
 pnpm turbo run build --filter='./packages/onpage/*'   # tsc -b → <package>/dist
-pnpm --filter @cargo/onpage test                       # Vitest, against source (unit, component, Payload on in-memory SQLite)
-pnpm --filter @cargo/onpage typecheck                  # sources and tests
-pnpm --filter @cargo/onpage lint                       # ESLint, including the package-boundary rules
-pnpm --filter @cargo/onpage format                     # Prettier (this fork keeps upstream's style)
+pnpm --filter @shipment/onpage test                       # Vitest, against source (unit, component, Payload on in-memory SQLite)
+pnpm --filter @shipment/onpage typecheck                  # sources and tests
+pnpm --filter @shipment/onpage lint                       # ESLint, including the package-boundary rules
+pnpm --filter @shipment/onpage format                     # Prettier (this fork keeps upstream's style)
 ```
 
 The app's end-to-end spec is `apps/web/tests/e2e/onpage.e2e.spec.ts` (visitors, "Edit on page", a rich-text edit saved as a draft, preview links).

@@ -10,7 +10,7 @@ import {
   type SchemaBlock,
   type SchemaField,
   type SchemaImage,
-} from '@cargo/onpage-core'
+} from '@shipment/onpage-core'
 import type { Block, Field, PayloadRequest, SanitizedFieldsPermissions } from 'payload'
 import { getDefaultValue } from 'payload'
 import {

@@ -1,10 +1,10 @@
-# @cargo/payload-seo-analyzer
+# @shipment/payload-seo-analyzer
 
 An SEO toolkit for **Payload 4** that runs on **Cloudflare Workers** (D1 + R2) as well as on Node. It scores pages in the editor sidebar as you type (100+ checks, offline, no API key). It also adds a site-wide admin dashboard, redirects, generated `sitemap.xml` / `robots.txt` / `llms.txt` and JSON-LD, plus opt-in Search Console, AI and monitoring features.
 
 It's a fork of [`@consilioweb/payload-seo-analyzer`](https://github.com/pOwn3d/payload-seo-analyzer) 4.2.2 by ConsilioWEB (MIT), which targets Payload 3 + Next.js. This fork:
 
-- Requires Payload 4 and has **no Next.js dependency**. Admin views render through `DefaultTemplate` from `@payloadcms/ui/rsc` and redirect through Payload's server adapter, so they work under any Payload 4 adapter. The Cargo app uses TanStack Start.
+- Requires Payload 4 and has **no Next.js dependency**. Admin views render through `DefaultTemplate` from `@payloadcms/ui/rsc` and redirect through Payload's server adapter, so they work under any Payload 4 adapter. The Shipment app uses TanStack Start.
 - Runs on **Workers**:
   - The audit and the admin's caches persist in a store you provide (R2) and build in steps through `waitUntil`.
   - Background work runs as Payload jobs on a Cron Trigger.
@@ -12,7 +12,7 @@ It's a fork of [`@consilioweb/payload-seo-analyzer`](https://github.com/pOwn3d/p
   - Token crypto is WebCrypto, and the SSRF guard uses Workers DNS.
 - Has an admin UI rebuilt on `@payloadcms/ui` and Payload 4 design tokens. Its conventions are in [`src/ui/README.md`](src/ui/README.md) and are mandatory.
 
-It lives in the Cargo monorepo (`packages/payload-seo-analyzer`). `apps/web` consumes it as `"@cargo/payload-seo-analyzer": "workspace:*"`. It isn't published to npm. Planned work is tracked in [GitHub issues](https://github.com/0xZ0uk/cargo-template/issues?q=is%3Aissue+is%3Aopen+seo-analyzer). Ground rules and gotchas for working on it are in [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
+It lives in the Shipment monorepo (`packages/payload-seo-analyzer`). `apps/web` consumes it as `"@shipment/payload-seo-analyzer": "workspace:*"`. It isn't published to npm. Planned work is tracked in [GitHub issues](https://github.com/0xZ0uk/shipment/issues?q=is%3Aissue+is%3Aopen+seo-analyzer). Ground rules and gotchas for working on it are in [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
 
 ## Contents
 
@@ -48,7 +48,7 @@ It lives in the Cargo monorepo (`packages/payload-seo-analyzer`). `apps/web` con
 
 ## Status on Cloudflare Workers
 
-The Cargo app (`apps/web`) runs this plugin on a deployed Worker. Each feature is either verified there or still off, as listed below. CPU numbers are under [Performance](#performance).
+The Shipment app (`apps/web`) runs this plugin on a deployed Worker. Each feature is either verified there or still off, as listed below. CPU numbers are under [Performance](#performance).
 
 | Feature | In `apps/web` | On Workers |
 |---|---|---|
@@ -76,12 +76,12 @@ The Cargo app (`apps/web`) runs this plugin on a deployed Worker. Each feature i
 Inside this monorepo, add the workspace dependency:
 
 ```json
-{ "dependencies": { "@cargo/payload-seo-analyzer": "workspace:*" } }
+{ "dependencies": { "@shipment/payload-seo-analyzer": "workspace:*" } }
 ```
 
 `payload` and `@payloadcms/ui` are peer dependencies (`>=4.0.0-beta.6 <5.0.0`, and `react ^19`). The app supplies them from the pnpm catalog in `pnpm-workspace.yaml`. Never pin them in this package: two copies of `payload` or `@payloadcms/ui` break the admin's React contexts.
 
-The package ships `dist/`. Build it with `pnpm --filter @cargo/payload-seo-analyzer build`, or `pnpm dev` from the root, which also watches it.
+The package ships `dist/`. Build it with `pnpm --filter @shipment/payload-seo-analyzer build`, or `pnpm dev` from the root, which also watches it.
 
 ## Quick start (Node)
 
@@ -90,7 +90,7 @@ On a long-lived Node server the defaults work as-is:
 ```ts
 // payload.config.ts
 import { buildConfig } from 'payload'
-import { seoAnalyzerPlugin } from '@cargo/payload-seo-analyzer'
+import { seoAnalyzerPlugin } from '@shipment/payload-seo-analyzer'
 
 export default buildConfig({
   // ...db, collections, admin
@@ -126,7 +126,7 @@ Run `pnpm web cf-typegen` after editing it.
 ### 2. Plugin options
 
 ```ts
-import { createSqlSeoDataStore, seoAnalyzerPlugin } from '@cargo/payload-seo-analyzer'
+import { createSqlSeoDataStore, seoAnalyzerPlugin } from '@shipment/payload-seo-analyzer'
 import { cloudflareEnv as cloudflare, waitUntil } from '#cloudflare-runtime'
 import { r2SeoCacheStore } from './plugins/seoCacheStore'
 import { workersSeoRateLimit } from './plugins/seoRateLimit'
@@ -156,7 +156,7 @@ seoAnalyzerPlugin({
 
 ```ts
 // src/server.ts (wrangler's `main`)
-import { runSeoJobs } from '@cargo/payload-seo-analyzer'
+import { runSeoJobs } from '@shipment/payload-seo-analyzer'
 
 export default {
   ...entry, // TanStack Start's fetch handler
@@ -177,7 +177,7 @@ Jobs add Payload's `payload-jobs` collection, so run `migrate:create` once. A ne
 ### 4. Root files, redirects and 404s
 
 - **`/sitemap.xml`, `/robots.txt`, `/llms.txt`:** the plugin serves them under `/api/seo-plugin/…`. `apps/web` re-serves them at the root by passing the request to Payload's API handler in-process (`src/utilities/servePluginFile.ts`). Never fetch them from the Worker's own origin, because those subrequests are unreliable.
-- **Redirects:** the app reads `seo-redirects` only when the page lookup misses, caches the table per isolate (reloaded as soon as the shared `gen/frontend-redirects` marker the redirect hooks bump changes, so a new, changed or deleted redirect applies on the next request; the 60 s TTL only bounds memory), and checks targets with `validateRedirectTarget` from `@cargo/payload-seo-analyzer/shared` (`src/app/_frontend/redirects.functions.ts`).
+- **Redirects:** the app reads `seo-redirects` only when the page lookup misses, caches the table per isolate (reloaded as soon as the shared `gen/frontend-redirects` marker the redirect hooks bump changes, so a new, changed or deleted redirect applies on the next request; the 60 s TTL only bounds memory), and checks targets with `validateRedirectTarget` from `@shipment/payload-seo-analyzer/shared` (`src/app/_frontend/redirects.functions.ts`).
 - **404 log:** call `recordSeoNotFound(payload, { url, referrer, userAgent })` from your not-found path and pass the promise to `waitUntil`. It never throws, and does nothing while `seoLogs` is off.
 - **Scanner probes stay out of the log.** Bots request `/wp-login.php`, `/.env`, `/.git/config` and the like all day; each distinct path would take a slot of the log's row cap (`SEO_LOGS_MAX_ROWS`, 5k) and crowd out real broken links. `recordSeoNotFound` and `POST /seo-logs` drop them before they're stored. The filter reads the **path only**, never the user agent, because crawlers' 404s are the rows worth keeping. The built-in list (`PROBE_PATH_PATTERNS`, exported with `isProbePath`) covers: `*.php`, WordPress (`wp-admin`, `wp-login`, `wp-content`, `wp-includes`, `wp-json`, `wp-config`, `wp-cron`, `/xmlrpc`), dotfiles and VCS folders (`.env`, `.git`, `.svn`, `.hg`, `.aws`, `.ssh`, `.npmrc`, `.htaccess`, `.htpasswd`, `.DS_Store`; `.well-known` is kept), `cgi-bin`, `vendor/phpunit`, `phpmyadmin`, backups and archives at the root only (`/backup.zip`, `/db.sql`: `.sql .bak .backup .old .orig .dump .zip .tar .gz .tgz .rar .7z`), and `..` traversal. Legacy URLs such as `.aspx` pages or `/files/report.zip` are kept. Extend it with `notFoundProbeFilter: { extra: ['/old-admin', /\.cfm$/] }` (a string is a case-insensitive path prefix, a RegExp is tested against the decoded, lower-cased path), or log everything with `notFoundProbeFilter: false`.
 
@@ -187,10 +187,10 @@ Varlock passes workerd only the variables declared in `apps/web/.env.schema`. A 
 
 ## Frontend helpers
 
-The URL rules the sitemap uses are exported as pure functions, so the frontend produces the same canonical and JSON-LD URLs. `@cargo/payload-seo-analyzer/shared` has no package imports, which makes it safe in a route's `head()`:
+The URL rules the sitemap uses are exported as pure functions, so the frontend produces the same canonical and JSON-LD URLs. `@shipment/payload-seo-analyzer/shared` has no package imports, which makes it safe in a route's `head()`:
 
 ```ts
-import { buildJsonLd, serializeJsonLd } from '@cargo/payload-seo-analyzer/shared'
+import { buildJsonLd, serializeJsonLd } from '@shipment/payload-seo-analyzer/shared'
 
 const { jsonLd } = buildJsonLd(page, {
   collection: 'pages',
@@ -273,7 +273,7 @@ By default the analyzer reads a document's body from its `layout` blocks, by sha
 A collection whose content lives elsewhere, or that needs a block read differently, can supply its own extractor. It gets the document and returns the walker's shape, `BlocksContent`. Fields it leaves out count as empty, and `defaultExtract(value)` runs the built-in walker on any part of the document:
 
 ```ts
-import { seoAnalyzerPlugin, type SeoContentExtractor } from '@cargo/payload-seo-analyzer'
+import { seoAnalyzerPlugin, type SeoContentExtractor } from '@shipment/payload-seo-analyzer'
 
 // `docs` stores its body as `sections: [{ heading, body, link }]`.
 const docsContent: SeoContentExtractor = ({ doc, defaultExtract }) => {
@@ -509,11 +509,11 @@ Every plugin collection sets `versions: false` (Payload 4 versions collections b
 
 | Entry | Contents | Environment |
 |---|---|---|
-| `@cargo/payload-seo-analyzer` | `seoAnalyzerPlugin`, `analyzeSeo`, frontend helpers, `createSqlSeoDataStore` / `migrateSeoStore`, `runSeoJobs`, `recordSeoNotFound`, retention helpers, `SEO_RATE_LIMITS`, field builders, endpoint factories and every type | Server |
-| `@cargo/payload-seo-analyzer/shared` | `buildJsonLd`, `serializeJsonLd`, `validateRedirectTarget`, `normalizeFromPath`, with no package imports | Isomorphic |
-| `@cargo/payload-seo-analyzer/client` | Admin React components (sidebar field, views, meta fields, `SerpPreview`, `SeoNavLink`) | Client (`'use client'`) |
-| `@cargo/payload-seo-analyzer/client.css` | Admin styles. The ESM client bundle already imports them | Client |
-| `@cargo/payload-seo-analyzer/views` | Server view wrappers rendered inside Payload's `DefaultTemplate` | Server (RSC) |
+| `@shipment/payload-seo-analyzer` | `seoAnalyzerPlugin`, `analyzeSeo`, frontend helpers, `createSqlSeoDataStore` / `migrateSeoStore`, `runSeoJobs`, `recordSeoNotFound`, retention helpers, `SEO_RATE_LIMITS`, field builders, endpoint factories and every type | Server |
+| `@shipment/payload-seo-analyzer/shared` | `buildJsonLd`, `serializeJsonLd`, `validateRedirectTarget`, `normalizeFromPath`, with no package imports | Isomorphic |
+| `@shipment/payload-seo-analyzer/client` | Admin React components (sidebar field, views, meta fields, `SerpPreview`, `SeoNavLink`) | Client (`'use client'`) |
+| `@shipment/payload-seo-analyzer/client.css` | Admin styles. The ESM client bundle already imports them | Client |
+| `@shipment/payload-seo-analyzer/views` | Server view wrappers rendered inside Payload's `DefaultTemplate` | Server (RSC) |
 
 ESM and CJS builds ship with type declarations. `xlsx` (Search Console XLSX import) is optional and loaded through a non-literal import; map it in the host if you need it.
 
@@ -574,8 +574,8 @@ From the repo root:
 
 ```sh
 pnpm dev                                                # tsup --watch for the plugin + the app on :3000
-pnpm --filter @cargo/payload-seo-analyzer test          # ~950 vitest tests (jsdom for components)
-pnpm --filter @cargo/payload-seo-analyzer typecheck
+pnpm --filter @shipment/payload-seo-analyzer test          # ~950 vitest tests (jsdom for components)
+pnpm --filter @shipment/payload-seo-analyzer typecheck
 pnpm build                                              # the plugin, then the production Worker
 PAYLOAD_SECRET=test-secret pnpm web test:int            # app integration tests
 E2E_PORT=3021 pnpm web test:e2e                         # Playwright, SEO views included
@@ -595,7 +595,7 @@ There is no uninstall script; remove the plugin by hand. The steps below are for
 2. **Remove the code.**
    - `seoAnalyzerPlugin(...)` from `payload.config.ts`, and the `createSqlSeoDataStore`, `r2SeoCacheStore` and `workersSeoRateLimit` wiring that only it used.
    - The app glue: `servePluginFile` and the `llms.txt`, `sitemap.xml` and `robots.txt` routes, the redirect lookup and 404 recording, the `scheduled` handler that runs the plugin's jobs, and the `seo-store:migrate` scripts — and drop `pnpm run seo-store:migrate:remote` from `deploy:database` in `apps/web/package.json`, which runs it on every deploy.
-   - The package itself (`pnpm web remove @cargo/payload-seo-analyzer`).
+   - The package itself (`pnpm web remove @shipment/payload-seo-analyzer`).
 3. **Regenerate the import map**: `pnpm web generate:importmap`. It drops the plugin's admin views and fields.
 4. **Drop the plugin's collections from the main D1** with `pnpm web migrate:create`, review the generated SQL and apply it with `pnpm web migrate`. Only the collections you enabled exist: `seo-settings` (`settings`), `seo-redirects` (`redirects`; your 301/302 rules stop being served once it is gone) and `seo-gsc-auth` (`gscApi`). The four time-series collections (`seo-score-history`, `seo-performance`, `seo-logs`, `seo-rank-history`) are in the main D1 only when you ran without `dataStore`.
 5. **Decide about the fields it added to your collections** (`isCornerstone`, `focusKeyword`, `focusKeywords`, and the `meta` group when the plugin created it). Dropping them is a schema change on tables that hold your content. `meta.title`, `meta.description` and `meta.image` are editorial content your editors wrote, and they belong to `@payloadcms/plugin-seo` when it is installed; keep the group unless you are sure. Leaving the columns in place is harmless.

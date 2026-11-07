@@ -1,7 +1,7 @@
 'use client'
 
 /** Name a section and save its content, to insert it again from the block picker. */
-import { errorText, getAt } from '@cargo/onpage-core'
+import { errorText, getAt } from '@shipment/onpage-core'
 import { useId, useState } from 'react'
 import { useOnPage } from '../../context.tsx'
 import { Dialog } from '../Dialog.tsx'

@@ -1,18 +1,18 @@
 {
-  "name": "cargo",
+  "name": "shipment",
   "private": true,
-  "description": "Cargo: Payload CMS + TanStack Start template on Cloudflare Workers, and its in-house Payload plugins",
+  "description": "Shipment: Payload CMS + TanStack Start template on Cloudflare Workers, and its in-house Payload plugins",
   "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@12.10.1",
   "scripts": {
     "build": "turbo run build",
-    "dev": "turbo run dev --filter=@cargo/web...",
+    "dev": "turbo run dev --filter=@shipment/web...",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "test:int": "turbo run test:int",
-    "web": "pnpm --filter @cargo/web"
+    "web": "pnpm --filter @shipment/web"
   },
   "devDependencies": {
     "turbo": "2.11.10"

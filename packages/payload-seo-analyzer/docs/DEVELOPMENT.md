@@ -1,6 +1,6 @@
 # Developing the SEO analyzer
 
-Ground rules, gotchas and how to check a change, for anyone working on `@cargo/payload-seo-analyzer`. Commands are in the [README](../README.md#development). Planned work is in GitHub issues; the old `PLAN.md` (port history, per-item verification notes) is in git history, last at commit `265a4bf`.
+Ground rules, gotchas and how to check a change, for anyone working on `@shipment/payload-seo-analyzer`. Commands are in the [README](../README.md#development). Planned work is in GitHub issues; the old `PLAN.md` (port history, per-item verification notes) is in git history, last at commit `265a4bf`.
 
 ## Ground rules
 

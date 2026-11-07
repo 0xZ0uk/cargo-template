@@ -4,7 +4,7 @@ In client mode the page renders a document from the editor's state, so every cha
 
 ```tsx
 'use client' // the render prop is a function, so this must be a client component
-import { OnPageClient } from '@cargo/onpage-react/client'
+import { OnPageClient } from '@shipment/onpage-react/client'
 import { PageView } from './PageView'
 
 export function LivePage({ page }) {

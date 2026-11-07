@@ -8,7 +8,7 @@ import {
   DEFAULT_SLUG_FIELD,
 } from "../constants";
 
-const VARIANTS_FIELD_PATH = "@cargo/payload-plugin-ab/admin/VariantsField#VariantsField";
+const VARIANTS_FIELD_PATH = "@shipment/payload-plugin-ab/admin/VariantsField#VariantsField";
 
 /**
  * Only the plugin's own writes may set `_abVariantOf` / `_abPassPercentage`: the duplicate

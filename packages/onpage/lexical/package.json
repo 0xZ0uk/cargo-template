@@ -1,8 +1,8 @@
 {
-  "name": "@cargo/onpage-lexical",
+  "name": "@shipment/onpage-lexical",
   "version": "0.7.0",
   "private": true,
-  "description": "Cargo's fork of payload-onpage rich-text field editor: inline Lexical editing compatible with Payload's Lexical JSON.",
+  "description": "Shipment's fork of payload-onpage rich-text field editor: inline Lexical editing compatible with Payload's Lexical JSON.",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
@@ -29,8 +29,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@cargo/onpage-core": "workspace:*",
-    "@cargo/onpage-react": "workspace:*"
+    "@shipment/onpage-core": "workspace:*",
+    "@shipment/onpage-react": "workspace:*"
   },
   "peerDependencies": {
     "lexical": "catalog:",

@@ -1,4 +1,4 @@
-# @cargo/onpage-core
+# @shipment/onpage-core
 
 ## 0.7.0
 
@@ -22,7 +22,7 @@ No changes in this release.
   - **Shortcut hints** match the platform: `⌘Z` on Apple devices, `Ctrl+Z` elsewhere. `row.delete` now takes an `{undo}` variable.
 
 - [#36](https://github.com/jellologic/payload-onpage/pull/36) [`7c1c9d7`](https://github.com/jellologic/payload-onpage/commit/7c1c9d735067a20520921eea65fb6f75dda9f73d) Thanks [@jellologic](https://github.com/jellologic)! - - **Writing assistant** (`assist`, an `AssistPort` you implement; no AI vendor is bundled): **✨** on text fields offers Shorter, Clearer, Friendlier, Fix spelling, or your own instruction. The answer replaces the text, still uncommitted. Pass it from your client mount. The examples include a signed-in-only endpoint that uses Claude when `ANTHROPIC_API_KEY` is set.
-  - **`@cargo/onpage-core/testing`:** `memoryDataSource()`, an in-memory `DataSource` for testing custom editors and pages. It applies saves, checks for stale writes, and records saves.
+  - **`@shipment/onpage-core/testing`:** `memoryDataSource()`, an in-memory `DataSource` for testing custom editors and pages. It applies saves, checks for stale writes, and records saves.
 
 - [#29](https://github.com/jellologic/payload-onpage/pull/29) [`9748d89`](https://github.com/jellologic/payload-onpage/commit/9748d8942bae6c89b0927f909c28c512eee464c3) Thanks [@jellologic](https://github.com/jellologic)! - **Comments and review requests** (opt-in: `comments: true`, or `{ guests: true }`):
 
@@ -65,7 +65,7 @@ No changes in this release.
   - **Preview routes:** when `admin.preview` returns a preview route that carries a secret (the website template's `/next/preview?path=…&previewSecret=…`), the plugin uses its `path` and logs a warning. Before, edit and share links pointed at that route: share links got a 403 and carried the secret.
   - **Payload 4:** block slugs listed in `blocks` (`blocks: ['cta']`) and upload `variants` are read.
   - **Startup warning** for enabled collections or globals without drafts, whose on-page edits go live as they autosave.
-  - **`isPayloadUser`** (`@cargo/onpage-next/proxy`): verifies a Payload login at the edge, for `allowDraft`, so your own preview route and Live Preview keep working behind the strict proxy on Vercel.
+  - **`isPayloadUser`** (`@shipment/onpage-next/proxy`): verifies a Payload login at the edge, for `allowDraft`, so your own preview route and Live Preview keep working behind the strict proxy on Vercel.
   - **TanStack Start:** preview-link viewers navigate with full page loads, so each page is checked by the server. Before, a client-side navigation back to the shared page showed published content.
   - New guide: [Payload's website template](https://github.com/jellologic/payload-onpage/blob/main/docs/guides/website-template.md).
 
@@ -100,7 +100,7 @@ No changes in this release.
 
   With `nextSession({ cdnBypass })`, on by default when `process.env.VERCEL` is set, the viewer's browser also gets Next's draft cookie, scoped to the shared page's path and expiring with the link. `withOnPage` now guards that cookie. It strips it from any request the grant doesn't cover. With the new `allowDraft` option it is strict: the cookie survives only on the granted page, for an editor whose bound session is still signed in, or when `allowDraft(request)` says so. Use it to admit your own preview route's admins, and it fails closed if the check throws. Leaving preview clears the page-scoped cookie, so `SessionAdapter.disable()` now receives the page's `path`.
 
-  `@cargo/onpage-tanstack-start` is now part of the release.
+  `@shipment/onpage-tanstack-start` is now part of the release.
 
 ## 0.4.0
 

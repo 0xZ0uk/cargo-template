@@ -48,7 +48,7 @@ A marker is a run of invisible characters appended to the end of the string, so 
 | Joins two fields in one text node (`${first} ${last}`)                              | Both fields map to the same element                                                                                 | Render each in its own element                                                   |
 | Formats dates, numbers or selects                                                   | Unaffected: those aren't marked                                                                                     |                                                                                  |
 
-`stegaClean` and `stegaCleanDeep` come from `@cargo/onpage-core`; `e.field(path)` is an [annotation](../guides/annotations.md).
+`stegaClean` and `stegaCleanDeep` come from `@shipment/onpage-core`; `e.field(path)` is an [annotation](../guides/annotations.md).
 
 - **Strings used as identifiers** (CSS classes, keys, ids) should come from fields that aren't marked; see the list above.
 - **Rows** are inferred when their fields render inside a common wrapper. For exact rows, or rows without text, use [annotations](../guides/annotations.md).

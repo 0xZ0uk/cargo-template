@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Window } from 'happy-dom'
-import type { NumberField, SchemaField, Target } from '@cargo/onpage-core'
+import type { NumberField, SchemaField, Target } from '@shipment/onpage-core'
 import { canEdit, defineEditor, mergeEditors, resolveEditor } from '../registry.ts'
 import { buildIndex } from '../targets.ts'
 import type { EditorRegistry, FieldEditorProps } from '../types.ts'

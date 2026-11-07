@@ -15,7 +15,7 @@ import type { DocumentRef, EntitySlugs } from "./tools";
  * the chosen model (kept in `localStorage`, shared by both).
  */
 
-const MODEL_STORAGE_KEY = "cargo-assistant:model";
+const MODEL_STORAGE_KEY = "shipment-assistant:model";
 
 function readStoredModel(): string | undefined {
   try {

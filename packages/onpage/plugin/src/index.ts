@@ -1,5 +1,5 @@
 /**
- * @cargo/onpage-plugin — the Payload side of payload-onpage.
+ * @shipment/onpage-plugin — the Payload side of payload-onpage.
  *
  *   plugins: [onpage({ collections: ['pages'], globals: ['header'], session: tanstackSession({ secret }) })]
  *
@@ -9,7 +9,7 @@
  * Payload's REST API, so access control, hooks, validation, drafts and versions
  * apply unchanged.
  */
-import { DEFAULTS, type DocRef, type SchemaField } from '@cargo/onpage-core'
+import { DEFAULTS, type DocRef, type SchemaField } from '@shipment/onpage-core'
 import {
   InvalidConfiguration,
   type CollectionConfig,
@@ -42,7 +42,7 @@ export function onpage(options: OnPageOptions): OnPagePlugin {
     const { session } = options
     if (!session)
       throw new InvalidConfiguration(
-        'payload-onpage: pass `session` (e.g. tanstackSession() from @cargo/onpage-tanstack-start/session). The enter, mode, exit and preview endpoints need it.',
+        'payload-onpage: pass `session` (e.g. tanstackSession() from @shipment/onpage-tanstack-start/session). The enter, mode, exit and preview endpoints need it.',
       )
     const secrets =
       options.secret === undefined || typeof options.secret === 'string'
@@ -124,7 +124,7 @@ export function onpage(options: OnPageOptions): OnPagePlugin {
     }
 
     const control = (kind: DocRef['kind'], slug: string, entry: Entry) => ({
-      path: '@cargo/onpage-plugin/admin#OnPageAdminControls',
+      path: '@shipment/onpage-plugin/admin#OnPageAdminControls',
       clientProps: {
         kind,
         slug,

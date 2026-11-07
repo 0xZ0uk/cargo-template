@@ -4,7 +4,7 @@
  * Drag a row to another place in its list. Pointer only: keyboard users move
  * rows with the toolbar's buttons and ⌥↑/⌥↓, so the handle isn't a tab stop.
  */
-import type { RefKey, RowInfo } from '@cargo/onpage-core'
+import type { RefKey, RowInfo } from '@shipment/onpage-core'
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { useOnPage } from '../context.tsx'
 import { GripIcon } from '../icons.tsx'

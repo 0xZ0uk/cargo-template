@@ -1,4 +1,4 @@
-# Cargo Template
+# Shipment
 
 A Payload 4 + TanStack Start template that runs as a single Cloudflare Worker, with **D1** for the database and **R2** for media.
 
@@ -9,7 +9,7 @@ A Payload 4 + TanStack Start template that runs as a single Cloudflare Worker, w
 
 ### Development
 
-The app lives in `apps/web` of the Cargo monorepo (see the [root README](../../README.md)).
+The app lives in `apps/web` of the Shipment monorepo (see the [root README](../../README.md)).
 
 1. `echo "PAYLOAD_SECRET=$(openssl rand -hex 32)" > apps/web/.env.development.local`
 2. `pnpm install && pnpm web migrate && pnpm dev` from the repo root
@@ -31,8 +31,8 @@ Create the Cloudflare resources once:
 
 ```bash
 pnpm wrangler login
-pnpm wrangler d1 create cargo-template
-pnpm wrangler r2 bucket create cargo-template-media
+pnpm wrangler d1 create shipment
+pnpm wrangler r2 bucket create shipment-media
 ```
 
 Put the production secret in `.env.production.local` (`PAYLOAD_SECRET=...`), or set `PAYLOAD_SECRET` in your CI environment. If you're migrating an existing Worker, reuse its current value; a new value logs every user out.
@@ -46,7 +46,7 @@ Then add the bucket's lifecycle rule. It expires the SEO analyzer's cache object
 pnpm r2:lifecycle
 ```
 
-If you rename the Worker, database or bucket, update the names in `wrangler.jsonc` (and in the `r2:lifecycle` script) too, then run `pnpm cf-typegen`. The assistant's `ASSISTANT_SELF` service binding names the Worker itself (`"service": "cargo-template"`), so it must follow a rename. The `ratelimits` bindings in `wrangler.jsonc` use account-wide `namespace_id`s: give each Worker on the account its own ids, or they share counters. Workers Rate Limiting is approximate (counts sync between machines eventually), so a burst can get past the limit.
+If you rename the Worker, database or bucket, update the names in `wrangler.jsonc` (and in the `r2:lifecycle` script) too, then run `pnpm cf-typegen`. The assistant's `ASSISTANT_SELF` service binding names the Worker itself (`"service": "shipment"`), so it must follow a rename. The `ratelimits` bindings in `wrangler.jsonc` use account-wide `namespace_id`s: give each Worker on the account its own ids, or they share counters. Workers Rate Limiting is approximate (counts sync between machines eventually), so a burst can get past the limit.
 
 Wrangler stores the local D1 database under `.wrangler/state` by `database_id`, so changing the id gives `pnpm dev` a new, empty local database. To keep your local data, change the id before you start developing. Otherwise, copy the old `.sqlite` file in `.wrangler/state/v3/d1/miniflare-D1DatabaseObject/` to the new file name.
 
@@ -78,15 +78,15 @@ The assistant's two Durable Object classes (`AssistantConversation`, `AssistantC
 
 ### Deploying to staging
 
-Deploy-only behaviour (the assistant's Durable Objects, the `ASSISTANT_SELF` service binding, Workers Rate Limiting) can't be tried on a preview URL: `wrangler versions upload` refuses a config with Durable Object `exports`. Use the `staging` Wrangler environment instead: a second Worker, `cargo-template-staging` on `workers.dev`, with its own D1 databases, R2 bucket, Durable Object namespaces, rate-limit counters (`namespace_id` 1101–1105) and Analytics Engine datasets (`cargo_ab_staging`, `cargo_assistant_audit_staging`). Production's resources are never referenced by it. Its `ASSISTANT_SELF` binding points at `cargo-template-staging`, so the assistant's tool calls stay on staging.
+Deploy-only behaviour (the assistant's Durable Objects, the `ASSISTANT_SELF` service binding, Workers Rate Limiting) can't be tried on a preview URL: `wrangler versions upload` refuses a config with Durable Object `exports`. Use the `staging` Wrangler environment instead: a second Worker, `shipment-staging` on `workers.dev`, with its own D1 databases, R2 bucket, Durable Object namespaces, rate-limit counters (`namespace_id` 1101–1105) and Analytics Engine datasets (`shipment_ab_staging`, `shipment_assistant_audit_staging`). Production's resources are never referenced by it. Its `ASSISTANT_SELF` binding points at `shipment-staging`, so the assistant's tool calls stay on staging.
 
 Create the resources once, in the account that holds production, and put the printed `database_id`s in `env.staging.d1_databases` in `wrangler.jsonc`:
 
 ```bash
 export CLOUDFLARE_ACCOUNT_ID=<account id>   # `wrangler whoami`; needed when the login sees several accounts
-pnpm wrangler d1 create cargo-template-staging
-pnpm wrangler d1 create cargo-template-seo-staging
-pnpm wrangler r2 bucket create cargo-template-media-staging
+pnpm wrangler d1 create shipment-staging
+pnpm wrangler d1 create shipment-seo-staging
+pnpm wrangler r2 bucket create shipment-media-staging
 pnpm r2:lifecycle:staging
 ```
 
@@ -105,7 +105,7 @@ pnpm run deploy:staging
 
 It runs `migrate:staging` and `seo-store:migrate:staging` (the Payload CLI and the SEO store against the staging D1s, through `CLOUDFLARE_ENV=staging`), `PRAGMA optimize`, then builds with `APP_ENV=staging CLOUDFLARE_ENV=staging` and deploys with `varlock-wrangler deploy`. The Cloudflare Vite plugin writes the staging environment, flattened, into `dist/server/wrangler.json`, which `wrangler deploy` picks up, so the deploy step takes no `--env`. The first deploy creates the Durable Object namespaces. Open `/admin` on the printed URL to create the first user. Staging runs no scheduled jobs: `env.staging` sets `triggers.crons` to `[]` (an environment inherits `triggers`), and the deploy clears the Worker's schedule (#116). To try a scheduled job there, put the cron back for that deploy, or open `/cdn-cgi/handler/scheduled` against `pnpm preview` locally.
 
-To remove staging, delete the Worker (which deletes its Durable Objects) and the resources: `pnpm wrangler delete --name cargo-template-staging`, `pnpm wrangler d1 delete cargo-template-staging`, `pnpm wrangler d1 delete cargo-template-seo-staging`, then empty and delete the bucket (`pnpm wrangler r2 bucket delete cargo-template-media-staging`).
+To remove staging, delete the Worker (which deletes its Durable Objects) and the resources: `pnpm wrangler delete --name shipment-staging`, `pnpm wrangler d1 delete shipment-staging`, `pnpm wrangler d1 delete shipment-seo-staging`, then empty and delete the bucket (`pnpm wrangler r2 bucket delete shipment-media-staging`).
 
 ## Staying under D1's 10 GB limit
 
@@ -162,7 +162,7 @@ Run these inside `apps/web`, or from the repo root as `pnpm web <command>` (e.g.
 See the [Collections](https://payloadcms.com/docs/configuration/collections) docs for details on how to extend this functionality.
 
 - **Users (Authentication):** auth-enabled collection with access to the admin panel. See the [Authentication](https://payloadcms.com/docs/authentication/overview#authentication-overview) docs.
-- **Pages:** the website's pages, ported from Payload's `website` template. Each page has a hero (`src/heros`), a `layout` of blocks (`src/blocks`: Call to Action, Content, Media) and an SEO tab from `@payloadcms/plugin-seo`, analyzed by the workspace plugin `@cargo/payload-seo-analyzer` (score sidebar, `/admin/seo` dashboard, redirects, sitemap/robots under `/api/seo-plugin`). Pages have drafts with autosave, a preview button and live preview.
+- **Pages:** the website's pages, ported from Payload's `website` template. Each page has a hero (`src/heros`), a `layout` of blocks (`src/blocks`: Call to Action, Content, Media) and an SEO tab from `@payloadcms/plugin-seo`, analyzed by the workspace plugin `@shipment/payload-seo-analyzer` (score sidebar, `/admin/seo` dashboard, redirects, sitemap/robots under `/api/seo-plugin`). Pages have drafts with autosave, a preview button and live preview.
 - **Header / Footer (globals):** up to six navigation links each, pointing at a page or a custom URL.
 - **Media:** upload-enabled collection, stored in R2 in production. Cropping and focal points are disabled because they need `sharp`, which Workers can't run. The optional `caption` is rendered under media blocks.
 - **Folders / Tags:** used to organise media.
@@ -175,9 +175,9 @@ The `_frontend` layout route loads the Header and Footer globals once per full p
 
 Drafts render only for logged-in users who add `?draft=true`, which is the URL the admin's Preview and Live Preview use. In live preview, `LivePreviewListener` reloads the route data each time the document saves. Every request is server-rendered from D1, so publishing needs no revalidation step.
 
-A/B tests (`@cargo/payload-plugin-ab`, registered in `src/payload.config.ts`): the **Variants** panel in a page's sidebar clones it into variants (`<slug>--<hash>`, created as drafts) and sets each one's share of traffic. Once a variant is published, `loadPage` assigns each visitor of the original's URL a bucket (sticky, by the `payload_ab_bucket_<path>` cookie) and renders that bucket's page there. Drafts, live preview, on-page editing and preview links always show the page asked for. Pages with an experiment are sent `Cache-Control: private, no-store`; other pages are unaffected. The manifest of which pages run experiments is read through the Workers Cache API (`src/plugins/abTesting.ts`): its entries are per data centre, so a change can take up to 30 seconds to reach visitors served elsewhere. Variants get no "Edit on page"; edit them in the panel's drawer. Visitors only reach a variant through the original's URL: a published variant asked for at its own URL answers with a 302 to the original's (editors in draft, preview or on-page mode can still open it there). Every page emits a `<link rel="canonical">`, and it, `og:url` and the JSON-LD URLs use the requested slug, so a served variant (or one an editor opens) points at the original. The SEO analyzer's `excludeDocs` option leaves variants out of `sitemap.xml` and its extensions, `llms.txt`, IndexNow and the whole-site scans; the sidebar still scores a variant you open.
+A/B tests (`@shipment/payload-plugin-ab`, registered in `src/payload.config.ts`): the **Variants** panel in a page's sidebar clones it into variants (`<slug>--<hash>`, created as drafts) and sets each one's share of traffic. Once a variant is published, `loadPage` assigns each visitor of the original's URL a bucket (sticky, by the `payload_ab_bucket_<path>` cookie) and renders that bucket's page there. Drafts, live preview, on-page editing and preview links always show the page asked for. Pages with an experiment are sent `Cache-Control: private, no-store`; other pages are unaffected. The manifest of which pages run experiments is read through the Workers Cache API (`src/plugins/abTesting.ts`): its entries are per data centre, so a change can take up to 30 seconds to reach visitors served elsewhere. Variants get no "Edit on page"; edit them in the panel's drawer. Visitors only reach a variant through the original's URL: a published variant asked for at its own URL answers with a 302 to the original's (editors in draft, preview or on-page mode can still open it there). Every page emits a `<link rel="canonical">`, and it, `og:url` and the JSON-LD URLs use the requested slug, so a served variant (or one an editor opens) points at the original. The SEO analyzer's `excludeDocs` option leaves variants out of `sitemap.xml` and its extensions, `llms.txt`, IndexNow and the whole-site scans; the sidebar still scores a variant you open.
 
-A/B measurement (`src/plugins/abMeasurement.ts`) writes to Workers Analytics Engine (`AB_ANALYTICS`, dataset `cargo_ab` in `wrangler.jsonc`; no personal data). `loadPage` counts an **impression** once per visitor, experiment run and bucket (an HttpOnly `payload_ab_seen_<path>` cookie holding `<bucket>:<run>` marks the visitor as counted, so server-function re-runs on client navigation don't add more; the run's start comes from the manifest entry, so this costs no extra read), and a click on a **call-to-action** block's link posts a **conversion** to `/api/_ab/convert`, which reads the bucket from the visitor's cookies and counts once per visitor, run and bucket too. That endpoint is unauthenticated, so it's rate-limited per client IP (`AB_RATE_LIMIT_CONVERT` in `wrangler.jsonc`, 20 a minute; over that it answers 429 and records nothing). An experiment's run ends when its page has no published variant left; publishing one again starts a new run, counted from then. The Variants panel shows impressions, conversions and rate per bucket since the experiment started, read through the Analytics Engine SQL API: set `AB_ANALYTICS_ACCOUNT_ID` and `AB_ANALYTICS_API_TOKEN` (a token with only "Account Analytics: Read"); without them the panel says measurement isn't configured. Analytics Engine keeps 90 days of data, so an experiment older than that only counts its last 90 days. Local dev stores nothing (no real dataset).
+A/B measurement (`src/plugins/abMeasurement.ts`) writes to Workers Analytics Engine (`AB_ANALYTICS`, dataset `shipment_ab` in `wrangler.jsonc`; no personal data). `loadPage` counts an **impression** once per visitor, experiment run and bucket (an HttpOnly `payload_ab_seen_<path>` cookie holding `<bucket>:<run>` marks the visitor as counted, so server-function re-runs on client navigation don't add more; the run's start comes from the manifest entry, so this costs no extra read), and a click on a **call-to-action** block's link posts a **conversion** to `/api/_ab/convert`, which reads the bucket from the visitor's cookies and counts once per visitor, run and bucket too. That endpoint is unauthenticated, so it's rate-limited per client IP (`AB_RATE_LIMIT_CONVERT` in `wrangler.jsonc`, 20 a minute; over that it answers 429 and records nothing). An experiment's run ends when its page has no published variant left; publishing one again starts a new run, counted from then. The Variants panel shows impressions, conversions and rate per bucket since the experiment started, read through the Analytics Engine SQL API: set `AB_ANALYTICS_ACCOUNT_ID` and `AB_ANALYTICS_API_TOKEN` (a token with only "Account Analytics: Read"); without them the panel says measurement isn't configured. Analytics Engine keeps 90 days of data, so an experiment older than that only counts its last 90 days. Local dev stores nothing (no real dataset).
 
 **GA4 (optional, next to Analytics Engine).** Set `GA_MEASUREMENT_ID` (a `G-XXXXXXXXXX` id from Google Analytics > Admin > Data streams; it's public, not a secret: set it in `.env.production`, like `SITE_URL`) and public pages load gtag.js (`async`, from `https://www.googletagmanager.com/gtag/js?id=…`) through the page's `<head>` (`gtagScripts` in `src/utilities/googleAnalytics.ts`); a page that runs an experiment also renders the plugin's `<ExperimentTracker>`, which tags GA4 events with the experiment, the visitor's bucket and their visitor id. Unset, nothing GA-related renders or loads: no script tag, no inline snippet, no request. `loadPage` returns the id as `gaMeasurementId`, and `null` for every draft (live preview, on-page editing, preview links) and for 404s and redirects, so those never load it; the admin isn't a frontend route and never does. Create these **event-scoped custom dimensions** in GA4 (Admin > Custom definitions) to report on them; the parameter names are what the tracker sets:
 
@@ -193,7 +193,7 @@ The frontend uses Tailwind CSS 4 (`src/app/_frontend/styles.css`, `tailwind.conf
 
 ### MCP
 
-[`@cargo/payload-plugin-mcp`](../../packages/payload-plugin-mcp) (our fork of [`@payloadcms/plugin-mcp`](https://payloadcms.com/docs/beta/plugins/mcp), with an OAuth server) serves an MCP server at `POST /api/mcp` (Streamable HTTP), so AI clients can read and edit content. Every collection gets the built-in tools (`findDocuments`, `createDocuments`, `updateDocument`, `deleteDocuments`, and so on), except that `users` can't be created or deleted over MCP. Tools run with the caller's Payload access control. A request without credentials gets a 401 whose `WWW-Authenticate` header points OAuth clients at the discovery document.
+[`@shipment/payload-plugin-mcp`](../../packages/payload-plugin-mcp) (our fork of [`@payloadcms/plugin-mcp`](https://payloadcms.com/docs/beta/plugins/mcp), with an OAuth server) serves an MCP server at `POST /api/mcp` (Streamable HTTP), so AI clients can read and edit content. Every collection gets the built-in tools (`findDocuments`, `createDocuments`, `updateDocument`, `deleteDocuments`, and so on), except that `users` can't be created or deleted over MCP. Tools run with the caller's Payload access control. A request without credentials gets a 401 whose `WWW-Authenticate` header points OAuth clients at the discovery document.
 
 #### ChatGPT and claude.ai (OAuth)
 
@@ -223,7 +223,7 @@ In development you can skip auth with `http://localhost:3000/api/mcp?overrideAcc
 
 ### Assistant
 
-[`@cargo/payload-plugin-assistant`](../../packages/payload-plugin-assistant) adds a chat at `/admin/assistant` ("Assistant › Chat" in the admin sidebar) that reads and edits content through the MCP tools above, **as the signed-in admin user**: Payload's access control applies to every call. It runs on [OpenRouter](https://openrouter.ai). Registered in `src/payload.config.ts`, after `mcpPlugin`.
+[`@shipment/payload-plugin-assistant`](../../packages/payload-plugin-assistant) adds a chat at `/admin/assistant` ("Assistant › Chat" in the admin sidebar) that reads and edits content through the MCP tools above, **as the signed-in admin user**: Payload's access control applies to every call. It runs on [OpenRouter](https://openrouter.ai). Registered in `src/payload.config.ts`, after `mcpPlugin`.
 
 **The key.** Create a key at [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys) and set it as `OPENROUTER_API_KEY` (`.env.development.local` for `pnpm dev`, `.env.production.local` or CI for deploys; it's `@sensitive`, so `varlock-wrangler deploy` uploads it as a Worker secret). The SEO analyzer's AI features use the same key. **Give the key a credit limit in OpenRouter**: that is the real cap on spend. The per-user daily budget and the rate limit below come on top of it. Without a key, the view and the endpoints still exist and say the assistant isn't configured; nothing else changes (the schema, the import map and CI don't need it).
 
@@ -241,7 +241,7 @@ In development you can skip auth with `http://localhost:3000/api/mcp?overrideAcc
 
 **Hidden fields.** The model never sees users' email, API key, sessions or auth state (password hash, reset and verification tokens, lockout): the plugin removes them from every tool result, from what conversations store and from the current values on approval cards, for every auth collection. Add other fields with the plugin's `redact` option (`{ slug: ['field', 'group.field'] }`; arrays and blocks rows are walked).
 
-**Audit log.** Every write the assistant applies (user, tool, collection, document id, conversation, model; no content) is one data point in the `cargo_assistant_audit` Analytics Engine dataset (`ASSISTANT_AUDIT` in `wrangler.jsonc`; `cargo_assistant_audit_staging` on staging). Reads, rejected changes and failed writes aren't logged. The conversation Durable Object writes them on Workers (the `AssistantConversation` subclass in `src/server.ts`), the plugin's `audit` option under `pnpm dev`. Query it with the [SQL API](https://developers.cloudflare.com/analytics/analytics-engine/sql-api/): `SELECT timestamp, blob1 AS user, blob2 AS tool, blob3 AS collection, blob4 AS document, blob5 AS conversation FROM cargo_assistant_audit ORDER BY timestamp DESC`. Analytics Engine keeps data for 3 months.
+**Audit log.** Every write the assistant applies (user, tool, collection, document id, conversation, model; no content) is one data point in the `shipment_assistant_audit` Analytics Engine dataset (`ASSISTANT_AUDIT` in `wrangler.jsonc`; `shipment_assistant_audit_staging` on staging). Reads, rejected changes and failed writes aren't logged. The conversation Durable Object writes them on Workers (the `AssistantConversation` subclass in `src/server.ts`), the plugin's `audit` option under `pnpm dev`. Query it with the [SQL API](https://developers.cloudflare.com/analytics/analytics-engine/sql-api/): `SELECT timestamp, blob1 AS user, blob2 AS tool, blob3 AS collection, blob4 AS document, blob5 AS conversation FROM shipment_assistant_audit ORDER BY timestamp DESC`. Analytics Engine keeps data for 3 months.
 
 **Rate limit.** `ASSISTANT_RATE_LIMIT` (`wrangler.jsonc`, `namespace_id` 1005) allows 20 chat turns per minute per admin user, where a turn is a message or an approval answer. It's wired to the plugin's `rateLimit` hook in `src/plugins/assistantRateLimit.ts`. Without the binding there's no limit.
 

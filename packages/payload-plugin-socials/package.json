@@ -1,8 +1,8 @@
 {
-  "name": "@cargo/payload-plugin-socials",
+  "name": "@shipment/payload-plugin-socials",
   "version": "0.12.0-beta.0",
   "private": true,
-  "description": "Payload CMS 4 social publishing plugin for Cargo (fork of payload-plugin-socials): Pinterest, Instagram Business, Facebook Pages, Google Business Profile",
+  "description": "Payload CMS 4 social publishing plugin for Shipment (fork of payload-plugin-socials): Pinterest, Instagram Business, Facebook Pages, Google Business Profile",
   "license": "MIT",
   "author": "Conti Digital",
   "contributors": [

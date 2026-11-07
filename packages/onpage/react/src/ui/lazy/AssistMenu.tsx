@@ -5,7 +5,7 @@
  * (shorter, clearer…) or the editor's own. The answer replaces the text in the
  * editor, still uncommitted: Enter keeps it, Escape drops it, ⌘Z after keeping.
  */
-import { errorText, type AssistPort, type DocRef } from '@cargo/onpage-core'
+import { errorText, type AssistPort, type DocRef } from '@shipment/onpage-core'
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import type { Translate } from '../../messages.ts'
 

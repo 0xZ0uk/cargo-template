@@ -4,15 +4,15 @@ import { resolveDocTitle, stripSiteName } from '../helpers/docTitle.js'
 
 describe('stripSiteName', () => {
   it('removes a site name set off by a separator, at the end or the start', () => {
-    expect(stripSiteName('Coffee brewing basics | Cargo Template', 'Cargo Template')).toBe('Coffee brewing basics')
-    expect(stripSiteName('Coffee - Cargo Template', 'Cargo Template')).toBe('Coffee')
-    expect(stripSiteName('Coffee — cargo template', 'Cargo Template')).toBe('Coffee')
-    expect(stripSiteName('Cargo Template: Coffee', 'Cargo Template')).toBe('Coffee')
+    expect(stripSiteName('Coffee brewing basics | Shipment', 'Shipment')).toBe('Coffee brewing basics')
+    expect(stripSiteName('Coffee - Shipment', 'Shipment')).toBe('Coffee')
+    expect(stripSiteName('Coffee — shipment', 'Shipment')).toBe('Coffee')
+    expect(stripSiteName('Shipment: Coffee', 'Shipment')).toBe('Coffee')
   })
 
   it('leaves a name that is part of the title, or a title that is only the site name', () => {
-    expect(stripSiteName('Why Cargo Template exists', 'Cargo Template')).toBe('Why Cargo Template exists')
-    expect(stripSiteName('Cargo Template', 'Cargo Template')).toBe('Cargo Template')
+    expect(stripSiteName('Why Shipment exists', 'Shipment')).toBe('Why Shipment exists')
+    expect(stripSiteName('Shipment', 'Shipment')).toBe('Shipment')
   })
 
   it('treats regex characters in the site name literally', () => {
@@ -21,18 +21,18 @@ describe('stripSiteName', () => {
   })
 
   it('only trims when no site name is configured', () => {
-    expect(stripSiteName(' Coffee | Cargo Template ')).toBe('Coffee | Cargo Template')
+    expect(stripSiteName(' Coffee | Shipment ')).toBe('Coffee | Shipment')
   })
 })
 
 describe('resolveDocTitle', () => {
   it("prefers the document's own title over meta.title", () => {
-    expect(resolveDocTitle({ title: 'Coffee', meta: { title: 'Coffee | Cargo Template' } }, 'Cargo Template')).toBe('Coffee')
+    expect(resolveDocTitle({ title: 'Coffee', meta: { title: 'Coffee | Shipment' } }, 'Shipment')).toBe('Coffee')
   })
 
   it('falls back to meta.title with the site name stripped', () => {
-    expect(resolveDocTitle({ meta: { title: 'Coffee | Cargo Template' } }, 'Cargo Template')).toBe('Coffee')
-    expect(resolveDocTitle({ title: '  ', meta: { title: 'Coffee | Cargo Template' } })).toBe('Coffee | Cargo Template')
+    expect(resolveDocTitle({ meta: { title: 'Coffee | Shipment' } }, 'Shipment')).toBe('Coffee')
+    expect(resolveDocTitle({ title: '  ', meta: { title: 'Coffee | Shipment' } })).toBe('Coffee | Shipment')
   })
 
   it('is empty without either title', () => {

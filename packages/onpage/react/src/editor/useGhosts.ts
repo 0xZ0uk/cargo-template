@@ -6,7 +6,7 @@
  * records the document's save sequence when it was made; the render after a
  * later save retires it. Failed saves and a TTL retire ghosts too.
  */
-import type { SessionSnapshot, RefKey } from '@cargo/onpage-core'
+import type { SessionSnapshot, RefKey } from '@shipment/onpage-core'
 import type { GhostInput } from '../types.ts'
 import { useCallback, useEffect, useState } from 'react'
 

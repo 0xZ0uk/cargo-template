@@ -297,7 +297,7 @@ export type MCPPluginConfig = {
    * claude.ai require. `true` for the defaults. Adds three collections (run a migration), the
    * `/api/oauth/*` endpoints, and a 401 with a `WWW-Authenticate` challenge for requests without
    * credentials. The site must also serve the discovery documents at `/.well-known/*`: see
-   * `@cargo/payload-plugin-mcp/well-known` and the README, "OAuth".
+   * `@shipment/payload-plugin-mcp/well-known` and the README, "OAuth".
    */
   oauth?: boolean | MCPOAuthConfig
   /**

@@ -8,7 +8,7 @@ import {
   mapLexical,
   type LexicalNode,
   type LexicalState,
-} from '@cargo/onpage-core'
+} from '@shipment/onpage-core'
 import type { SerializedEditorState } from 'lexical'
 import { OPAQUE_TYPE } from './constants.ts'
 

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { sqliteAdapter } from "@payloadcms/db-sqlite";
-import { mcpPlugin } from "@cargo/payload-plugin-mcp";
+import { mcpPlugin } from "@shipment/payload-plugin-mcp";
 import { chat, type StreamChunk } from "@tanstack/ai";
 import { fakeText } from "@tanstack/ai/testing";
 import { createMCPClient } from "@tanstack/ai-mcp";

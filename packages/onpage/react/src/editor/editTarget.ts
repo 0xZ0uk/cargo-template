@@ -9,7 +9,7 @@ import {
   type DocumentState,
   type RefKey,
   type TargetKind,
-} from '@cargo/onpage-core'
+} from '@shipment/onpage-core'
 import { resolveEditor } from '../registry.ts'
 import type { EditingState, EditorRegistry } from '../types.ts'
 

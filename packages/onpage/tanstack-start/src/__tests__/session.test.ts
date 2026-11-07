@@ -5,7 +5,7 @@ import {
   SEAL_PURPOSE,
   seal,
   sha256,
-} from '@cargo/onpage-core'
+} from '@shipment/onpage-core'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // A minimal stand-in for @tanstack/react-start/server: request cookies in,

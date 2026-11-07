@@ -1,6 +1,6 @@
 'use client'
 
-import type { NumberField } from '@cargo/onpage-core'
+import type { NumberField } from '@shipment/onpage-core'
 import type { FieldEditorProps } from '../types.ts'
 import { ApplyBar, EditorPopover, useDraft } from './kit.tsx'
 

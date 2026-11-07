@@ -5,7 +5,7 @@
  * comment, and any text they had selected. Sent to the plugin, which takes the
  * page from the viewer's sealed link (they can't name another).
  */
-import { errorText } from '@cargo/onpage-core'
+import { errorText } from '@shipment/onpage-core'
 import { useId, useState } from 'react'
 import type { Translate } from '../../messages.ts'
 import { Dialog } from '../Dialog.tsx'

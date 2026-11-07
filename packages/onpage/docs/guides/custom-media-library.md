@@ -3,7 +3,7 @@
 `MediaLibrary` powers the image picker. The default, `payloadUploads()`, searches and uploads to a Payload upload collection.
 
 ```ts
-import type { MediaLibrary } from '@cargo/onpage-core'
+import type { MediaLibrary } from '@shipment/onpage-core'
 
 export const cloudinaryLibrary = (): MediaLibrary => ({
   async search({ query, page, relationTo, signal }) {

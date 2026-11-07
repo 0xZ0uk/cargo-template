@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { abRunMarker } from '@cargo/payload-plugin-ab/middleware'
+import { abRunMarker } from '@shipment/payload-plugin-ab/middleware'
 
 import {
   abConversionRateLimit,
@@ -113,7 +113,7 @@ describe('abResultsQuery', () => {
     expect(sql).toContain(`WHERE blob1 = '/it\\'s\\\\here'`)
     expect(sql).toContain(`timestamp >= toDateTime('2026-11-01 10:20:30')`)
     expect(sql).toContain('SUM(_sample_interval) AS count')
-    expect(sql).toContain('FROM cargo_ab')
+    expect(sql).toContain('FROM shipment_ab')
     // The current run: up to now.
     expect(sql).not.toContain('timestamp <')
   })

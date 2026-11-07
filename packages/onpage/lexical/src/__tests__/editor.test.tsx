@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { createTranslate } from '@cargo/onpage-react'
+import { createTranslate } from '@shipment/onpage-react'
 import { describe, expect, it, vi } from 'vitest'
 import { InlineRichText } from '../InlineRichText.tsx'
 import { lexicalEditors } from '../index.ts'

@@ -1,18 +1,18 @@
-# @cargo/onpage-plugin
+# @shipment/onpage-plugin
 
 ## 0.7.0
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @cargo/onpage-core@0.7.0
+  - @shipment/onpage-core@0.7.0
 
 ## 0.6.1
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @cargo/onpage-core@0.6.1
+  - @shipment/onpage-core@0.6.1
 
 ## 0.6.0
 
@@ -56,7 +56,7 @@
   - **Preview routes:** when `admin.preview` returns a preview route that carries a secret (the website template's `/next/preview?path=…&previewSecret=…`), the plugin uses its `path` and logs a warning. Before, edit and share links pointed at that route: share links got a 403 and carried the secret.
   - **Payload 4:** block slugs listed in `blocks` (`blocks: ['cta']`) and upload `variants` are read.
   - **Startup warning** for enabled collections or globals without drafts, whose on-page edits go live as they autosave.
-  - **`isPayloadUser`** (`@cargo/onpage-next/proxy`): verifies a Payload login at the edge, for `allowDraft`, so your own preview route and Live Preview keep working behind the strict proxy on Vercel.
+  - **`isPayloadUser`** (`@shipment/onpage-next/proxy`): verifies a Payload login at the edge, for `allowDraft`, so your own preview route and Live Preview keep working behind the strict proxy on Vercel.
   - **TanStack Start:** preview-link viewers navigate with full page loads, so each page is checked by the server. Before, a client-side navigation back to the shared page showed published content.
   - New guide: [Payload's website template](https://github.com/jellologic/payload-onpage/blob/main/docs/guides/website-template.md).
 
@@ -78,7 +78,7 @@
   - Docs: a recipe for revoking preview links by id, and why the path field should be `unique`.
 
 - Updated dependencies [[`7e5837c`](https://github.com/jellologic/payload-onpage/commit/7e5837ce684a9312ce29bd00066d18c4bf9fdba5), [`7c1c9d7`](https://github.com/jellologic/payload-onpage/commit/7c1c9d735067a20520921eea65fb6f75dda9f73d), [`9748d89`](https://github.com/jellologic/payload-onpage/commit/9748d8942bae6c89b0927f909c28c512eee464c3), [`c6ebef6`](https://github.com/jellologic/payload-onpage/commit/c6ebef6fe77b917af23b3ea7df900e34abfd67a4), [`57ba823`](https://github.com/jellologic/payload-onpage/commit/57ba823ddb0bc1a924e0064845d2b022c85fdc95), [`88ae4bf`](https://github.com/jellologic/payload-onpage/commit/88ae4bff140cf749d97d81480be8e4fd2cebb17a), [`2b2641d`](https://github.com/jellologic/payload-onpage/commit/2b2641dc5553cba042c1dc8d5185160303767c44), [`54a1db0`](https://github.com/jellologic/payload-onpage/commit/54a1db0301135cfde5b35391481ed27aa4891bb5), [`0d4dfa7`](https://github.com/jellologic/payload-onpage/commit/0d4dfa7885ff4ec6f34ddef6764bd2cdffa43518), [`a1a358a`](https://github.com/jellologic/payload-onpage/commit/a1a358a7afda1879eab4b94679f75b72f71f7d85), [`4b3ed49`](https://github.com/jellologic/payload-onpage/commit/4b3ed49e75acd6765f9d8f7cc0e22e58bc8b5e33), [`4b3ed49`](https://github.com/jellologic/payload-onpage/commit/4b3ed49e75acd6765f9d8f7cc0e22e58bc8b5e33)]:
-  - @cargo/onpage-core@0.6.0
+  - @shipment/onpage-core@0.6.0
 
 ## 0.5.0
 
@@ -89,7 +89,7 @@
 ### Patch Changes
 
 - Updated dependencies [[`9dca50e`](https://github.com/jellologic/payload-onpage/commit/9dca50e72997076f2e39a5b02cf635171786dd0c)]:
-  - @cargo/onpage-core@0.5.0
+  - @shipment/onpage-core@0.5.0
 
 ## 0.4.1
 
@@ -99,10 +99,10 @@
 
   With `nextSession({ cdnBypass })`, on by default when `process.env.VERCEL` is set, the viewer's browser also gets Next's draft cookie, scoped to the shared page's path and expiring with the link. `withOnPage` now guards that cookie. It strips it from any request the grant doesn't cover. With the new `allowDraft` option it is strict: the cookie survives only on the granted page, for an editor whose bound session is still signed in, or when `allowDraft(request)` says so. Use it to admit your own preview route's admins, and it fails closed if the check throws. Leaving preview clears the page-scoped cookie, so `SessionAdapter.disable()` now receives the page's `path`.
 
-  `@cargo/onpage-tanstack-start` is now part of the release.
+  `@shipment/onpage-tanstack-start` is now part of the release.
 
 - Updated dependencies [[`32e018c`](https://github.com/jellologic/payload-onpage/commit/32e018c5b2d90491b8d917a452d7ac2147c2964c)]:
-  - @cargo/onpage-core@0.4.1
+  - @shipment/onpage-core@0.4.1
 
 ## 0.4.0
 
@@ -112,21 +112,21 @@
 
 - [`cfd55ea`](https://github.com/jellologic/payload-onpage/commit/cfd55eaf03184af534fe0fee8ca2e5122d05e5e7) Thanks [@jellologic](https://github.com/jellologic)! - Security hardening from an adversarial review of the plugin. The editor schema endpoint now returns 403 when collection/global update access is definitively denied (including when an access check throws, which previously served the schema unfiltered); `/mode` requires editing at least one enabled document; the CSRF guard refuses `sec-fetch-site: none`; `enter` and `preview-link` authenticate before parsing refs; the admin new-tab form uses `rel="noopener"`; an empty `secret` option fails at config time; and the marker cleaner drops `__proto__` keys. Removes the unused `SEAL_PURPOSE.editBinding` export.
 - Updated dependencies [[`cfd55ea`](https://github.com/jellologic/payload-onpage/commit/cfd55eaf03184af534fe0fee8ca2e5122d05e5e7)]:
-  - @cargo/onpage-core@0.4.0
+  - @shipment/onpage-core@0.4.0
 
 ## 0.3.2
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @cargo/onpage-core@0.3.2
+  - @shipment/onpage-core@0.3.2
 
 ## 0.3.1
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @cargo/onpage-core@0.3.1
+  - @shipment/onpage-core@0.3.1
 
 ## 0.3.0
 
@@ -165,7 +165,7 @@
 ### Patch Changes
 
 - Updated dependencies [[`b936774`](https://github.com/jellologic/payload-onpage/commit/b936774c8d7e8371623fc781f9b15b1141a005f1)]:
-  - @cargo/onpage-core@0.3.0
+  - @shipment/onpage-core@0.3.0
 
 ## 0.2.1
 
@@ -173,7 +173,7 @@
 
 - [#5](https://github.com/jellologic/payload-onpage/pull/5) [`c620bb6`](https://github.com/jellologic/payload-onpage/commit/c620bb6bae277c2d8ff089f0e2b91f337ca5af92) Thanks [@jellologic](https://github.com/jellologic)! - Fix 0.2.0's internal dependencies: its packages depended on each other at 0.1.0, so installs mixed 0.2.0 and 0.1.0 code. 0.2.1 pins every `@payload-onpage/*` dependency to the same version.
 - Updated dependencies [[`c620bb6`](https://github.com/jellologic/payload-onpage/commit/c620bb6bae277c2d8ff089f0e2b91f337ca5af92)]:
-  - @cargo/onpage-core@0.2.1
+  - @shipment/onpage-core@0.2.1
 
 ## 0.2.0
 
@@ -192,4 +192,4 @@
 ### Patch Changes
 
 - Updated dependencies [[`2add437`](https://github.com/jellologic/payload-onpage/commit/2add4377ffb7b20a8b2f84ba0d6c97f90b405df3)]:
-  - @cargo/onpage-core@0.2.0
+  - @shipment/onpage-core@0.2.0

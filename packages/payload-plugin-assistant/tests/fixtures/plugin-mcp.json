@@ -1,5 +1,5 @@
 {
-  "recordedWith": "@cargo/payload-plugin-mcp 4.0.0-beta.6-cargo.0",
+  "recordedWith": "@shipment/payload-plugin-mcp 4.0.0-beta.6-shipment.0",
   "tools": {
     "countDocuments": {
       "needsApproval": false
@@ -347,11 +347,11 @@
       "args": {
         "slug": "settings",
         "data": {
-          "siteName": "Cargo"
+          "siteName": "Shipment"
         },
         "draft": true
       },
-      "result": "Global \"settings\" updated successfully!\n```json\n{\"siteName\":\"Cargo\",\"updatedBy\":{\"relationTo\":\"users\",\"value\":1},\"_status\":\"draft\",\"updatedAt\":\"2026-01-01T00:00:00.000Z\",\"createdAt\":null}\n```"
+      "result": "Global \"settings\" updated successfully!\n```json\n{\"siteName\":\"Shipment\",\"updatedBy\":{\"relationTo\":\"users\",\"value\":1},\"_status\":\"draft\",\"updatedAt\":\"2026-01-01T00:00:00.000Z\",\"createdAt\":null}\n```"
     },
     {
       "label": "global versions",
@@ -365,7 +365,7 @@
         },
         "limit": 2
       },
-      "result": "Versions for global \"settings\":\n```json\n{\"docs\":[{\"id\":2,\"version\":{\"siteName\":\"Cargo 2\",\"updatedBy\":{\"relationTo\":\"users\",\"value\":1},\"_status\":\"draft\",\"updatedAt\":\"2026-01-01T00:00:00.000Z\",\"createdAt\":\"2026-01-01T00:00:00.000Z\",\"globalType\":\"settings\"},\"createdAt\":\"2026-01-01T00:00:00.000Z\",\"updatedAt\":\"2026-01-01T00:00:00.000Z\",\"latest\":true},{\"id\":1,\"version\":{\"siteName\":\"Cargo\",\"updatedBy\":{\"relationTo\":\"users\",\"value\":1},\"_status\":\"draft\",\"updatedAt\":\"2026-01-01T00:00:00.000Z\",\"createdAt\":null,\"globalType\":\"settings\"},\"createdAt\":\"2026-01-01T00:00:00.000Z\",\"updatedAt\":\"2026-01-01T00:00:00.000Z\",\"latest\":false}],\"hasNextPage\":false,\"hasPrevPage\":false,\"limit\":2,\"nextPage\":null,\"page\":1,\"pagingCounter\":1,\"prevPage\":null,\"totalDocs\":2,\"totalPages\":1}\n```"
+      "result": "Versions for global \"settings\":\n```json\n{\"docs\":[{\"id\":2,\"version\":{\"siteName\":\"Shipment 2\",\"updatedBy\":{\"relationTo\":\"users\",\"value\":1},\"_status\":\"draft\",\"updatedAt\":\"2026-01-01T00:00:00.000Z\",\"createdAt\":\"2026-01-01T00:00:00.000Z\",\"globalType\":\"settings\"},\"createdAt\":\"2026-01-01T00:00:00.000Z\",\"updatedAt\":\"2026-01-01T00:00:00.000Z\",\"latest\":true},{\"id\":1,\"version\":{\"siteName\":\"Shipment\",\"updatedBy\":{\"relationTo\":\"users\",\"value\":1},\"_status\":\"draft\",\"updatedAt\":\"2026-01-01T00:00:00.000Z\",\"createdAt\":null,\"globalType\":\"settings\"},\"createdAt\":\"2026-01-01T00:00:00.000Z\",\"updatedAt\":\"2026-01-01T00:00:00.000Z\",\"latest\":false}],\"hasNextPage\":false,\"hasPrevPage\":false,\"limit\":2,\"nextPage\":null,\"page\":1,\"pagingCounter\":1,\"prevPage\":null,\"totalDocs\":2,\"totalPages\":1}\n```"
     },
     {
       "label": "count global versions",
@@ -382,7 +382,7 @@
         "slug": "settings",
         "id": "1"
       },
-      "result": "Version \"1\" from global \"settings\":\n```json\n{\"id\":1,\"version\":{\"siteName\":\"Cargo\",\"updatedBy\":{\"relationTo\":\"users\",\"value\":1},\"_status\":\"draft\",\"updatedAt\":\"2026-01-01T00:00:00.000Z\",\"createdAt\":null,\"globalType\":\"settings\"},\"createdAt\":\"2026-01-01T00:00:00.000Z\",\"updatedAt\":\"2026-01-01T00:00:00.000Z\",\"latest\":false}\n```"
+      "result": "Version \"1\" from global \"settings\":\n```json\n{\"id\":1,\"version\":{\"siteName\":\"Shipment\",\"updatedBy\":{\"relationTo\":\"users\",\"value\":1},\"_status\":\"draft\",\"updatedAt\":\"2026-01-01T00:00:00.000Z\",\"createdAt\":null,\"globalType\":\"settings\"},\"createdAt\":\"2026-01-01T00:00:00.000Z\",\"updatedAt\":\"2026-01-01T00:00:00.000Z\",\"latest\":false}\n```"
     },
     {
       "label": "restore a global version",
@@ -391,7 +391,7 @@
         "slug": "settings",
         "id": "1"
       },
-      "result": "Version \"1\" restored successfully for global \"settings\"!\nRestored global:\n```json\n{\"siteName\":\"Cargo\",\"updatedBy\":{\"relationTo\":\"users\",\"value\":1},\"_status\":\"draft\",\"updatedAt\":\"2026-01-01T00:00:00.000Z\",\"createdAt\":null,\"globalType\":\"settings\"}\n```"
+      "result": "Version \"1\" restored successfully for global \"settings\"!\nRestored global:\n```json\n{\"siteName\":\"Shipment\",\"updatedBy\":{\"relationTo\":\"users\",\"value\":1},\"_status\":\"draft\",\"updatedAt\":\"2026-01-01T00:00:00.000Z\",\"createdAt\":null,\"globalType\":\"settings\"}\n```"
     }
   ]
 }

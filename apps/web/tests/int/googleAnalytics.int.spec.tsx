@@ -15,7 +15,7 @@ import { pageHead } from '@/utilities/pageHead'
 
 // GA4 is optional (`GA_MEASUREMENT_ID`): without an id nothing GA-related renders, and drafts
 // never get it. The plugin's tracker is replaced by a marker so its presence shows in markup.
-vi.mock('@cargo/payload-plugin-ab/analytics', () => ({
+vi.mock('@shipment/payload-plugin-ab/analytics', () => ({
   ExperimentTracker: ({ experimentId }: { experimentId: string }) => (
     <i data-test="experiment-tracker" data-experiment={experimentId} />
   ),

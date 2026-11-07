@@ -1,6 +1,6 @@
 'use client'
 
-import { asList, type ChoiceField } from '@cargo/onpage-core'
+import { asList, type ChoiceField } from '@shipment/onpage-core'
 import type { FieldEditorProps } from '../types.ts'
 import { EditorPopover } from './kit.tsx'
 

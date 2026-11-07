@@ -1,7 +1,7 @@
 /**
  * Spanish editor UI strings.
  *
- *   import { es } from '@cargo/onpage-react/locales/es'
+ *   import { es } from '@shipment/onpage-react/locales/es'
  *   <OnPage messages={es} uiLocale="es" />
  */
 import type { MessageKey, Messages } from '../messages.ts'

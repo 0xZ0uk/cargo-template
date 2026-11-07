@@ -6,7 +6,7 @@
  * update the document; "Edit on page" is also hidden while the document's
  * `hideEditWhen` field has a value.
  */
-import { payloadRest } from '@cargo/onpage-core/payload'
+import { payloadRest } from '@shipment/onpage-core/payload'
 import {
   Button,
   toast,
@@ -16,7 +16,7 @@ import {
   useLocale,
   useTranslation,
 } from '@payloadcms/ui'
-import { errorText, ROUTES, type DocRef } from '@cargo/onpage-core'
+import { errorText, ROUTES, type DocRef } from '@shipment/onpage-core'
 import { formatAdminURL } from 'payload/shared'
 import { useMemo, useState } from 'react'
 import type { OnPageTranslationKey, translations } from '../translations.ts'

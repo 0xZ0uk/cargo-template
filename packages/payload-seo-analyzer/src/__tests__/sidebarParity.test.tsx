@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * The sidebar scores exactly what `/validate` scores (cargo-template #130): the same input
+ * The sidebar scores exactly what `/validate` scores (shipment #130): the same input
  * mapping (author, dates, canonical, hreflang, every focus keyword…) and the same effective
  * config (the plugin's `disabledRules`, `overrideWeights`, `localSeoSlugs` and thresholds,
  * with the saved `disabledRules`, `siteName` and thresholds on top).
@@ -37,7 +37,7 @@ const page = {
   focusKeywords: Array.from({ length: 12 }, (_, i) => ({ id: `k${i}`, keyword: `emergency plumber ${i}` })),
   isCornerstone: true,
   meta: {
-    title: 'Plumber in Lisbon: fast repairs, fair prices | Cargo',
+    title: 'Plumber in Lisbon: fast repairs, fair prices | Shipment',
     description: 'A plumber in Lisbon for leaks, boilers and blocked drains. Same-day visits across the city, fixed quotes.',
     canonicalUrl: 'https://other.example.com/plumber-lisbon',
   },
@@ -72,7 +72,7 @@ const seoConfig = buildSeoConfig({
 })
 const savedSettings = {
   disabledRules: ['freshness'],
-  siteName: 'Cargo',
+  siteName: 'Shipment',
   thresholds: { metaDescLengthMax: 120, titleLengthMax: null },
 }
 
@@ -151,7 +151,7 @@ describe('sidebar ↔ /validate parity', () => {
       disabledRules: ['social', 'freshness'],
       overrideWeights: { title: 25, content: 1 },
       localSeoSlugs: ['plumber-lisbon'],
-      siteName: 'Cargo',
+      siteName: 'Shipment',
       thresholds: { titleLengthMax: 70, metaDescLengthMax: 120 },
     })
     expect(fromSidebar.checks.some((c) => c.group === 'social' || c.group === 'freshness')).toBe(false)

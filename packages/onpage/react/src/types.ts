@@ -12,7 +12,7 @@ import type {
   Target,
   TargetKind,
   RefKey,
-} from '@cargo/onpage-core'
+} from '@shipment/onpage-core'
 import type { Translate } from './messages.ts'
 
 export interface EditingState {

@@ -1,4 +1,4 @@
-CI is `.github/workflows/ci.yml`. Reproduce with the same commands from the repo root (`pnpm lint`, `pnpm typecheck`, `pnpm --filter @cargo/payload-seo-analyzer test`, `pnpm --filter @cargo/onpage test`, `PAYLOAD_SECRET=test-secret pnpm web test:int`, `pnpm build`).
+CI is `.github/workflows/ci.yml`. Reproduce with the same commands from the repo root (`pnpm lint`, `pnpm typecheck`, `pnpm --filter @shipment/payload-seo-analyzer test`, `pnpm --filter @shipment/onpage test`, `PAYLOAD_SECRET=test-secret pnpm web test:int`, `pnpm build`).
 
 - Never weaken an assertion, skip a test or loosen a CI step to make it pass.
 - "Generated files are stale": run `pnpm web generate:importmap` and `pnpm web generate:types` and commit the output; don't hand-edit generated files.

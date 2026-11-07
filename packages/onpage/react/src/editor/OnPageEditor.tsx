@@ -16,7 +16,7 @@ import {
   type MediaLibrary,
   type RefKey,
   type Renderer,
-} from '@cargo/onpage-core'
+} from '@shipment/onpage-core'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { OnPageProvider, useSessionSnapshot } from '../context.tsx'

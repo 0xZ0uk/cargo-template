@@ -1,1 +1,1 @@
-export const siteName = 'Cargo Template'
+export const siteName = 'Shipment'

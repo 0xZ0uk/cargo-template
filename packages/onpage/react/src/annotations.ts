@@ -12,7 +12,7 @@
  * Auto-mapping (stega) already maps most text without any of this; annotate
  * images that have no alt, layout rows you want exact, and lists ("+ Add").
  */
-import { refKey, type DocRef, type TargetKind } from '@cargo/onpage-core'
+import { refKey, type DocRef, type TargetKind } from '@shipment/onpage-core'
 
 /** What an annotated element shows (`field` = resolve from the schema). */
 export type FieldKind = Exclude<TargetKind, 'item' | 'list'>

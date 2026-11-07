@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * @cargo/onpage-lexical — inline rich-text editing for Payload's Lexical
+ * @shipment/onpage-lexical — inline rich-text editing for Payload's Lexical
  * richText fields.
  *
  *   <OnPageEditor editors={lexicalEditors} … />   // the Next adapter includes it by default
@@ -10,9 +10,9 @@
  * only when someone opens a rich-text field. It reads and writes Payload's
  * Lexical JSON; links keep Payload's shape, and nodes it doesn't edit
  * (uploads, blocks, relationships…) are kept as-is and shown as placeholders.
- * The editor component and its nodes are in `@cargo/onpage-lexical/editor`.
+ * The editor component and its nodes are in `@shipment/onpage-lexical/editor`.
  */
-import { defineEditor, type EditorRegistry } from '@cargo/onpage-react/editor-kit'
+import { defineEditor, type EditorRegistry } from '@shipment/onpage-react/editor-kit'
 import { lazy } from 'react'
 
 const InlineRichText = lazy(() =>

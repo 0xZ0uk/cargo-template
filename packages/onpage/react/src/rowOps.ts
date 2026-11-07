@@ -13,7 +13,7 @@ import {
   type EditorSession,
   type RowInfo,
   type RefKey,
-} from '@cargo/onpage-core'
+} from '@shipment/onpage-core'
 import type { Selection } from './types.ts'
 
 const rowAt = (key: RefKey, listPath: string, index: number): Selection => ({

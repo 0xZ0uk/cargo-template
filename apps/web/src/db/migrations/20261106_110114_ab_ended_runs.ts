@@ -1,6 +1,6 @@
 import { MigrateUpArgs, MigrateDownArgs, sql } from '@payloadcms/db-d1-sqlite'
 
-// A/B runs end instead of being deleted (@cargo/payload-plugin-ab): `endedAt` on
+// A/B runs end instead of being deleted (@shipment/payload-plugin-ab): `endedAt` on
 // `ab-experiments`. ADD / DROP COLUMN only, never a rebuild of `ab_experiments` (on D1 a
 // rebuild runs the ON DELETE actions of the tables referencing it; see AGENTS.md). Existing
 // rows are open runs, which is what they were.

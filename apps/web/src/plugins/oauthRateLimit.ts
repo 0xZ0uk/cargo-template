@@ -1,4 +1,4 @@
-import type { MCPOAuthConfig } from '@cargo/payload-plugin-mcp'
+import type { MCPOAuthConfig } from '@shipment/payload-plugin-mcp'
 
 /** Rate-limit key: the client IP, which Cloudflare's edge sets and clients can't forge. */
 const clientKey = (headers: Headers) => headers.get('cf-connecting-ip')?.trim() || 'unknown'

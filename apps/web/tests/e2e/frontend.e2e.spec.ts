@@ -5,11 +5,11 @@ test.describe('Frontend', () => {
     await page.goto('/')
 
     // With no `home` page in the database, `/` falls back to the static home page.
-    await expect(page).toHaveTitle(/Cargo Template/)
+    await expect(page).toHaveTitle(/Shipment/)
 
     const heading = page.locator('h1').first()
 
-    await expect(heading).toHaveText('Cargo Template')
+    await expect(heading).toHaveText('Shipment')
   })
 
   test('loads no Google Analytics without GA_MEASUREMENT_ID', async ({ page }) => {

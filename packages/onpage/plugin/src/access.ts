@@ -4,7 +4,7 @@
  * (access functions that return a query) and field permissions behave exactly
  * as in the admin.
  */
-import type { DocRef } from '@cargo/onpage-core'
+import type { DocRef } from '@shipment/onpage-core'
 import {
   docAccessOperation,
   docAccessOperationGlobal,

@@ -1,5 +1,5 @@
-/** Framework-free Renderer adapters. TanStack Start's router-invalidate renderer lives in @cargo/onpage-tanstack-start. */
-import type { Renderer } from '@cargo/onpage-core'
+/** Framework-free Renderer adapters. TanStack Start's router-invalidate renderer lives in @shipment/onpage-tanstack-start. */
+import type { Renderer } from '@shipment/onpage-core'
 
 /** The page renders from editor state (OnPageClient everywhere): nothing to do after a save. */
 export const clientState = (): Renderer => ({ name: 'client', live: true, afterSave() {} })

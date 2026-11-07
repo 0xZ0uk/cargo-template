@@ -1,4 +1,4 @@
-import type { SeoRateLimit, SeoRateLimitBucket } from '@cargo/payload-seo-analyzer'
+import type { SeoRateLimit, SeoRateLimitBucket } from '@shipment/payload-seo-analyzer'
 
 type Bindings = Partial<
   Pick<CloudflareEnv, 'SEO_RATE_LIMIT_AI_INTERACTIVE' | 'SEO_RATE_LIMIT_AUDIT_POLL' | 'SEO_RATE_LIMIT_EXPENSIVE'>

@@ -1,8 +1,8 @@
 {
-  "name": "@cargo/payload-plugin-ab",
+  "name": "@shipment/payload-plugin-ab",
   "version": "3.0.0-beta.0",
   "private": true,
-  "description": "Payload CMS 4 A/B testing plugin for Cargo (fork of @focus-reactive/payload-plugin-ab): page variants in the admin, a variant manifest, and framework-agnostic request routing",
+  "description": "Payload CMS 4 A/B testing plugin for Shipment (fork of @focus-reactive/payload-plugin-ab): page variants in the admin, a variant manifest, and framework-agnostic request routing",
   "license": "MIT",
   "author": "FocusReactive <ship@focusreactive.com>",
   "contributors": [

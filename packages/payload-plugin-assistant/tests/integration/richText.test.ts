@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { sqliteAdapter } from "@payloadcms/db-sqlite";
-import { mcpPlugin } from "@cargo/payload-plugin-mcp";
+import { mcpPlugin } from "@shipment/payload-plugin-mcp";
 import {
   BoldFeature,
   HeadingFeature,

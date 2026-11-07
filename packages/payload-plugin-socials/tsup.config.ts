@@ -21,7 +21,7 @@ const shared: Partial<Options> = {
     'react-dom',
     'react/jsx-runtime',
     'sharp',
-    /^@cargo\/payload-plugin-socials/,
+    /^@shipment\/payload-plugin-socials/,
   ],
 }
 

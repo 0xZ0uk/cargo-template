@@ -1,4 +1,4 @@
-import { stegaClean, type DocumentState } from '@cargo/onpage-core'
+import { stegaClean, type DocumentState } from '@shipment/onpage-core'
 
 /** A document's name for headings and lists: its title field, else its type. */
 export function docTitle(state: DocumentState): string {

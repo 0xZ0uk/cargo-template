@@ -5,13 +5,13 @@ All notable changes to `@consilioweb/payload-seo-analyzer` will be documented in
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] (Cargo fork)
+## [Unreleased] (Shipment fork)
 
 No schema change: nothing to migrate.
 
 ### Added
 
-- **`extractContent` option: your own content extractor per collection** (cargo-template #47).
+- **`extractContent` option: your own content extractor per collection** (shipment #47).
   It returns the block walker's shape (`BlocksContent`) and replaces the walker everywhere a
   document's content is read: the score (`/validate`, audit, score history), the sidebar, the
   link graph, the external-links scan and the FAQPage builder. Collections without one keep the
@@ -19,14 +19,14 @@ No schema change: nothing to migrate.
 - **`POST /sidebar-content`.** Populates the edit form's values like a `depth: 1` read (Payload's
   own `afterRead` traversal, with the caller's access) and maps them like `/validate`.
 
-- **`SeoAnalysis.stats`** (cargo-template #129): what the analysis counted, from the walk the
+- **`SeoAnalysis.stats`** (shipment #129): what the analysis counted, from the walk the
   checks read: `wordCount`, `sentenceCount`, `readabilityScore` (Flesch, 0 for 30 words or fewer),
   `headingCount`, `h1Count`, `internalLinkCount`, `externalLinkCount`, `imageCount`,
   `imagesWithAlt`. The type is exported as `SeoContentStats`.
 
 ### Changed
 
-- **The sidebar scores exactly what `/validate` scores** (cargo-template #130). One client-safe
+- **The sidebar scores exactly what `/validate` scores** (shipment #130). One client-safe
   mapping (`helpers/seoInputFromDoc`, behind `buildSeoInputFromDoc`) turns a document into the
   whole `SeoInput`, on the server and in the browser. `POST /sidebar-content` now returns
   `{ input, config }`: the full input of the populated form, and the effective config
@@ -56,7 +56,7 @@ No schema change: nothing to migrate.
   `pickDocContentInput` and `buildSidebarContentInput`; the hook `useSeoThresholds` is now
   `useSeoConfig` (and `invalidateSeoThresholds` is `invalidateSeoConfig`). All were internal.
 
-- **One "analyse a document" module behind every server analysis** (cargo-template #129).
+- **One "analyse a document" module behind every server analysis** (shipment #129).
   `/validate`, the dashboard audit, score history, the indexation audit, keyword research,
   duplicate content, content grade and the AI endpoints go through `helpers/analyzeDocument`, which
   owns the read, the merged config, the extractor lookup, the Lexical depth and globals. The second
@@ -78,7 +78,7 @@ No schema change: nothing to migrate.
 - **`buildSeoInputFromDoc` blanks the slug of a global.** Globals have no URL; the audit already
   did this, `/validate`, score history and the indexation audit didn't, so a global with a `slug`
   field got self-link and evergreen checks for a path that doesn't exist.
-- **One cache-key policy behind every endpoint** (cargo-template #136). `keyFor(base, req, …)` in
+- **One cache-key policy behind every endpoint** (shipment #136). `keyFor(base, req, …)` in
   `src/cacheKey.ts` owns a key's version, locale policy (a table per base, written down in the
   module), the hash of its inputs, the persisted config hash (plugin config plus the
   `extractContent` fingerprint, read from `config.custom.seoAnalyzer`, the one place the extractors

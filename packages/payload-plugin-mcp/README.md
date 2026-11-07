@@ -1,11 +1,11 @@
-# @cargo/payload-plugin-mcp
+# @shipment/payload-plugin-mcp
 
 Our fork of [`@payloadcms/plugin-mcp`](https://github.com/payloadcms/payload/tree/main/packages/plugin-mcp) `4.0.0-beta.6`: Payload's MCP server at `POST /api/mcp`, plus an **OAuth 2.1 authorization server**, so ChatGPT and claude.ai (which only connect to MCP servers over OAuth) can connect. Every site built on this template gets it with `oauth: true` instead of hand-writing the OAuth server each time.
 
 Upstream's documentation still applies to everything else (tools, prompts, resources, `overrideGetAuthorizedMCP`, hooks): see [UPSTREAM-README.md](./UPSTREAM-README.md) and the [Payload docs](https://payloadcms.com/docs/beta/plugins/mcp).
 
 ```ts
-import { mcpPlugin } from '@cargo/payload-plugin-mcp'
+import { mcpPlugin } from '@shipment/payload-plugin-mcp'
 
 mcpPlugin({
   collections: { pages: { description: 'Website pages.' } },
@@ -66,7 +66,7 @@ The consent page is in English or Portuguese, following the admin language.
 ### Setting up a site
 
 1. `oauth: true` (or options) in `mcpPlugin`, then `payload generate:importmap` (the plugin adds an admin view) and a migration.
-2. Serve the discovery documents at the site root. OAuth clients look for `/.well-known/oauth-authorization-server` and `/.well-known/oauth-protected-resource/api/mcp` outside Payload's `/api`, so forward them to the plugin's endpoints. `@cargo/payload-plugin-mcp/well-known` exports `oauthWellKnownTarget(pathname, apiRoute)`, which maps a root path to the endpoint path (or `null`):
+2. Serve the discovery documents at the site root. OAuth clients look for `/.well-known/oauth-authorization-server` and `/.well-known/oauth-protected-resource/api/mcp` outside Payload's `/api`, so forward them to the plugin's endpoints. `@shipment/payload-plugin-mcp/well-known` exports `oauthWellKnownTarget(pathname, apiRoute)`, which maps a root path to the endpoint path (or `null`):
    - **TanStack Start**: a `/.well-known/$` route that hands the request to Payload's API handler with that path. This template's [`apps/web/src/app/[.]well-known.$.ts`](../../apps/web/src/app/[.]well-known.$.ts) does it; copy it.
    - **Next.js**: a rewrite in `next.config`: `{ source: '/.well-known/:path(oauth-authorization-server|oauth-protected-resource)/:rest*', destination: '/api/oauth/well-known/:path' }`.
 3. Put the site on a public HTTPS URL: ChatGPT and claude.ai connect from their servers.
@@ -80,9 +80,9 @@ Upstream ships its `src` in the npm package. To take a new version: diff the new
 ## Development
 
 ```bash
-pnpm --filter @cargo/payload-plugin-mcp build
-pnpm --filter @cargo/payload-plugin-mcp test       # OAuth flow on real Payload + SQLite
-pnpm --filter @cargo/payload-plugin-mcp typecheck
+pnpm --filter @shipment/payload-plugin-mcp build
+pnpm --filter @shipment/payload-plugin-mcp test       # OAuth flow on real Payload + SQLite
+pnpm --filter @shipment/payload-plugin-mcp typecheck
 ```
 
 The app's `tests/e2e/mcp-oauth.e2e.spec.ts` runs the browser part (root discovery, admin login back to the consent page, Allow, a working token).

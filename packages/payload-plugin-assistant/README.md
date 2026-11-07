@@ -1,8 +1,8 @@
-# @cargo/payload-plugin-assistant
+# @shipment/payload-plugin-assistant
 
 An admin assistant for Payload 4 on Cloudflare Workers: chat with your content through the
-[`@cargo/payload-plugin-mcp`](../payload-plugin-mcp) (our fork of `@payloadcms/plugin-mcp`) tools, using TanStack AI and OpenRouter,
-with one Durable Object per conversation. Plan: [#58](https://github.com/0xZ0uk/cargo-template/issues/58).
+[`@shipment/payload-plugin-mcp`](../payload-plugin-mcp) (our fork of `@payloadcms/plugin-mcp`) tools, using TanStack AI and OpenRouter,
+with one Durable Object per conversation. Plan: [#58](https://github.com/0xZ0uk/shipment/issues/58).
 
 > **Status: the chat works end to end in the admin.** The Payload tool source (#61), conversations
 > in Durable Objects (#62), the chat turn on OpenRouter with its endpoints (#63, see
@@ -15,7 +15,7 @@ with one Durable Object per conversation. Plan: [#58](https://github.com/0xZ0uk/
 > [From an edit view](#from-an-edit-view-and-mentions-69).
 
 ```ts
-import { assistantPlugin } from '@cargo/payload-plugin-assistant'
+import { assistantPlugin } from '@shipment/payload-plugin-assistant'
 
 assistantPlugin({
   models: [{ id: 'deepseek/deepseek-v4.1-flash', label: 'DeepSeek V4.1 Flash' }],
@@ -75,7 +75,7 @@ serialised request body, not the options object.
 | `./admin/AssistantNavLink` | The nav link (a server component that asks `access`; the import-map target). |
 | `./admin/AssistantDocumentControls` | "Ask the assistant" in edit views (a server component that asks `access`; the import-map target). |
 | `./client` | The chat UI, client components only (`"use client"`): `AssistantChat`, `AssistantNavLinkClient`, `ApprovalCard` (the default), `ApprovalControl` (minimal), `AskAssistant` (the edit view's button and drawer), `useDocumentRefresh`, `ReferenceChips`, `pendingApprovalFrom`, `answerInterrupt`, the `PendingApproval` / `ApprovalRenderer` / `ApprovalDecision` types and the proposal types (`ApprovalProposal`, `FieldChange`…). Its CSS is `./client.css`, imported by `client.js`. |
-| `./mcp` | plugin-mcp items for rich text as Markdown (#67): `withMarkdownRichText`, `setRichTextFromMarkdownTool`, `richTextAsMarkdown` (`findDocuments`), `richTextResultsAsMarkdown` (other results) and `richTextSchemaAsMarkdown` / `describeRichTextAsMarkdown` (`getCollectionSchema`, #116), `SET_RICH_TEXT_TOOL_NAME`, `markdownLosses`, `unsupportedMarkdown`, `RichTextPathError`, `internalLinkUrl` / `parseInternalLinkUrl` / `INTERNAL_LINK_SCHEME` (`payload://<collection>/<id>`). Needs `@cargo/payload-plugin-mcp` (our fork of `@payloadcms/plugin-mcp`; an optional peer: only this entry imports it). See [Rich text as Markdown](#rich-text-as-markdown-67). |
+| `./mcp` | plugin-mcp items for rich text as Markdown (#67): `withMarkdownRichText`, `setRichTextFromMarkdownTool`, `richTextAsMarkdown` (`findDocuments`), `richTextResultsAsMarkdown` (other results) and `richTextSchemaAsMarkdown` / `describeRichTextAsMarkdown` (`getCollectionSchema`, #116), `SET_RICH_TEXT_TOOL_NAME`, `markdownLosses`, `unsupportedMarkdown`, `RichTextPathError`, `internalLinkUrl` / `parseInternalLinkUrl` / `INTERNAL_LINK_SCHEME` (`payload://<collection>/<id>`). Needs `@shipment/payload-plugin-mcp` (our fork of `@payloadcms/plugin-mcp`; an optional peer: only this entry imports it). See [Rich text as Markdown](#rich-text-as-markdown-67). |
 | `./do` | The Durable Object classes `AssistantConversation` and `AssistantConversationIndex`, plus their stores. Workerd-only (`cloudflare:workers`): re-export them from the Worker entry, never import this entry from `payload.config.ts` or the admin bundle. |
 
 The endpoints load the AI runtime with `await import('./server/chat')`, and tsup code-splits it
@@ -556,7 +556,7 @@ As `apps/web` does it:
      "AssistantConversation": { "type": "durable-object", "storage": "sqlite" },
      "AssistantConversationIndex": { "type": "durable-object", "storage": "sqlite" }
    },
-   "services": [{ "binding": "ASSISTANT_SELF", "service": "cargo-template" }]
+   "services": [{ "binding": "ASSISTANT_SELF", "service": "shipment" }]
    ```
 
    The binding names `ASSISTANT_INDEX` and `ASSISTANT_SELF` are fixed: the conversation object reads
@@ -569,7 +569,7 @@ As `apps/web` does it:
    entry (the Worker entry must export every Durable Object class):
 
    ```ts
-   export { AssistantConversation, AssistantConversationIndex } from '@cargo/payload-plugin-assistant/do'
+   export { AssistantConversation, AssistantConversationIndex } from '@shipment/payload-plugin-assistant/do'
    ```
 
    A Node dev server that loads the Worker entry (TanStack Start's `vite dev`) can't import `./do`
@@ -586,15 +586,15 @@ As `apps/web` does it:
    (`apps/web/src/plugins/assistantRateLimit.ts`).
 
 5. **The audit log** (#68): an Analytics Engine dataset, `{ "binding": "ASSISTANT_AUDIT", "dataset":
-   "cargo_assistant_audit" }` in `analytics_engine_datasets` (and a `_staging` one in the staging
+   "shipment_assistant_audit" }` in `analytics_engine_datasets` (and a `_staging` one in the staging
    env), then `audit: analyticsEngineAuditSink(cloudflare.ASSISTANT_AUDIT)` in the plugin options and,
    because turns run in the conversation object, the conversation class built with the app's
    dependencies, exported from the Worker entry under the binding's class name instead of the
    plain class:
 
    ```ts
-   import { analyticsEngineAuditSink } from '@cargo/payload-plugin-assistant'
-   import { assistantConversation } from '@cargo/payload-plugin-assistant/do'
+   import { analyticsEngineAuditSink } from '@shipment/payload-plugin-assistant'
+   import { assistantConversation } from '@shipment/payload-plugin-assistant/do'
 
    export const AssistantConversation = assistantConversation<Cloudflare.Env>((env) => ({
      audit: analyticsEngineAuditSink(env.ASSISTANT_AUDIT),
@@ -738,7 +738,7 @@ get it wrong, it costs tokens, and nobody can read it on a card. The `./mcp` ent
 both directions, as plugin-mcp items (one tool layer for the assistant and external MCP clients, #58):
 
 ```ts
-import { withMarkdownRichText } from '@cargo/payload-plugin-assistant/mcp'
+import { withMarkdownRichText } from '@shipment/payload-plugin-assistant/mcp'
 
 mcpPlugin({
   collections: {
@@ -861,7 +861,7 @@ dark mode follow the admin theme.
 | `src/client.ts` → `dist/client.js` | Browser | Everything under `src/ui/`. tsup prepends `"use client"` and the CSS import (`addClientBanner`, as in `payload-plugin-ab`). |
 
 The server components import the client entry **by package path**
-(`@cargo/payload-plugin-assistant/client`, external in tsup, mapped to the source by `tsconfig`
+(`@shipment/payload-plugin-assistant/client`, external in tsup, mapped to the source by `tsconfig`
 `paths` and the vitest alias), so the host bundler sees a client boundary. The client bundle
 imports only `@payloadcms/ui`, `payload/shared`, React and `@tanstack/ai-react`: no Payload server
 runtime, `@tanstack/ai` server code, stores or `cloudflare:workers`.
@@ -1165,15 +1165,15 @@ conversation's Durable Object (or the Node process with the in-memory backend).
 - **Analytics Engine.** `analyticsEngineAuditSink(dataset)` writes `indexes: [userKey]`, `blobs:
   [userKey, tool, collection, documentId, conversationId, model, runId]`, `doubles: [1]` (a
   summary event: `[documents]`, so `SUM(double1 * _sample_interval)` counts documents); query
-  with the SQL API (`SELECT blob1 AS user, blob2 AS tool … FROM cargo_assistant_audit`). Analytics
+  with the SQL API (`SELECT blob1 AS user, blob2 AS tool … FROM shipment_assistant_audit`). Analytics
   Engine keeps 3 months.
 
 ## Development
 
 ```bash
-pnpm --filter @cargo/payload-plugin-assistant build
-pnpm --filter @cargo/payload-plugin-assistant test       # Node suite, then the workerd suite
-pnpm --filter @cargo/payload-plugin-assistant typecheck  # tsconfig.json + tsconfig.do.json (Workers types)
+pnpm --filter @shipment/payload-plugin-assistant build
+pnpm --filter @shipment/payload-plugin-assistant test       # Node suite, then the workerd suite
+pnpm --filter @shipment/payload-plugin-assistant typecheck  # tsconfig.json + tsconfig.do.json (Workers types)
 ```
 
 `vitest.config.ts` is the Node suite (`tests/ui/`: the chat UI under jsdom with `@payloadcms/ui`

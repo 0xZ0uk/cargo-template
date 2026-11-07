@@ -124,7 +124,7 @@ const payloadConfig = withPayload(
           ...(useCloudflareRuntime
             ? {}
             : {
-                '@cargo/payload-plugin-assistant/do': path.resolve(
+                '@shipment/payload-plugin-assistant/do': path.resolve(
                   __dirname,
                   'src/runtime/assistantDurableObjects.node.ts',
                 ),

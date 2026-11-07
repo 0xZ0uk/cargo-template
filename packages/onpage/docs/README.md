@@ -1,6 +1,6 @@
 # payload-onpage documentation
 
-Upstream's guides for on-page editing on **Payload 4 + TanStack Start**, kept with the fork. Package names are ours (`@cargo/onpage-*`); some pages still mention the Next.js adapter, which the fork dropped. How Cargo wires it in, and what the fork changed, is in [the fork's README](../README.md).
+Upstream's guides for on-page editing on **Payload 4 + TanStack Start**, kept with the fork. Package names are ours (`@shipment/onpage-*`); some pages still mention the Next.js adapter, which the fork dropped. How Shipment wires it in, and what the fork changed, is in [the fork's README](../README.md).
 
 | Start here                                                         |                                                                     |
 | ------------------------------------------------------------------ | ------------------------------------------------------------------- |

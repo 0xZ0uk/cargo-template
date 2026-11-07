@@ -13,7 +13,7 @@ import {
   type DocRef,
   type EncodeFilter,
   type SchemaField,
-} from '@cargo/onpage-core'
+} from '@shipment/onpage-core'
 import { APIError, type PayloadRequest, type RequestContext } from 'payload'
 
 declare module 'payload' {

@@ -234,12 +234,12 @@ describe('POST /alerts-run', () => {
     }
     const handler = createAlertsRunHandler(undefined, (() => store) as never)
     const res = await handler({
-      url: 'https://cargo.example/api/seo-plugin/alerts-run',
+      url: 'https://shipment.example/api/seo-plugin/alerts-run',
       user: { id: 1, collection: 'users' },
       payload: { config: { admin: { user: 'users' } }, logger: { warn() {}, error() {}, info() {} } },
     } as never)
     expect((await res.json()).delivery.sent).toBe(true)
-    expect(JSON.parse(String(spy.mock.calls[0]![1]!.body)).siteUrl).toBe('https://cargo.example')
+    expect(JSON.parse(String(spy.mock.calls[0]![1]!.body)).siteUrl).toBe('https://shipment.example')
     vi.unstubAllEnvs()
   })
 })

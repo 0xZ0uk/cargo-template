@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "cargo-template",
+  "name": "shipment",
   // Custom server entry: TanStack Start's `fetch` plus a `scheduled` handler for the cron below.
   "main": "src/server.ts",
   "compatibility_date": "2026-10-23",
@@ -17,7 +17,7 @@
   "d1_databases": [
     {
       "binding": "D1",
-      "database_name": "cargo-template",
+      "database_name": "shipment",
       // The template's own database. Replace it with yours (see README > Deployment).
       "database_id": "29e40af9-e230-4c28-a622-c337ca02fbf4",
       // Lets `pnpm migrate:remote` reach the real database. Local dev and `pnpm preview`
@@ -30,7 +30,7 @@
       // `pnpm seo-store:migrate` (local) / `pnpm seo-store:migrate:remote` apply it, and
       // the store also applies it on first use. Retention prunes it daily (Cron Trigger).
       "binding": "SEO_D1",
-      "database_name": "cargo-template-seo",
+      "database_name": "shipment-seo",
       // The template's own database, like `D1` above. Replace it with yours
       // (`wrangler d1 create <name>`). Local dev and `pnpm preview` use the local D1 in
       // `.wrangler/state`.
@@ -45,21 +45,21 @@
   "analytics_engine_datasets": [
     {
       "binding": "AB_ANALYTICS",
-      "dataset": "cargo_ab",
+      "dataset": "shipment_ab",
     },
     // The assistant's audit log (#68): one data point per write it applied (user, tool,
     // collection, document id, conversation, model; no content). Written by the conversation
     // Durable Object (src/server.ts) and, under Node, by the plugin's `audit` option. Query it
-    // with the SQL API: SELECT blob1 AS user, blob2 AS tool, … FROM cargo_assistant_audit.
+    // with the SQL API: SELECT blob1 AS user, blob2 AS tool, … FROM shipment_assistant_audit.
     {
       "binding": "ASSISTANT_AUDIT",
-      "dataset": "cargo_assistant_audit",
+      "dataset": "shipment_assistant_audit",
     },
   ],
   "r2_buckets": [
     {
       "binding": "R2",
-      "bucket_name": "cargo-template-media",
+      "bucket_name": "shipment-media",
     },
   ],
   // Rate limits for the SEO analyzer's endpoints, shared by every isolate in a Cloudflare
@@ -129,7 +129,7 @@
   // The assistant's tools: the conversation object calls this Worker's own `POST /api/mcp`
   // through a service binding, with the admin's cookie (no public URL, no network hop).
   // `service` must be this Worker's `name`.
-  "services": [{ "binding": "ASSISTANT_SELF", "service": "cargo-template" }],
+  "services": [{ "binding": "ASSISTANT_SELF", "service": "shipment" }],
   "env": {
     // A separate Worker for trying deploy-only behaviour (Durable Objects, service bindings,
     // rate limits) without touching production: its own D1s, R2 bucket, Durable Object
@@ -138,7 +138,7 @@
     // inherit bindings into an environment, so every binding above is repeated here (same
     // binding names, `-staging` resources). `exports` and `observability` are inherited.
     "staging": {
-      "name": "cargo-template-staging",
+      "name": "shipment-staging",
       "workers_dev": true,
       // No scheduled jobs on staging (#116): `triggers` would be inherited, so the empty list
       // overrides it, and a deploy clears any schedule the Worker had. Staging is for trying
@@ -148,22 +148,22 @@
       "d1_databases": [
         {
           "binding": "D1",
-          "database_name": "cargo-template-staging",
+          "database_name": "shipment-staging",
           "database_id": "7aa78ce1-419c-4069-b0af-09a012b91d9e",
           "remote": true,
         },
         {
           "binding": "SEO_D1",
-          "database_name": "cargo-template-seo-staging",
+          "database_name": "shipment-seo-staging",
           "database_id": "cdf1d01a-92e6-44f0-82d1-dca950d4f8ff",
           "remote": true,
         },
       ],
       "analytics_engine_datasets": [
-        { "binding": "AB_ANALYTICS", "dataset": "cargo_ab_staging" },
-        { "binding": "ASSISTANT_AUDIT", "dataset": "cargo_assistant_audit_staging" },
+        { "binding": "AB_ANALYTICS", "dataset": "shipment_ab_staging" },
+        { "binding": "ASSISTANT_AUDIT", "dataset": "shipment_assistant_audit_staging" },
       ],
-      "r2_buckets": [{ "binding": "R2", "bucket_name": "cargo-template-media-staging" }],
+      "r2_buckets": [{ "binding": "R2", "bucket_name": "shipment-media-staging" }],
       // Same limits as production, on their own counters (namespace ids are account-wide).
       "ratelimits": [
         {
@@ -204,7 +204,7 @@
         ],
       },
       // The staging Worker calls itself, never production.
-      "services": [{ "binding": "ASSISTANT_SELF", "service": "cargo-template-staging" }],
+      "services": [{ "binding": "ASSISTANT_SELF", "service": "shipment-staging" }],
     },
   },
 }

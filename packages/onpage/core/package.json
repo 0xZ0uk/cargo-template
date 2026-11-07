@@ -1,8 +1,8 @@
 {
-  "name": "@cargo/onpage-core",
+  "name": "@shipment/onpage-core",
   "version": "0.7.0",
   "private": true,
-  "description": "Cargo's fork of payload-onpage core: document refs, schema, field operations, stega codec, autosave and the editor session, plus the port interfaces adapters implement.",
+  "description": "Shipment's fork of payload-onpage core: document refs, schema, field operations, stega codec, autosave and the editor session, plus the port interfaces adapters implement.",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,

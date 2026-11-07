@@ -6,7 +6,7 @@
  * plugin's `shared` entry, so a record the admin accepts and one the site applies follow the
  * same policy. Case and trailing slashes are kept as typed, so matching normalises both sides.
  */
-import { normalizeFromPath, validateRedirectTarget } from '@cargo/payload-seo-analyzer/shared'
+import { normalizeFromPath, validateRedirectTarget } from '@shipment/payload-seo-analyzer/shared'
 
 export type RedirectStatus = 301 | 302
 

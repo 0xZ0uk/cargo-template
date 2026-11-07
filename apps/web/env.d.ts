@@ -228,7 +228,7 @@ export type CoercedEnvSchema = {
   
   /**
    * **SOCIALS_ENCRYPTION_KEY** 🔐 _sensitive_  
-   * Socials plugin (`@cargo/payload-plugin-socials`, Pinterest only for now). It stays disabled  
+   * Socials plugin (`@shipment/payload-plugin-socials`, Pinterest only for now). It stays disabled  
    * (no endpoints or jobs, and an admin notice; the schema is unchanged) until the encryption key is set. 32 bytes  
    * as hex (`openssl rand -hex 32`) or base64. It seals the platform tokens stored in D1 with  
    * AES-256-GCM, so it must stay the same across deploys: a key that can't read the stored tokens  

@@ -1,7 +1,7 @@
 export const PLUGIN_NAME = "payload-plugin-assistant";
 
 /** Package name, used to build import-map paths. */
-export const PACKAGE_NAME = "@cargo/payload-plugin-assistant";
+export const PACKAGE_NAME = "@shipment/payload-plugin-assistant";
 
 /** Chat endpoint, relative to Payload's API route: `POST|GET /api/assistant/chat`. */
 export const CHAT_ENDPOINT_PATH = "/assistant/chat";

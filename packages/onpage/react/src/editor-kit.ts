@@ -1,6 +1,6 @@
 /**
- * @cargo/onpage-react/editor-kit — building blocks for custom field editors
- * (the default editors and @cargo/onpage-lexical use exactly these).
+ * @shipment/onpage-react/editor-kit — building blocks for custom field editors
+ * (the default editors and @shipment/onpage-lexical use exactly these).
  *
  *   const json = defineEditor({
  *     mode: 'popover',
@@ -28,5 +28,5 @@ export { useEvent } from './useEvent.ts'
 export { RedoIcon, UndoIcon } from './icons.tsx'
 export { escapeHtml, sanitizeHtml } from './sanitize.ts'
 export type { EditorRegistry, FieldEditorDef, FieldEditorProps, GhostInput } from './types.ts'
-export type { FieldOf } from '@cargo/onpage-core'
+export type { FieldOf } from '@shipment/onpage-core'
 export type { Translate } from './messages.ts'

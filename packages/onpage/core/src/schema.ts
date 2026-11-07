@@ -1,6 +1,6 @@
 /**
  * A JSON-safe description of a document's editable fields, produced on the
- * server by the plugin's schema endpoint (`@cargo/onpage-plugin`) and consumed
+ * server by the plugin's schema endpoint (`@shipment/onpage-plugin`) and consumed
  * by the editor to build settings forms, new rows and save payloads.
  *
  * `SchemaField` is a union discriminated on `type`: each kind carries only its

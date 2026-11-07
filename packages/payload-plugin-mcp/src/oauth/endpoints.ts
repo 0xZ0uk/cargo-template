@@ -34,7 +34,7 @@ import {
  * discovery (RFC 9728, RFC 8414), Dynamic Client Registration of public clients (RFC 7591),
  * authorize with a consent page, and token (codes with PKCE S256, rotating refresh tokens).
  * Payload endpoints, so under `/api/oauth/*`; the site serves the discovery documents at
- * `/.well-known/*` too (`@cargo/payload-plugin-mcp/well-known`).
+ * `/.well-known/*` too (`@shipment/payload-plugin-mcp/well-known`).
  */
 
 const NO_STORE = { 'Cache-Control': 'no-store', Pragma: 'no-cache' } as const

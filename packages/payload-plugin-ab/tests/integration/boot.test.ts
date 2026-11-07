@@ -212,7 +212,7 @@ describe("Payload 4 boot", () => {
       (f) => "name" in f && f.name === "_abVariants"
     ) as any;
     expect(field.admin.components.Field).toEqual({
-      path: "@cargo/payload-plugin-ab/admin/VariantsField#VariantsField",
+      path: "@shipment/payload-plugin-ab/admin/VariantsField#VariantsField",
       clientProps: { slugField: "slug", titleField: "title", resultsPath: "/_ab/results" },
     });
   });

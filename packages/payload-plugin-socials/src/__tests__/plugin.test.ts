@@ -104,12 +104,12 @@ describe('payloadPluginSocials curried factory', () => {
     // Every component reference (path + exportName) anywhere in the config.
     const componentRefs = (value: unknown, found = new Set<string>()): string[] => {
       if (typeof value === 'string') {
-        if (value.includes('@cargo/payload-plugin-socials')) {
+        if (value.includes('@shipment/payload-plugin-socials')) {
           found.add(value)
         }
       } else if (value && typeof value === 'object') {
         const record = value as Record<string, unknown>
-        if (typeof record.path === 'string' && record.path.includes('@cargo/payload-plugin-socials')) {
+        if (typeof record.path === 'string' && record.path.includes('@shipment/payload-plugin-socials')) {
           found.add(`${record.path}#${String(record.exportName)}`)
         }
         for (const child of Object.values(record)) {

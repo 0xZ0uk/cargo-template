@@ -3,8 +3,8 @@
  * itself is loaded only when someone is editing or previewing.
  */
 import { lazy, Suspense } from 'react'
-import type { AssistPort, DataSource, Locator, MediaLibrary, OnPageMode } from '@cargo/onpage-core'
-import type { FieldEditorDef, Messages, OnPageEvent } from '@cargo/onpage-react'
+import type { AssistPort, DataSource, Locator, MediaLibrary, OnPageMode } from '@shipment/onpage-core'
+import type { FieldEditorDef, Messages, OnPageEvent } from '@shipment/onpage-react'
 
 export interface OnPageMountProps {
   mode: OnPageMode
@@ -26,7 +26,7 @@ export interface OnPageMountProps {
   onEvent?: ((event: OnPageEvent) => void) | undefined
   /** A writing assistant for text fields (client-only; see the assist guide). */
   assist?: AssistPort | undefined
-  /** Override editor UI strings (see `defaultMessages` in @cargo/onpage-react). */
+  /** Override editor UI strings (see `defaultMessages` in @shipment/onpage-react). */
   messages?: Messages | undefined
   /** The language of `messages`, for plurals, dates and times in the editor UI. Default "en". */
   uiLocale?: string | undefined
@@ -43,5 +43,5 @@ export function OnPageMount(props: OnPageMountProps) {
   )
 }
 
-export { OnPageClient } from '@cargo/onpage-react/client'
+export { OnPageClient } from '@shipment/onpage-react/client'
 export { useTanstackRefresh } from './refresh.ts'

@@ -4,8 +4,8 @@ A field editor is a React component, registered by id with `defineEditor`. You d
 
 ```tsx
 'use client'
-import { defineEditor, EditorPopover, type FieldEditorProps } from '@cargo/onpage-react/editor-kit'
-import type { ScalarField } from '@cargo/onpage-core'
+import { defineEditor, EditorPopover, type FieldEditorProps } from '@shipment/onpage-react/editor-kit'
+import type { ScalarField } from '@shipment/onpage-core'
 import { useState } from 'react'
 
 function JsonEditor(props: FieldEditorProps<ScalarField>) {
@@ -44,7 +44,7 @@ Register it from a client mount, and pass that mount to `<OnPage>`:
 
 ```tsx
 'use client'
-import { OnPageMount, type OnPageMountProps } from '@cargo/onpage-next/client'
+import { OnPageMount, type OnPageMountProps } from '@shipment/onpage-next/client'
 import { json } from './JsonEditor'
 
 export const Mount = (p: OnPageMountProps) => <OnPageMount {...p} editors={{ json }} />

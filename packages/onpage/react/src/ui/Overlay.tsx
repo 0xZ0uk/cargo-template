@@ -18,7 +18,7 @@ import {
   type Target,
   isReady,
   type RefKey,
-} from '@cargo/onpage-core'
+} from '@shipment/onpage-core'
 import { useEffect, useState } from 'react'
 import { useOnPage } from '../context.tsx'
 import { isOurs, shortcut } from '../dom.ts'

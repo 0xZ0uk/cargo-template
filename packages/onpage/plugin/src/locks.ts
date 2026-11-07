@@ -3,7 +3,7 @@
  * collection) for the on-page editor: the same records the admin reads, so an
  * admin user sees that someone is editing on the page, and the other way round.
  */
-import type { DocRef } from '@cargo/onpage-core'
+import type { DocRef } from '@shipment/onpage-core'
 import type { CollectionConfig, GlobalConfig, PayloadRequest, Where } from 'payload'
 
 const LOCKS = 'payload-locked-documents'

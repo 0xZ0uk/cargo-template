@@ -1,13 +1,13 @@
-# @cargo/onpage-tanstack-start
+# @shipment/onpage-tanstack-start
 
 ## 0.7.0
 
 ### Patch Changes
 
 - Updated dependencies []:
-  - @cargo/onpage-core@0.7.0
-  - @cargo/onpage-lexical@0.7.0
-  - @cargo/onpage-react@0.7.0
+  - @shipment/onpage-core@0.7.0
+  - @shipment/onpage-lexical@0.7.0
+  - @shipment/onpage-react@0.7.0
 
 ## 0.6.1
 
@@ -15,9 +15,9 @@
 
 - [#38](https://github.com/jellologic/payload-onpage/pull/38) [`456411b`](https://github.com/jellologic/payload-onpage/commit/456411ba78a36bbb1360817d01a58f1cf123e14a) Thanks [@jellologic](https://github.com/jellologic)! - The package now includes its MIT license file, like the other packages. 0.6.0 and earlier were published without it.
 - Updated dependencies []:
-  - @cargo/onpage-core@0.6.1
-  - @cargo/onpage-lexical@0.6.1
-  - @cargo/onpage-react@0.6.1
+  - @shipment/onpage-core@0.6.1
+  - @shipment/onpage-lexical@0.6.1
+  - @shipment/onpage-react@0.6.1
 
 ## 0.6.0
 
@@ -31,7 +31,7 @@
   - **Shortcut hints** match the platform: `⌘Z` on Apple devices, `Ctrl+Z` elsewhere. `row.delete` now takes an `{undo}` variable.
 
 - [#36](https://github.com/jellologic/payload-onpage/pull/36) [`7c1c9d7`](https://github.com/jellologic/payload-onpage/commit/7c1c9d735067a20520921eea65fb6f75dda9f73d) Thanks [@jellologic](https://github.com/jellologic)! - - **Writing assistant** (`assist`, an `AssistPort` you implement; no AI vendor is bundled): **✨** on text fields offers Shorter, Clearer, Friendlier, Fix spelling, or your own instruction. The answer replaces the text, still uncommitted. Pass it from your client mount. The examples include a signed-in-only endpoint that uses Claude when `ANTHROPIC_API_KEY` is set.
-  - **`@cargo/onpage-core/testing`:** `memoryDataSource()`, an in-memory `DataSource` for testing custom editors and pages. It applies saves, checks for stale writes, and records saves.
+  - **`@shipment/onpage-core/testing`:** `memoryDataSource()`, an in-memory `DataSource` for testing custom editors and pages. It applies saves, checks for stale writes, and records saves.
 
 - [#29](https://github.com/jellologic/payload-onpage/pull/29) [`9748d89`](https://github.com/jellologic/payload-onpage/commit/9748d8942bae6c89b0927f909c28c512eee464c3) Thanks [@jellologic](https://github.com/jellologic)! - **Comments and review requests** (opt-in: `comments: true`, or `{ guests: true }`):
 
@@ -60,7 +60,7 @@
   - **Preview routes:** when `admin.preview` returns a preview route that carries a secret (the website template's `/next/preview?path=…&previewSecret=…`), the plugin uses its `path` and logs a warning. Before, edit and share links pointed at that route: share links got a 403 and carried the secret.
   - **Payload 4:** block slugs listed in `blocks` (`blocks: ['cta']`) and upload `variants` are read.
   - **Startup warning** for enabled collections or globals without drafts, whose on-page edits go live as they autosave.
-  - **`isPayloadUser`** (`@cargo/onpage-next/proxy`): verifies a Payload login at the edge, for `allowDraft`, so your own preview route and Live Preview keep working behind the strict proxy on Vercel.
+  - **`isPayloadUser`** (`@shipment/onpage-next/proxy`): verifies a Payload login at the edge, for `allowDraft`, so your own preview route and Live Preview keep working behind the strict proxy on Vercel.
   - **TanStack Start:** preview-link viewers navigate with full page loads, so each page is checked by the server. Before, a client-side navigation back to the shared page showed published content.
   - New guide: [Payload's website template](https://github.com/jellologic/payload-onpage/blob/main/docs/guides/website-template.md).
 
@@ -82,27 +82,27 @@
   - Docs: a recipe for revoking preview links by id, and why the path field should be `unique`.
 
 - Updated dependencies [[`7e5837c`](https://github.com/jellologic/payload-onpage/commit/7e5837ce684a9312ce29bd00066d18c4bf9fdba5), [`7c1c9d7`](https://github.com/jellologic/payload-onpage/commit/7c1c9d735067a20520921eea65fb6f75dda9f73d), [`9748d89`](https://github.com/jellologic/payload-onpage/commit/9748d8942bae6c89b0927f909c28c512eee464c3), [`c6ebef6`](https://github.com/jellologic/payload-onpage/commit/c6ebef6fe77b917af23b3ea7df900e34abfd67a4), [`57ba823`](https://github.com/jellologic/payload-onpage/commit/57ba823ddb0bc1a924e0064845d2b022c85fdc95), [`88ae4bf`](https://github.com/jellologic/payload-onpage/commit/88ae4bff140cf749d97d81480be8e4fd2cebb17a), [`a0c9656`](https://github.com/jellologic/payload-onpage/commit/a0c9656c1c772e96dc32a6d4bf437d10f67b59c4), [`2b2641d`](https://github.com/jellologic/payload-onpage/commit/2b2641dc5553cba042c1dc8d5185160303767c44), [`54a1db0`](https://github.com/jellologic/payload-onpage/commit/54a1db0301135cfde5b35391481ed27aa4891bb5), [`0d4dfa7`](https://github.com/jellologic/payload-onpage/commit/0d4dfa7885ff4ec6f34ddef6764bd2cdffa43518), [`a1a358a`](https://github.com/jellologic/payload-onpage/commit/a1a358a7afda1879eab4b94679f75b72f71f7d85), [`4b3ed49`](https://github.com/jellologic/payload-onpage/commit/4b3ed49e75acd6765f9d8f7cc0e22e58bc8b5e33), [`4b3ed49`](https://github.com/jellologic/payload-onpage/commit/4b3ed49e75acd6765f9d8f7cc0e22e58bc8b5e33)]:
-  - @cargo/onpage-core@0.6.0
-  - @cargo/onpage-react@0.6.0
-  - @cargo/onpage-lexical@0.6.0
+  - @shipment/onpage-core@0.6.0
+  - @shipment/onpage-react@0.6.0
+  - @shipment/onpage-lexical@0.6.0
 
 ## 0.5.0
 
 ### Patch Changes
 
 - Updated dependencies [[`9dca50e`](https://github.com/jellologic/payload-onpage/commit/9dca50e72997076f2e39a5b02cf635171786dd0c)]:
-  - @cargo/onpage-core@0.5.0
-  - @cargo/onpage-react@0.5.0
-  - @cargo/onpage-lexical@0.5.0
+  - @shipment/onpage-core@0.5.0
+  - @shipment/onpage-react@0.5.0
+  - @shipment/onpage-lexical@0.5.0
 
 ## 0.4.1
 
 ### Patch Changes
 
 - Updated dependencies [[`32e018c`](https://github.com/jellologic/payload-onpage/commit/32e018c5b2d90491b8d917a452d7ac2147c2964c)]:
-  - @cargo/onpage-core@0.4.1
-  - @cargo/onpage-lexical@0.4.1
-  - @cargo/onpage-react@0.4.1
+  - @shipment/onpage-core@0.4.1
+  - @shipment/onpage-lexical@0.4.1
+  - @shipment/onpage-react@0.4.1
 
 ## 0.4.0
 
@@ -112,11 +112,11 @@
 
   There is no proxy step on Start: request middleware cannot rewrite the request, so page reads verify the sealed preview grant directly (unseal + path + expiry) with the session secret. Without the secret, preview links fail closed to published content. See `docs/getting-started-tanstack.md` and the `examples/tanstack` demo.
 
-  Version requirements (Payload 4 is in beta — pin these): `payload` + `@payloadcms/*` at `4.0.0-beta.0`, `@tanstack/react-start` `1.168.60`, `@tanstack/react-router` `1.170.41`, `react` 19, `lexical` 0.52. Next.js sites stay on Payload 3 (`@cargo/onpage-next` is unchanged). Full matrix: `docs/compatibility.md`.
+  Version requirements (Payload 4 is in beta — pin these): `payload` + `@payloadcms/*` at `4.0.0-beta.0`, `@tanstack/react-start` `1.168.60`, `@tanstack/react-router` `1.170.41`, `react` 19, `lexical` 0.52. Next.js sites stay on Payload 3 (`@shipment/onpage-next` is unchanged). Full matrix: `docs/compatibility.md`.
 
 ### Patch Changes
 
 - Updated dependencies [[`cfd55ea`](https://github.com/jellologic/payload-onpage/commit/cfd55eaf03184af534fe0fee8ca2e5122d05e5e7), [`cfd55ea`](https://github.com/jellologic/payload-onpage/commit/cfd55eaf03184af534fe0fee8ca2e5122d05e5e7)]:
-  - @cargo/onpage-lexical@0.4.0
-  - @cargo/onpage-core@0.4.0
-  - @cargo/onpage-react@0.4.0
+  - @shipment/onpage-lexical@0.4.0
+  - @shipment/onpage-core@0.4.0
+  - @shipment/onpage-react@0.4.0

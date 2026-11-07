@@ -8,7 +8,7 @@ Pass it from your own client mount, like custom editors (on Next.js, `<OnPage>` 
 'use client'
 // app/(frontend)/onpage-mount.tsx
 import * as Sentry from '@sentry/nextjs'
-import { OnPageMount, type OnPageMountProps } from '@cargo/onpage-next/client'
+import { OnPageMount, type OnPageMountProps } from '@shipment/onpage-next/client'
 
 export function Mount(props: OnPageMountProps) {
   return (

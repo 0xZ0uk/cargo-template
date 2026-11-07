@@ -45,14 +45,14 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [0.12.0-beta.0] - 2026-11-04
 
-Cargo's fork (`@cargo/payload-plugin-socials`) of upstream 0.11.1 (`b2ee260`), ported to Payload 4. No option changes. The schema is the same tables as 0.11.1; on Payload 4 that requires the opt-outs below, or Payload adds version tables.
+Shipment's fork (`@shipment/payload-plugin-socials`) of upstream 0.11.1 (`b2ee260`), ported to Payload 4. No option changes. The schema is the same tables as 0.11.1; on Payload 4 that requires the opt-outs below, or Payload adds version tables.
 
 ### Changed
 
 - **Payload 4** (`>=4.0.0-beta.6 <5`) replaces Payload 3; `@payloadcms/next` is no longer a peer. The `/admin/socials` view uses `DefaultTemplate` from `@payloadcms/ui/rsc` and `server.redirect()` instead of `next/navigation`.
 - `social-posts`, `social-templates` and the `socials-connections` global set `versions: false`: Payload 4 versions collections and globals by default.
 - `payload.jobs.queue`, `run` and `cancelByID` pass `overrideAccess: true`. Payload 4 defaults them to the jobs access functions (a logged-in user), so cron sweeps and internal-scheduler drains threw `Forbidden`.
-- Package name `@cargo/payload-plugin-socials`; admin import-map paths follow it (`@cargo/payload-plugin-socials/client`, `/rsc`). Log and error prefixes stay `payload-plugin-socials`.
+- Package name `@shipment/payload-plugin-socials`; admin import-map paths follow it (`@shipment/payload-plugin-socials/client`, `/rsc`). Log and error prefixes stay `payload-plugin-socials`.
 - Built with tsup into `dist/index.js`, `dist/client.js` (+ `client.css`) and `dist/rsc.js`. The stylesheet is plain CSS (it used SCSS only for nesting, which CSS has).
 - Admin buttons use `size="medium"`: `@payloadcms/ui` 4 has no `small`.
 - Admin styles use Payload 4 tokens (`--color-*`, `--field-color-*`, `--radius-*`, `--text-mono-family`, heading tokens) instead of the removed v3 ones (`--theme-elevation-*`, `--theme-text`, `--theme-input-bg`, `--style-radius-*`, `--font-mono`), so the composer, widget and template builder follow the admin theme in light and dark. `payload4Tokens.test.ts` guards it. Composer, widget and view headings carry a `socials-heading` class, since Payload 4 doesn't style bare headings.

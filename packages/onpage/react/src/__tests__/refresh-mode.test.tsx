@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import type { DataSource, DocumentSchema, Renderer } from '@cargo/onpage-core'
+import type { DataSource, DocumentSchema, Renderer } from '@shipment/onpage-core'
 import { OnPageEditor } from '../editor/OnPageEditor.tsx'
 import { clientState, fullReload } from '../renderers.ts'
 

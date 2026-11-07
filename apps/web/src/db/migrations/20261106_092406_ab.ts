@@ -1,6 +1,6 @@
 import { MigrateUpArgs, MigrateDownArgs, sql } from '@payloadcms/db-d1-sqlite'
 
-// A/B testing (@cargo/payload-plugin-ab): the `ab-manifest` and `ab-experiments` collections,
+// A/B testing (@shipment/payload-plugin-ab): the `ab-manifest` and `ab-experiments` collections,
 // and `_abVariantOf` / `_abPassPercentage` on pages and their versions.
 //
 // Hand-edited from `migrate:create`:

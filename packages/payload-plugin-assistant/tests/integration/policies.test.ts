@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { sqliteAdapter } from "@payloadcms/db-sqlite";
-import { mcpPlugin } from "@cargo/payload-plugin-mcp";
+import { mcpPlugin } from "@shipment/payload-plugin-mcp";
 import { lexicalEditor } from "@payloadcms/richtext-lexical";
 import type { AnyTextAdapter, ModelMessage } from "@tanstack/ai";
 import { fakeText, type FakeResponseStep } from "@tanstack/ai/testing";

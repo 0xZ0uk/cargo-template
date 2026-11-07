@@ -1,4 +1,4 @@
-import { stegaClean } from '@cargo/onpage-core'
+import { stegaClean } from '@shipment/onpage-core'
 import React from 'react'
 
 import type { ReviewsBlock as ReviewsBlockProps } from '@/payload-types'

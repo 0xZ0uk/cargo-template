@@ -1,8 +1,8 @@
 {
-  "name": "@cargo/payload-plugin-mcp",
-  "version": "4.0.0-beta.6-cargo.0",
+  "name": "@shipment/payload-plugin-mcp",
+  "version": "4.0.0-beta.6-shipment.0",
   "private": true,
-  "description": "Payload CMS 4 MCP plugin for Cargo (fork of @payloadcms/plugin-mcp) with an OAuth 2.1 authorization server, so ChatGPT and claude.ai can connect",
+  "description": "Payload CMS 4 MCP plugin for Shipment (fork of @payloadcms/plugin-mcp) with an OAuth 2.1 authorization server, so ChatGPT and claude.ai can connect",
   "license": "MIT",
   "author": "Payload <dev@payloadcms.com> (https://payloadcms.com)",
   "contributors": [
