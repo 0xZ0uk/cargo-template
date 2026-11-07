@@ -179,6 +179,9 @@ export interface Config {
     'ab-experiments': AbExperiment;
     'social-posts': SocialPost;
     'social-templates': SocialTemplate;
+    'mcp-oauth-clients': McpOauthClient;
+    'mcp-oauth-connections': McpOauthConnection;
+    'mcp-oauth-tokens': McpOauthToken;
     'payload-kv': PayloadKv;
     'payload-jobs': PayloadJob;
     'payload-locked-documents': PayloadLockedDocument;
@@ -200,6 +203,9 @@ export interface Config {
     'ab-experiments': AbExperimentsSelect<false> | AbExperimentsSelect<true>;
     'social-posts': SocialPostsSelect<false> | SocialPostsSelect<true>;
     'social-templates': SocialTemplatesSelect<false> | SocialTemplatesSelect<true>;
+    'mcp-oauth-clients': McpOauthClientsSelect<false> | McpOauthClientsSelect<true>;
+    'mcp-oauth-connections': McpOauthConnectionsSelect<false> | McpOauthConnectionsSelect<true>;
+    'mcp-oauth-tokens': McpOauthTokensSelect<false> | McpOauthTokensSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-jobs': PayloadJobsSelect<false> | PayloadJobsSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
@@ -1812,6 +1818,85 @@ export interface SocialTemplate {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "mcp-oauth-clients".
+ */
+export interface McpOauthClient {
+  id: number;
+  clientId: string;
+  clientName: string;
+  redirectUris:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  authorizedAt?: string | null;
+  createdBy?: {
+    relationTo: 'users';
+    value: number | User;
+  } | null;
+  updatedBy?: {
+    relationTo: 'users';
+    value: number | User;
+  } | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * AI clients (ChatGPT, Claude…) that read and edit the site content on behalf of a user, over MCP. Delete a connection to revoke its access.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "mcp-oauth-connections".
+ */
+export interface McpOauthConnection {
+  id: number;
+  clientName: string;
+  user?: (number | null) | User;
+  client?: (number | null) | McpOauthClient;
+  redirectUri: string;
+  resource: string;
+  lastUsedAt?: string | null;
+  expiresAt: string;
+  createdBy?: {
+    relationTo: 'users';
+    value: number | User;
+  } | null;
+  updatedBy?: {
+    relationTo: 'users';
+    value: number | User;
+  } | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "mcp-oauth-tokens".
+ */
+export interface McpOauthToken {
+  id: number;
+  hash: string;
+  kind: 'code' | 'access' | 'refresh' | 'used';
+  connection?: (number | null) | McpOauthConnection;
+  user?: (number | null) | User;
+  client?: (number | null) | McpOauthClient;
+  expiresAt: string;
+  codeChallenge?: string | null;
+  createdBy?: {
+    relationTo: 'users';
+    value: number | User;
+  } | null;
+  updatedBy?: {
+    relationTo: 'users';
+    value: number | User;
+  } | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
@@ -2392,6 +2477,54 @@ export interface SocialTemplatesSelect<T extends boolean = true> {
         facebookMessage?: T;
         gbpSummary?: T;
       };
+  createdBy?: T;
+  updatedBy?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "mcp-oauth-clients_select".
+ */
+export interface McpOauthClientsSelect<T extends boolean = true> {
+  clientId?: T;
+  clientName?: T;
+  redirectUris?: T;
+  authorizedAt?: T;
+  createdBy?: T;
+  updatedBy?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "mcp-oauth-connections_select".
+ */
+export interface McpOauthConnectionsSelect<T extends boolean = true> {
+  clientName?: T;
+  user?: T;
+  client?: T;
+  redirectUri?: T;
+  resource?: T;
+  lastUsedAt?: T;
+  expiresAt?: T;
+  createdBy?: T;
+  updatedBy?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "mcp-oauth-tokens_select".
+ */
+export interface McpOauthTokensSelect<T extends boolean = true> {
+  hash?: T;
+  kind?: T;
+  connection?: T;
+  user?: T;
+  client?: T;
+  expiresAt?: T;
+  codeChallenge?: T;
   createdBy?: T;
   updatedBy?: T;
   updatedAt?: T;
@@ -3042,7 +3175,8 @@ export interface CollectionQueryWidget {
       | 'seo-settings'
       | 'seo-redirects'
       | 'social-posts'
-      | 'social-templates';
+      | 'social-templates'
+      | 'mcp-oauth-connections';
     where?:
       | {
           [k: string]: unknown;
@@ -3076,6 +3210,7 @@ export interface ActivityWidget {
           | 'seo-redirects'
           | 'social-posts'
           | 'social-templates'
+          | 'mcp-oauth-connections'
         )[]
       | null;
   };

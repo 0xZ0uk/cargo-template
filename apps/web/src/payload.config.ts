@@ -4,8 +4,8 @@ import { abTestingPlugin } from '@cargo/payload-plugin-ab'
 import { assistantPlugin } from '@cargo/payload-plugin-assistant'
 import { withMarkdownRichText } from '@cargo/payload-plugin-assistant/mcp'
 import { createSqlSeoDataStore, seoAnalyzerPlugin } from '@cargo/payload-seo-analyzer'
+import { mcpPlugin } from '@cargo/payload-plugin-mcp'
 import { sqliteD1Adapter } from '@payloadcms/db-d1-sqlite'
-import { mcpPlugin } from '@payloadcms/plugin-mcp'
 import { seoPlugin } from '@payloadcms/plugin-seo'
 import type { GenerateTitle, GenerateURL } from '@payloadcms/plugin-seo/types'
 import { r2Storage } from '@payloadcms/storage-r2'
@@ -103,8 +103,12 @@ export default buildConfig({
     }),
   ],
   plugins: [
-    // Serves MCP at POST /api/mcp. Callers authenticate with a user API key; without one
-    // they get no tools, since every tool requires a logged-in user by default.
+    // Serves MCP at POST /api/mcp (packages/payload-plugin-mcp, our fork of @payloadcms/plugin-mcp).
+    // Callers authenticate with a user API key (Claude Code, scripts), the admin's session (the
+    // assistant below) or an OAuth access token (`oauth`: ChatGPT and claude.ai, which only connect
+    // over OAuth; users approve them on a consent page and revoke them under "AI connections").
+    // Without credentials it answers 401 with the OAuth challenge. The discovery documents are also
+    // served at the site root by src/app/[.]well-known.$.ts. See README, "MCP".
     // `withMarkdownRichText` (every collection with rich text: Pages and Sections through their
     // blocks, Media's caption): findDocuments shows rich text as Markdown, and
     // setRichTextFromMarkdown writes it, for the assistant and external MCP clients alike.
@@ -142,6 +146,9 @@ export default buildConfig({
       mcp: {
         serverOptions: { serverInfo: { name: 'Cargo Template' } },
       },
+      // The consent page and `resource_name` use the server name above. Every user may connect a
+      // client (there are no roles); set `canConnect` to restrict it.
+      oauth: true,
     }),
     // Admin assistant (packages/payload-plugin-assistant): /admin/assistant chats with the content
     // through the MCP tools above, as the signed-in user, on OpenRouter (`OPENROUTER_API_KEY`,

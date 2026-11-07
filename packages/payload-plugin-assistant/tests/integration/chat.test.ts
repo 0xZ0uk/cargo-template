@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { sqliteAdapter } from "@payloadcms/db-sqlite";
-import { mcpPlugin } from "@payloadcms/plugin-mcp";
+import { mcpPlugin } from "@cargo/payload-plugin-mcp";
 import { fakeText, type FakeResponseStep, type FakeTextOptions } from "@tanstack/ai/testing";
 import { buildConfig, getPayload, handleEndpoints } from "payload";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";

@@ -14,6 +14,7 @@ import { Route as PayloadRouteImport } from './app/_payload'
 import { Route as LlmsDottxtRouteImport } from './app/llms[.]txt'
 import { Route as RobotsDottxtRouteImport } from './app/robots[.]txt'
 import { Route as SitemapDotxmlRouteImport } from './app/sitemap[.]xml'
+import { Route as DotwellKnownSplatRouteImport } from './app/[.]well-known.$'
 import { Route as FrontendIndexRouteImport } from './app/_frontend/index'
 import { Route as FrontendSplatRouteImport } from './app/_frontend/$'
 import { Route as FrontendSlugRouteImport } from './app/_frontend/$slug'
@@ -43,6 +44,11 @@ const RobotsDottxtRoute = RobotsDottxtRouteImport.update({
 const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
   id: '/sitemap.xml',
   path: '/sitemap.xml',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DotwellKnownSplatRoute = DotwellKnownSplatRouteImport.update({
+  id: '/.well-known/$',
+  path: '/.well-known/$',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FrontendIndexRoute = FrontendIndexRouteImport.update({
@@ -86,6 +92,7 @@ export interface FileRoutesByFullPath {
   '/llms.txt': typeof LlmsDottxtRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/.well-known/$': typeof DotwellKnownSplatRoute
   '/$': typeof FrontendSplatRoute
   '/$slug': typeof FrontendSlugRoute
   '/dev/blocks': typeof FrontendDevBlocksRoute
@@ -98,6 +105,7 @@ export interface FileRoutesByTo {
   '/llms.txt': typeof LlmsDottxtRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/.well-known/$': typeof DotwellKnownSplatRoute
   '/$': typeof FrontendSplatRoute
   '/$slug': typeof FrontendSlugRoute
   '/dev/blocks': typeof FrontendDevBlocksRoute
@@ -112,6 +120,7 @@ export interface FileRoutesById {
   '/llms.txt': typeof LlmsDottxtRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/.well-known/$': typeof DotwellKnownSplatRoute
   '/_frontend/$': typeof FrontendSplatRoute
   '/_frontend/$slug': typeof FrontendSlugRoute
   '/_frontend/': typeof FrontendIndexRoute
@@ -127,6 +136,7 @@ export interface FileRouteTypes {
     | '/llms.txt'
     | '/robots.txt'
     | '/sitemap.xml'
+    | '/.well-known/$'
     | '/$'
     | '/$slug'
     | '/dev/blocks'
@@ -139,6 +149,7 @@ export interface FileRouteTypes {
     | '/llms.txt'
     | '/robots.txt'
     | '/sitemap.xml'
+    | '/.well-known/$'
     | '/$'
     | '/$slug'
     | '/dev/blocks'
@@ -152,6 +163,7 @@ export interface FileRouteTypes {
     | '/llms.txt'
     | '/robots.txt'
     | '/sitemap.xml'
+    | '/.well-known/$'
     | '/_frontend/$'
     | '/_frontend/$slug'
     | '/_frontend/'
@@ -167,6 +179,7 @@ export interface RootRouteChildren {
   LlmsDottxtRoute: typeof LlmsDottxtRoute
   RobotsDottxtRoute: typeof RobotsDottxtRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
+  DotwellKnownSplatRoute: typeof DotwellKnownSplatRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -204,6 +217,13 @@ declare module '@tanstack/react-router' {
       path: '/sitemap.xml'
       fullPath: '/sitemap.xml'
       preLoaderRoute: typeof SitemapDotxmlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/.well-known/$': {
+      id: '/.well-known/$'
+      path: '/.well-known/$'
+      fullPath: '/.well-known/$'
+      preLoaderRoute: typeof DotwellKnownSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_frontend/': {
@@ -297,6 +317,7 @@ const rootRouteChildren: RootRouteChildren = {
   LlmsDottxtRoute: LlmsDottxtRoute,
   RobotsDottxtRoute: RobotsDottxtRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
+  DotwellKnownSplatRoute: DotwellKnownSplatRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -191,9 +191,6 @@ catalogs:
     '@payloadcms/live-preview-react':
       specifier: 4.0.0-beta.6
       version: 4.0.0-beta.6
-    '@payloadcms/plugin-mcp':
-      specifier: 4.0.0-beta.6
-      version: 4.0.0-beta.6
     '@payloadcms/plugin-seo':
       specifier: 4.0.0-beta.6
       version: 4.0.0-beta.6
@@ -277,6 +274,9 @@ importers:
       '@cargo/payload-plugin-assistant':
         specifier: workspace:*
         version: link:../../packages/payload-plugin-assistant
+      '@cargo/payload-plugin-mcp':
+        specifier: workspace:*
+        version: link:../../packages/payload-plugin-mcp
       '@cargo/payload-plugin-socials':
         specifier: workspace:*
         version: link:../../packages/payload-plugin-socials
@@ -307,9 +307,6 @@ importers:
       '@payloadcms/live-preview-react':
         specifier: 'catalog:'
         version: 4.0.0-beta.6(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
-      '@payloadcms/plugin-mcp':
-        specifier: 'catalog:'
-        version: 4.0.0-beta.6(payload@4.0.0-beta.6(patch_hash=a9abd1297b478daa72f3d031352b2d5dcaaba1e9a47f001defbfd3ea54267c48)(graphql@16.14.2)(supports-color@7.2.0)(typescript@6.0.3))
       '@payloadcms/plugin-seo':
         specifier: 'catalog:'
         version: 4.0.0-beta.6(@types/react@19.3.0)(monaco-editor@0.57.0)(payload@4.0.0-beta.6(patch_hash=a9abd1297b478daa72f3d031352b2d5dcaaba1e9a47f001defbfd3ea54267c48)(graphql@16.14.2)(supports-color@7.2.0)(typescript@6.0.3))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(supports-color@7.2.0)(typescript@6.0.3)
@@ -745,6 +742,9 @@ importers:
         specifier: 1.0.2
         version: 1.0.2(@tanstack/ai@1.2.0(zod@4.6.7))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(zod@4.6.7)
     devDependencies:
+      '@cargo/payload-plugin-mcp':
+        specifier: workspace:*
+        version: link:../payload-plugin-mcp
       '@cloudflare/vitest-plugin':
         specifier: 1.4.11
         version: 1.4.11(@cloudflare/workers-types@5.20261023.1)(@types/node@24.12.3)(vitest@4.1.12)
@@ -757,9 +757,6 @@ importers:
       '@payloadcms/db-sqlite':
         specifier: 'catalog:'
         version: 4.0.0-beta.6(@cloudflare/workers-types@5.20261023.1)(payload@4.0.0-beta.6(patch_hash=a9abd1297b478daa72f3d031352b2d5dcaaba1e9a47f001defbfd3ea54267c48)(graphql@16.14.2)(supports-color@7.2.0)(typescript@6.0.3))(supports-color@7.2.0)
-      '@payloadcms/plugin-mcp':
-        specifier: 'catalog:'
-        version: 4.0.0-beta.6(payload@4.0.0-beta.6(patch_hash=a9abd1297b478daa72f3d031352b2d5dcaaba1e9a47f001defbfd3ea54267c48)(graphql@16.14.2)(supports-color@7.2.0)(typescript@6.0.3))
       '@payloadcms/richtext-lexical':
         specifier: 'catalog:'
         version: 4.0.0-beta.6(@faceless-ui/modal@3.0.2(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@faceless-ui/scroll-info@2.0.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@types/react@19.3.0)(monaco-editor@0.57.0)(payload@4.0.0-beta.6(patch_hash=a9abd1297b478daa72f3d031352b2d5dcaaba1e9a47f001defbfd3ea54267c48)(graphql@16.14.2)(supports-color@7.2.0)(typescript@6.0.3))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(supports-color@7.2.0)(typescript@6.0.3)(yjs@13.6.33)
@@ -790,6 +787,37 @@ importers:
       react-dom:
         specifier: 'catalog:'
         version: 19.3.1(react@19.3.1)
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.32)(supports-color@7.2.0)(tsx@4.23.15)(typescript@6.0.3)
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.12(@types/node@24.12.3)(@vitest/coverage-v8@4.1.12)(happy-dom@21.0.4)(jsdom@29.1.1)(vite@8.3.0(@types/node@24.12.3)(esbuild@0.27.7)(jiti@2.7.0)(tsx@4.23.15))
+
+  packages/payload-plugin-mcp:
+    dependencies:
+      '@modelcontextprotocol/server':
+        specifier: 2.4.0
+        version: 2.4.0
+    devDependencies:
+      '@payloadcms/db-sqlite':
+        specifier: 'catalog:'
+        version: 4.0.0-beta.6(@cloudflare/workers-types@5.20261023.1)(payload@4.0.0-beta.6(patch_hash=a9abd1297b478daa72f3d031352b2d5dcaaba1e9a47f001defbfd3ea54267c48)(graphql@16.14.2)(supports-color@7.2.0)(typescript@6.0.3))(supports-color@7.2.0)
+      '@types/node':
+        specifier: 24.12.3
+        version: 24.12.3
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.3.0
+      payload:
+        specifier: 'catalog:'
+        version: 4.0.0-beta.6(patch_hash=a9abd1297b478daa72f3d031352b2d5dcaaba1e9a47f001defbfd3ea54267c48)(graphql@16.14.2)(supports-color@7.2.0)(typescript@6.0.3)
+      react:
+        specifier: 'catalog:'
+        version: 19.3.1
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(jiti@2.7.0)(postcss@8.5.32)(supports-color@7.2.0)(tsx@4.23.15)(typescript@6.0.3)
@@ -2965,12 +2993,6 @@ packages:
       payload: 4.0.0-beta.6
       react: ^19.0.1 || ^19.1.2 || ^19.2.1
       react-dom: ^19.0.1 || ^19.1.2 || ^19.2.1
-
-  '@payloadcms/plugin-mcp@4.0.0-beta.6':
-    resolution: {integrity: sha512-4ErC44zzxqjn0xXtHkAmw5Blqlj7jzcY4r08v6SGS6mJpejTVMSf4Cj3QpdEW7yKaPxXUORlzpGBqfmAW/1LNA==}
-    hasBin: true
-    peerDependencies:
-      payload: 4.0.0-beta.6
 
   '@payloadcms/plugin-seo@4.0.0-beta.6':
     resolution: {integrity: sha512-Woks0OgTt+qCEzJYrPUOQEUParoB/JqOmWPovb8VFMuFxHzMFSAzCOJqsOY3NgKHN21VfW6KPtq0oeOLD9jhcg==}
@@ -9401,12 +9423,6 @@ snapshots:
       - monaco-editor
       - supports-color
       - typescript
-
-  '@payloadcms/plugin-mcp@4.0.0-beta.6(payload@4.0.0-beta.6(patch_hash=a9abd1297b478daa72f3d031352b2d5dcaaba1e9a47f001defbfd3ea54267c48)(graphql@16.14.2)(supports-color@7.2.0)(typescript@6.0.3))':
-    dependencies:
-      '@modelcontextprotocol/server': 2.4.0
-      payload: 4.0.0-beta.6(patch_hash=a9abd1297b478daa72f3d031352b2d5dcaaba1e9a47f001defbfd3ea54267c48)(graphql@16.14.2)(supports-color@7.2.0)(typescript@6.0.3)
-      tsx: 4.23.15
 
   '@payloadcms/plugin-seo@4.0.0-beta.6(@types/react@19.3.0)(monaco-editor@0.57.0)(payload@4.0.0-beta.6(patch_hash=a9abd1297b478daa72f3d031352b2d5dcaaba1e9a47f001defbfd3ea54267c48)(graphql@16.14.2)(supports-color@7.2.0)(typescript@6.0.3))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(supports-color@7.2.0)(typescript@6.0.3)':
     dependencies:

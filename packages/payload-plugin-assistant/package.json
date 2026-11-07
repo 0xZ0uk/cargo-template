@@ -72,22 +72,22 @@
     "@tanstack/ai-react": "1.0.2"
   },
   "peerDependencies": {
-    "@payloadcms/plugin-mcp": ">=4.0.0-beta.6 <5.0.0",
+    "@cargo/payload-plugin-mcp": "*",
     "@payloadcms/ui": ">=4.0.0-beta.6 <5.0.0",
     "payload": ">=4.0.0-beta.6 <5.0.0",
     "react": "^19.0.0"
   },
   "peerDependenciesMeta": {
-    "@payloadcms/plugin-mcp": {
+    "@cargo/payload-plugin-mcp": {
       "optional": true
     }
   },
   "devDependencies": {
+    "@cargo/payload-plugin-mcp": "workspace:*",
     "@cloudflare/vitest-plugin": "1.4.11",
     "@cloudflare/workers-types": "5.20261023.1",
     "@modelcontextprotocol/server": "2.4.0",
     "@payloadcms/db-sqlite": "catalog:",
-    "@payloadcms/plugin-mcp": "catalog:",
     "@payloadcms/richtext-lexical": "catalog:",
     "@payloadcms/ui": "catalog:",
     "@testing-library/react": "16.3.3",
