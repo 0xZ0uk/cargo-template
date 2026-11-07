@@ -15,7 +15,7 @@ import { docExclusion } from '../helpers/excludeDocs.js'
 import { fetchAllDocs } from '../helpers/fetchAllDocs.js'
 import type { SeoConfig } from '../types.js'
 import { isSeoAdminRequest, isSeoPanelUser } from '../helpers/isAdmin.js'
-import { safeCacheLocale } from '../helpers/safeCacheLocale.js'
+import { keyFor } from '../cacheKey.js'
 
 /**
  * Canonical "intent" key for a keyword: accent-stripped, lowercased, punctuation
@@ -64,9 +64,7 @@ export function createCannibalizationHandler(
       // so it is reserved to SEO admins — the same gate as /audit?nocache=1. A panel
       // user without the role silently gets the cached result instead of a 403.
       const noCache = url.searchParams.get('nocache') === '1' && isSeoAdminRequest(req)
-      // Locale-scoped: content differs per locale, so cache must not collide across locales.
-      const reqLocale = safeCacheLocale(req)
-      const CACHE_KEY = reqLocale ? `cannibalization:${reqLocale}` : 'cannibalization'
+      const CACHE_KEY = await keyFor('cannibalization', req)
       const cached = noCache ? null : seoCache.get<any>(CACHE_KEY)
       if (cached) {
         return Response.json({ ...cached, cached: true })

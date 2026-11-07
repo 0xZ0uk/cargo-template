@@ -9,6 +9,7 @@
 
 import type { PayloadHandler } from 'payload'
 import { defaultSeoSharedCache, type SeoSharedCache } from '../cache.js'
+import { keyFor } from '../cacheKey.js'
 import { isSeoAdminRequest, isSeoPanelUser } from '../helpers/isAdmin.js'
 
 interface RedirectChainResult {
@@ -32,7 +33,7 @@ export function createRedirectChainsHandler(
       // so it is reserved to SEO admins — the same gate as /audit?nocache=1. A panel
       // user without the role silently gets the cached result instead of a 403.
       const noCache = url.searchParams.get('nocache') === '1' && isSeoAdminRequest(req)
-      const CACHE_KEY = cache.persistent ? `redirect-chains:${redirectsCollection}` : 'redirect-chains'
+      const CACHE_KEY = await keyFor('redirect-chains', req, { cache, config: { redirectsCollection } })
       const lookup = await cache.lookup<unknown>('redirect-chains', CACHE_KEY)
       const cached = noCache ? null : lookup.data
       if (cached) {

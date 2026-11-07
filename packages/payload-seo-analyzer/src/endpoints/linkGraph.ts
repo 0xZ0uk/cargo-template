@@ -15,7 +15,7 @@ import { docExclusion } from '../helpers/excludeDocs.js'
 import { fetchAllDocs } from '../helpers/fetchAllDocs.js'
 import type { SeoConfig } from '../types.js'
 import { isSeoAdminRequest, isSeoPanelUser } from '../helpers/isAdmin.js'
-import { safeCacheLocale } from '../helpers/safeCacheLocale.js'
+import { keyFor } from '../cacheKey.js'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -306,9 +306,7 @@ export function createLinkGraphHandler(
       // user without the role silently gets the cached result instead of a 403.
       const noCache = url.searchParams.get('nocache') === '1' && isSeoAdminRequest(req)
 
-      // Locale-scoped: content differs per locale, so cache must not collide across locales.
-      const reqLocale = safeCacheLocale(req)
-      const CACHE_KEY = reqLocale ? `link-graph:${reqLocale}` : 'link-graph'
+      const CACHE_KEY = await keyFor('link-graph', req)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const cached = noCache ? null : seoCache.get<any>(CACHE_KEY)
       if (cached) {

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { SeoCache, SeoSharedCache, type SeoCacheStore } from '../cache.js'
+import { keyFor } from '../cacheKey.js'
 import { createExternalLinksHandler, extractDocExternalLinks } from '../endpoints/externalLinks.js'
 import type { HostResolver } from '../helpers/ssrfGuard.js'
 
@@ -150,12 +151,17 @@ describe('external-links endpoint', () => {
     const handler = createExternalLinksHandler(['pages'], [], undefined, cache, {
       checker: { fetchImpl: f.fn, resolver: PUBLIC, lookupCost: 2, concurrency: 1 },
     })
+    // The key a persistent cache stores the scan under: scoped by the config it ran with.
+    const key = await keyFor('external-links', request(payload), {
+      cache,
+      config: { collections: ['pages'], globals: [], seoConfig: null },
+    })
     expect((await (await handler(request(payload))).json()).partial).toBe(true)
-    expect((await cache.get('external-links', 'external-links')) ?? null).toBeNull()
+    expect((await cache.get('external-links', key)) ?? null).toBeNull()
 
     const second = await (await handler(request(payload))).json()
     expect(second.partial).toBe(false)
-    expect(await cache.get('external-links', 'external-links')).not.toBeNull()
+    expect(await cache.get('external-links', key)).not.toBeNull()
 
     const calls = f.calls.length
     const third = await (await handler(request(payload))).json()

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { createSuggestLinksHandler, SUGGEST_LINKS_CACHE_BASE } from '../endpoints/suggestLinks.js'
 import { seoCache } from '../cache.js'
+import { keyFor } from '../cacheKey.js'
 
 const CONTENT =
   "We talk about website creation and organic search in this article, long enough to trigger the analysis."
@@ -89,8 +90,8 @@ describe('/suggest-links', () => {
     await createSuggestLinksHandler(['pages'])(makeReq(find, 'de'))
     await createSuggestLinksHandler(['pages'])(makeReq(find, 'en'))
     expect(find).toHaveBeenCalledTimes(2)
-    expect(seoCache.stats().keys).toContain(`${SUGGEST_LINKS_CACHE_BASE}:de`)
-    expect(seoCache.stats().keys).toContain(`${SUGGEST_LINKS_CACHE_BASE}:en`)
+    expect(seoCache.stats().keys).toContain(await keyFor(SUGGEST_LINKS_CACHE_BASE, makeReq(find, 'de')))
+    expect(seoCache.stats().keys).toContain(await keyFor(SUGGEST_LINKS_CACHE_BASE, makeReq(find, 'en')))
   })
 
   // The locale-scoped keys must be reachable by the save-time invalidation,
