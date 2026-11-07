@@ -46,7 +46,7 @@ export interface ApprovalBatch {
   rejectAll: () => void;
   /**
    * Why "Approve all" can't be used now, or `undefined`: `loading` while a pending change's diff
-   * hasn't arrived (approving it would be blind, and send no `updatedAt` for the stale check);
+   * hasn't arrived (approving it would be blind, and send no review token for the stale check);
    * `review` while an unanswered change needs its own confirmation (its document changed, or its
    * diff couldn't be loaded). Reject all is never blocked.
    */
@@ -73,11 +73,9 @@ export interface ApprovalBatchOptions {
 const needsOwnReview = (proposal: ApprovalProposal | null | undefined, staleReview: boolean) =>
   proposal === null || Boolean(proposal?.changedSinceProposal) || staleReview;
 
-/** The answer for a card: an approval carries the `updatedAt` its diff was built from. */
-const decisionFor = (approved: boolean, proposal: ApprovalProposal | null | undefined): ApprovalDecision => {
-  const updatedAt = proposal?.items.length === 1 ? proposal.items[0]?.document?.updatedAt : undefined;
-  return approved ? { approved: true, ...(updatedAt ? { seenUpdatedAt: updatedAt } : {}) } : { approved: false };
-};
+/** The answer for a card: an approval echoes the proposal's review token (the server's stale check). */
+const decisionFor = (approved: boolean, proposal: ApprovalProposal | null | undefined): ApprovalDecision =>
+  approved ? { approved: true, ...(proposal?.reviewToken ? { reviewToken: proposal.reviewToken } : {}) } : { approved: false };
 
 /** The outcome of a sent approval, from its tool result. */
 export function outcomeOf(

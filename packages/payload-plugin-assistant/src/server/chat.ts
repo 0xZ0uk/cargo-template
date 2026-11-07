@@ -7,6 +7,7 @@ import type { McpDispatch } from "../tools/payloadToolSource";
 import type { NormalizedAssistantOptions } from "../utils/normalizeOptions";
 import { usesTestModel } from "../utils/testModel";
 import { buildProposals, findStaleApprovals } from "./approvals";
+import { isRejection, reviewOf } from "../approvals/decision";
 import { buildSystemPrompt, siteUrls } from "./instructions";
 import { createTurnRunner, type CreateAdapter } from "./turn";
 import { isId, validateChatBody } from "./validate";
@@ -86,11 +87,6 @@ function withHeaders(response: Response, headers: Record<string, string>): Respo
   return copy;
 }
 
-/** A resume decision that applies nothing: cancelled, or an approval answered `approved: false` (`validate.ts`). */
-const isRejection = (item: { status: string; payload?: unknown }): boolean =>
-  item.status === "cancelled" ||
-  (typeof item.payload === "object" && item.payload !== null && (item.payload as { approved?: unknown }).approved === false);
-
 /** `POST /api/assistant/chat`: a new turn, or a resume with approval decisions. Answers the run's SSE. */
 export async function handleChat(req: PayloadRequest, options: NormalizedAssistantOptions, deps: ChatDeps = {}): Promise<Response> {
   let raw: unknown;
@@ -101,7 +97,7 @@ export async function handleChat(req: PayloadRequest, options: NormalizedAssista
   }
   const parsed = validateChatBody(raw, req.headers.get("X-Run-Id"));
   if (!parsed.ok) return jsonError(400, "invalid_body", parsed.error);
-  const { threadId, messages, resume, seen, context, references } = parsed.value;
+  const { threadId, messages, resume, answers, context, references } = parsed.value;
   // Every read and title of this request, and the redaction policy the turn gets (#133).
   const reader = readerFor(req, options);
 
@@ -127,7 +123,7 @@ export async function handleChat(req: PayloadRequest, options: NormalizedAssista
   // when the cap is crossed finishes, so one run may overshoot. A resume that only rejects (or
   // cancels) still goes through: it applies nothing and lets the paused run end, at the price of
   // the model's closing answer (one model call: `maxSteps` 1), so a rejection can overshoot slightly.
-  const onlyRejects = Boolean(resume?.length) && resume!.every(isRejection);
+  const onlyRejects = answers.length > 0 && answers.every(({ answer }) => isRejection(answer));
   let overBudget = false;
   if (options.budget) {
     const usage = await backend.usage(userOf(req), utcDay());
@@ -141,13 +137,13 @@ export async function handleChat(req: PayloadRequest, options: NormalizedAssista
       });
     }
   }
-  // Approvals sent with the `updatedAt` their card showed: refuse the whole batch (TanStack
-  // resumes a batch all or nothing) when one of those documents changed since, so the user
-  // reviews the new diff first. Ownership first: another user's conversation is a 404.
-  if (seen.length) {
+  // Approvals sent with the review token of their card: refuse the whole batch (TanStack resumes
+  // a batch all or nothing) when what one of them targets changed since, so the user reviews the
+  // new diff first. Ownership first: another user's conversation is a 404.
+  if (answers.some(({ answer }) => reviewOf(answer))) {
     const transcript = await backend.transcript(userOf(req), threadId);
     if (!transcript) return jsonError(404, "not_found", "Not found");
-    const stale = await findStaleApprovals(reader, transcript.pendingInterrupts, seen);
+    const stale = await findStaleApprovals(reader, transcript.pendingInterrupts, answers);
     if (stale.length) {
       return jsonError(409, "stale", "A document changed after you reviewed the change. Review it again.", { interruptIds: stale });
     }

@@ -2,18 +2,12 @@
 
 import { Banner, Button, Collapsible } from "@payloadcms/ui";
 import React from "react";
+import { encodeDecision, type ApprovalDecision } from "../approvals/decision";
 import type { ApprovalProposal } from "../approvals/types";
 import { describeCall, type ToolCall } from "../toolCalls";
 import { formatToolResult } from "./tools";
 
-/** The user's answer to one approval, before the batch is sent. */
-export interface ApprovalDecision {
-  approved: boolean;
-  /** Rejections only: sent to the model with the rejection. */
-  reason?: string;
-  /** Approvals only: the document's `updatedAt` the diff showed (the server's stale check). */
-  seenUpdatedAt?: string;
-}
+export type { ApprovalDecision };
 
 /**
  * Where a card is: waiting for an answer, answered (the batch waits for the others), being sent,
@@ -120,9 +114,9 @@ function toolCallIdOf(i: { toolCallId?: string; metadata?: { "tanstack:interrupt
 
 /**
  * Answers a bound approval interrupt. A `generic` one (the browser has no tool definitions) is
- * resolved with the README's resume payload: `{ approved: true, seenUpdatedAt? }` or
- * `{ approved: false, reason? }`; the server turns it into what the tools take. A `tool-approval`
- * one (a client that knows the tool) takes the boolean only.
+ * resolved with the decision's wire payload ({@link encodeDecision}, `approvals/decision.ts`);
+ * the server decodes it and builds what the tools take. A `tool-approval` one (a client that
+ * knows the tool) takes the boolean only.
  */
 export function answerInterrupt(interrupt: unknown, decision: ApprovalDecision): void {
   const i = interrupt as { kind?: string; resolveInterrupt?: (answer: unknown) => void };
@@ -131,10 +125,7 @@ export function answerInterrupt(interrupt: unknown, decision: ApprovalDecision):
     i.resolveInterrupt(decision.approved);
     return;
   }
-  const payload = decision.approved
-    ? { approved: true, ...(decision.seenUpdatedAt ? { seenUpdatedAt: decision.seenUpdatedAt } : {}) }
-    : { approved: false, ...(decision.reason ? { reason: decision.reason } : {}) };
-  i.resolveInterrupt.call(i, payload);
+  i.resolveInterrupt.call(i, encodeDecision(decision));
 }
 
 /** What the call would do, as "The assistant wants to … <target>". */

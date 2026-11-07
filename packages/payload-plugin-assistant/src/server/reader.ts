@@ -53,10 +53,10 @@ export interface UserReader {
   /** One document, or `null` when it doesn't exist or the user can't read it. `titleOnly` reads just what {@link title} needs. */
   findByID(slug: string, id: string, options?: ReadOptions & { titleOnly?: boolean }): Promise<Doc | null>;
   /**
-   * The documents a `where` matches (at most `limit`) and how many match in all, or `null` when
-   * they can't be read. Throws {@link HiddenFieldError} when the `where` names a hidden field.
+   * The documents a `where` matches (at most `limit`, in `sort` order) and how many match in all,
+   * or `null` when they can't be read. Throws {@link HiddenFieldError} when the `where` names a hidden field.
    */
-  find(slug: string, where: Where, options?: ReadOptions & { limit?: number }): Promise<{ docs: Doc[]; total: number } | null>;
+  find(slug: string, where: Where, options?: ReadOptions & { limit?: number; sort?: string }): Promise<{ docs: Doc[]; total: number } | null>;
   /** A global, or `null` when the user can't read it. `existsOnly` reads nothing but `updatedAt`. */
   findGlobal(slug: string, options?: ReadOptions & { existsOnly?: boolean }): Promise<Doc | null>;
   /** One version (its document under `version`, the parent's id), or `null`. */
@@ -141,6 +141,7 @@ export function readerFor(req: PayloadRequest, options: Pick<NormalizedAssistant
           where,
           depth: o.depth ?? 0,
           ...(o.limit !== undefined ? { limit: o.limit } : {}),
+          ...(o.sort ? { sort: o.sort } : {}),
           ...asUser,
           ...(hasDrafts(collection) ? { draft: true } : {}),
           ...localeOf(o),

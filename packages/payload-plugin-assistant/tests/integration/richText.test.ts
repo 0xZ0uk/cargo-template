@@ -619,7 +619,7 @@ describe("the approval card", () => {
     const resumed = await readEvents(
       await call("POST", "/assistant/chat", {
         threadId,
-        resume: [{ interruptId, status: "resolved", payload: { approved: true, seenUpdatedAt: proposal!.items[0]!.document!.updatedAt } }],
+        resume: [{ interruptId, status: "resolved", payload: { approved: true, reviewToken: proposal!.reviewToken } }],
       })
     );
     expect(ofType(resumed, "RUN_ERROR")).toHaveLength(0);

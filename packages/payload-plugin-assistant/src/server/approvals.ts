@@ -4,6 +4,7 @@ import type { ApprovalAction, ApprovalProposal, ProposalDocument, ProposalItem }
 import { lexicalToText } from "../approvals/lexical";
 import { blocksBySlugOf, collectionOf as richTextCollectionOf, markdownLosses, resolveRichText, RichTextPathError, SET_RICH_TEXT_TOOL_NAME, toMarkdown, unsupportedMarkdown } from "../richText/fields";
 import { describeCall, type ToolCall } from "../toolCalls";
+import { reviewOf, type ApprovalAnswer } from "../approvals/decision";
 import { HiddenFieldError, type UserReader } from "./reader";
 
 /**
@@ -85,11 +86,11 @@ function documentOf(reader: UserReader, slug: string, doc: Doc): ProposalDocumen
 const localeOf = (call: ToolCall) => (call.locale ? { locale: call.locale } : {});
 
 /** The documents a write by `where` matches (the first {@link MAX_ITEMS}), or `null` when they can't be read. */
-async function findWhere(reader: UserReader, call: ToolCall) {
+async function findWhere(reader: UserReader, call: ToolCall, options: { limit?: number; sort?: string } = {}) {
   const { target, args } = call;
   if (!target || !isRecord(args.where)) return null;
   try {
-    return await reader.find(target.slug, args.where as Where, { limit: MAX_ITEMS, ...localeOf(call) });
+    return await reader.find(target.slug, args.where as Where, { limit: MAX_ITEMS, ...options, ...localeOf(call) });
   } catch (error) {
     if (error instanceof HiddenFieldError) return null;
     throw error;
@@ -128,6 +129,44 @@ const changedAfter = (doc: Doc | null | undefined, requestedAt: number) => {
   const updated = typeof doc?.updatedAt === "string" ? Date.parse(doc.updatedAt) : NaN;
   return Number.isFinite(updated) && Number.isFinite(requestedAt) && updated > requestedAt;
 };
+
+/*
+ * Review tokens (#138): what a proposal's diff was built from, so an approval of an old diff is
+ * refused. Opaque to the client, which echoes it back (`approvals/decision.ts`). Recomputed at
+ * resume by {@link reviewTokenOf} with the same functions, never parsed.
+ *
+ * - One document (by id, a restore's parent, a duplicate's source, a global): its `updatedAt`.
+ * - A write by `where`: how many documents match and the newest `updatedAt` among them. Any edit
+ *   of a match makes it the newest; a new match (created, or edited into the set) is the newest
+ *   too; a match deleted or edited out of the set lowers the count. So the pair changes whenever
+ *   the set of documents the write would touch, or one of them, does — with one read of one
+ *   document, however many match.
+ */
+const tokenOf = (token: string | undefined) => (token ? { reviewToken: token } : {});
+
+const docToken = (doc: Doc | null | undefined) => (typeof doc?.updatedAt === "string" ? `doc:${doc.updatedAt}` : undefined);
+
+/** How many documents a write by `where` matches and the newest of them, or `null` when they can't be read. */
+async function whereStamp(reader: UserReader, call: ToolCall): Promise<{ total: number; newest: Doc | undefined } | null> {
+  const found = await findWhere(reader, call, { limit: 1, sort: "-updatedAt" });
+  return found ? { total: found.total, newest: found.docs[0] } : null;
+}
+
+const whereToken = (stamp: { total: number; newest: Doc | undefined }) =>
+  `where:${stamp.total}:${typeof stamp.newest?.updatedAt === "string" ? stamp.newest.updatedAt : ""}`;
+
+const isWhereWrite = (call: ToolCall) =>
+  Boolean(call.target) && call.id === undefined && (call.operation === "update" || call.operation === "delete") && call.args.where !== undefined;
+
+/** The review token of a pending write, read now as the user; `undefined` when nothing can go stale or nothing can be read. */
+async function reviewTokenOf(reader: UserReader, call: ToolCall): Promise<string | undefined> {
+  if (reader.hiddenField(call)) return undefined;
+  const target = await currentTarget(reader, call);
+  if (target) return docToken(target.doc);
+  if (!isWhereWrite(call)) return undefined;
+  const stamp = await whereStamp(reader, call);
+  return stamp ? whereToken(stamp) : undefined;
+}
 
 /** Build the proposal of one pending approval. Never throws: problems become a `notice`. */
 export async function buildProposal(reader: UserReader, record: PendingInterruptLike): Promise<ApprovalProposal> {
@@ -211,6 +250,7 @@ export async function buildProposal(reader: UserReader, record: PendingInterrupt
             ...base,
             items: [{ ...(doc ? { document: asDocument(doc) } : {}), ...diff("replace", doc ?? undefined, target.version) }],
             ...(changedAfter(doc, record.requestedAt) ? { changedSinceProposal: true } : {}),
+            ...tokenOf(docToken(doc)),
           };
         }
         if (!doc) {
@@ -221,20 +261,30 @@ export async function buildProposal(reader: UserReader, record: PendingInterrupt
           };
         }
         if (action === "duplicate") {
-          return { ...base, items: [{ document: asDocument(doc), ...diff("create", undefined, { ...doc, ...data }) }] };
+          return { ...base, items: [{ document: asDocument(doc), ...diff("create", undefined, { ...doc, ...data }) }], ...tokenOf(docToken(doc)) };
         }
         return {
           ...base,
           items: [{ document: asDocument(doc), ...(action === "delete" ? diff("delete", doc, undefined) : diff("update", doc, data)) }],
           ...(changedAfter(doc, record.requestedAt) ? { changedSinceProposal: true } : {}),
+          ...tokenOf(docToken(doc)),
         };
       }
       // By `where` (update or delete many).
-      if (slug && (action === "update" || action === "delete") && input.where !== undefined) {
-        const found = await findWhere(reader, call);
+      if (isWhereWrite(call)) {
+        // The stamp is read before the documents: a change in between makes the token older
+        // than the diff (a needless 409), never newer (an approval of a diff that is out of date).
+        const stamp = await whereStamp(reader, call);
+        const found = stamp && (await findWhere(reader, call));
         if (!found) return { ...base, notice: "The matching documents could not be read.", items: action === "update" ? [diff("create", undefined, data)] : [] };
         const items = found.docs.map((doc) => ({ document: asDocument(doc), ...(action === "delete" ? diff("delete", doc, undefined) : diff("update", doc, data)) }));
-        return { ...base, items, matchedDocs: found.total };
+        return {
+          ...base,
+          items,
+          matchedDocs: found.total,
+          ...(changedAfter(stamp.newest, record.requestedAt) ? { changedSinceProposal: true } : {}),
+          reviewToken: whereToken(stamp),
+        };
       }
       return { ...base, items: [diff("create", undefined, action === "update" ? data : input)] };
     }
@@ -307,6 +357,7 @@ async function richTextProposal(
       ...(lossNotice ? { notice: lossNotice } : {}),
       items: [{ document: asDocument(doc), changes: change }],
       ...(changedAfter(doc, record.requestedAt) ? { changedSinceProposal: true } : {}),
+      ...tokenOf(docToken(doc)),
     };
   } catch (error) {
     return fallback(error instanceof RichTextPathError ? error.message : "The rich text field could not be read.");
@@ -319,22 +370,31 @@ export function buildProposals(reader: UserReader, pending: ReadonlyArray<Pendin
 }
 
 /**
- * The approvals whose document changed after the card showed it: `seenUpdatedAt` (what the diff
- * was built from) no longer matches the document's `updatedAt`, read now as the user. A document
- * that can't be read isn't "stale": applying will fail on its own and the card shows why.
+ * The approvals whose targets changed after the card showed them: the answer's review token
+ * ({@link reviewTokenOf}) no longer matches, read now as the user. Targets that can't be read
+ * aren't "stale": applying will fail on its own and the card shows why.
+ *
+ * Legacy answers (`seenUpdatedAt`, before #138) are checked as they were: the single document's
+ * `updatedAt`, nothing for a write by `where`.
  */
 export async function findStaleApprovals(
   reader: UserReader,
   pending: ReadonlyArray<PendingInterruptLike>,
-  seen: ReadonlyArray<{ interruptId: string; seenUpdatedAt: string }>
+  answers: ReadonlyArray<{ interruptId: string; answer: ApprovalAnswer }>
 ): Promise<string[]> {
   const stale: string[] = [];
-  for (const { interruptId, seenUpdatedAt } of seen) {
-    const record = pending.find((p) => p.interruptId === interruptId);
-    if (!record) continue;
-    const target = await currentTarget(reader, interruptCall(record).call);
-    const current = target?.doc?.updatedAt;
-    if (typeof current === "string" && current !== seenUpdatedAt) stale.push(interruptId);
+  for (const { interruptId, answer } of answers) {
+    const review = reviewOf(answer);
+    const record = review && pending.find((p) => p.interruptId === interruptId);
+    if (!review || !record) continue;
+    const { call } = interruptCall(record);
+    if ("reviewToken" in review) {
+      const current = await reviewTokenOf(reader, call);
+      if (current !== undefined && current !== review.reviewToken) stale.push(interruptId);
+    } else {
+      const current = (await currentTarget(reader, call))?.doc?.updatedAt;
+      if (typeof current === "string" && current !== review.seenUpdatedAt) stale.push(interruptId);
+    }
   }
   return stale;
 }

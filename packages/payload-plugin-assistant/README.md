@@ -398,7 +398,7 @@ Body: what `useChat`'s `fetchServerSentEvents(url)` sends (AG-UI `RunAgentInput`
   },
   // or, to answer approvals (no message):
   "resume": [
-    { "interruptId": "approval_call_a", "status": "resolved", "payload": { "approved": true, "seenUpdatedAt": "2026-11-06T…" } },
+    { "interruptId": "approval_call_a", "status": "resolved", "payload": { "approved": true, "reviewToken": "doc:2026-11-06T…" } },
     { "interruptId": "approval_call_b", "status": "resolved", "payload": { "approved": false, "reason": "Keep the old title" } }
   ]
 }
@@ -418,18 +418,26 @@ Body: what `useChat`'s `fetchServerSentEvents(url)` sends (AG-UI `RunAgentInput`
   own top-level `context` array is not this and is ignored. Not allowed with `resume`.
 - **Resume**: one entry **per pending interrupt of the run** (TanStack validates the whole batch
   before any tool runs; a partial batch ends in `RUN_ERROR` and nothing is written),
-  `status: "resolved"` with `payload: { approved: true, seenUpdatedAt? }` or
+  `status: "resolved"` with `payload: { approved: true, reviewToken? }` or
   `{ approved: false, reason? }` (or a bare boolean, or `status: "cancelled"`). A resume takes no
-  message; it is a new run (new `runId`). The server owns what reaches the tools:
+  message; it is a new run (new `runId`). The wire format, its decoding and what a decoded answer
+  means live in one client-safe module, `src/approvals/decision.ts` (`encodeDecision`,
+  `decodeAnswer`, `isRejection`, `toolPayload`). The server owns what reaches the tools:
   - approved → `{ approved: true }` (edited arguments are not accepted: the user approves what the
     card showed);
   - rejected → `{ approved: false, payload: { error: "The user rejected this change. Nothing was
     written.", reason? } }`, the reject branch of every approval tool's `approvalSchema`
     (`REJECT_APPROVAL_SCHEMA`). That payload is the denied call's tool result: the model reads that
     the user said no, and why. `reason` is at most 2,000 characters (400 otherwise).
-  - `seenUpdatedAt` (the `updatedAt` the card's diff was built from): if that document's
-    `updatedAt` is different now, the **whole resume is refused** with
-    `409 { code: "stale", interruptIds }` and nothing runs. The card reloads and asks again.
+  - `reviewToken` (the proposal's, from `GET /api/assistant/approvals`, echoed back as is): the
+    server recomputes it as the user, and if it is different now the **whole resume is refused**
+    with `409 { code: "stale", interruptIds }` and nothing runs. The card reloads and asks again.
+    The token covers every document the write would touch: the document (its `updatedAt`), or
+    for an update or delete by `where`, the match set (how many match and the newest
+    `updatedAt`), so an edit of any match, a new match or one leaving the set makes it stale.
+    It is opaque: don't build or parse it. An approval without a token is not checked. The
+    pre-#138 `seenUpdatedAt` is still accepted and checked against the single document's
+    `updatedAt` (writes by `where` aren't), for approvals left pending across a deploy.
 - Response: `200 text/event-stream`, headers `X-Run-Id`, `X-Thread-Id`. Each event is
   `id: <opaque offset>` + `data: <AG-UI chunk JSON>`; keep the last `id` to rejoin. The first event
   is TanStack's `CUSTOM run.accepted`.
@@ -997,15 +1005,16 @@ overwrites it with the form's values, as any later save would.
   ("sent with the other answers once N more changes have one", with Undo) and the batch is sent
   once, when the last one is answered. "Approve all" / "Reject all" answer the rest.
 - **Nothing is approved unseen.** Approve (and Approve all) stay disabled until the change's diff
-  has loaded; every approval then carries the `updatedAt` that diff was built from. If the diff
-  couldn't be loaded, the card shows the tool's input and Approve asks "Approve anyway?" first (no
-  `updatedAt`, so no stale check); Approve all is disabled while any unanswered change needs that,
+  has loaded; every approval then carries the proposal's `reviewToken`, what that diff was built
+  from. If the diff couldn't be loaded, the card shows the tool's input and Approve asks "Approve
+  anyway?" first (no token, so no stale check); Approve all is disabled while any unanswered change needs that,
   or needs a re-review after the document changed. Reject and Reject all are never blocked.
-- **Stale proposals**: the proposal flags `changedSinceProposal` when the document's `updatedAt` is
-  after the interrupt; the card warns and Approve becomes "Approve anyway" (and "Approve all" waits
-  for that review). Approving sends `seenUpdatedAt`; if the document changed after the card showed
-  it, the server answers 409 `stale`: those answers are dropped, the diffs reloaded and asked again,
-  the other answers kept. Note that `updatedAt` moves on any save, autosaves included.
+- **Stale proposals**: the proposal flags `changedSinceProposal` when the document's `updatedAt`
+  (for a write by `where`, the newest match's) is after the interrupt; the card warns and Approve
+  becomes "Approve anyway" (and "Approve all" waits for that review). Approving sends the
+  proposal's `reviewToken`; if what the write touches changed after the card showed it, the
+  server answers 409 `stale`: those answers are dropped, the diffs reloaded and asked again, the
+  other answers kept. Note that `updatedAt` moves on any save, autosaves included.
 - **Outcome**: once sent, the card stays in the transcript and shows Applied (saved as a draft),
   Rejected (with the reason), or Failed with the error from the tool result, including an access
   error at apply time: tools run as the user and plugin-mcp lists one tool per operation for every
@@ -1176,9 +1185,10 @@ SQLite: ownership, rejoin, run ids, stop, delete during a run and the fence, ret
 audit); `tests/integration/chat.test.ts`: every endpoint through Payload's router against real
 Payload + plugin-mcp, turns with `fakeText()`; `tests/turn.test.ts`: the real OpenRouter adapter with
 its `httpClient` replaced, asserting the serialised request and the error mapping;
-`tests/approvals/diff.test.ts`: the diff and Lexical-to-text helpers; `tests/integration/approvals.test.ts`:
-proposals, approve, reject with a reason, batches, stale proposals, an access error at apply
-time and ownership end to end; `tests/integration/richText.test.ts`: the Markdown tool and reads
+`tests/approvals/diff.test.ts`: the diff and Lexical-to-text helpers; `tests/approvals/decision.test.ts`:
+the approval decision protocol's round trips, legacy answers and refusals; `tests/integration/approvals.test.ts`:
+proposals, approve, reject with a reason, batches, stale proposals (writes by id and by `where`,
+legacy `seenUpdatedAt`), an access error at apply time and ownership end to end; `tests/integration/richText.test.ts`: the Markdown tool and reads
 through plugin-mcp on app-shaped editors (block references, columns → content blocks) plus a list
 fixture, paths and errors, ids kept, formatting loss, access, the card and the system prompt; `tests/ui/approvals.test.tsx`: the card, and the chat panel's
 batch, stale and refused-send handling with a fake `useChat`; `tests/integration/reader.test.ts`
