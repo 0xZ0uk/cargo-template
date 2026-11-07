@@ -11,6 +11,7 @@ import * as migration_20261106_083840_socials from './20261106_083840_socials';
 import * as migration_20261106_092406_ab from './20261106_092406_ab';
 import * as migration_20261106_110114_ab_ended_runs from './20261106_110114_ab_ended_runs';
 import * as migration_20261106_193957_fk_on_delete from './20261106_193957_fk_on_delete';
+import * as migration_20261107_001439_mcp_oauth from './20261107_001439_mcp_oauth';
 
 export const migrations = [
   {
@@ -76,6 +77,11 @@ export const migrations = [
   {
     up: migration_20261106_193957_fk_on_delete.up,
     down: migration_20261106_193957_fk_on_delete.down,
-    name: '20261106_193957_fk_on_delete'
+    name: '20261106_193957_fk_on_delete',
+  },
+  {
+    up: migration_20261107_001439_mcp_oauth.up,
+    down: migration_20261107_001439_mcp_oauth.down,
+    name: '20261107_001439_mcp_oauth'
   },
 ];

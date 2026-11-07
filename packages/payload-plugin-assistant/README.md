@@ -1,7 +1,7 @@
 # @cargo/payload-plugin-assistant
 
 An admin assistant for Payload 4 on Cloudflare Workers: chat with your content through the
-[`@payloadcms/plugin-mcp`](https://payloadcms.com/docs) tools, using TanStack AI and OpenRouter,
+[`@cargo/payload-plugin-mcp`](../payload-plugin-mcp) (our fork of `@payloadcms/plugin-mcp`) tools, using TanStack AI and OpenRouter,
 with one Durable Object per conversation. Plan: [#58](https://github.com/0xZ0uk/cargo-template/issues/58).
 
 > **Status: the chat works end to end in the admin.** The Payload tool source (#61), conversations
@@ -75,7 +75,7 @@ serialised request body, not the options object.
 | `./admin/AssistantNavLink` | The nav link (a server component that asks `access`; the import-map target). |
 | `./admin/AssistantDocumentControls` | "Ask the assistant" in edit views (a server component that asks `access`; the import-map target). |
 | `./client` | The chat UI, client components only (`"use client"`): `AssistantChat`, `AssistantNavLinkClient`, `ApprovalCard` (the default), `ApprovalControl` (minimal), `AskAssistant` (the edit view's button and drawer), `useDocumentRefresh`, `ReferenceChips`, `pendingApprovalFrom`, `answerInterrupt`, the `PendingApproval` / `ApprovalRenderer` / `ApprovalDecision` types and the proposal types (`ApprovalProposal`, `FieldChange`…). Its CSS is `./client.css`, imported by `client.js`. |
-| `./mcp` | plugin-mcp items for rich text as Markdown (#67): `withMarkdownRichText`, `setRichTextFromMarkdownTool`, `richTextAsMarkdown` (`findDocuments`), `richTextResultsAsMarkdown` (other results) and `richTextSchemaAsMarkdown` / `describeRichTextAsMarkdown` (`getCollectionSchema`, #116), `SET_RICH_TEXT_TOOL_NAME`, `markdownLosses`, `unsupportedMarkdown`, `RichTextPathError`, `internalLinkUrl` / `parseInternalLinkUrl` / `INTERNAL_LINK_SCHEME` (`payload://<collection>/<id>`). Needs `@payloadcms/plugin-mcp` (an optional peer: only this entry imports it). See [Rich text as Markdown](#rich-text-as-markdown-67). |
+| `./mcp` | plugin-mcp items for rich text as Markdown (#67): `withMarkdownRichText`, `setRichTextFromMarkdownTool`, `richTextAsMarkdown` (`findDocuments`), `richTextResultsAsMarkdown` (other results) and `richTextSchemaAsMarkdown` / `describeRichTextAsMarkdown` (`getCollectionSchema`, #116), `SET_RICH_TEXT_TOOL_NAME`, `markdownLosses`, `unsupportedMarkdown`, `RichTextPathError`, `internalLinkUrl` / `parseInternalLinkUrl` / `INTERNAL_LINK_SCHEME` (`payload://<collection>/<id>`). Needs `@cargo/payload-plugin-mcp` (our fork of `@payloadcms/plugin-mcp`; an optional peer: only this entry imports it). See [Rich text as Markdown](#rich-text-as-markdown-67). |
 | `./do` | The Durable Object classes `AssistantConversation` and `AssistantConversationIndex`, plus their stores. Workerd-only (`cloudflare:workers`): re-export them from the Worker entry, never import this entry from `payload.config.ts` or the admin bundle. |
 
 The endpoints load the AI runtime with `await import('./server/chat')`, and tsup code-splits it

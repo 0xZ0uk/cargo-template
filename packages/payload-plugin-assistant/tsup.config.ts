@@ -35,7 +35,7 @@ export default defineConfig([
   // chunk, so the AI runtime is not in the config's import graph.
   { ...shared, entry: { index: "src/index.ts" }, splitting: true, clean: false },
   // plugin-mcp items (rich text as Markdown, #67): their own entry, so the plugin never imports
-  // `@payloadcms/plugin-mcp` (an optional peer, external like every peer).
+  // `@cargo/payload-plugin-mcp` (an optional peer, external like every peer).
   { ...shared, entry: { mcp: "src/mcp.ts" }, splitting: false, clean: false },
   // Admin server components (the view wraps itself in DefaultTemplate; the nav link asks
   // `access`). No "use client": they import the client entry by package path, which stays

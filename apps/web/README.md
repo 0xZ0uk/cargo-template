@@ -193,9 +193,22 @@ The frontend uses Tailwind CSS 4 (`src/app/_frontend/styles.css`, `tailwind.conf
 
 ### MCP
 
-[`@payloadcms/plugin-mcp`](https://payloadcms.com/docs/beta/plugins/mcp) serves an MCP server at `POST /api/mcp` (Streamable HTTP), so AI clients can read and edit content. Every collection gets the built-in tools (`findDocuments`, `createDocuments`, `updateDocument`, `deleteDocuments`, and so on), except that `users` can't be created or deleted over MCP. Tools run with the caller's Payload access control, and anonymous callers get none.
+[`@cargo/payload-plugin-mcp`](../../packages/payload-plugin-mcp) (our fork of [`@payloadcms/plugin-mcp`](https://payloadcms.com/docs/beta/plugins/mcp), with an OAuth server) serves an MCP server at `POST /api/mcp` (Streamable HTTP), so AI clients can read and edit content. Every collection gets the built-in tools (`findDocuments`, `createDocuments`, `updateDocument`, `deleteDocuments`, and so on), except that `users` can't be created or deleted over MCP. Tools run with the caller's Payload access control. A request without credentials gets a 401 whose `WWW-Authenticate` header points OAuth clients at the discovery document.
 
-To connect a client:
+#### ChatGPT and claude.ai (OAuth)
+
+These clients only connect over OAuth. The site is its own OAuth 2.1 authorization server (`oauth: true` in `src/payload.config.ts`): discovery at `/.well-known/oauth-authorization-server` and `/.well-known/oauth-protected-resource` (served by `src/app/[.]well-known.$.ts`), dynamic client registration, PKCE, and a consent page.
+
+- **claude.ai** (a plan with custom connectors): **Settings → Connectors → Add custom connector**, any name, URL `https://<site>/api/mcp`, leave the advanced OAuth fields empty, **Add**, then **Connect**. The Claude desktop and mobile apps use the account's connectors.
+- **ChatGPT** (web, a plan with developer mode; the menu names change from time to time): **Settings → Apps & Connectors → Advanced settings**, turn on **Developer mode**. Back in **Apps & Connectors**, **Create** an app: any name, **MCP server URL** `https://<site>/api/mcp`, **Authentication: OAuth**.
+
+The client opens the site in a browser: sign in to the admin (if you aren't), check the client and the address it returns to, and click **Allow**. The client then acts as you, with your permissions. Every user may connect a client; set `oauth.canConnect` to restrict that. See and revoke connections in the admin panel under **AI connections** (each user sees their own; `oauth.canManageAllConnections` can see everyone's). Deleting a connection revokes it at once; removing the connector in ChatGPT or claude.ai doesn't, so delete it in the panel too. Deleting a user revokes their connections, and a connection nobody uses expires after 30 days. Tokens are stored as hashes; access tokens last an hour, refresh tokens rotate. The details are in the [plugin's README](../../packages/payload-plugin-mcp/README.md#oauth).
+
+A connected client can't create users or change anyone's email, password or API key, so revoking the connection really ends its access. Client registration is public: the plugin keeps at most 1,000 never-used registrations, each for an hour, and `OAUTH_RATE_LIMIT_REGISTER` (wrangler.jsonc, 10 per minute per IP) throttles it.
+
+These clients connect from their own servers, so OAuth needs the site on a public HTTPS URL (staging or production, or a tunnel to `localhost`).
+
+#### Claude Code and scripts (API key)
 
 1. In the admin panel, open your user, check **Enable API Key**, and save. Keys are encrypted with `PAYLOAD_SECRET`, so changing the secret invalidates them.
 2. Add the server to your client with the header `Authorization: users API-Key <key>`. For Claude Code:

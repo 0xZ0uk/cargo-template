@@ -1,6 +1,6 @@
 /**
  * `@cargo/payload-plugin-assistant/mcp`: plugin-mcp items for rich text as Markdown (#67). A
- * separate entry so the plugin itself never imports `@payloadcms/plugin-mcp` (an optional peer).
+ * separate entry so the plugin itself never imports `@cargo/payload-plugin-mcp` (an optional peer).
  */
 export {
   describeRichTextAsMarkdown,

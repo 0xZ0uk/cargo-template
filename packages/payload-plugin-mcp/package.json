@@ -1,0 +1,72 @@
+{
+  "name": "@cargo/payload-plugin-mcp",
+  "version": "4.0.0-beta.6-cargo.0",
+  "private": true,
+  "description": "Payload CMS 4 MCP plugin for Cargo (fork of @payloadcms/plugin-mcp) with an OAuth 2.1 authorization server, so ChatGPT and claude.ai can connect",
+  "license": "MIT",
+  "author": "Payload <dev@payloadcms.com> (https://payloadcms.com)",
+  "contributors": [
+    "Payload (https://github.com/payloadcms/payload/tree/main/packages/plugin-mcp) \u2014 original author"
+  ],
+  "type": "module",
+  "sideEffects": [
+    "./dist/client.js"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./internal": {
+      "types": "./dist/internal.d.ts",
+      "default": "./dist/internal.js"
+    },
+    "./well-known": {
+      "types": "./dist/well-known.d.ts",
+      "default": "./dist/well-known.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "default": "./dist/client.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "LICENSE.md",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.4.0"
+  },
+  "peerDependencies": {
+    "payload": ">=4.0.0-beta.6 <5.0.0",
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@payloadcms/db-sqlite": "catalog:",
+    "@types/node": "24.12.3",
+    "@types/react": "catalog:",
+    "payload": "catalog:",
+    "react": "catalog:",
+    "tsup": "^8.5.1",
+    "typescript": "catalog:",
+    "vitest": "^4.1.11"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  }
+}

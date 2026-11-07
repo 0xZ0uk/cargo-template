@@ -47,6 +47,7 @@ import { RedirectManagerView as RedirectManagerView_62b561af77a7161a5fa3ccf8464d
 import { PerformanceView as PerformanceView_62b561af77a7161a5fa3ccf8464d9f5e } from '@cargo/payload-seo-analyzer/views'
 import { SchemaBuilderView as SchemaBuilderView_62b561af77a7161a5fa3ccf8464d9f5e } from '@cargo/payload-seo-analyzer/views'
 import { SocialsAdminView as SocialsAdminView_e8c522850b09674c08b7536a18d4e973 } from '@cargo/payload-plugin-socials/rsc'
+import { OAuthContinueView as OAuthContinueView_be48d155e8e7241c21a5faaa12d5033e } from '@cargo/payload-plugin-mcp/client'
 import { WelcomeWidget as WelcomeWidget_ab83ff7e88da8d3530831f296ec4756a } from '@payloadcms/ui/rsc'
 import { CollectionCards as CollectionCards_ab83ff7e88da8d3530831f296ec4756a } from '@payloadcms/ui/rsc'
 import { CollectionQueryWidget as CollectionQueryWidget_ab83ff7e88da8d3530831f296ec4756a } from '@payloadcms/ui/rsc'
@@ -108,6 +109,7 @@ export const importMap = {
   "@cargo/payload-seo-analyzer/views#PerformanceView": PerformanceView_62b561af77a7161a5fa3ccf8464d9f5e,
   "@cargo/payload-seo-analyzer/views#SchemaBuilderView": SchemaBuilderView_62b561af77a7161a5fa3ccf8464d9f5e,
   "@cargo/payload-plugin-socials/rsc#SocialsAdminView": SocialsAdminView_e8c522850b09674c08b7536a18d4e973,
+  "@cargo/payload-plugin-mcp/client#OAuthContinueView": OAuthContinueView_be48d155e8e7241c21a5faaa12d5033e,
   "@payloadcms/ui/rsc#WelcomeWidget": WelcomeWidget_ab83ff7e88da8d3530831f296ec4756a,
   "@payloadcms/ui/rsc#CollectionCards": CollectionCards_ab83ff7e88da8d3530831f296ec4756a,
   "@payloadcms/ui/rsc#CollectionQueryWidget": CollectionQueryWidget_ab83ff7e88da8d3530831f296ec4756a,
