@@ -5,7 +5,6 @@
 import type { SeoCheck, SeoInput, AnalysisContext } from '../types.js'
 import { CORNERSTONE_MIN_WORDS, CORNERSTONE_MIN_INTERNAL_LINKS } from '../constants.js'
 import { getTranslations } from '../i18n.js'
-import { resolveThresholds } from '../helpers/thresholds.js'
 
 export function checkCornerstone(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
   // Skip entirely if the content is not marked as cornerstone
@@ -89,7 +88,7 @@ export function checkCornerstone(input: SeoInput, ctx: AnalysisContext): SeoChec
 
   // 4. Meta description present and optimized
   const metaDesc = input.metaDescription || ''
-  const { metaDescLengthMin, metaDescLengthMax } = resolveThresholds(ctx.config.thresholds)
+  const { metaDescLengthMin, metaDescLengthMax } = ctx.limits
   if (metaDesc.length >= metaDescLengthMin && metaDesc.length <= metaDescLengthMax) {
     checks.push({
       id: 'cornerstone-meta-description',

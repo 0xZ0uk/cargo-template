@@ -6,7 +6,8 @@
 import { describe, expect, it } from 'vitest'
 
 import { analyzeSeo } from '../index'
-import { analyzeLoadedDocument, buildSeoInputFromDoc } from '../helpers/analyzeDocument'
+import { analyzeLoadedDocument } from '../helpers/analyzeDocument'
+import { buildSeoInputFromDoc } from '../helpers/seoInputFromDoc'
 import { extractDocExternalLinks } from '../endpoints/externalLinks'
 import { buildJsonLd } from '../helpers/buildSchema'
 import {
@@ -15,9 +16,7 @@ import {
   normalizeBlocksContent,
   type SeoContentExtractors,
 } from '../helpers/contentExtractor'
-import { contentInputFromDoc } from '../helpers/docContentInput'
 import { extractAllInternalLinks } from '../helpers/linkExtractor'
-import { pickDocContentInput } from '../helpers/sidebarContent'
 
 const paragraph = (value: string) => ({ type: 'paragraph', children: [{ type: 'text', text: value }] })
 const richText = (...children: unknown[]) => ({ root: { type: 'root', children } })
@@ -100,18 +99,6 @@ describe('extractContent: every consumer', () => {
     const walked = buildSeoInputFromDoc(doc, 'docs')
     expect(walked.blockContent).toBeUndefined()
     expect(analyzeSeo(walked).checks.find((c) => c.id === 'h1-missing')?.status).toBe('fail')
-  })
-
-  it('the sidebar mapping is the score mapping (same input for the same document)', () => {
-    const fromValidate = buildSeoInputFromDoc(doc, 'docs', { extractors: payload })
-    const fromSidebar = contentInputFromDoc(doc, 'docs', { extractors: payload })
-    for (const [key, value] of Object.entries(fromSidebar)) {
-      expect(fromValidate[key as keyof typeof fromValidate], key).toEqual(value)
-    }
-    // What `/sidebar-content` returns survives the JSON round trip and the client's pick.
-    expect(pickDocContentInput(JSON.parse(JSON.stringify(fromSidebar)))?.blockContent).toEqual(
-      fromSidebar.blockContent,
-    )
   })
 
   it('analyzeDocument (audit, score history, AI endpoints): score, stats and text', () => {

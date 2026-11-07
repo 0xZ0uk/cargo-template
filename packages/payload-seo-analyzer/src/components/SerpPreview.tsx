@@ -11,7 +11,7 @@ import {
 } from '../constants.js'
 import { highlightKeyphrases, truncateAtWord } from '../helpers/serpPreviewText.js'
 import { useDashboardT } from '../hooks/useSeoAdmin.js'
-import { useResolvedThresholds } from '../hooks/useSeoThresholds.js'
+import { useResolvedThresholds } from '../hooks/useSeoConfig.js'
 import { withSeoErrorBoundary } from './withSeoErrorBoundary.js'
 import './SerpPreview.css'
 

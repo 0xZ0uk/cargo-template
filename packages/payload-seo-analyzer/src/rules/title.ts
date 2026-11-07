@@ -5,7 +5,6 @@ import type { SeoCheck, SeoInput, AnalysisContext } from '../types.js'
 import { normalizeForComparison, keywordMatchesText } from '../helpers.js'
 import { getPowerWords } from '../constants.js'
 import { getTranslations } from '../i18n.js'
-import { resolveThresholds } from '../helpers/thresholds.js'
 
 // Google truncates SERP titles by PIXEL width (~580-600px), not character count.
 const TITLE_PIXEL_MAX = 600
@@ -35,7 +34,7 @@ export function checkTitle(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
   const title = input.metaTitle || ''
   const titleLen = title.length
   const kw = ctx.normalizedKeyword
-  const { titleLengthMin, titleLengthMax } = resolveThresholds(ctx.config.thresholds)
+  const { titleLengthMin, titleLengthMax } = ctx.limits
 
   // 1. Title present and non-empty
   if (!title) {

@@ -1,17 +1,18 @@
 /**
- * The SEO sidebar scores what `/validate` scores (cargo-template #47).
+ * The SEO sidebar scores what `/validate` scores (cargo-template #47, #130).
  *
  * In the edit form, uploads, `reference` links and reusable sections are plain IDs. The
  * sidebar posts the form's values to `/seo-plugin/sidebar-content`, which populates them on
- * the server; `/validate` reads the saved page with `findByID({ depth: 1 })`. For a page
- * with an upload, a reference link and a reusable section, both must produce the same
- * checks. Runs against the real config, local D1 and R2.
+ * the server and answers with the analyzer input and the effective config; the sidebar scores
+ * `analyzeSeo(input, config)`. `/validate` reads the saved page with `findByID({ depth: 1 })`.
+ * For a page with an upload, a reference link and a reusable section, both must give the same
+ * score and checks. Runs against the real config, local D1 and R2.
  *
  * Not a spec file of its own: `api.int.spec.ts` runs it with its Payload instance. Two test
  * files booting Payload each start a workerd on the same local D1 file, and running in
  * parallel they fail with `SQLITE_BUSY`.
  */
-import { analyzeSeo, buildSeoInputFromDoc, type SeoInput } from '@cargo/payload-seo-analyzer'
+import { analyzeSeo, buildSeoInputFromDoc, type SeoCheck, type SeoConfig, type SeoInput } from '@cargo/payload-seo-analyzer'
 import { createPayloadRequest, type Payload, type PayloadHandler } from 'payload'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
@@ -23,20 +24,6 @@ const PNG = Buffer.from(
   'base64',
 )
 
-/** The content keys the sidebar takes from `/sidebar-content` (`DOC_CONTENT_INPUT_KEYS`). */
-const CONTENT_KEYS = [
-  'heroTitle',
-  'heroRichText',
-  'heroLinks',
-  'heroMedia',
-  'blocks',
-  'blockContent',
-  'content',
-  'isPost',
-  'metaImage',
-  'robotsMeta',
-] as const
-
 /** The settings `defineBlock` adds to every block (required in the generated types). */
 const sectionSettings = { background: 'default', spacing: 'md' } as const
 
@@ -47,13 +34,12 @@ const stamp = Date.now()
 let pageId: number | string
 let targetSlug: string
 
-const sidebarHandler = (): PayloadHandler => {
-  const endpoint = payload.config.endpoints.find(
-    (e) => e.path === '/seo-plugin/sidebar-content' && e.method === 'post',
-  )
-  if (!endpoint) throw new Error('sidebar-content endpoint not registered')
+const pluginHandler = (path: string): PayloadHandler => {
+  const endpoint = payload.config.endpoints.find((e) => e.path === `/seo-plugin/${path}` && e.method === 'post')
+  if (!endpoint) throw new Error(`${path} endpoint not registered`)
   return endpoint.handler
 }
+const sidebarHandler = () => pluginHandler('sidebar-content')
 
 /** What the sidebar's request returns for these form values. */
 const sidebarContent = async (data: unknown, as: Record<string, unknown> | null = user) => {
@@ -188,39 +174,42 @@ export const seoSidebarParity = (getPayload: () => Payload) =>
       }
     })
 
-    it('produces the same checks as /validate for a page with an upload, a reference link and a reusable section', async () => {
+    it('scores the same as /validate for a page with an upload, a reference link and a reusable section', async () => {
       // The form's values: the page at depth 0, where relations are IDs.
       const formValues = await payload.findByID({ collection: 'pages', id: pageId, depth: 0, overrideAccess: true })
       expect((formValues.layout?.[1] as { media?: unknown }).media).toBeTypeOf('number')
 
-      // /validate: the saved page at depth 1.
-      const saved = await payload.findByID({ collection: 'pages', id: pageId, depth: 1, overrideAccess: true })
-      const fromValidate = buildSeoInputFromDoc(saved, 'pages', { extractors: payload })
+      // /validate: the saved page at depth 1, through the endpoint.
+      const validateReq = await createPayloadRequest({
+        payload,
+        user: user as never,
+        req: { method: 'POST', json: async () => ({ id: pageId, collection: 'pages' }) } as never,
+      })
+      const validateRes = await pluginHandler('validate')(validateReq)
+      expect(validateRes.status).toBe(200)
+      const fromValidate = (await validateRes.json()) as { score: number; checks: SeoCheck[] }
 
-      // The sidebar: the form's values, read through the endpoint.
+      // The sidebar: the form's values, read through the endpoint, scored as the sidebar does.
       const response = await sidebarContent(formValues)
       expect(response.status).toBe(200)
-      const content = (await response.json()) as Partial<SeoInput>
+      const { input, config } = (await response.json()) as { input: SeoInput; config: SeoConfig }
+      const fromSidebar = analyzeSeo(input, config)
 
-      // Everything but the content stays the same, so any difference comes from the content.
-      const fromSidebar: SeoInput = { ...fromValidate }
-      for (const key of CONTENT_KEYS) delete fromSidebar[key]
-      Object.assign(fromSidebar, content)
-
-      expect(checksOf(fromSidebar)).toEqual(checksOf(fromValidate))
+      expect(fromSidebar.score).toBe(fromValidate.score)
+      expect(fromSidebar.checks.map(({ id, status, message }) => ({ id, status, message }))).toEqual(
+        fromValidate.checks.map(({ id, status, message }) => ({ id, status, message })),
+      )
 
       // Not vacuous: the populated content is what the server read, and the form's IDs alone
       // would have scored less.
-      const words = (input: SeoInput) => analyzeSeo(input).checks.find((c) => c.id === 'content-wordcount')?.message
-      expect(words(fromSidebar)).toBe(words(fromValidate))
-      const blocks = JSON.stringify(content.blocks)
+      const blocks = JSON.stringify(input.blocks)
       expect(blocks).toContain('Espresso shot pouring into a cup') // the upload's alt text
       expect(blocks).toContain(targetSlug) // the reference link's page
       expect(blocks).toContain('Our roastery opens every Saturday') // the reusable section's text
-      expect((content.metaImage as { alt?: string } | undefined)?.alt).toBe('Espresso shot pouring into a cup')
+      expect((input.metaImage as { alt?: string } | undefined)?.alt).toBe('Espresso shot pouring into a cup')
 
       const unpopulated = buildSeoInputFromDoc(formValues, 'pages')
-      expect(checksOf(unpopulated)).not.toEqual(checksOf(fromValidate))
+      expect(checksOf(unpopulated)).not.toEqual(checksOf(input))
     })
 
     it('refuses callers outside the admin panel and collections the plugin does not analyse', async () => {

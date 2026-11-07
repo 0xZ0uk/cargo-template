@@ -68,6 +68,7 @@ import { checkHreflang } from './rules/hreflang'
 
 import { extractPayloadLink } from './helpers/linkExtractor.js'
 import { extractBlocksContent } from './helpers/blockContent.js'
+import { resolveThresholds } from './helpers/thresholds.js'
 
 // ---------------------------------------------------------------------------
 // Context builder — pre-computes data shared across rule modules
@@ -220,6 +221,7 @@ function buildContext(data: SeoInput, config: SeoConfig): AnalysisContext {
       ? 'blog'
       : detectPageType(data.slug || '', undefined, config.localSeoSlugs),
     config,
+    limits: resolveThresholds(config.thresholds),
     blockContent,
   }
 }

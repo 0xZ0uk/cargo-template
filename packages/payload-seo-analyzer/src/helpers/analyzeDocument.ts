@@ -7,6 +7,7 @@
  * Behind the interface:
  * - the read (`depth: 1`, with the caller's read access unless `overrideAccess`),
  * - the config (the plugin's, merged with the saved SeoSettings),
+ * - the mapping to `SeoInput` (`seoInputFromDoc`, which the sidebar shares),
  * - the collection's `extractContent` extractor (looked up on the Payload instance),
  * - the Lexical depth (`maxRecursionDepth`, for the walker and the extractor alike),
  * - globals (no slug, no extractor: they have no URL and extractors are per collection),
@@ -20,9 +21,11 @@ import { analyzeSeoWithContext } from '../analyzer.js'
 import { MAX_RECURSION_DEPTH } from '../constants.js'
 import type { RuleGroup, SeoAnalysis, SeoConfig, SeoInput } from '../types.js'
 import type { ContentExtractorSource } from './contentExtractor.js'
-import { contentInputFromDoc } from './docContentInput.js'
 import { loadMergedConfig } from './loadMergedConfig.js'
 import { readAccessOpts } from './readAccess.js'
+import { type DocumentTarget, seoInputFromDoc } from './seoInputFromDoc.js'
+
+export type { DocumentTarget }
 
 /**
  * What the caller needs from the analysis, which decides the rules that run:
@@ -35,9 +38,6 @@ import { readAccessOpts } from './readAccess.js'
  *   content, content grade, AI rewrite and brief).
  */
 export type AnalysisPurpose = 'score' | 'audit' | 'technical' | 'content'
-
-/** A collection document or a global. */
-export type DocumentTarget = { collection: string } | { global: string }
 
 /** What to analyse: a document to read by id, a global to read, or one already read. */
 export type DocumentRef =
@@ -118,12 +118,7 @@ export function analyzeLoadedDocument(
 ): DocumentAnalysis {
   const purpose = options.purpose ?? 'score'
   const config = options.config ?? {}
-  const isGlobal = 'global' in target
-  const input = buildSeoInputFromDoc(doc ?? {}, isGlobal ? `global:${target.global}` : target.collection, {
-    isGlobal,
-    extractors: isGlobal ? undefined : payload,
-    maxDepth: config.maxRecursionDepth ?? MAX_RECURSION_DEPTH,
-  })
+  const input = documentInput(payload, doc, target, config)
   const disabled = PURPOSE_DISABLED_GROUPS[purpose]
   const { analysis, context } = analyzeSeoWithContext(
     purpose === 'technical' ? technicalOnlyInput(input) : input,
@@ -138,6 +133,23 @@ export function analyzeLoadedDocument(
     .join(' ')
     .trim()
   return { doc: doc ?? {}, input, analysis, text, pageText }
+}
+
+/**
+ * The analyzer input of a document already read, as every analysis maps it: the collection's
+ * extractor from `payload`, the Lexical depth from `config`. `/sidebar-content` maps the
+ * populated form with it, so the sidebar's input is `/validate`'s.
+ */
+export function documentInput(
+  payload: ContentExtractorSource,
+  doc: Record<string, unknown> | undefined,
+  target: DocumentTarget,
+  config: SeoConfig,
+): SeoInput {
+  return seoInputFromDoc(doc, target, {
+    extractors: payload,
+    maxDepth: config.maxRecursionDepth ?? MAX_RECURSION_DEPTH,
+  })
 }
 
 async function readDocument(
@@ -211,105 +223,5 @@ export function technicalOnlyInput(input: SeoInput): SeoInput {
     robotsMeta: input.robotsMeta,
     isGlobal: input.isGlobal,
     isPost: input.isPost,
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Document → SeoInput
-// ---------------------------------------------------------------------------
-
-/**
- * Build a SeoInput object from a Payload document (page or post). Exported from the
- * package for custom integrations; inside the plugin, use `analyzeDocument`.
- *
- * The content fields come from `contentInputFromDoc`, the mapping the sidebar shares, and
- * a collection's `extractContent` extractor (pass `extractors`: the map, or `req.payload`)
- * replaces the `layout` walk. A global (`isGlobal`) has no slug.
- */
-export function buildSeoInputFromDoc(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  doc: any,
-  collection: string,
-  options?: { isGlobal?: boolean; extractors?: ContentExtractorSource; maxDepth?: number },
-): SeoInput {
-  const meta = doc.meta || {}
-  const isGlobal = options?.isGlobal ?? false
-  const contentInput = contentInputFromDoc(doc, collection, {
-    extractors: options?.extractors,
-    maxDepth: options?.maxDepth,
-  })
-
-  // Canonical & robots — best-effort read from common field locations. Many sites
-  // control indexation at the framework level (e.g. Next.js metadata), in which case
-  // these stay undefined and the technical checks correctly stay silent.
-  const canonicalUrl: string | undefined =
-    (typeof meta.canonicalUrl === 'string' && meta.canonicalUrl) ||
-    (typeof doc.canonicalUrl === 'string' && doc.canonicalUrl) ||
-    undefined
-
-  // E-E-A-T signals — best-effort author + dates from common Payload shapes.
-  let author: string | undefined
-  let authorUrl: string | undefined
-  const populatedAuthors = doc.populatedAuthors
-  if (Array.isArray(populatedAuthors) && populatedAuthors.length > 0) {
-    const a = populatedAuthors[0] || {}
-    author =
-      (typeof a.name === 'string' && a.name) ||
-      (typeof a.firstName === 'string' && a.firstName) ||
-      undefined
-    if (typeof a.url === 'string') authorUrl = a.url
-  } else if (Array.isArray(doc.authors) && doc.authors.length > 0) {
-    const a = doc.authors[0]
-    if (a && typeof a === 'object' && typeof a.name === 'string') author = a.name
-  } else if (typeof doc.author === 'string' && doc.author) {
-    author = doc.author
-  } else if (doc.author && typeof doc.author === 'object' && typeof doc.author.name === 'string') {
-    author = doc.author.name
-  }
-  if (!authorUrl && typeof doc.authorUrl === 'string') authorUrl = doc.authorUrl
-
-  const publishedAt: string | undefined =
-    (typeof doc.publishedAt === 'string' && doc.publishedAt) ||
-    (typeof doc.createdAt === 'string' && doc.createdAt) ||
-    undefined
-  const displayedDate: string | undefined =
-    (typeof doc.publishedAt === 'string' && doc.publishedAt) ||
-    (typeof doc.date === 'string' && doc.date) ||
-    undefined
-
-  // Locale alternates for hreflang — best-effort from common shapes (mono-locale → none).
-  let localeAlternates: Array<{ hreflang: string; href: string }> | undefined
-  const rawAlts = doc.localeAlternates || doc.alternates || doc.hreflang
-  if (Array.isArray(rawAlts)) {
-    const mapped = rawAlts
-      .filter((a: unknown): a is Record<string, unknown> => !!a && typeof a === 'object')
-      .map((a) => ({
-        hreflang: String(a.hreflang || a.locale || a.lang || ''),
-        href: String(a.href || a.url || ''),
-      }))
-      .filter((a) => a.hreflang && a.href)
-    if (mapped.length > 0) localeAlternates = mapped
-  }
-
-  return {
-    metaTitle: (meta.title as string) || '',
-    metaDescription: (meta.description as string) || '',
-    // Globals have no URL: a `slug` field on one is not a path.
-    slug: isGlobal ? '' : (doc.slug as string) || '',
-    focusKeyword: (doc.focusKeyword as string) || '',
-    focusKeywords: Array.isArray(doc.focusKeywords)
-      ? (doc.focusKeywords as Array<{ keyword?: string }>).map((k) => k.keyword || '').filter(Boolean)
-      : undefined,
-    ...contentInput,
-    isCornerstone: !!doc.isCornerstone,
-    updatedAt: (doc.updatedAt as string) || undefined,
-    publishedAt,
-    contentLastReviewed: (doc.contentLastReviewed as string) || undefined,
-    displayedDate,
-    author,
-    authorUrl,
-    localeAlternates,
-    canonicalUrl,
-    isGlobal,
   }
 }

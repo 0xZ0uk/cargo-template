@@ -4,6 +4,7 @@
  */
 import type { CollectionRoutes } from './helpers/docUrl.js'
 import type { BlocksContent } from './helpers/blockContent.js'
+import type { ResolvedThresholds } from './helpers/thresholds.js'
 
 export type CheckStatus = 'pass' | 'warning' | 'fail'
 export type CheckCategory = 'critical' | 'important' | 'bonus'
@@ -318,6 +319,11 @@ export interface AnalysisContext {
   pageType: PageType
   /** SEO configuration (merged defaults + user overrides) */
   config: SeoConfig
+  /**
+   * Every limit resolved once from `config.thresholds` (override or default). Rules read
+   * their limits here, never from `config.thresholds` directly.
+   */
+  limits: ResolvedThresholds
   /**
    * What the block walker found in `input.blocks`, computed once per analysis by
    * `buildContext` (lexical roots, uploads, FAQ). Rules read it through `blockContentOf`,
