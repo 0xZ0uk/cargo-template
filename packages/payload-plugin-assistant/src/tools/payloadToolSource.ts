@@ -2,6 +2,7 @@ import { createMCPClient, type MCPClient, type McpTool } from "@tanstack/ai-mcp"
 import type { ChatMCPOptions } from "@tanstack/ai";
 import { PLUGIN_NAME } from "../constants";
 import type { AssistantToolInfo } from "../types/options";
+import { REJECT_APPROVAL_SCHEMA } from "../approvals/decision";
 
 /**
  * Delivers one MCP request (a `POST` to plugin-mcp's `/api/mcp`) and returns the response.
@@ -85,21 +86,8 @@ const DROPPED = new Set<string>([...AUTH_TOOL_NAMES, ...UNSUPPORTED_TOOL_NAMES])
 export const needsApproval = (tool: Pick<McpTool, "annotations">): boolean =>
   tool.annotations?.readOnlyHint !== true;
 
-/**
- * The reject branch of every approval tool's `approvalSchema`: a rejection carries a payload,
- * `{ error, reason? }`, which `chat()` uses as the denied call's tool result. The server builds
- * it from the UI's `{ approved: false, reason }` (`src/server/validate.ts`), so the model reads
- * that the user said no, and why. Approving takes no payload (no approve branch).
- */
-export const REJECT_APPROVAL_SCHEMA = {
-  type: "object",
-  properties: {
-    error: { type: "string" },
-    reason: { type: "string", maxLength: 2000 },
-  },
-  required: ["error"],
-  additionalProperties: false,
-} as const;
+/** The reject branch of every approval tool's `approvalSchema`: the decision protocol's (`approvals/decision.ts`). */
+export { REJECT_APPROVAL_SCHEMA };
 
 /** Gives the tools that need approval the reject payload schema (in place; returns the list). */
 export function withRejectPayload<T extends { needsApproval?: unknown }>(tools: T[]): T[] {

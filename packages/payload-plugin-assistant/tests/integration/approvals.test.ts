@@ -225,7 +225,7 @@ describe("answering", () => {
     script([{ toolCalls: [{ name: "updateDocument", input: { slug: "pages", id: String(page.id), draft: true, data: { title: "After" } } }] }, { text: "Done." }]);
     const [interrupt] = await pauseOn(threadId);
     const [proposal] = await proposals(threadId);
-    const events = await readEvents(await resume(threadId, [{ interruptId: interrupt!.id, payload: { approved: true, seenUpdatedAt: proposal!.items[0]!.document!.updatedAt } }]));
+    const events = await readEvents(await resume(threadId, [{ interruptId: interrupt!.id, payload: { approved: true, reviewToken: proposal!.reviewToken } }]));
     expect(textOf(events)).toBe("Done.");
     expect((await readPage(page.id)).title).toBe("After");
     expect(await proposals(threadId)).toEqual([]);
@@ -254,7 +254,7 @@ describe("answering", () => {
   });
 
   it("a reason that is too long, or not text, is a 400", async () => {
-    for (const payload of [{ approved: false, reason: "x".repeat(2001) }, { approved: false, reason: 4 }, { approved: true, seenUpdatedAt: 5 }]) {
+    for (const payload of [{ approved: false, reason: "x".repeat(2001) }, { approved: false, reason: 4 }, { approved: true, reviewToken: 5 }, { approved: true, seenUpdatedAt: 5 }]) {
       const res = await resume(newThread(), [{ interruptId: "approval_x", payload }]);
       expect(res.status).toBe(400);
     }
@@ -295,32 +295,110 @@ describe("answering", () => {
 });
 
 describe("stale proposals", () => {
+  /** Waits past the millisecond, so an edit gets a later `updatedAt`. */
+  const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
+  const edit = (id: number, data: Record<string, unknown>) =>
+    app.payload.update({ collection: "pages" as CollectionSlug, id, data: data as never, draft: true, overrideAccess: true });
+
   it("a document changed after the proposal is flagged, and an approval of the old diff is refused with 409", async () => {
     const page = await newPage({ title: "Original" });
     const threadId = newThread();
     script([{ toolCalls: [{ name: "updateDocument", input: { slug: "pages", id: String(page.id), draft: true, data: { title: "From the assistant" } } }] }, { text: "Applied." }]);
     const [interrupt] = await pauseOn(threadId);
     const [seen] = await proposals(threadId);
-    const seenUpdatedAt = seen!.items[0]!.document!.updatedAt!;
+    expect(seen!.reviewToken).toEqual(expect.any(String));
 
     // Someone edits the page meanwhile.
-    await new Promise((resolve) => setTimeout(resolve, 5));
-    await app.payload.update({ collection: "pages" as CollectionSlug, id: page.id, data: { title: "Edited by a person" } as never, draft: true, overrideAccess: true });
+    await tick();
+    await edit(page.id, { title: "Edited by a person" });
 
     const [fresh] = await proposals(threadId);
     expect(fresh!.changedSinceProposal).toBe(true);
     expect(fresh!.items[0]!.changes[0]).toMatchObject({ before: "Edited by a person", after: "From the assistant" });
+    expect(fresh!.reviewToken).not.toBe(seen!.reviewToken);
 
-    const refused = await resume(threadId, [{ interruptId: interrupt!.id, payload: { approved: true, seenUpdatedAt } }]);
+    const refused = await resume(threadId, [{ interruptId: interrupt!.id, payload: { approved: true, reviewToken: seen!.reviewToken } }]);
     expect(refused.status).toBe(409);
     expect(await refused.json()).toMatchObject({ code: "stale", interruptIds: [interrupt!.id] });
     expect((await readPage(page.id)).title).toBe("Edited by a person");
     expect(await proposals(threadId)).toHaveLength(1);
 
     // Confirmed against the current version: applied.
-    const events = await readEvents(await resume(threadId, [{ interruptId: interrupt!.id, payload: { approved: true, seenUpdatedAt: fresh!.items[0]!.document!.updatedAt } }]));
+    const events = await readEvents(await resume(threadId, [{ interruptId: interrupt!.id, payload: { approved: true, reviewToken: fresh!.reviewToken } }]));
     expect(textOf(events)).toBe("Applied.");
     expect((await readPage(page.id)).title).toBe("From the assistant");
+  });
+
+  it("a write by where: an edit of any match, shown or not, refuses the approval of the old diff (#138)", async () => {
+    const tag = `bulk-${crypto.randomUUID().slice(0, 8)}`;
+    const pages = [];
+    // More matches than the card lists (10): the one edited is not on the card.
+    for (let n = 0; n < 12; n++) pages.push(await newPage({ title: `${tag} ${String(n).padStart(2, "0")}` }));
+    const threadId = newThread();
+    script([{ toolCalls: [{ name: "updateDocument", input: { slug: "pages", where: { title: { like: tag } }, draft: true, data: { meta: { description: "bulk" } } } }] }, { text: "Updated." }]);
+    const [interrupt] = await pauseOn(threadId);
+    const [seen] = await proposals(threadId);
+    expect(seen).toMatchObject({ matchedDocs: 12, reviewToken: expect.any(String) });
+    expect(seen!.changedSinceProposal).toBeUndefined();
+    const shown = new Set(seen!.items.map((item) => item.document!.id));
+    const hidden = pages.find((p) => !shown.has(String(p.id)))!;
+
+    await tick();
+    await edit(hidden.id, { meta: { description: "edited by a person" } });
+
+    const refused = await resume(threadId, [{ interruptId: interrupt!.id, payload: { approved: true, reviewToken: seen!.reviewToken } }]);
+    expect(refused.status).toBe(409);
+    expect(await refused.json()).toMatchObject({ code: "stale", interruptIds: [interrupt!.id] });
+    expect((await readPage(hidden.id)).meta.description).toBe("edited by a person");
+
+    const [fresh] = await proposals(threadId);
+    expect(fresh!.changedSinceProposal).toBe(true);
+    const events = await readEvents(await resume(threadId, [{ interruptId: interrupt!.id, payload: { approved: true, reviewToken: fresh!.reviewToken } }]));
+    expect(textOf(events)).toBe("Updated.");
+    expect((await readPage(hidden.id)).meta.description).toBe("bulk");
+  });
+
+  it("a write by where: a document that starts matching, or stops, refuses it too", async () => {
+    const tag = `set-${crypto.randomUUID().slice(0, 8)}`;
+    const a = await newPage({ title: `${tag} a` });
+    await newPage({ title: `${tag} b` });
+    const threadId = newThread();
+    script([{ toolCalls: [{ name: "deleteDocuments", input: { slug: "pages", where: { title: { like: tag } } } }] }, { text: "Deleted." }]);
+    const [interrupt] = await pauseOn(threadId);
+    const [seen] = await proposals(threadId);
+
+    // A new match: the delete would remove a page the card never showed.
+    await tick();
+    const added = await newPage({ title: `${tag} c` });
+    const afterAdd = await resume(threadId, [{ interruptId: interrupt!.id, payload: { approved: true, reviewToken: seen!.reviewToken } }]);
+    expect(afterAdd.status).toBe(409);
+
+    // A match edited out of the set: the count drops.
+    const [withAdded] = await proposals(threadId);
+    await tick();
+    await edit(a.id, { title: "renamed" });
+    const afterRename = await resume(threadId, [{ interruptId: interrupt!.id, payload: { approved: true, reviewToken: withAdded!.reviewToken } }]);
+    expect(afterRename.status).toBe(409);
+    expect((await readPage(added.id)).title).toBe(`${tag} c`);
+  });
+
+  it("an approval without a token is not checked; a legacy seenUpdatedAt still is (approvals pending across a deploy)", async () => {
+    const page = await newPage({ title: "Legacy" });
+    const threadId = newThread();
+    script([{ toolCalls: [{ name: "updateDocument", input: { slug: "pages", id: String(page.id), draft: true, data: { title: "New" } } }] }, { text: "Applied." }]);
+    const [interrupt] = await pauseOn(threadId);
+    const [seen] = await proposals(threadId);
+    await tick();
+    await edit(page.id, { title: "Edited" });
+
+    const legacy = await resume(threadId, [{ interruptId: interrupt!.id, payload: { approved: true, seenUpdatedAt: seen!.items[0]!.document!.updatedAt } }]);
+    expect(legacy.status).toBe(409);
+    expect(await legacy.json()).toMatchObject({ code: "stale", interruptIds: [interrupt!.id] });
+
+    // Scripts that send no token get what they asked for: no check.
+    const events = await readEvents(await resume(threadId, [{ interruptId: interrupt!.id, payload: { approved: true } }]));
+    expect(textOf(events)).toBe("Applied.");
+    expect((await readPage(page.id)).title).toBe("New");
   });
 });
 
@@ -347,7 +425,7 @@ describe("access and ownership", () => {
 
     expect((await call("GET", `/assistant/approvals?threadId=${threadId}`, { as: "other" })).status).toBe(404);
     // With and without the stale check's ownership path.
-    for (const payload of [{ approved: true }, { approved: true, seenUpdatedAt: page.updatedAt }]) {
+    for (const payload of [{ approved: true }, { approved: true, reviewToken: `doc:${page.updatedAt}` }]) {
       const res = await resume(threadId, [{ interruptId: interrupt!.id, payload }], "other");
       expect(res.status).toBe(404);
     }

@@ -100,6 +100,7 @@ const proposal = (over: Partial<ApprovalProposal> = {}): ApprovalProposal => ({
       ],
     },
   ],
+  reviewToken: "doc:2026-11-01T00:00:00.000Z",
   ...over,
 });
 
@@ -320,6 +321,7 @@ const proposalsBody = (stale = false) => ({
     proposal({
       interruptId: "i2",
       toolCallId: "c2",
+      reviewToken: "doc:2026-11-02T00:00:00.000Z",
       items: [{ document: { id: "8", title: "About", updatedAt: "2026-11-02T00:00:00.000Z" }, changes: [{ path: "title", label: "Title", kind: "changed", format: "text", before: "About", after: "About us" }] }],
     }),
   ],
@@ -402,8 +404,26 @@ describe("chat panel", () => {
 
       expect(fakeChat.resolved).toEqual([
         [
-          { id: "i1", payload: { approved: true, seenUpdatedAt: "2026-11-01T00:00:00.000Z" } },
+          { id: "i1", payload: { approved: true, reviewToken: "doc:2026-11-01T00:00:00.000Z" } },
           { id: "i2", payload: { approved: false, reason: "Keep it short" } },
+        ],
+      ]);
+    });
+
+    it("a write by where (several documents) approves with the proposal's review token, like any other (#138)", async () => {
+      const where = {
+        ...proposalsBody().approvals[1]!,
+        reviewToken: "where:12:2026-11-03T00:00:00.000Z",
+        matchedDocs: 12,
+        items: ["Contact", "Blog"].map((title, n) => ({ document: { id: String(20 + n), title, updatedAt: "2026-11-03T00:00:00.000Z" }, changes: [] })),
+      };
+      setUp((url) => (url.includes("/approvals") ? Response.json({ approvals: [proposalsBody().approvals[0], where] }) : undefined));
+      await screen.findByRole("link", { name: "Contact" });
+      fireEvent.click(screen.getByRole("button", { name: "Approve all" }));
+      expect(fakeChat.resolved).toEqual([
+        [
+          { id: "i1", payload: { approved: true, reviewToken: "doc:2026-11-01T00:00:00.000Z" } },
+          { id: "i2", payload: { approved: true, reviewToken: "where:12:2026-11-03T00:00:00.000Z" } },
         ],
       ]);
     });
@@ -414,8 +434,8 @@ describe("chat panel", () => {
       fireEvent.click(screen.getByRole("button", { name: "Approve all" }));
       expect(fakeChat.resolved).toEqual([
         [
-          { id: "i1", payload: { approved: true, seenUpdatedAt: "2026-11-01T00:00:00.000Z" } },
-          { id: "i2", payload: { approved: true, seenUpdatedAt: "2026-11-02T00:00:00.000Z" } },
+          { id: "i1", payload: { approved: true, reviewToken: "doc:2026-11-01T00:00:00.000Z" } },
+          { id: "i2", payload: { approved: true, reviewToken: "doc:2026-11-02T00:00:00.000Z" } },
         ],
       ]);
 
@@ -496,7 +516,7 @@ describe("chat panel", () => {
       const approvalCards = () => Array.from(document.querySelectorAll<HTMLElement>(".assistant-approval-card"));
       const button = (name: string | RegExp) => screen.getByRole("button", { name }) as HTMLButtonElement;
 
-      it("Approve all and each Approve stay disabled until every change has loaded; then the answers carry the updatedAt", async () => {
+      it("Approve all and each Approve stay disabled until every change has loaded; then the answers carry the review tokens", async () => {
         const proposals = deferredProposals(() => Response.json(proposalsBody()));
         setUp(proposals.impl);
         await waitFor(() => expect(proposals.resolvers).toHaveLength(1));
@@ -516,8 +536,8 @@ describe("chat panel", () => {
         fireEvent.click(button("Approve all"));
         expect(fakeChat.resolved).toEqual([
           [
-            { id: "i1", payload: { approved: true, seenUpdatedAt: "2026-11-01T00:00:00.000Z" } },
-            { id: "i2", payload: { approved: true, seenUpdatedAt: "2026-11-02T00:00:00.000Z" } },
+            { id: "i1", payload: { approved: true, reviewToken: "doc:2026-11-01T00:00:00.000Z" } },
+            { id: "i2", payload: { approved: true, reviewToken: "doc:2026-11-02T00:00:00.000Z" } },
           ],
         ]);
       });
@@ -541,7 +561,7 @@ describe("chat panel", () => {
         // Approve all still waits for the other unseen change; Reject all answers it.
         expect(button("Approve all").disabled).toBe(true);
         fireEvent.click(button("Reject all"));
-        // No diff, so no updatedAt for the stale check: the explicit confirmation stands in for it.
+        // No diff, so no review token for the stale check: the explicit confirmation stands in for it.
         expect(fakeChat.resolved).toEqual([
           [
             { id: "i1", payload: { approved: true } },
@@ -550,7 +570,7 @@ describe("chat panel", () => {
         ]);
       });
 
-      it("one change loaded and one not: Approve all is blocked, the loaded card approves with its updatedAt", async () => {
+      it("one change loaded and one not: Approve all is blocked, the loaded card approves with its review token", async () => {
         setUp((url) =>
           url.includes("/approvals") ? Response.json({ approvals: [proposalsBody().approvals[0]] }) : undefined
         );
@@ -565,7 +585,7 @@ describe("chat panel", () => {
         fireEvent.click(within(other).getByRole("button", { name: "Approve anyway" }));
         expect(fakeChat.resolved).toEqual([
           [
-            { id: "i1", payload: { approved: true, seenUpdatedAt: "2026-11-01T00:00:00.000Z" } },
+            { id: "i1", payload: { approved: true, reviewToken: "doc:2026-11-01T00:00:00.000Z" } },
             { id: "i2", payload: { approved: true } },
           ],
         ]);

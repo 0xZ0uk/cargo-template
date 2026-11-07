@@ -28,7 +28,7 @@ export interface ProposalDocument {
   id: string;
   /** The document's title (`admin.useAsTitle`, then title/name/slug…), or its id. */
   title: string;
-  /** ISO `updatedAt` the diff was built from: sent back on approve to detect a change since. */
+  /** ISO `updatedAt` the diff was built from. */
   updatedAt?: string;
   /** `_status` (`draft` / `published`) for versioned collections. */
   status?: string;
@@ -55,6 +55,13 @@ export interface ApprovalProposal {
   draft?: boolean;
   /** The document changed after the assistant proposed this: the card asks to confirm again. */
   changedSinceProposal?: boolean;
+  /**
+   * Opaque: what the diff was built from, covering every document the write would touch (the
+   * document, or every match of a `where`). Echoed back on approve (`approvals/decision.ts`);
+   * the server refuses the approval with 409 `stale` when the targets changed since. Absent when
+   * there is nothing to go stale (a create) or the targets couldn't be read.
+   */
+  reviewToken?: string;
   /** Something the card should say instead of (or above) the diff: unreadable document, etc. */
   notice?: string;
 }
