@@ -60,6 +60,13 @@ describe('analyzeLoadedDocument: score and stats from one walk', () => {
     expect(body).not.toContain('Meta description')
   })
 
+  it('puts the title and meta fields before the body in the page text, for term matching', () => {
+    const { pageText } = analyzeLoadedDocument(null, page, { collection: 'pages' }, { purpose: 'content' })
+    expect(pageText.startsWith(`${page.title} Meta title words`)).toBe(true)
+    expect(pageText).toContain('Meta description words')
+    expect(pageText.endsWith(body)).toBe(true)
+  })
+
   it('counts the hero links and the hero media', () => {
     expect(stats.internalLinkCount).toBe(1)
     expect(stats.externalLinkCount).toBe(1)

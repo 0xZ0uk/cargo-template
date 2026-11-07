@@ -40,6 +40,10 @@ No schema change: nothing to migrate.
     dashboard no longer reports two h1s for a post with an h1 in its content.
   - The dashboard's internal and external link counts include the hero CTA links.
   - Duplicate content's 50-word floor uses the analyzer's word count.
+  - Term matching keeps the title and meta fields: content grade's query coverage, keyword
+    research's term and n-gram counts, duplicate content's trigrams and the AI prompts' page
+    context read `DocumentAnalysis.pageText` (title, `meta.title`, `meta.description`, then the
+    body), as they did before; only the stats count the body alone.
   - The persisted audit's cache key changes (`v: 3`), so stored audits are rebuilt once.
 - **`buildSeoInputFromDoc` blanks the slug of a global.** Globals have no URL; the audit already
   did this, `/validate`, score history and the indexation audit didn't, so a global with a `slug`

@@ -182,13 +182,13 @@ export function createAiContentBriefHandler(
       const id = body.id != null ? String(body.id) : undefined
       if (collection && id && (!targetCollections || targetCollections.includes(collection))) {
         try {
-          const { doc, text } = await analyzeDocument(
+          const { doc, pageText } = await analyzeDocument(
             req,
             { collection, id },
             { purpose: 'content', seoConfig, overrideAccess: true },
           )
           pageTitle = (doc.title as string) || undefined
-          existingContent = text || undefined
+          existingContent = pageText || undefined
         } catch {
           // ignore — brief without page context
         }

@@ -177,7 +177,7 @@ export function createKeywordResearchHandler(
         kProcessed++
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const d = doc as any
-        const { text: fullText, analysis } = analyzeLoadedDocument(
+        const { pageText: fullText, analysis } = analyzeLoadedDocument(
           req.payload,
           d,
           sourceType === 'global' ? { global: sourceSlug } : { collection: sourceSlug },

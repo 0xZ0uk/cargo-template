@@ -227,7 +227,7 @@ export async function optimizeDocMeta(
     if (error instanceof DocumentReadError) return { ok: false, error: error.message, status: 404 }
     throw error
   }
-  const { doc, input: seoInput, analysis, text: content } = scanned
+  const { doc, input: seoInput, analysis, pageText: content } = scanned
   const metaGroups = new Set(['title', 'meta-description', 'content', 'url', 'headings'])
   const issues = analysis.checks
     .filter((c) => (c.status === 'fail' || c.status === 'warning') && metaGroups.has(c.group))

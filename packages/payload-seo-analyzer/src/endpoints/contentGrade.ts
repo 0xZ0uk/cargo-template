@@ -585,7 +585,7 @@ export function createContentGradeHandler(
       }
 
       const { matchedUrl, queryRows } = matchPageRows(rows, { slug, explicitUrl })
-      const grade = gradeContentCoverage(extracted.text, queryRows)
+      const grade = gradeContentCoverage(extracted.pageText, queryRows)
 
       return Response.json(
         {

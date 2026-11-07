@@ -115,7 +115,7 @@ export function createDuplicateContentHandler(collections: string[], seoConfig?:
             if (isExcludedDoc(exclusion, doc, collectionSlug)) continue
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const d = doc as any
-            const { text, analysis } = analyzeLoadedDocument(req.payload, d, { collection: collectionSlug }, {
+            const { pageText: text, analysis } = analyzeLoadedDocument(req.payload, d, { collection: collectionSlug }, {
               purpose: 'content',
             })
 

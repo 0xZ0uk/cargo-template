@@ -101,7 +101,7 @@ export function createAiRewriteHandler(targetCollections?: string[], seoConfig?:
         if (error instanceof DocumentReadError) return Response.json({ error: error.message }, { status: 404 })
         throw error
       }
-      const { doc, text: pageContent } = read
+      const { doc, pageText: pageContent } = read
 
       const title = (doc.title as string) || ''
       const slug = (doc.slug as string) || ''

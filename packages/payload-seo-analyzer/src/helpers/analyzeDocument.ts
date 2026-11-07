@@ -54,6 +54,12 @@ export interface DocumentAnalysis {
   analysis: SeoAnalysis
   /** The body text the stats count (hero, blocks or extractor output, post content). */
   text: string
+  /**
+   * The page's words for term matching: the title, `meta.title` and `meta.description`, then
+   * the body text. Content grade, keyword research, duplicate content and the AI prompts read
+   * this (a query that only matches the title is covered); the stats count `text` only.
+   */
+  pageText: string
 }
 
 export interface AnalyzeDocumentOptions {
@@ -125,7 +131,13 @@ export function analyzeLoadedDocument(
       ? { ...config, disabledRules: [...new Set([...(config.disabledRules ?? []), ...disabled])] }
       : config,
   )
-  return { doc: doc ?? {}, input, analysis, text: context?.fullText.trim() ?? '' }
+  const text = context?.fullText.trim() ?? ''
+  const title = typeof doc?.title === 'string' ? doc.title : ''
+  const pageText = [title, input.metaTitle, input.metaDescription, text]
+    .filter((part): part is string => typeof part === 'string' && part.trim() !== '')
+    .join(' ')
+    .trim()
+  return { doc: doc ?? {}, input, analysis, text, pageText }
 }
 
 async function readDocument(
