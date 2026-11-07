@@ -643,7 +643,7 @@ const buildConnectionRefreshTaskConfig = () =>
   }) as const
 
 // ---------------------------------------------------------------------------
-// social-post-sweep — finds due queued posts and queues publish tasks
+// social-post-sweep — queues publish tasks for due posts (sweepDueSocialPosts)
 // ---------------------------------------------------------------------------
 
 type SweepTaskInput = {
@@ -657,46 +657,18 @@ const buildSweepTaskConfig = () =>
     handler: async ({ input, req }: { input: SweepTaskInput; req: PayloadRequest }) => {
       const options = getPluginOptions(req.payload)
       const log = createPluginLogger(req.payload.logger, { task: SOCIAL_POST_SWEEP_TASK_SLUG })
-      const limit = input.limit ?? options.scheduling.sweepBatchSize
-
-      const now = new Date().toISOString()
-      const result = await req.payload.find({
-        collection: SOCIAL_POSTS_SLUG as never,
-        depth: 0,
-        limit,
-        overrideAccess: true,
-        sort: 'scheduledAt',
-        where: {
-          and: [{ status: { equals: 'queued' } }, { scheduledAt: { less_than_equal: now } }],
-        },
+      const { sweepDueSocialPosts } = await import('./jobQueue.js')
+      // The same due query as the cron, the HTTP endpoint and worker loops.
+      const { failed, queued, scanned } = await sweepDueSocialPosts(req.payload, options, req, {
+        limit: input.limit,
       })
-
-      const { queueSocialPostPublish } = await import('./jobQueue.js')
-      let queued = 0
-      let failed = 0
-      for (const row of result.docs as unknown as Array<{ id: number | string }>) {
-        try {
-          await queueSocialPostPublish({ payload: req.payload, postId: row.id, req })
-          queued++
-        } catch (error) {
-          failed++
-          log.error('failed to queue publish for due post', {
-            error: error instanceof Error ? error.message : String(error),
-            postId: row.id,
-          })
-        }
-      }
-      log.info(`sweep queued ${queued} of ${result.docs.length} due posts`)
+      log.info(`sweep queued ${queued} of ${scanned} due posts`)
       if (failed > 0 && queued === 0) {
         // `retries: 0`: the job is marked failed and the next sweep picks the
-        // still-`queued` posts up again.
-        throw new Error(`sweep could not queue any of ${result.docs.length} due posts`)
+        // still-due posts up again.
+        throw new Error(`sweep could not queue any of ${scanned} due posts`)
       }
-      return {
-        output: failed
-          ? { failed, queued, scanned: result.docs.length }
-          : { queued, scanned: result.docs.length },
-      }
+      return { output: failed ? { failed, queued, scanned } : { queued, scanned } }
     },
     inputSchema: [],
     interfaceName: 'SocialsSweepTaskInput',

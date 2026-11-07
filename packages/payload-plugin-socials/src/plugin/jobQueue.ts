@@ -1,6 +1,6 @@
 import type { Payload, PayloadRequest } from 'payload'
 
-import type { NormalizedPluginOptions, PlatformId, PostStatus } from '../types/index.js'
+import type { NormalizedPluginOptions, PlatformId } from '../types/index.js'
 
 import {
   SOCIAL_CONNECTION_REFRESH_TASK_SLUG,
@@ -90,34 +90,31 @@ export const runQueuedSocialsJobs = async (
 }
 
 // ---------------------------------------------------------------------------
-// Sweep — find due `queued` posts and queue their publish tasks
+// Sweep — find due posts and queue their publish tasks
 // ---------------------------------------------------------------------------
 
-type SocialPostQueueRow = {
-  id: number | string
-  meta?: { scheduleToken?: string }
-  nextRetryAt?: null | string
-  queuedJobId?: null | string
-  scheduledAt?: null | string
-  status: PostStatus
-}
-
 export type SweepResult = {
+  /** Due posts whose publish job could not be queued (logged; the next sweep tries again). */
+  failed: number
   queued: number
   scanned: number
 }
 
-export const sweepDueSocialPosts = async (
+/**
+ * The one "due" query, shared by `sweepDueSocialPosts` (cron, HTTP endpoint,
+ * worker loop) and the `socialPostSweep` task (`scheduling.autoRun`): queued
+ * posts whose `scheduledAt` has passed, plus Business Profile `publishing` and
+ * Facebook `scheduled` posts whose follow-up check (`nextRetryAt`) is due.
+ */
+export const findDueSocialPosts = async (
   payload: Payload,
-  options: NormalizedPluginOptions,
-  req?: PayloadRequest,
-): Promise<SweepResult> => {
-  const limit = options.scheduling.sweepBatchSize
-  const now = new Date().toISOString()
+  args: { limit: number; now?: Date },
+): Promise<Array<{ id: number | string }>> => {
+  const now = (args.now ?? new Date()).toISOString()
   const result = await payload.find({
     collection: SOCIAL_POSTS_SLUG as never,
     depth: 0,
-    limit,
+    limit: args.limit,
     overrideAccess: true,
     sort: 'scheduledAt',
     where: {
@@ -140,18 +137,36 @@ export const sweepDueSocialPosts = async (
       ],
     },
   })
+  return result.docs as unknown as Array<{ id: number | string }>
+}
 
-  const rows = result.docs as unknown as SocialPostQueueRow[]
+/**
+ * Queue a publish job for every due post (`findDueSocialPosts`). The publish
+ * task decides what the job does: publish a queued post, or check a post the
+ * platform still holds. A post whose job fails to queue is logged and counted
+ * in `failed`; it stays due, so the next sweep picks it up.
+ */
+export const sweepDueSocialPosts = async (
+  payload: Payload,
+  options: NormalizedPluginOptions,
+  req?: PayloadRequest,
+  args: { limit?: number } = {},
+): Promise<SweepResult> => {
+  const rows = await findDueSocialPosts(payload, {
+    limit: args.limit ?? options.scheduling.sweepBatchSize,
+  })
   let queued = 0
+  let failed = 0
   for (const row of rows) {
     try {
       await queueSocialPostPublish({ payload, postId: row.id, req })
       queued++
     } catch (error) {
+      failed++
       logAsyncOperationFailure(payload, 'socials.sweep.queue', error)
     }
   }
-  return { queued, scanned: rows.length }
+  return { failed, queued, scanned: rows.length }
 }
 
 // ---------------------------------------------------------------------------

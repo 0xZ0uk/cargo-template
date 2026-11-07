@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { NormalizedPluginOptions } from '../../types/index.js'
 
 vi.mock('../../server/platforms/registry.js', () => ({ getPlatformAdapter: vi.fn() }))
-vi.mock('../jobQueue.js', () => ({ queueSocialPostPublish: vi.fn() }))
+vi.mock('../jobQueue.js', () => ({ sweepDueSocialPosts: vi.fn() }))
 vi.mock('../../server/services/connectionService.js', () => ({
   getCredentials: vi.fn(),
   saveCredentials: vi.fn(),
@@ -13,7 +13,7 @@ vi.mock('../../server/services/connectionService.js', () => ({
 
 import { getPlatformAdapter } from '../../server/platforms/registry.js'
 import { getCredentials, saveCredentials } from '../../server/services/connectionService.js'
-import { queueSocialPostPublish } from '../jobQueue.js'
+import { sweepDueSocialPosts } from '../jobQueue.js'
 import {
   SocialsTaskFailure,
   buildConnectionRefreshTaskConfig,
@@ -160,25 +160,23 @@ describe('socialConnectionRefresh handler', () => {
 })
 
 describe('socialPostSweep handler', () => {
-  it('queues a publish task for each due post', async () => {
-    const find = vi.fn().mockResolvedValue({ docs: [{ id: 1 }, { id: 2 }] })
-    const result = await sweep({ input: {}, req: mkReq({ find }) })
+  it('runs sweepDueSocialPosts, with its limit override', async () => {
+    vi.mocked(sweepDueSocialPosts).mockResolvedValue({ failed: 0, queued: 2, scanned: 2 })
+    const req = mkReq({})
+    const result = await sweep({ input: { limit: 7 }, req })
     expect(result.output).toEqual({ queued: 2, scanned: 2 })
-    expect(queueSocialPostPublish).toHaveBeenCalledTimes(2)
+    expect(sweepDueSocialPosts).toHaveBeenCalledWith(req.payload, options, req, { limit: 7 })
   })
 
   it('reports partial queue failures and throws when none could be queued', async () => {
-    const find = vi.fn().mockResolvedValue({ docs: [{ id: 1 }, { id: 2 }] })
-    vi.mocked(queueSocialPostPublish)
-      .mockResolvedValueOnce(10)
-      .mockRejectedValueOnce(new Error('db down'))
-    expect((await sweep({ input: {}, req: mkReq({ find }) })).output).toEqual({
+    vi.mocked(sweepDueSocialPosts).mockResolvedValueOnce({ failed: 1, queued: 1, scanned: 2 })
+    expect((await sweep({ input: {}, req: mkReq({}) })).output).toEqual({
       failed: 1,
       queued: 1,
       scanned: 2,
     })
-    vi.mocked(queueSocialPostPublish).mockRejectedValue(new Error('db down'))
-    await expect(sweep({ input: {}, req: mkReq({ find }) })).rejects.toThrow(
+    vi.mocked(sweepDueSocialPosts).mockResolvedValueOnce({ failed: 2, queued: 0, scanned: 2 })
+    await expect(sweep({ input: {}, req: mkReq({}) })).rejects.toThrow(
       'sweep could not queue any of 2 due posts',
     )
   })
