@@ -13,6 +13,7 @@ import { checkEeat } from '../rules/eeat'
 import { checkSchema } from '../rules/schema'
 import { evaluateRequiredProperties, SCHEMA_REQUIREMENTS } from '../rules/schema-requirements'
 import type { SeoInput, AnalysisContext } from '../types'
+import { resolveThresholds } from '../helpers/thresholds'
 
 const SITE = 'https://example.com'
 
@@ -48,6 +49,7 @@ function makeCtx(overrides: Partial<AnalysisContext> = {}): AnalysisContext {
     isPost: true,
     pageType: 'blog',
     config: {},
+    limits: resolveThresholds(),
     ...overrides,
   }
 }

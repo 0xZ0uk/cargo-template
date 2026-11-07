@@ -19,13 +19,12 @@ import {
   LONG_SECTION_THRESHOLD,
 } from '../constants.js'
 import { getTranslations } from '../i18n.js'
-import { resolveThresholds } from '../helpers/thresholds.js'
 import { blockContentOf } from '../helpers/blockContent.js'
 
 export function checkReadability(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
   const checks: SeoCheck[] = []
   const r = getTranslations().rules.readability
-  const { fleschScorePass, fleschScoreWarn } = resolveThresholds(ctx.config.thresholds)
+  const { fleschScorePass, fleschScoreWarn } = ctx.limits
   const rt = READABILITY_THRESHOLDS
   const { fullText, readabilityText, sentences, wordCount } = ctx
 

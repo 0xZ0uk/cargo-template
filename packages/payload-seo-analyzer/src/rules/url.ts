@@ -5,7 +5,6 @@ import type { SeoCheck, SeoInput, AnalysisContext } from '../types.js'
 import { slugifyKeyword, isStopWordInCompoundExpression } from '../helpers.js'
 import { getUtilitySlugs, getStopWords, getStopWordCompounds } from '../constants.js'
 import { getTranslations } from '../i18n.js'
-import { resolveThresholds } from '../helpers/thresholds.js'
 
 export function checkUrl(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
   const checks: SeoCheck[] = []
@@ -42,7 +41,7 @@ export function checkUrl(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
   }
 
   // 11. Length <= slugMaxLength characters
-  const { slugMaxLength } = resolveThresholds(ctx.config.thresholds)
+  const { slugMaxLength } = ctx.limits
   if (slug.length > slugMaxLength) {
     checks.push({
       id: 'slug-length',

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { analyzeSeo } from '../index'
 import type { SeoInput, AnalysisContext, SeoConfig, PageType } from '../types'
+import { resolveThresholds } from '../helpers/thresholds'
 import { checkTitle } from '../rules/title'
 import { checkMetaDescription } from '../rules/meta-description'
 import { checkUrl } from '../rules/url'
@@ -61,6 +62,7 @@ function makeCtx(overrides: Partial<AnalysisContext> = {}): AnalysisContext {
     isPost: false,
     pageType: 'local-seo',
     config: {},
+    limits: resolveThresholds(),
     ...overrides,
   }
 }

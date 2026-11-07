@@ -5,7 +5,6 @@ import type { SeoCheck, SeoInput, AnalysisContext } from '../types.js'
 import { normalizeForComparison, keywordMatchesText } from '../helpers.js'
 import { getActionVerbs } from '../constants.js'
 import { getTranslations } from '../i18n.js'
-import { resolveThresholds } from '../helpers/thresholds.js'
 
 export function checkMetaDescription(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
   const checks: SeoCheck[] = []
@@ -13,7 +12,7 @@ export function checkMetaDescription(input: SeoInput, ctx: AnalysisContext): Seo
   const desc = input.metaDescription || ''
   const descLen = desc.length
   const kw = ctx.normalizedKeyword
-  const { metaDescLengthMin, metaDescLengthMax } = resolveThresholds(ctx.config.thresholds)
+  const { metaDescLengthMin, metaDescLengthMax } = ctx.limits
 
   // 6. Meta description present
   if (!desc) {

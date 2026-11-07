@@ -8,6 +8,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import type { SeoInput, AnalysisContext } from '../types'
+import { resolveThresholds } from '../helpers/thresholds'
 import { checkGeo } from '../rules/geo'
 
 // ---------------------------------------------------------------------------
@@ -62,6 +63,7 @@ function makeCtx(overrides: Partial<AnalysisContext> = {}): AnalysisContext {
     isPost: true,
     pageType: 'blog',
     config: {},
+    limits: resolveThresholds(),
     ...overrides,
   }
 }

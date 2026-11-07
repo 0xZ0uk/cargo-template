@@ -10,7 +10,6 @@ import {
   PLACEHOLDER_PATTERNS,
 } from '../constants.js'
 import { getTranslations } from '../i18n.js'
-import { resolveThresholds } from '../helpers/thresholds.js'
 import { blockContentOf } from '../helpers/blockContent.js'
 
 export function checkContent(input: SeoInput, ctx: AnalysisContext): SeoCheck[] {
@@ -21,7 +20,7 @@ export function checkContent(input: SeoInput, ctx: AnalysisContext): SeoCheck[] 
   // Adapted min words by page type
   const isFormPage = pageType === 'form' || pageType === 'contact'
   const isLegalPage = pageType === 'legal'
-  const { minWordsPost, minWordsGeneric, keywordDensityMax, keywordDensityWarn } = resolveThresholds(ctx.config.thresholds)
+  const { minWordsPost, minWordsGeneric, keywordDensityMax, keywordDensityWarn } = ctx.limits
   const minWords = isPost ? minWordsPost : isFormPage ? MIN_WORDS_FORM : isLegalPage ? MIN_WORDS_LEGAL : minWordsGeneric
   const minLabel = isPost
     ? r.minWordsPost(minWordsPost)
