@@ -1,15 +1,16 @@
-import type { CollectionSlug, GlobalSlug, PayloadRequest } from "payload";
+import type { CollectionSlug, PayloadRequest, Where } from "payload";
 import { diffDocument, labelText, type BlockLike, type DiffMode, type FieldLike } from "../approvals/diff";
 import type { ApprovalAction, ApprovalProposal, ProposalDocument, ProposalItem } from "../approvals/types";
 import { lexicalToText } from "../approvals/lexical";
-import { redactFor, redactedReference, type RedactionPolicy } from "../redaction";
 import { blocksBySlugOf, collectionOf as richTextCollectionOf, markdownLosses, resolveRichText, RichTextPathError, SET_RICH_TEXT_TOOL_NAME, toMarkdown, unsupportedMarkdown } from "../richText/fields";
+import { HiddenFieldError, type UserReader } from "./reader";
 
 /**
  * Approval proposals (#65): what a pending write would change, read as the signed-in user.
  *
- * Every read is `overrideAccess: false` with the request's user, `depth: 0`, drafts included: the
- * card shows what the user may see, and the write itself is access-checked again when it runs
+ * Every read goes through the request's {@link UserReader} (`overrideAccess: false`, `depth: 0`,
+ * drafts included, redacted fields removed, titles that never use a hidden field): the card shows
+ * what the user may see, and the write itself is access-checked again when it runs
  * (plugin-mcp lists one tool per operation for all collections, so an approved call can still be
  * denied). A read that fails (no access, deleted) gives a proposal with a `notice` and the
  * proposed values, never an error for the whole list.
@@ -76,20 +77,11 @@ function globalOf(req: PayloadRequest, slug: string) {
   return req.payload.config.globals?.find((g) => g.slug === slug);
 }
 
-function titleOf(doc: Doc, useAsTitle: string | undefined, id: string): string {
-  for (const key of [useAsTitle, "title", "name", "label", "slug", "email", "filename"]) {
-    if (!key || key === "id") continue;
-    const value = doc[key];
-    if (typeof value === "string" && value.trim()) return value.trim();
-  }
-  return id;
-}
-
-function documentOf(doc: Doc, useAsTitle: string | undefined): ProposalDocument {
+function documentOf(reader: UserReader, slug: string, doc: Doc): ProposalDocument {
   const id = idOf(doc.id) ?? "";
   return {
     id,
-    title: titleOf(doc, useAsTitle, id),
+    title: reader.title(slug, doc, id),
     ...(typeof doc.updatedAt === "string" ? { updatedAt: doc.updatedAt } : {}),
     ...(typeof doc._status === "string" ? { status: doc._status } : {}),
   };
@@ -97,73 +89,14 @@ function documentOf(doc: Doc, useAsTitle: string | undefined): ProposalDocument 
 
 const localeOf = (input: Record<string, unknown>) => (typeof input.locale === "string" && input.locale ? { locale: input.locale } : {});
 
-async function readDoc(req: PayloadRequest, slug: string, id: string, input: Record<string, unknown>): Promise<Doc | null> {
-  const config = collectionOf(req, slug);
-  if (!config) return null;
+/** The documents a write by `where` matches (the first {@link MAX_ITEMS}), or `null` when they can't be read. */
+async function findWhere(reader: UserReader, slug: string, where: unknown, input: Record<string, unknown>) {
+  if (!isRecord(where)) return null;
   try {
-    const doc = await req.payload.findByID({
-      collection: slug as CollectionSlug,
-      id,
-      depth: 0,
-      draft: Boolean(config.versions && (config.versions as { drafts?: unknown }).drafts),
-      overrideAccess: false,
-      req,
-      disableErrors: true,
-      ...localeOf(input),
-    } as Parameters<typeof req.payload.findByID>[0]);
-    return isRecord(doc) ? doc : null;
-  } catch {
-    return null;
-  }
-}
-
-async function readGlobal(req: PayloadRequest, slug: string, input: Record<string, unknown>): Promise<Doc | null> {
-  const config = globalOf(req, slug);
-  if (!config) return null;
-  try {
-    const doc = await req.payload.findGlobal({
-      slug: slug as GlobalSlug,
-      depth: 0,
-      draft: Boolean(config.versions && (config.versions as { drafts?: unknown }).drafts),
-      overrideAccess: false,
-      req,
-      ...localeOf(input),
-    } as Parameters<typeof req.payload.findGlobal>[0]);
-    return isRecord(doc) ? doc : null;
-  } catch {
-    return null;
-  }
-}
-
-async function readVersion(req: PayloadRequest, slug: string, versionId: string, global: boolean): Promise<{ parent?: string; version: Doc } | null> {
-  try {
-    const found = global
-      ? await req.payload.findGlobalVersionByID({ slug: slug as GlobalSlug, id: versionId, depth: 0, overrideAccess: false, req, disableErrors: true } as Parameters<typeof req.payload.findGlobalVersionByID>[0])
-      : await req.payload.findVersionByID({ collection: slug as CollectionSlug, id: versionId, depth: 0, overrideAccess: false, req, disableErrors: true } as Parameters<typeof req.payload.findVersionByID>[0]);
-    if (!isRecord(found) || !isRecord(found.version)) return null;
-    return { ...(idOf(found.parent) ? { parent: idOf(found.parent)! } : {}), version: found.version };
-  } catch {
-    return null;
-  }
-}
-
-async function findWhere(req: PayloadRequest, slug: string, where: unknown, input: Record<string, unknown>): Promise<{ docs: Doc[]; total: number } | null> {
-  const config = collectionOf(req, slug);
-  if (!config || !isRecord(where)) return null;
-  try {
-    const result = await req.payload.find({
-      collection: slug as CollectionSlug,
-      where: where as never,
-      limit: MAX_ITEMS,
-      depth: 0,
-      draft: Boolean(config.versions && (config.versions as { drafts?: unknown }).drafts),
-      overrideAccess: false,
-      req,
-      ...localeOf(input),
-    } as Parameters<typeof req.payload.find>[0]);
-    return { docs: result.docs as Doc[], total: result.totalDocs };
-  } catch {
-    return null;
+    return await reader.find(slug, where as Where, { limit: MAX_ITEMS, ...localeOf(input) });
+  } catch (error) {
+    if (error instanceof HiddenFieldError) return null;
+    throw error;
   }
 }
 
@@ -172,7 +105,7 @@ async function findWhere(req: PayloadRequest, slug: string, where: unknown, inpu
  * by id, `restoreVersion` (the version's parent), `duplicateDocument`, and the global tools.
  * `undefined` for writes that don't target one existing document (create, by `where`).
  */
-async function currentTarget(req: PayloadRequest, call: InterruptCall): Promise<{ doc: Doc | null; version?: Doc } | undefined> {
+async function currentTarget(reader: UserReader, call: InterruptCall): Promise<{ doc: Doc | null; version?: Doc } | undefined> {
   const { toolName, input } = call;
   const slug = typeof input.slug === "string" ? input.slug : undefined;
   if (!slug) return undefined;
@@ -180,20 +113,20 @@ async function currentTarget(req: PayloadRequest, call: InterruptCall): Promise<
   if (isGlobalTool(toolName)) {
     if (action === "restore") {
       const versionId = idOf(input.id);
-      const version = versionId ? await readVersion(req, slug, versionId, true) : null;
-      return { doc: await readGlobal(req, slug, input), ...(version ? { version: version.version } : {}) };
+      const version = versionId ? await reader.findVersion(slug, versionId, { global: true }) : null;
+      return { doc: await reader.findGlobal(slug, localeOf(input)), ...(version ? { version: version.version } : {}) };
     }
-    return action === "update" ? { doc: await readGlobal(req, slug, input) } : undefined;
+    return action === "update" ? { doc: await reader.findGlobal(slug, localeOf(input)) } : undefined;
   }
   if (action === "restore") {
     const versionId = idOf(input.id);
-    const version = versionId ? await readVersion(req, slug, versionId, false) : null;
-    const doc = version?.parent ? await readDoc(req, slug, version.parent, input) : null;
+    const version = versionId ? await reader.findVersion(slug, versionId) : null;
+    const doc = version?.parent ? await reader.findByID(slug, version.parent, localeOf(input)) : null;
     return { doc, ...(version ? { version: version.version } : {}) };
   }
   if (action === "update" || action === "delete" || action === "duplicate") {
     const id = idOf(input.id);
-    return id ? { doc: await readDoc(req, slug, id, input) } : undefined;
+    return id ? { doc: await reader.findByID(slug, id, localeOf(input)) } : undefined;
   }
   return undefined;
 }
@@ -204,22 +137,21 @@ const changedAfter = (doc: Doc | null | undefined, requestedAt: number) => {
 };
 
 /** Build the proposal of one pending approval. Never throws: problems become a `notice`. */
-export async function buildProposal(req: PayloadRequest, record: PendingInterruptLike, redact: RedactionPolicy = { paths: {} }): Promise<ApprovalProposal> {
+export async function buildProposal(reader: UserReader, record: PendingInterruptLike): Promise<ApprovalProposal> {
+  const { req } = reader;
   const call = interruptCall(record);
   const { toolName, input } = call;
   const action = actionOf(toolName);
   const slug = typeof input.slug === "string" ? input.slug : undefined;
-  // Current values of redacted fields (#68) never reach the card: documents read for the diff
-  // lose them first, populated relations (`createdBy`…) by their own collection. What the model
-  // proposes to write is shown as is (it authored it).
-  const hide = <T>(doc: T): T => redactFor(doc, slug, redact);
+  // Current values of redacted fields (#68) never reach the card: the reader returns documents
+  // without them, populated relations (`createdBy`…) redacted by their own collection. What the
+  // model proposes to write is shown as is (it authored it).
   const global = isGlobalTool(toolName);
   const collectionConfig = slug && !global ? collectionOf(req, slug) : undefined;
   const globalConfig = slug && global ? globalOf(req, slug) : undefined;
   const entity = collectionConfig ?? globalConfig;
   const fields = (entity?.fields ?? undefined) as FieldLike[] | undefined;
   const blocks = blocksOf(req);
-  const useAsTitle = collectionConfig?.admin?.useAsTitle;
   const versioned = Boolean(entity?.versions && (entity.versions as { drafts?: unknown }).drafts);
 
   const base: ApprovalProposal = {
@@ -245,16 +177,16 @@ export async function buildProposal(req: PayloadRequest, record: PendingInterrup
     return { changes: result.changes, ...(result.omitted ? { omittedChanges: result.omitted } : {}) };
   };
   const data = isRecord(input.data) ? input.data : {};
-  // The card's title never comes from a redacted field (a user's email): hidden first, whatever read the document.
+  // The card's title comes from the reader, which never names a document by a hidden field.
   const asDocument = (doc: Doc) =>
-    global ? { ...documentOf(doc, undefined), id: "", title: base.target?.label ?? slug ?? "" } : documentOf(hide(doc), useAsTitle);
+    global ? { ...documentOf(reader, "", doc), id: "", title: base.target?.label ?? slug ?? "" } : documentOf(reader, slug ?? "", doc);
 
   if (slug && !entity) {
     return { ...base, notice: `“${slug}” is not a collection or global of this site.`, items: [diff("create", undefined, input)] };
   }
 
   // The policy refuses calls that query a hidden field (#68) when they are applied: say so now.
-  const hiddenField = redactedReference(redact, input, toolName);
+  const hiddenField = reader.hiddenField(input, toolName);
   if (hiddenField) {
     return {
       ...base,
@@ -264,7 +196,7 @@ export async function buildProposal(req: PayloadRequest, record: PendingInterrup
   }
 
   if (toolName === SET_RICH_TEXT_TOOL_NAME && slug && collectionConfig) {
-    return richTextProposal(req, record, call, { ...base, ...(versioned ? { draft: input.draft !== false } : {}) }, asDocument);
+    return richTextProposal(reader, record, call, { ...base, ...(versioned ? { draft: input.draft !== false } : {}) }, asDocument);
   }
 
   switch (action) {
@@ -277,8 +209,7 @@ export async function buildProposal(req: PayloadRequest, record: PendingInterrup
     case "delete":
     case "duplicate":
     case "restore": {
-      const found = await currentTarget(req, call);
-      const target = found && { doc: found.doc && hide(found.doc), ...(found.version ? { version: hide(found.version) } : {}) };
+      const target = await currentTarget(reader, call);
       if (target) {
         const { doc } = target;
         if (action === "restore") {
@@ -307,8 +238,7 @@ export async function buildProposal(req: PayloadRequest, record: PendingInterrup
       }
       // By `where` (update or delete many).
       if (slug && (action === "update" || action === "delete") && input.where !== undefined) {
-        const matched = await findWhere(req, slug, input.where, input);
-        const found = matched && { ...matched, docs: matched.docs.map(hide) };
+        const found = await findWhere(reader, slug, input.where, input);
         if (!found) return { ...base, notice: "The matching documents could not be read.", items: action === "update" ? [diff("create", undefined, data)] : [] };
         const items = found.docs.map((doc) => ({ document: asDocument(doc), ...(action === "delete" ? diff("delete", doc, undefined) : diff("update", doc, data)) }));
         return { ...base, items, matchedDocs: found.total };
@@ -329,18 +259,19 @@ export async function buildProposal(req: PayloadRequest, record: PendingInterrup
  * editor will store it). Formatting Markdown can't keep is named in a notice.
  */
 async function richTextProposal(
-  req: PayloadRequest,
+  reader: UserReader,
   record: PendingInterruptLike,
   call: InterruptCall,
   base: ApprovalProposal,
   asDocument: (doc: Doc) => ProposalDocument
 ): Promise<ApprovalProposal> {
+  const { req } = reader;
   const { input } = call;
   const slug = input.slug as string;
   const path = typeof input.path === "string" ? input.path : "";
   const markdown = typeof input.markdown === "string" ? input.markdown : "";
   const id = idOf(input.id);
-  const doc = id ? await readDoc(req, slug, id, input) : null;
+  const doc = id ? await reader.findByID(slug, id, localeOf(input)) : null;
   const fallback = (notice: string): ApprovalProposal => ({
     ...base,
     notice,
@@ -391,8 +322,8 @@ async function richTextProposal(
 }
 
 /** Proposals for every pending approval of a conversation, oldest first. */
-export function buildProposals(req: PayloadRequest, pending: ReadonlyArray<PendingInterruptLike>, redact: RedactionPolicy = { paths: {} }): Promise<ApprovalProposal[]> {
-  return Promise.all(pending.map((record) => buildProposal(req, record, redact)));
+export function buildProposals(reader: UserReader, pending: ReadonlyArray<PendingInterruptLike>): Promise<ApprovalProposal[]> {
+  return Promise.all(pending.map((record) => buildProposal(reader, record)));
 }
 
 /**
@@ -401,7 +332,7 @@ export function buildProposals(req: PayloadRequest, pending: ReadonlyArray<Pendi
  * that can't be read isn't "stale": applying will fail on its own and the card shows why.
  */
 export async function findStaleApprovals(
-  req: PayloadRequest,
+  reader: UserReader,
   pending: ReadonlyArray<PendingInterruptLike>,
   seen: ReadonlyArray<{ interruptId: string; seenUpdatedAt: string }>
 ): Promise<string[]> {
@@ -409,7 +340,7 @@ export async function findStaleApprovals(
   for (const { interruptId, seenUpdatedAt } of seen) {
     const record = pending.find((p) => p.interruptId === interruptId);
     if (!record) continue;
-    const target = await currentTarget(req, interruptCall(record));
+    const target = await currentTarget(reader, interruptCall(record));
     const current = target?.doc?.updatedAt;
     if (typeof current === "string" && current !== seenUpdatedAt) stale.push(interruptId);
   }

@@ -1,6 +1,6 @@
 import type { ModelMessage, RunAgentResumeItem, RunRecord, StreamChunk } from "@tanstack/ai";
 import type { AssistantAuditSink } from "../audit";
-import type { RedactionMap, RelationMap } from "../redaction";
+import type { RedactionPolicy } from "../redaction";
 import type { UsageAmount, UsageSnapshot } from "../usage";
 import type {
   ChatWithInterruptsPersistence,
@@ -52,17 +52,13 @@ export interface TurnSettings {
    */
   testModel?: boolean;
   /**
-   * Fields the model never sees (#68): collection or global slug → dotted paths, resolved by the
-   * endpoint (the auth defaults plus the app's `redact`). Applied to every tool result before the
-   * model, the stream and the stored transcript see it.
+   * Fields the model never sees (#68), as the endpoint's `UserReader` resolved them (#133): the
+   * redacted paths per slug (the auth defaults plus the app's `redact`) and the relation fields
+   * that lead to them (`relationMapOf`), plain JSON. The turn uses it as is: tool results lose
+   * those fields (populated relations by their own collection) before the model, the stream and
+   * the stored transcript see them, and calls that query them are refused.
    */
-  redact?: RedactionMap;
-  /**
-   * Where documents of one collection appear inside another's (relationship, upload and join
-   * fields that lead to redacted fields, `relationMapOf`): populated documents are redacted with
-   * their own collection's paths (#68).
-   */
-  relations?: RelationMap;
+  redaction?: RedactionPolicy;
 }
 
 /** The body of a turn, as the endpoint validated it. `TurnInput.body` carries this. */

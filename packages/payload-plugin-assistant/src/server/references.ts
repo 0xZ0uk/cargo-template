@@ -1,159 +1,58 @@
-import type { CollectionSlug, GlobalSlug, PayloadRequest } from "payload";
-import { parseDocumentID } from "payload";
-import {
-  type DocumentReference,
-  type DocumentReferenceInput,
-  type MessageReferences,
-  labelText,
-  neutralTitle,
-  isDocumentId,
-  referenceKey,
-} from "../references";
-import type { RedactionPolicy } from "../redaction";
-import { type ConfigLike, redactionPolicyOf } from "../redactionSchema";
+import type { PayloadRequest } from "payload";
+import { type DocumentReference, type DocumentReferenceInput, type MessageReferences, isDocumentId, referenceKey } from "../references";
 import type { McpDispatch } from "../tools/payloadToolSource";
 import { payloadToolSourceForRequest } from "../tools/inProcess";
 import type { NormalizedAssistantOptions } from "../utils/normalizeOptions";
 import { reachableEntities } from "../utils/reachable";
+import { globalTitle, type UserReader } from "./reader";
 
 /**
  * Server side of document references (#69): resolving what a message is about, as the user, and
  * the `@` search. Neither returns document content: an address and a title.
  */
 
+const hasDrafts = (entity: PayloadRequest["payload"]["config"]["collections"][number]) =>
+  Boolean((entity.versions as { drafts?: unknown } | undefined)?.drafts);
+
 export type ResolveFailure = { ok: false; status: number; code: string; error: string };
 export type Resolved<T> = { ok: true; value: T } | ResolveFailure;
 
 const fail = (status: number, code: string, error: string): ResolveFailure => ({ ok: false, status, code, error });
 
-type CollectionConfig = PayloadRequest["payload"]["config"]["collections"][number];
-type GlobalConfig = PayloadRequest["payload"]["config"]["globals"][number];
-
-/** The redaction policy of this Payload: the `redact` option plus the auth defaults (what the tools use). */
-export const policyFor = (req: PayloadRequest, options: NormalizedAssistantOptions): RedactionPolicy =>
-  redactionPolicyOf(req.payload.config as unknown as ConfigLike, options.redact);
-
-/** A collection's singular label as text, its slug when it has none. */
-export const singularLabelOf = (collection: CollectionConfig): string =>
-  labelText((collection.labels as { singular?: unknown } | undefined)?.singular, collection.slug);
-
-/** The field a collection's documents are named by (`admin.useAsTitle`), `id` when none. */
-export const titleFieldOf = (collection: CollectionConfig): string => collection.admin?.useAsTitle || "id";
-
 /**
- * Whether the title field is redacted for the collection (a path of the policy equals it or holds
- * it, as in `redactedReference`). Its value is then never read, sent or stored as a title.
- */
-export function titleIsRedacted(collection: CollectionConfig, policy: RedactionPolicy): boolean {
-  const field = titleFieldOf(collection);
-  if (field === "id") return false;
-  return (policy.paths[collection.slug] ?? []).some((path) => field === path || field.startsWith(`${path}.`));
-}
-
-/** The title field to read for a collection: `id` (nothing to read) when it is redacted. */
-export const readableTitleField = (collection: CollectionConfig, policy: RedactionPolicy): string =>
-  titleIsRedacted(collection, policy) ? "id" : titleFieldOf(collection);
-
-/** A document's title: its title field, or `User #12` when that field is redacted, or its id. */
-export function titleOf(collection: CollectionConfig, policy: RedactionPolicy, doc: Record<string, unknown> | null | undefined, id: string): string {
-  if (titleIsRedacted(collection, policy)) return neutralTitle(singularLabelOf(collection), id);
-  return documentTitle(doc, titleFieldOf(collection), id);
-}
-
-/** Collection slug → singular label, for the collections whose title is redacted (the client names their documents the same way). */
-export function redactedTitleLabels(req: PayloadRequest, options: NormalizedAssistantOptions): Record<string, string> {
-  const policy = policyFor(req, options);
-  const reachable = reachableEntities(req.payload.config);
-  return Object.fromEntries(
-    req.payload.config.collections
-      .filter((collection) => reachable.collections.has(collection.slug) && titleIsRedacted(collection, policy))
-      .map((collection) => [collection.slug, singularLabelOf(collection)])
-  );
-}
-
-export const globalTitle = (global: GlobalConfig): string => labelText(global.label, global.slug);
-
-/** A document's title from its title field, falling back to its id. */
-export function documentTitle(doc: Record<string, unknown> | null | undefined, field: string, id: string): string {
-  const value = doc?.[field];
-  if (typeof value === "string" && value.trim()) return value.trim().slice(0, 200);
-  if (typeof value === "number") return String(value);
-  return id;
-}
-
-const hasDrafts = (entity: CollectionConfig | GlobalConfig) =>
-  Boolean((entity.versions as { drafts?: unknown } | undefined)?.drafts);
-
-/**
- * One reference, read as the user (`overrideAccess: false`, `depth: 0`, the latest draft, only
- * the title field): 400 `invalid_reference` for a collection or global the assistant can't reach,
- * 404 `reference_not_found` for a document that doesn't exist **or that the user can't read** (the
+ * One reference, read as the user ({@link UserReader}: access-checked, the latest draft, only the
+ * title field): 400 `invalid_reference` for a collection or global the assistant can't reach, 404
+ * `reference_not_found` for a document that doesn't exist **or that the user can't read** (the
  * two are indistinguishable, as with conversations).
  */
-export async function resolveReference(
-  req: PayloadRequest,
-  input: DocumentReferenceInput,
-  options: NormalizedAssistantOptions
-): Promise<Resolved<DocumentReference>> {
-  const config = req.payload.config;
-  const policy = policyFor(req, options);
+export async function resolveReference(reader: UserReader, input: DocumentReferenceInput): Promise<Resolved<DocumentReference>> {
+  const config = reader.req.payload.config;
   const reachable = reachableEntities(config);
   const notFound = fail(404, "reference_not_found", `${input.kind === "global" ? `global "${input.slug}"` : `"${input.slug}" ${input.id}`} was not found, or you can't read it`);
 
   if (input.kind === "global") {
     const global = config.globals.find((g) => g.slug === input.slug);
     if (!global || !reachable.globals.has(input.slug)) return fail(400, "invalid_reference", `the assistant can't reach global "${input.slug}"`);
-    try {
-      await req.payload.findGlobal({
-        slug: input.slug as GlobalSlug,
-        depth: 0,
-        overrideAccess: false,
-        req,
-        user: req.user,
-        ...(hasDrafts(global) ? { draft: true } : {}),
-        select: { updatedAt: true } as never,
-      });
-    } catch {
-      return notFound;
-    }
+    if (!(await reader.findGlobal(input.slug, { existsOnly: true }))) return notFound;
     return { ok: true, value: { kind: "global", slug: input.slug, title: globalTitle(global) } };
   }
 
-  const collection = config.collections.find((c) => c.slug === input.slug);
-  if (!collection || !reachable.collections.has(input.slug) || !input.id) {
+  if (!reader.titleField(input.slug) || !reachable.collections.has(input.slug) || !input.id) {
     return fail(400, "invalid_reference", `the assistant can't reach collection "${input.slug}"`);
   }
-  // A redacted title field is neither read nor used: the document is named by collection and id.
-  const field = readableTitleField(collection, policy);
-  let doc: Record<string, unknown> | null = null;
-  try {
-    doc = (await req.payload.findByID({
-      collection: input.slug as CollectionSlug,
-      id: parseDocumentID({ id: input.id, collectionSlug: input.slug as CollectionSlug, payload: req.payload }),
-      depth: 0,
-      overrideAccess: false,
-      req,
-      user: req.user,
-      disableErrors: true,
-      ...(hasDrafts(collection) ? { draft: true } : {}),
-      select: (field === "id" ? {} : { [field]: true }) as never,
-    })) as Record<string, unknown> | null;
-  } catch {
-    doc = null;
-  }
+  const doc = await reader.findByID(input.slug, input.id, { titleOnly: true });
   if (!doc) return notFound;
-  return { ok: true, value: { kind: "collection", slug: input.slug, id: input.id, title: titleOf(collection, policy, doc, input.id) } };
+  return { ok: true, value: { kind: "collection", slug: input.slug, id: input.id, title: reader.title(input.slug, doc, input.id) } };
 }
 
 /** The context and the mentions of a message, resolved (duplicates dropped); the first failure wins. */
 export async function resolveMessageReferences(
-  req: PayloadRequest,
-  inputs: { context?: DocumentReferenceInput; references?: DocumentReferenceInput[] },
-  options: NormalizedAssistantOptions
+  reader: UserReader,
+  inputs: { context?: DocumentReferenceInput; references?: DocumentReferenceInput[] }
 ): Promise<Resolved<MessageReferences>> {
   const out: MessageReferences = {};
   if (inputs.context) {
-    const resolved = await resolveReference(req, inputs.context, options);
+    const resolved = await resolveReference(reader, inputs.context);
     if (!resolved.ok) return resolved;
     out.context = resolved.value;
   }
@@ -163,7 +62,7 @@ export async function resolveMessageReferences(
     const key = referenceKey(input);
     if (seen.has(key)) continue;
     seen.add(key);
-    const resolved = await resolveReference(req, input, options);
+    const resolved = await resolveReference(reader, input);
     if (!resolved.ok) return resolved;
     refs.push(resolved.value);
   }
@@ -203,22 +102,24 @@ type ExecutableTool = { name: string; execute?: (args: unknown, context: never) 
  * collection the assistant reaches that has a title field, and globals whose label or slug does.
  * Every read goes through plugin-mcp's `findDocuments` / `findGlobal` as the user (one in-process
  * MCP session), so access, drafts and locales behave as they do for the model; a collection the
- * user can't read answers with an error and is skipped. Returns addresses and titles only.
+ * user can't read answers with an error and is skipped. Returns addresses and titles only, named
+ * by {@link UserReader.title}.
  */
 export async function searchDocuments(
-  req: PayloadRequest,
-  options: NormalizedAssistantOptions,
+  reader: UserReader,
+  options: Pick<NormalizedAssistantOptions, "toolFilter">,
   query: string,
   deps: { dispatch?: McpDispatch } = {}
 ): Promise<DocumentReference[]> {
+  const { req } = reader;
   const q = query.trim().slice(0, MAX_SEARCH_CHARS);
   const config = req.payload.config;
   const reachable = reachableEntities(config);
   const needle = q.toLowerCase();
-  const policy = policyFor(req, options);
   // A collection is searched by its title field; one whose title is redacted (users, by email) is
   // searched by its label ("user") or an id (`#12`) and listed as `User #12`, never by the hidden value.
-  const collections = config.collections.filter((c) => reachable.collections.has(c.slug) && titleFieldOf(c) !== "id");
+  const collections = config.collections.filter((c) => reachable.collections.has(c.slug) && reader.titleField(c.slug)?.field !== "id");
+  const hiddenTitles = reader.redactedTitles();
   const globals = config.globals.filter(
     (g) => reachable.globals.has(g.slug) && (!needle || globalTitle(g).toLowerCase().includes(needle) || g.slug.toLowerCase().includes(needle))
   );
@@ -244,11 +145,10 @@ export async function searchDocuments(
 
     const found = await Promise.all([
       ...collections.map(async (collection): Promise<DocumentReference[]> => {
-        const hidden = titleIsRedacted(collection, policy);
-        const field = titleFieldOf(collection);
+        const { field, hidden } = reader.titleField(collection.slug)!;
         let where: Record<string, unknown> | undefined;
         if (hidden) {
-          const byLabel = !needle || singularLabelOf(collection).toLowerCase().includes(needle) || collection.slug.toLowerCase().includes(needle);
+          const byLabel = !needle || (hiddenTitles[collection.slug] ?? "").toLowerCase().includes(needle) || collection.slug.toLowerCase().includes(needle);
           const id = q.replace(/^#/, "");
           if (!byLabel) {
             if (!isDocumentId(id)) return [];
@@ -269,7 +169,7 @@ export async function searchDocuments(
         });
         return documentsInToolResult(result).flatMap((doc) => {
           const id = typeof doc.id === "number" ? String(doc.id) : typeof doc.id === "string" ? doc.id : undefined;
-          return id ? [{ kind: "collection" as const, slug: collection.slug, id, title: titleOf(collection, policy, doc, id) }] : [];
+          return id ? [{ kind: "collection" as const, slug: collection.slug, id, title: reader.title(collection.slug, doc, id) }] : [];
         });
       }),
       ...globals.map(async (global): Promise<DocumentReference[]> => {

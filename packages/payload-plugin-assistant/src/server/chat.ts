@@ -11,13 +11,13 @@ import { buildSystemPrompt, siteUrls } from "./instructions";
 import { createTurnRunner, type CreateAdapter } from "./turn";
 import { isId, validateChatBody } from "./validate";
 import { budgetExceeded, formatUsd, usageResponse, utcDay } from "../usage";
-import type { RedactionPolicy } from "../redaction";
-import { redactionPolicyOf, type ConfigLike } from "../redactionSchema";
 import { MESSAGE_METADATA_KEY } from "../references";
-import { MAX_SEARCH_CHARS, redactedTitleLabels, resolveMessageReferences, searchDocuments } from "./references";
+import { readerFor } from "./reader";
+import { MAX_SEARCH_CHARS, resolveMessageReferences, searchDocuments } from "./references";
 
 /** Collections whose title field is redacted (slug → singular label), for the config endpoint. */
-export const redactedTitlesOf = redactedTitleLabels;
+export const redactedTitlesOf = (req: PayloadRequest, options: NormalizedAssistantOptions): Record<string, string> =>
+  readerFor(req, options).redactedTitles();
 
 /**
  * The assistant's endpoints, behind the checks in `endpoints/index.ts` (signed in, `access`…).
@@ -92,20 +92,6 @@ const isRejection = (item: { status: string; payload?: unknown }): boolean =>
   (typeof item.payload === "object" && item.payload !== null && (item.payload as { approved?: unknown }).approved === false);
 
 /** `POST /api/assistant/chat`: a new turn, or a resume with approval decisions. Answers the run's SSE. */
-/** The redaction policy of this Payload (#68): paths, auth defaults, relations to them. */
-function policyOf(req: PayloadRequest, options: NormalizedAssistantOptions): RedactionPolicy {
-  return redactionPolicyOf(req.payload.config as unknown as ConfigLike, options.redact);
-}
-
-/** The policy as turn settings: plain JSON, it travels to the conversation's Durable Object. */
-function redactionSettings(req: PayloadRequest, options: NormalizedAssistantOptions): Pick<TurnSettings, "redact" | "relations"> {
-  const { paths, relations } = policyOf(req, options);
-  return {
-    ...(Object.keys(paths).length ? { redact: paths } : {}),
-    ...(relations && Object.keys(relations).length ? { relations } : {}),
-  };
-}
-
 export async function handleChat(req: PayloadRequest, options: NormalizedAssistantOptions, deps: ChatDeps = {}): Promise<Response> {
   let raw: unknown;
   try {
@@ -116,6 +102,8 @@ export async function handleChat(req: PayloadRequest, options: NormalizedAssista
   const parsed = validateChatBody(raw, req.headers.get("X-Run-Id"));
   if (!parsed.ok) return jsonError(400, "invalid_body", parsed.error);
   const { threadId, messages, resume, seen, context, references } = parsed.value;
+  // Every read and title of this request, and the redaction policy the turn gets (#133).
+  const reader = readerFor(req, options);
 
   const model = parsed.value.model ?? options.defaultModel;
   if (!options.models.some((allowed) => allowed.id === model)) {
@@ -127,7 +115,7 @@ export async function handleChat(req: PayloadRequest, options: NormalizedAssista
   // What the message is about (#69), resolved as the user: a document they can't read is refused,
   // and the stored message keeps the server's titles, never the client's. No content is added.
   if (context || references.length) {
-    const resolved = await resolveMessageReferences(req, { ...(context ? { context } : {}), references }, options);
+    const resolved = await resolveMessageReferences(reader, { ...(context ? { context } : {}), references });
     if (!resolved.ok) return jsonError(resolved.status, resolved.code, resolved.error);
     const message = messages[0];
     if (message) message.metadata = { ...message.metadata, [MESSAGE_METADATA_KEY]: resolved.value };
@@ -159,7 +147,7 @@ export async function handleChat(req: PayloadRequest, options: NormalizedAssista
   if (seen.length) {
     const transcript = await backend.transcript(userOf(req), threadId);
     if (!transcript) return jsonError(404, "not_found", "Not found");
-    const stale = await findStaleApprovals(req, transcript.pendingInterrupts, seen);
+    const stale = await findStaleApprovals(reader, transcript.pendingInterrupts, seen);
     if (stale.length) {
       return jsonError(409, "stale", "A document changed after you reviewed the change. Review it again.", { interruptIds: stale });
     }
@@ -190,7 +178,7 @@ export async function handleChat(req: PayloadRequest, options: NormalizedAssista
     httpReferer: site || origin,
     appTitle: options.appTitle,
     ...(testModel ? { testModel: true } : {}),
-    ...redactionSettings(req, options),
+    redaction: reader.policy,
   };
   const body: ChatTurnBody = { messages, ...(resume ? { resume } : {}), settings };
   const runId = parsed.value.runId ?? crypto.randomUUID();
@@ -235,7 +223,7 @@ export async function handleApprovals(req: PayloadRequest, options: NormalizedAs
   if (!isId(threadId)) return jsonError(400, "invalid_query", '"threadId" is required');
   const transcript = await backendFor(req, options, deps).transcript(userOf(req), threadId);
   if (!transcript) return jsonError(404, "not_found", "Not found");
-  return Response.json({ approvals: await buildProposals(req, transcript.pendingInterrupts, policyOf(req, options)) });
+  return Response.json({ approvals: await buildProposals(readerFor(req, options), transcript.pendingInterrupts) });
 }
 
 /** `POST /api/assistant/chat/stop` `{ threadId, runId }`: abort a live run. */
@@ -255,7 +243,7 @@ export async function handleSearchDocuments(req: PayloadRequest, options: Normal
   const q = requestUrl(req).searchParams.get("q") ?? "";
   if (q.length > MAX_SEARCH_CHARS) return jsonError(400, "invalid_query", `"q" is longer than ${MAX_SEARCH_CHARS} characters`);
   try {
-    const documents = await searchDocuments(req, options, q, { dispatch: dispatchFor(req, deps) });
+    const documents = await searchDocuments(readerFor(req, options), options, q, { dispatch: dispatchFor(req, deps) });
     return Response.json({ documents });
   } catch (error) {
     req.payload.logger.error({ err: error, msg: `[${PLUGIN_NAME}] document search failed` });

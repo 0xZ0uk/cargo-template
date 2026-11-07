@@ -20,13 +20,15 @@ const settings: TurnSettings = {
   mcpEndpoint: `${ADMIN_ORIGIN}/api/mcp`,
   httpReferer: ADMIN_ORIGIN,
   appTitle: "test",
-  redact: { users: ["email", "sessions"] },
-  // As the endpoint resolves them from the config (`relationMapOf`).
-  relations: {
-    authored: [
-      { path: "author", relationTo: "users" },
-      { path: "createdBy", relationTo: ["users"] },
-    ],
+  // As the endpoint's `UserReader` resolves it from the config (`redactionPolicyOf`).
+  redaction: {
+    paths: { users: ["email", "sessions"] },
+    relations: {
+      authored: [
+        { path: "author", relationTo: "users" },
+        { path: "createdBy", relationTo: ["users"] },
+      ],
+    },
   },
 };
 

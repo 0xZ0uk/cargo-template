@@ -2,8 +2,8 @@ import type { ModelMessage } from "@tanstack/ai";
 
 /**
  * Field redaction (#68): fields the model never sees. Pure and dependency-free (type imports
- * only), so the turn runner (in the conversation's Durable Object), the approvals endpoint and the
- * tests share it.
+ * only), so the turn runner (in the conversation's Durable Object) and the Worker's `UserReader`
+ * (`server/reader.ts`, every read the endpoints make) share it.
  *
  * A redaction map is collection or global slug → dotted field paths (`email`, `profile.phone`,
  * `layout.secret`). Paths walk groups by name; arrays and blocks rows are walked implicitly
@@ -278,19 +278,6 @@ export function redactFor<T = Json>(value: T, slug: string | undefined, policy: 
   return redactPolymorphic(visit(value, 0), policy, 0) as T;
 }
 
-const SINGLE = "\u0000";
-const single = (paths: readonly string[] | undefined): RedactionPolicy => ({ paths: { [SINGLE]: paths ?? [] } });
-
-/**
- * One document without the redacted paths (no relations). Also walks the wrappers Payload and
- * plugin-mcp put around documents: a list (`[doc, …]`), a page (`{ docs: [...] }`), `{ doc }`, a
- * version (`{ version: doc }`, as the versions tools return them) and `{ result }`.
- */
-export function redactDocument<T = Json>(value: T, paths: readonly string[] | undefined): T {
-  if (!paths?.length) return value;
-  return redactFor(value, SINGLE, single(paths));
-}
-
 /** The leaf names of every redacted path: a cheap "could this text contain one?" check before parsing. */
 const leavesOf = (policy: RedactionPolicy) => [
   ...new Set(
@@ -388,11 +375,6 @@ export function redactTextFor(text: string, slug: string | undefined, policy: Re
   return cursor === 0 ? text : out + text.slice(cursor);
 }
 
-/** {@link redactTextFor} with one collection's paths. */
-export function redactText(text: string, paths: readonly string[] | undefined): string {
-  return paths?.length ? redactTextFor(text, SINGLE, single(paths)) : text;
-}
-
 /**
  * A tool result (what `chat()` hands the model) without redacted fields: a string (plugin-mcp's
  * text), content parts (`{ type: "text", content }`), or structured data.
@@ -412,11 +394,6 @@ export function redactResultFor<T = Json>(result: T, slug: string | undefined, p
     return (changed ? parts : result) as T;
   }
   return redactFor(result, slug, policy);
-}
-
-/** {@link redactResultFor} with one collection's paths. */
-export function redactToolResult<T = Json>(result: T, paths: readonly string[] | undefined): T {
-  return paths?.length ? redactResultFor(result, SINGLE, single(paths)) : result;
 }
 
 /** The collection or global a tool call is about: its `slug` argument (plugin-mcp's convention). */
