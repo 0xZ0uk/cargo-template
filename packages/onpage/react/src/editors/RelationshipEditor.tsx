@@ -11,7 +11,7 @@ import {
   relationTitle,
   type RelationField,
   type SearchHit,
-} from '@cargo/onpage-core'
+} from '@shipment/onpage-core'
 import { useCallback, useState } from 'react'
 import { useOnPage } from '../context.tsx'
 import type { FieldEditorProps } from '../types.ts'

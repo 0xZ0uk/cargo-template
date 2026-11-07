@@ -1,6 +1,6 @@
 # Security model
 
-This is the threat model of upstream's [`payload-plugin-socials`](https://github.com/ContiDigital/payload-plugin-socials), which this fork keeps. Report a problem in the fork as a private security advisory on the Cargo repository; one that also affects upstream goes to upstream's Security tab.
+This is the threat model of upstream's [`payload-plugin-socials`](https://github.com/ContiDigital/payload-plugin-socials), which this fork keeps. Report a problem in the fork as a private security advisory on the Shipment repository; one that also affects upstream goes to upstream's Security tab.
 
 ## How the plugin handles secrets
 

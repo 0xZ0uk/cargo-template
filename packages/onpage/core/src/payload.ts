@@ -1,5 +1,5 @@
 /**
- * @cargo/onpage-core/payload — the default adapters over Payload's REST API (cookie auth, same origin):
+ * @shipment/onpage-core/payload — the default adapters over Payload's REST API (cookie auth, same origin):
  *   payloadRest()     DataSource for collections and globals
  *   payloadUploads()  MediaLibrary over an upload collection
  * Every write is a normal PATCH, so access control, hooks, validation, drafts

@@ -1,4 +1,4 @@
-import { stegaClean } from '@cargo/onpage-core'
+import { stegaClean } from '@shipment/onpage-core'
 import { CircleAlert } from 'lucide-react'
 import React from 'react'
 

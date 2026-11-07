@@ -1,10 +1,10 @@
 /** The lazily loaded part of the TanStack Start adapter: the editor and the preview toolbar, wired to Start and Payload. */
 import { useEffect, useMemo } from 'react'
 import { useLocation, useRouter } from '@tanstack/react-router'
-import { DEFAULTS, ROUTES, type DocRef } from '@cargo/onpage-core'
-import { payloadRest, payloadUploads } from '@cargo/onpage-core/payload'
-import { OnPageEditor, PreviewToolbar, inPreviewFrame, type Links } from '@cargo/onpage-react'
-import { lexicalEditors } from '@cargo/onpage-lexical'
+import { DEFAULTS, ROUTES, type DocRef } from '@shipment/onpage-core'
+import { payloadRest, payloadUploads } from '@shipment/onpage-core/payload'
+import { OnPageEditor, PreviewToolbar, inPreviewFrame, type Links } from '@shipment/onpage-react'
+import { lexicalEditors } from '@shipment/onpage-lexical'
 import type { OnPageMountProps } from './client.tsx'
 import { useTanstackRefresh } from './refresh.ts'
 

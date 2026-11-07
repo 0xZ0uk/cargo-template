@@ -6,7 +6,7 @@ export const homeStatic: RequiredDataFromCollectionSlug<'pages'> = {
   _status: 'published',
   meta: {
     description: 'A website built with Payload and TanStack Start.',
-    title: 'Cargo Template',
+    title: 'Shipment',
   },
   title: 'Home',
   layout: [
@@ -27,7 +27,7 @@ export const homeStatic: RequiredDataFromCollectionSlug<'pages'> = {
                   format: 0,
                   mode: 'normal',
                   style: '',
-                  text: 'Cargo Template',
+                  text: 'Shipment',
                   version: 1,
                 },
               ],

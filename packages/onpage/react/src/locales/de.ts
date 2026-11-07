@@ -1,7 +1,7 @@
 /**
  * German editor UI strings.
  *
- *   import { de } from '@cargo/onpage-react/locales/de'
+ *   import { de } from '@shipment/onpage-react/locales/de'
  *   <OnPage messages={de} uiLocale="de" />
  */
 import type { MessageKey, Messages } from '../messages.ts'

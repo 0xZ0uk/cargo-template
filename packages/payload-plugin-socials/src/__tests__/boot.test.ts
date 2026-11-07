@@ -29,7 +29,7 @@ const pluginOptions = {
   sources: { product: () => Promise.reject(new Error('stub')) },
 }
 
-// Upstream also boots against Postgres and MongoDB; Cargo runs on D1 (SQLite) only.
+// Upstream also boots against Postgres and MongoDB; Shipment runs on D1 (SQLite) only.
 const createTestDatabase = (): Config['db'] =>
   sqliteAdapter({ client: { url: ':memory:' }, push: true })
 

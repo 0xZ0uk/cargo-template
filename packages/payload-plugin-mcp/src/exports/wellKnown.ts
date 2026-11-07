@@ -1,5 +1,5 @@
 /**
- * `@cargo/payload-plugin-mcp/well-known`: for the site-root discovery routes. OAuth clients look
+ * `@shipment/payload-plugin-mcp/well-known`: for the site-root discovery routes. OAuth clients look
  * for `/.well-known/oauth-authorization-server` and `/.well-known/oauth-protected-resource[/api/mcp]`
  * at the root of the site, outside Payload's `/api`, so the app forwards those paths to the
  * plugin's endpoints. Framework-free and Payload-free: import it from any route file.

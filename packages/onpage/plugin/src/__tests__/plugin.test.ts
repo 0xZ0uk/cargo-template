@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import { InvalidConfiguration } from 'payload'
-import type { SessionAdapter } from '@cargo/onpage-core'
-import { stegaClean, stegaCleanDeep, stegaDecode, stegaEncode } from '@cargo/onpage-core'
+import type { SessionAdapter } from '@shipment/onpage-core'
+import { stegaClean, stegaCleanDeep, stegaDecode, stegaEncode } from '@shipment/onpage-core'
 import { serializeFields } from '../schema.ts'
 import { narrow } from '../../../core/src/__tests__/fixtures/narrow.ts'
 import { payloadFields } from '../../../core/src/__tests__/fixtures/payloadFields.ts'
-import { encodeDocument } from '@cargo/onpage-core'
+import { encodeDocument } from '@shipment/onpage-core'
 import { createPreviewToken, verifyPreviewToken } from '../tokens.ts'
 import { onpage, wantsMarkers } from '../index.ts'
 
@@ -323,7 +323,7 @@ describe('onpage() plugin', () => {
     expect(pages.hooks.afterRead).toHaveLength(2)
     expect(pages.hooks.beforeChange).toHaveLength(2)
     expect(pages.admin.components.edit.beforeDocumentControls[0]!.path).toBe(
-      '@cargo/onpage-plugin/admin#OnPageAdminControls',
+      '@shipment/onpage-plugin/admin#OnPageAdminControls',
     )
     expect(out.collections.find((c: any) => c.slug === 'media').hooks).toBeUndefined()
     expect(out.globals[0]!.admin.components.edit.beforeDocumentControls).toHaveLength(1)

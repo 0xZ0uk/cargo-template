@@ -3,7 +3,7 @@
  * on the page itself (layout selects, toggles, numbers, links, images that
  * aren't shown…). Fields shown on the page are edited there instead.
  */
-import type { SchemaField, SchemaFieldType, RefKey } from '@cargo/onpage-core'
+import type { SchemaField, SchemaFieldType, RefKey } from '@shipment/onpage-core'
 import type { TargetIndex } from './types.ts'
 
 /** Row bookkeeping, never a setting. */

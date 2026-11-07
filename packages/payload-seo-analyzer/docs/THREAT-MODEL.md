@@ -1,4 +1,4 @@
-# Threat model — `@cargo/payload-seo-analyzer`
+# Threat model — `@shipment/payload-seo-analyzer`
 
 The plugin's security model and deliberate design choices. Inherited from upstream `@consilioweb/payload-seo-analyzer`, updated for the Payload 4 + Cloudflare Workers fork; the Workers-specific parts are in *Workers deployment* at the end.
 

@@ -1,8 +1,8 @@
 {
-  "name": "@cargo/onpage-tanstack-start",
+  "name": "@shipment/onpage-tanstack-start",
   "version": "0.7.0",
   "private": true,
-  "description": "Cargo's fork of payload-onpage for TanStack Start: cookie session adapter, <OnPage />, onpageContext() and refresh rendering.",
+  "description": "Shipment's fork of payload-onpage for TanStack Start: cookie session adapter, <OnPage />, onpageContext() and refresh rendering.",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
@@ -33,9 +33,9 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@cargo/onpage-core": "workspace:*",
-    "@cargo/onpage-react": "workspace:*",
-    "@cargo/onpage-lexical": "workspace:*"
+    "@shipment/onpage-core": "workspace:*",
+    "@shipment/onpage-react": "workspace:*",
+    "@shipment/onpage-lexical": "workspace:*"
   },
   "peerDependencies": {
     "@tanstack/react-start": "catalog:",

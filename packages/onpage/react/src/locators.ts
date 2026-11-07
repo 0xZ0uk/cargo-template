@@ -18,7 +18,7 @@ import {
   type Locator,
   type Target,
   type TargetKind,
-} from '@cargo/onpage-core'
+} from '@shipment/onpage-core'
 import { ATTR } from './annotations.ts'
 import { UI } from './dom.ts'
 

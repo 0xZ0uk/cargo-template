@@ -1,8 +1,8 @@
 {
-  "name": "@cargo/onpage-plugin",
+  "name": "@shipment/onpage-plugin",
   "version": "0.7.0",
   "private": true,
-  "description": "Cargo's fork of payload-onpage for Payload CMS: on-page editing endpoints, auto-mapping, preview links and admin controls.",
+  "description": "Shipment's fork of payload-onpage for Payload CMS: on-page editing endpoints, auto-mapping, preview links and admin controls.",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
@@ -29,7 +29,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@cargo/onpage-core": "workspace:*"
+    "@shipment/onpage-core": "workspace:*"
   },
   "peerDependencies": {
     "payload": ">=4.0.0-beta.6 <5.0.0",

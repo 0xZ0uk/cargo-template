@@ -1,5 +1,5 @@
 /**
- * Page-builder blocks (cargo-template #47): a page built only from section blocks in
+ * Page-builder blocks (shipment #47): a page built only from section blocks in
  * `layout` (Hero, Features, Columns, FAQ…) must contribute its headings, text and FAQ to
  * the analysis — in `analyzeDocument` (`/validate`, the audit, score history) and the sidebar alike.
  *

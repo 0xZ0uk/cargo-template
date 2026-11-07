@@ -64,7 +64,7 @@ export const loadPage = createServerFn({ method: 'GET', strict: { output: false 
     // helpers the secret they verify cookies with.
     const payload = await getPayload({ config: (await import('@payload-config')).default })
     const { isDraftEnabled, onpageContext, previewGrantFor } =
-      await import('@cargo/onpage-tanstack-start/session')
+      await import('@shipment/onpage-tanstack-start/session')
 
     // Drafts show for a logged-in user who asked with `?draft=true` (live preview) or turned
     // on on-page editing, and for whoever opened a preview link to this page. Anyone else gets

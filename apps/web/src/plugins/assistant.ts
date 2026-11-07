@@ -2,8 +2,8 @@ import type {
   AssistantAuditSink,
   AssistantConversationDependencies,
   AssistantConversationsOptions,
-} from '@cargo/payload-plugin-assistant'
-import { analyticsEngineAuditSink } from '@cargo/payload-plugin-assistant'
+} from '@shipment/payload-plugin-assistant'
+import { analyticsEngineAuditSink } from '@shipment/payload-plugin-assistant'
 
 import { isWorkersRuntime } from '#cloudflare-runtime'
 
@@ -47,7 +47,7 @@ const DEV_APP_ENVS = new Set(['', 'development'])
 
 /**
  * The assistant's audit log (#68): one Analytics Engine data point per write it applied, in the
- * `cargo_assistant_audit` dataset (`ASSISTANT_AUDIT` in wrangler.jsonc; `_staging` on staging).
+ * `shipment_assistant_audit` dataset (`ASSISTANT_AUDIT` in wrangler.jsonc; `_staging` on staging).
  * The plugin's `audit` option (turns run in this process: the Node dev server, tests) and, through
  * {@link assistantConversationDependencies}, the conversation Durable Object (turns on Workers)
  * both use it, so both write the same events. No binding (the Payload CLI, a test without the

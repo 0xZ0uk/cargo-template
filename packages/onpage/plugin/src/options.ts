@@ -1,4 +1,4 @@
-import type { DocRef, EncodeFilter, SealSecret, SessionAdapter } from '@cargo/onpage-core'
+import type { DocRef, EncodeFilter, SealSecret, SessionAdapter } from '@shipment/onpage-core'
 import type { CollectionSlug, GlobalSlug, PayloadRequest } from 'payload'
 import type { CommentsOptions } from './comments.ts'
 

@@ -14,7 +14,7 @@ import {
   type RefKey,
   type SavedSection,
   type SchemaBlock,
-} from '@cargo/onpage-core'
+} from '@shipment/onpage-core'
 import { useEffect, useRef, useState } from 'react'
 import { insertRow } from '../../rowOps.ts'
 import { useOnPage } from '../../context.tsx'

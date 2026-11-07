@@ -13,7 +13,7 @@ import {
   stegaClean,
   type MediaItem,
   type RelationField,
-} from '@cargo/onpage-core'
+} from '@shipment/onpage-core'
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { useOnPage } from '../context.tsx'
 import type { FieldEditorProps } from '../types.ts'

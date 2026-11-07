@@ -5,7 +5,7 @@ import type { NormalizedAssistantOptions } from "../utils/normalizeOptions";
 
 type Described = { slug: string; description?: string; drafts: boolean };
 
-// The fork (`@cargo/payload-plugin-mcp`) keeps upstream's slug.
+// The fork (`@shipment/payload-plugin-mcp`) keeps upstream's slug.
 const MCP_PLUGIN_SLUG = "@payloadcms/plugin-mcp";
 
 /** plugin-mcp's raw options (`collections.<slug>.description`, `globals.<slug>.description`), when it is installed. */

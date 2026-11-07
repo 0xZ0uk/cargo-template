@@ -6,7 +6,7 @@ export default defineConfig({
     // The admin server components import the client entry by package path (a client boundary
     // for the host's bundler); tests resolve it to the source, like tsconfig's `paths`.
     alias: {
-      '@cargo/payload-plugin-assistant/client': fileURLToPath(new URL('./src/client.ts', import.meta.url)),
+      '@shipment/payload-plugin-assistant/client': fileURLToPath(new URL('./src/client.ts', import.meta.url)),
     },
   },
   test: {

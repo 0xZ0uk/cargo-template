@@ -1,5 +1,5 @@
 /**
- * @cargo/onpage-core/testing — an in-memory DataSource for testing your
+ * @shipment/onpage-core/testing — an in-memory DataSource for testing your
  * integration (custom field editors, renderers, client-mode pages) without a
  * Payload server. Saves are applied in memory, with Payload's stale-write
  * check, and recorded so tests can assert on them.

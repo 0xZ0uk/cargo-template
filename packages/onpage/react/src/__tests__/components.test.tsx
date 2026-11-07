@@ -9,7 +9,7 @@ import type {
   NumberField,
   ScalarField,
   SchemaField,
-} from '@cargo/onpage-core'
+} from '@shipment/onpage-core'
 import { createTranslate, defaultMessages, relativeTime } from '../messages.ts'
 import { shortcut } from '../dom.ts'
 import { Dialog } from '../ui/Dialog.tsx'

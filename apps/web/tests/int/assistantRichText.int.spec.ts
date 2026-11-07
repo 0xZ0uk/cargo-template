@@ -4,7 +4,7 @@ import {
   markdownLosses,
   SET_RICH_TEXT_TOOL_NAME,
   unsupportedMarkdown,
-} from '@cargo/payload-plugin-assistant/mcp'
+} from '@shipment/payload-plugin-assistant/mcp'
 import { beforeAll, describe, expect, it } from 'vitest'
 
 import config from '@/payload.config'

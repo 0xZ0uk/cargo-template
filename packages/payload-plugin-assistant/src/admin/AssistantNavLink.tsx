@@ -1,5 +1,5 @@
 import type { PayloadRequest, ServerProps } from "payload";
-import { AssistantNavLinkClient } from "@cargo/payload-plugin-assistant/client";
+import { AssistantNavLinkClient } from "@shipment/payload-plugin-assistant/client";
 import type { AssistantAccess } from "../types/options";
 import { canSeeAssistant } from "../utils/viewAccess";
 

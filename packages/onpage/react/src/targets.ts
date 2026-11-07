@@ -6,7 +6,7 @@
  * re-render, lazy content), ignoring the editor's own UI. Rescans are
  * debounced and run when the browser is idle.
  */
-import { targetKey, type Locator, type Target, type TargetKind } from '@cargo/onpage-core'
+import { targetKey, type Locator, type Target, type TargetKind } from '@shipment/onpage-core'
 import { useEffect, useState } from 'react'
 import { ATTR } from './annotations.ts'
 import { isOurs } from './dom.ts'

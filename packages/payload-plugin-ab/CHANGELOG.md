@@ -32,7 +32,7 @@
 
 ## [3.0.0-beta.0] - 2026-11-05
 
-Cargo's fork (`@cargo/payload-plugin-ab`) of upstream 2.10.1 (`e40c7a0`), ported to Payload 4 and to hosts without Next.js (TanStack Start on Cloudflare Workers). See the README for the full list.
+Shipment's fork (`@shipment/payload-plugin-ab`) of upstream 2.10.1 (`e40c7a0`), ported to Payload 4 and to hosts without Next.js (TanStack Start on Cloudflare Workers). See the README for the full list.
 
 ### Changed
 
@@ -48,7 +48,7 @@ Cargo's fork (`@cargo/payload-plugin-ab`) of upstream 2.10.1 (`e40c7a0`), ported
 - Manifest keys are URI-encoded in the default bucket and experiment cookie names (`(` and `)` too), so a non-ASCII slug yields a valid cookie name instead of a `Set-Cookie` browsers drop.
 - Publishing a percentage writes only `_abPassPercentage` to the published row (`db.updateOne`), not the whole raw row.
 - Variants panel: Payload 4 components (`ConfirmationModal` for "Clear all", `Spinner`, `FieldLabel`) and tokens in `VariantsField.css`; API calls follow `routes.api`; "Clear all" deletes sequentially; the panel receives the collection's slug and title fields. `hideOnVariant` keeps a field's own `admin.condition`.
-- Package name `@cargo/payload-plugin-ab`; the admin import-map path is `@cargo/payload-plugin-ab/admin/VariantsField#VariantsField`. `/analytics` and `/analytics/client` are the same client bundle.
+- Package name `@shipment/payload-plugin-ab`; the admin import-map path is `@shipment/payload-plugin-ab/admin/VariantsField#VariantsField`. `/analytics` and `/analytics/client` are the same client bundle.
 
 ### Added
 

@@ -1,8 +1,8 @@
 {
-  "name": "@cargo/onpage",
+  "name": "@shipment/onpage",
   "version": "0.0.0",
   "private": true,
-  "description": "Workspace root for Cargo's fork of payload-onpage: shared tests, lint and type checks over packages/onpage/*.",
+  "description": "Workspace root for Shipment's fork of payload-onpage: shared tests, lint and type checks over packages/onpage/*.",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -15,11 +15,11 @@
     "format:check": "prettier --check ."
   },
   "devDependencies": {
-    "@cargo/onpage-core": "workspace:*",
-    "@cargo/onpage-lexical": "workspace:*",
-    "@cargo/onpage-plugin": "workspace:*",
-    "@cargo/onpage-react": "workspace:*",
-    "@cargo/onpage-tanstack-start": "workspace:*",
+    "@shipment/onpage-core": "workspace:*",
+    "@shipment/onpage-lexical": "workspace:*",
+    "@shipment/onpage-plugin": "workspace:*",
+    "@shipment/onpage-react": "workspace:*",
+    "@shipment/onpage-tanstack-start": "workspace:*",
     "@eslint/js": "^10.0.1",
     "@payloadcms/db-sqlite": "catalog:",
     "@payloadcms/translations": "catalog:",

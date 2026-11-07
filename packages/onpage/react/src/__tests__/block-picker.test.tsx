@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import type { DataSource, DocumentSchema, Renderer, SchemaBlock } from '@cargo/onpage-core'
+import type { DataSource, DocumentSchema, Renderer, SchemaBlock } from '@shipment/onpage-core'
 import { hub } from '../hub.ts'
 import { groupBlocks } from '../ui/lazy/BlockPicker.tsx'
 

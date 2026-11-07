@@ -4,7 +4,7 @@
  * save clears it on the server), and released on unmount. Reports who else
  * holds a lock, so the dock can say so before a save is refused.
  */
-import { isReady, type EditorSession, type RefKey } from '@cargo/onpage-core'
+import { isReady, type EditorSession, type RefKey } from '@shipment/onpage-core'
 import { useEffect, useRef, useState } from 'react'
 
 const REFRESH_MS = 60_000

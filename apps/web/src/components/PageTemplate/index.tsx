@@ -1,4 +1,4 @@
-import { ExperimentTracker } from '@cargo/payload-plugin-ab/analytics'
+import { ExperimentTracker } from '@shipment/payload-plugin-ab/analytics'
 import React from 'react'
 
 import type { LoadPageResult } from '@/app/_frontend/pages.functions'

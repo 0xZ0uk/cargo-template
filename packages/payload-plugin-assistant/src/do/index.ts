@@ -1,5 +1,5 @@
 /**
- * `@cargo/payload-plugin-assistant/do`: the Durable Object classes. Workerd-only
+ * `@shipment/payload-plugin-assistant/do`: the Durable Object classes. Workerd-only
  * (`cloudflare:workers`): re-export them from the Worker entry (`apps/web/src/server.ts`), never
  * import this entry from `payload.config.ts` or the admin bundle.
  */

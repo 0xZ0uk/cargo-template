@@ -26,7 +26,7 @@ The console stores the instructions, not this repo. After editing a file, push i
 
    ```sh
    npx pullfrog@latest secret set OPENCODE_API_KEY --org 0xZ0uk
-   npx pullfrog@latest secret list --repo 0xZ0uk/cargo-template   # shows it as [org, inherited]
+   npx pullfrog@latest secret list --repo 0xZ0uk/shipment   # shows it as [org, inherited]
    ```
 
    Don't also add it as a GitHub Actions secret mapped in the workflow. A workflow value beats the stored key, and Pullfrog's server can't see it when it picks the model: on a repo with `oss` funding on, a key that only lives in GitHub makes the run fall back to Pullfrog's funded default instead of `opencode-go/deepseek-v4.1-flash`.
@@ -34,7 +34,7 @@ The console stores the instructions, not this repo. After editing a file, push i
 5. **Console settings.** The CLI writes the same settings as the console and acts as your `gh` login (scopes `repo` and `read:org`):
 
    ```sh
-   R=0xZ0uk/cargo-template
+   R=0xZ0uk/shipment
    npx pullfrog@latest config unset model --repo $R          # model comes from the workflow
    npx pullfrog@latest config set review.mode agent --repo $R
    npx pullfrog@latest config set review.re-review true --repo $R

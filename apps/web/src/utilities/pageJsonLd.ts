@@ -1,4 +1,4 @@
-import { buildJsonLd, serializeJsonLd } from '@cargo/payload-seo-analyzer/shared'
+import { buildJsonLd, serializeJsonLd } from '@shipment/payload-seo-analyzer/shared'
 import type { RequiredDataFromCollectionSlug } from 'payload'
 
 import { pagePath } from './pagePath'

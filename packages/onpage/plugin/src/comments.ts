@@ -14,7 +14,7 @@ import {
   type DocRef,
   type PreviewGrant,
   type SealSecret,
-} from '@cargo/onpage-core'
+} from '@shipment/onpage-core'
 import type { CollectionConfig, PayloadRequest, Where } from 'payload'
 
 export const COMMENTS = 'onpage-comments'

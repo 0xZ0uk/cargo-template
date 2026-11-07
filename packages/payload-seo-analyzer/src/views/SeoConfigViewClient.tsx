@@ -1,4 +1,4 @@
 'use client'
 
 // @ts-ignore — self-reference via package exports
-export { SeoConfigView as SeoConfigViewClient } from '@cargo/payload-seo-analyzer/client'
+export { SeoConfigView as SeoConfigViewClient } from '@shipment/payload-seo-analyzer/client'

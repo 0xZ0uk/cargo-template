@@ -2,11 +2,11 @@
 
 ## Component tests: an in-memory data source
 
-`@cargo/onpage-core/testing` has `memoryDataSource`, a `DataSource` that keeps documents in memory. It applies saves, checks for stale writes the way the plugin does, and records every save. Use it to test custom field editors, renderers and client-mode pages without a Payload server:
+`@shipment/onpage-core/testing` has `memoryDataSource`, a `DataSource` that keeps documents in memory. It applies saves, checks for stale writes the way the plugin does, and records every save. Use it to test custom field editors, renderers and client-mode pages without a Payload server:
 
 ```tsx
-import { memoryDataSource } from '@cargo/onpage-core/testing'
-import { OnPageEditor } from '@cargo/onpage-react'
+import { memoryDataSource } from '@shipment/onpage-core/testing'
+import { OnPageEditor } from '@shipment/onpage-react'
 
 const ds = memoryDataSource({
   schemas: { pages: pageSchema }, // a DocumentSchema, as the plugin's schema endpoint returns it

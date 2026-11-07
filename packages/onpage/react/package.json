@@ -1,8 +1,8 @@
 {
-  "name": "@cargo/onpage-react",
+  "name": "@shipment/onpage-react",
   "version": "0.7.0",
   "private": true,
-  "description": "Cargo's fork of payload-onpage React editor: overlay, toolbars, field editors, annotations and client mode.",
+  "description": "Shipment's fork of payload-onpage React editor: overlay, toolbars, field editors, annotations and client mode.",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
@@ -41,7 +41,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@cargo/onpage-core": "workspace:*"
+    "@shipment/onpage-core": "workspace:*"
   },
   "peerDependencies": {
     "react": "^19.0.0",

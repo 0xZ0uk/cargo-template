@@ -1,4 +1,4 @@
-import { isReady } from '@cargo/onpage-core'
+import { isReady } from '@shipment/onpage-core'
 import { useOnPage } from '../context.tsx'
 import { settable } from '../settings.ts'
 

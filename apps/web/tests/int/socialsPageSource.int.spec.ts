@@ -45,13 +45,13 @@ describe('imageFormatFromMime', () => {
 describe('pageSocialContext', () => {
   it('uses the SEO meta and the page URL', () => {
     const context = pageSocialContext(
-      page({ meta: { description: ' About us ', title: 'About | Cargo' } }),
+      page({ meta: { description: ' About us ', title: 'About | Shipment' } }),
       'https://example.com/',
     )
 
     expect(context).toMatchObject({
       baseDescription: 'About us',
-      baseTitle: 'About | Cargo',
+      baseTitle: 'About | Shipment',
       link: 'https://example.com/about',
       sourceId: '7',
       sourceKind: 'page',

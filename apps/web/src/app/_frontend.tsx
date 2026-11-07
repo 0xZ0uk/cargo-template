@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 
-import { OnPage } from '@cargo/onpage-tanstack-start'
+import { OnPage } from '@shipment/onpage-tanstack-start'
 import { createFileRoute, Outlet } from '@tanstack/react-router'
 
 import { NotFound } from '@/components/NotFound'

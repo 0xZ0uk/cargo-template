@@ -46,7 +46,7 @@ import {
   UNDO_COMMAND,
   type LexicalEditor,
 } from 'lexical'
-import { newRowId, safeLinkUrl, type RefKey, type ScalarField } from '@cargo/onpage-core'
+import { newRowId, safeLinkUrl, type RefKey, type ScalarField } from '@shipment/onpage-core'
 import {
   HIDDEN,
   caretAt,
@@ -60,7 +60,7 @@ import {
   type Translate,
   RedoIcon,
   UndoIcon,
-} from '@cargo/onpage-react/editor-kit'
+} from '@shipment/onpage-react/editor-kit'
 import { LinkPicker, type InternalLink } from './LinkPicker.tsx'
 import {
   $createPayloadLinkNode,

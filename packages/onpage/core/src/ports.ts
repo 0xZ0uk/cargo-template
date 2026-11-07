@@ -8,7 +8,7 @@
  *   Locator       how page elements map to fields (DOM)             annotations(), stega()
  *   Renderer      how the page shows a committed change             nextRefresh(), clientState()
  *   SessionAdapter how a request enters/leaves edit or preview mode tanstackSession() (server)
- * Field editors are registered in @cargo/onpage-react.
+ * Field editors are registered in @shipment/onpage-react.
  */
 import type { DocRef } from './docref.ts'
 import { MARKER_KINDS } from './stega.ts'

@@ -1,5 +1,5 @@
 /** The default field editors. Spread, override or remove (`null`) entries via the `editors` option. */
-import { toText } from '@cargo/onpage-core'
+import { toText } from '@shipment/onpage-core'
 import { defineEditor } from '../registry.ts'
 import type { EditorRegistry } from '../types.ts'
 import { checkedOf, CheckboxEditor } from './CheckboxEditor.tsx'

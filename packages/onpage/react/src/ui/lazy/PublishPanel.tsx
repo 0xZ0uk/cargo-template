@@ -5,7 +5,7 @@
  * Scheduling goes through `DataSource.schedulePublish` and publishes each
  * document's latest saved draft at that time.
  */
-import { errorText, isReady, type RefKey } from '@cargo/onpage-core'
+import { errorText, isReady, type RefKey } from '@shipment/onpage-core'
 import { useId, useState } from 'react'
 import { useOnPage } from '../../context.tsx'
 import { Dialog } from '../Dialog.tsx'

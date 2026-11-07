@@ -8,7 +8,7 @@
  * - API endpoints for validation, keyword dedup, and audit
  *
  * Usage:
- *   import { seoAnalyzerPlugin } from '@cargo/payload-seo-analyzer'
+ *   import { seoAnalyzerPlugin } from '@shipment/payload-seo-analyzer'
  *
  *   export default buildConfig({
  *     plugins: [
@@ -1064,63 +1064,63 @@ export const seoAnalyzerPlugin =
 
       if (features.dashboard) {
         views.seo = {
-          Component: '@cargo/payload-seo-analyzer/views#SeoView',
+          Component: '@shipment/payload-seo-analyzer/views#SeoView',
           path: '/seo',
         }
       }
 
       if (features.sitemapAudit && pluginConfig.addSitemapAuditView !== false) {
         views['sitemap-audit'] = {
-          Component: '@cargo/payload-seo-analyzer/views#SitemapAuditView',
+          Component: '@shipment/payload-seo-analyzer/views#SitemapAuditView',
           path: '/sitemap-audit',
         }
       }
 
       if (features.settings) {
         views['seo-config'] = {
-          Component: '@cargo/payload-seo-analyzer/views#SeoConfigView',
+          Component: '@shipment/payload-seo-analyzer/views#SeoConfigView',
           path: '/seo-config',
         }
       }
 
       if (features.redirects) {
         views['redirects'] = {
-          Component: '@cargo/payload-seo-analyzer/views#RedirectManagerView',
+          Component: '@shipment/payload-seo-analyzer/views#RedirectManagerView',
           path: '/redirects',
         }
       }
 
       if (features.cannibalization) {
         views['cannibalization'] = {
-          Component: '@cargo/payload-seo-analyzer/views#CannibalizationView',
+          Component: '@shipment/payload-seo-analyzer/views#CannibalizationView',
           path: '/cannibalization',
         }
       }
 
       if (features.performance) {
         views['performance'] = {
-          Component: '@cargo/payload-seo-analyzer/views#PerformanceView',
+          Component: '@shipment/payload-seo-analyzer/views#PerformanceView',
           path: '/performance',
         }
       }
 
       if (features.keywords) {
         views['keyword-research'] = {
-          Component: '@cargo/payload-seo-analyzer/views#KeywordResearchView',
+          Component: '@shipment/payload-seo-analyzer/views#KeywordResearchView',
           path: '/keyword-research',
         }
       }
 
       if (features.schemaBuilder) {
         views['schema-builder'] = {
-          Component: '@cargo/payload-seo-analyzer/views#SchemaBuilderView',
+          Component: '@shipment/payload-seo-analyzer/views#SchemaBuilderView',
           path: '/schema-builder',
         }
       }
 
       if (features.linkGraph) {
         views['link-graph'] = {
-          Component: '@cargo/payload-seo-analyzer/views#LinkGraphView',
+          Component: '@shipment/payload-seo-analyzer/views#LinkGraphView',
           path: '/link-graph',
         }
       }
@@ -1129,7 +1129,7 @@ export const seoAnalyzerPlugin =
       const navLinks = config.admin.components.afterNavLinks || []
       config.admin.components.afterNavLinks = [
         ...(Array.isArray(navLinks) ? navLinks : [navLinks]),
-        '@cargo/payload-seo-analyzer/client#SeoNavLink',
+        '@shipment/payload-seo-analyzer/client#SeoNavLink',
       ]
     }
 

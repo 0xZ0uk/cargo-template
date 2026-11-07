@@ -53,23 +53,23 @@ jobs:
       - run: pnpm typecheck
 
       - name: Plugin unit tests
-        run: pnpm --filter @cargo/payload-seo-analyzer test
+        run: pnpm --filter @shipment/payload-seo-analyzer test
 
       # Unit tests plus a Payload boot on in-memory SQLite, against source.
       - name: Socials plugin tests
-        run: pnpm --filter @cargo/payload-plugin-socials test
+        run: pnpm --filter @shipment/payload-plugin-socials test
 
       # Unit tests plus Payload 4 integration tests on in-memory SQLite, against source.
       - name: A/B testing plugin tests
-        run: pnpm --filter @cargo/payload-plugin-ab test
+        run: pnpm --filter @shipment/payload-plugin-ab test
 
       # Option validation plus a Payload boot next to plugin-mcp (in-memory SQLite), against source.
       - name: Assistant plugin tests
-        run: pnpm --filter @cargo/payload-plugin-assistant test
+        run: pnpm --filter @shipment/payload-plugin-assistant test
 
       # Unit, component and Payload integration tests (in-memory SQLite), against source.
       - name: On-page editor tests
-        run: pnpm --filter @cargo/onpage test
+        run: pnpm --filter @shipment/onpage test
 
       # Runs against a fresh local D1 (wrangler's platform proxy), built from the committed
       # migrations: Payload doesn't push the schema (`push: false`).
@@ -125,7 +125,7 @@ jobs:
 
       - name: Read the Playwright version
         id: playwright
-        run: echo "version=$(pnpm --filter @cargo/web exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+        run: echo "version=$(pnpm --filter @shipment/web exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
 
       - name: Cache Playwright browsers
         id: playwright-cache
@@ -136,11 +136,11 @@ jobs:
 
       - name: Install Chromium
         if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: pnpm --filter @cargo/web exec playwright install --with-deps chromium
+        run: pnpm --filter @shipment/web exec playwright install --with-deps chromium
 
       - name: Install Chromium system dependencies
         if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: pnpm --filter @cargo/web exec playwright install-deps chromium
+        run: pnpm --filter @shipment/web exec playwright install-deps chromium
 
       # Build the local D1s from the committed migrations, as a deploy would (the dev server
       # doesn't push the schema). A migration that doesn't apply fails here.

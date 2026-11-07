@@ -3,8 +3,8 @@ import {
   payloadCollectionAdapter,
   type ManifestCache,
   type ManifestCacheValue,
-} from '@cargo/payload-plugin-ab/adapters/payload-collection'
-import { createResolveAbRewrite, type AbRewrite } from '@cargo/payload-plugin-ab/middleware'
+} from '@shipment/payload-plugin-ab/adapters/payload-collection'
+import { createResolveAbRewrite, type AbRewrite } from '@shipment/payload-plugin-ab/middleware'
 import type { Payload } from 'payload'
 
 /**

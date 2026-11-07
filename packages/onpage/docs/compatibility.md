@@ -1,6 +1,6 @@
 # Compatibility
 
-The fork builds against the versions in the workspace catalog (`pnpm-workspace.yaml`), the same ones the Cargo app uses. Bump them there, together.
+The fork builds against the versions in the workspace catalog (`pnpm-workspace.yaml`), the same ones the Shipment app uses. Bump them there, together.
 
 |                | Version                                          | Notes                                                                                                  |
 | -------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |

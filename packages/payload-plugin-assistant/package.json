@@ -1,8 +1,8 @@
 {
-  "name": "@cargo/payload-plugin-assistant",
+  "name": "@shipment/payload-plugin-assistant",
   "version": "0.0.0",
   "private": true,
-  "description": "Payload CMS 4 admin assistant for Cargo: chat with your content through the MCP tools, backed by TanStack AI and OpenRouter, with a Durable Object per conversation",
+  "description": "Payload CMS 4 admin assistant for Shipment: chat with your content through the MCP tools, backed by TanStack AI and OpenRouter, with a Durable Object per conversation",
   "license": "MIT",
   "keywords": [
     "payload-cms",
@@ -72,18 +72,18 @@
     "@tanstack/ai-react": "1.0.2"
   },
   "peerDependencies": {
-    "@cargo/payload-plugin-mcp": "*",
+    "@shipment/payload-plugin-mcp": "*",
     "@payloadcms/ui": ">=4.0.0-beta.6 <5.0.0",
     "payload": ">=4.0.0-beta.6 <5.0.0",
     "react": "^19.0.0"
   },
   "peerDependenciesMeta": {
-    "@cargo/payload-plugin-mcp": {
+    "@shipment/payload-plugin-mcp": {
       "optional": true
     }
   },
   "devDependencies": {
-    "@cargo/payload-plugin-mcp": "workspace:*",
+    "@shipment/payload-plugin-mcp": "workspace:*",
     "@cloudflare/vitest-plugin": "1.4.11",
     "@cloudflare/workers-types": "5.20261023.1",
     "@modelcontextprotocol/server": "2.4.0",

@@ -1,14 +1,14 @@
-# @cargo/payload-plugin-socials
+# @shipment/payload-plugin-socials
 
 Multi-platform organic social publishing for [Payload CMS](https://payloadcms.com) 4, on Node or Cloudflare Workers.
 
-Cargo's fork of [`payload-plugin-socials`](https://github.com/ContiDigital/payload-plugin-socials) 0.11.1 by Conti Digital (MIT), which targets Payload 3 + Next.js. Forked from upstream `b2ee260` (2026-10-23): diff against that commit to see what changed, or to pick up upstream fixes. This fork:
+Shipment's fork of [`payload-plugin-socials`](https://github.com/ContiDigital/payload-plugin-socials) 0.11.1 by Conti Digital (MIT), which targets Payload 3 + Next.js. Forked from upstream `b2ee260` (2026-10-23): diff against that commit to see what changed, or to pick up upstream fixes. This fork:
 
-- **Requires Payload 4** (`4.0.0-beta.6`, from the workspace catalog) and has **no Next.js dependency**. The `/admin/socials` view renders through `DefaultTemplate` from `@payloadcms/ui/rsc` and redirects with Payload's `server.redirect()`, so it works under any Payload 4 adapter (the Cargo app uses TanStack Start).
+- **Requires Payload 4** (`4.0.0-beta.6`, from the workspace catalog) and has **no Next.js dependency**. The `/admin/socials` view renders through `DefaultTemplate` from `@payloadcms/ui/rsc` and redirects with Payload's `server.redirect()`, so it works under any Payload 4 adapter (the Shipment app uses TanStack Start).
 - **Opts out of Payload 4's default versioning** on `social-posts`, `social-templates` and the `socials-connections` global. Versions of the global would keep every superseded encrypted token; `social-posts` rows are rewritten on each status change.
 - **Passes `overrideAccess: true` to `payload.jobs.queue` / `run` / `cancelByID`.** Payload 4's Local API no longer bypasses access, and the default jobs access requires a logged-in user, which cron sweeps, the internal scheduler endpoints and follow-up publishes don't have. The plugin's own `authorize` and internal API key still gate every route. (Every collection and global call already passed `overrideAccess` explicitly.)
 - **Runs on Cloudflare Workers** (`nodejs_compat`): see [Cloudflare Workers](#cloudflare-workers).
-- Is named `@cargo/payload-plugin-socials`: admin import-map paths are `@cargo/payload-plugin-socials/client` and `/rsc`.
+- Is named `@shipment/payload-plugin-socials`: admin import-map paths are `@shipment/payload-plugin-socials/client` and `/rsc`.
 - Is built with tsup (three bundles: `index`, `client` with `client.css`, `rsc`) instead of SWC; the stylesheet is plain CSS. Postgres/MongoDB boot tests, the Next.js dev app, Playwright e2e and the live canary suite are dropped; the unit and in-memory SQLite boot tests are kept.
 - Uses Payload 4 admin tokens (`--color-*`, `--field-color-*`, `--radius-*`); Payload 4 removed the v3 `--theme-*` / `--style-*` tokens the upstream styles used, which left dark mode broken. Headings take the heading tokens (Payload 4 leaves bare `h1`–`h3` unstyled). `size="medium"` on admin buttons (`@payloadcms/ui` 4 has no `small`).
 
@@ -50,7 +50,7 @@ The host supplies source resolvers, authorization, credentials, the encryption k
 In this monorepo, add it to an app as a workspace dependency:
 
 ```json
-"@cargo/payload-plugin-socials": "workspace:*"
+"@shipment/payload-plugin-socials": "workspace:*"
 ```
 
 ## Platform readiness
@@ -74,7 +74,7 @@ your own schema; source kinds are host-defined.
 
 ```ts
 import { buildConfig } from 'payload'
-import { payloadPluginSocials } from '@cargo/payload-plugin-socials'
+import { payloadPluginSocials } from '@shipment/payload-plugin-socials'
 
 export default buildConfig({
   plugins: [
@@ -461,7 +461,7 @@ The plugin runs in a Worker with the `nodejs_compat` flag. Checked in local work
 - **Scheduling.** A Worker has no long-running process: drive the queue from a Cron Trigger's `scheduled` handler (call `sweepDueSocialPosts(payload, normalizedOptions)` and `runQueuedSocialsJobs(payload, normalizedOptions)`, with `normalizedOptions = normalizePluginOptions(sameOptions)`, or `payload.jobs.handleSchedules()` + `payload.jobs.run({ queue: 'socials', overrideAccess: true })` with `scheduling.autoRun` set), or `POST` the internal scheduler endpoints from an external cron.
 - **Limits.** A synchronous publish waits on the provider inside the request (video processing polls), which is wall-clock time, not CPU, on Workers. Keep `scheduling.drainBatchSize` small enough for one invocation's CPU budget.
 
-Checked so far: the unit and boot tests, the remote-fetch path in local workerd (DNS checks, redirects, private targets refused), and the admin (nav link, dashboard widget, `/admin/socials`, the Socials tab on Pages, the template builder) in the Cargo app under `vite dev`, light and dark. Not yet tried on a deployed Worker, and no post has been published through the port.
+Checked so far: the unit and boot tests, the remote-fetch path in local workerd (DNS checks, redirects, private targets refused), and the admin (nav link, dashboard widget, `/admin/socials`, the Socials tab on Pages, the template builder) in the Shipment app under `vite dev`, light and dark. Not yet tried on a deployed Worker, and no post has been published through the port.
 
 ## Deferred publishing
 
@@ -527,16 +527,16 @@ The Business Profile listing helpers (`getLocation`, `updateLocation`, `setOpenS
 
 ## Release and migration policy
 
-Schema changes are versioned and documented in [CHANGELOG.md](./CHANGELOG.md). The host always generates, reviews, and applies its own Payload migration (in the Cargo app: `pnpm web migrate:create`). Before production, run controlled canaries against each enabled provider account; automated tests never create or delete live social content.
+Schema changes are versioned and documented in [CHANGELOG.md](./CHANGELOG.md). The host always generates, reviews, and applies its own Payload migration (in the Shipment app: `pnpm web migrate:create`). Before production, run controlled canaries against each enabled provider account; automated tests never create or delete live social content.
 
 ## Development
 
 From the repo root:
 
 ```bash
-pnpm --filter @cargo/payload-plugin-socials build       # tsup → dist/
-pnpm --filter @cargo/payload-plugin-socials test        # Vitest: unit + Payload boot on in-memory SQLite
-pnpm --filter @cargo/payload-plugin-socials typecheck   # sources and tests
+pnpm --filter @shipment/payload-plugin-socials build       # tsup → dist/
+pnpm --filter @shipment/payload-plugin-socials test        # Vitest: unit + Payload boot on in-memory SQLite
+pnpm --filter @shipment/payload-plugin-socials typecheck   # sources and tests
 ```
 
 `payload`, `@payloadcms/*`, React and TypeScript come from the workspace catalog; never pin them here.

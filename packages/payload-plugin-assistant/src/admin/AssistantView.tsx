@@ -1,6 +1,6 @@
 import type { AdminViewServerProps } from "payload";
 import { DefaultTemplate } from "@payloadcms/ui/rsc";
-import { AssistantChat } from "@cargo/payload-plugin-assistant/client";
+import { AssistantChat } from "@shipment/payload-plugin-assistant/client";
 import type { AssistantAccess } from "../types/options";
 import { assistantViewRedirectTarget } from "../utils/viewAccess";
 

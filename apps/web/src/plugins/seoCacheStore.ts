@@ -1,4 +1,4 @@
-import type { SeoCacheStore } from '@cargo/payload-seo-analyzer'
+import type { SeoCacheStore } from '@shipment/payload-seo-analyzer'
 
 /**
  * R2-backed `cacheStore` for the SEO analyzer. Workers isolates don't share memory, so

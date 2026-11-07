@@ -1,6 +1,6 @@
 'use client'
 
-import type { ScalarField } from '@cargo/onpage-core'
+import type { ScalarField } from '@shipment/onpage-core'
 import type { FieldEditorProps } from '../types.ts'
 import { EditorPopover } from './kit.tsx'
 

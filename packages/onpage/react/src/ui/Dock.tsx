@@ -5,8 +5,8 @@
  * recovery: reload after a conflict, retry after an error), undo/redo, locale,
  * share link, preview, discard, admin, exit and publish.
  */
-import { errorText } from '@cargo/onpage-core'
-import type { DocumentState } from '@cargo/onpage-core'
+import { errorText } from '@shipment/onpage-core'
+import type { DocumentState } from '@shipment/onpage-core'
 import { useEffect, useState } from 'react'
 import { useOnPage } from '../context.tsx'
 import { relativeTime, type Translate } from '../messages.ts'

@@ -2,7 +2,7 @@
  * Preview-link tokens: sealed (AES-GCM) and expiring, bound to one document
  * and path. Opaque to the holder, so the link reveals nothing about the draft.
  */
-import { SEAL_PURPOSE, seal, unseal, type SealSecret } from '@cargo/onpage-core'
+import { SEAL_PURPOSE, seal, unseal, type SealSecret } from '@shipment/onpage-core'
 
 export interface PreviewTokenPayload {
   /** refKey of the shared document */

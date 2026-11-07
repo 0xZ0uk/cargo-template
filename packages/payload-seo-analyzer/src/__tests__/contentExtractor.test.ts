@@ -1,5 +1,5 @@
 /**
- * The `extractContent` option (cargo-template #47): a collection's own extractor replaces the
+ * The `extractContent` option (shipment #47): a collection's own extractor replaces the
  * block walker everywhere a document's content is read (score, sidebar mapping, link graph,
  * external links, FAQPage), and collections without one keep the walker.
  */

@@ -207,7 +207,7 @@ test.describe('SEO analyzer: page sidebar', () => {
     const withKeyword = await readScore()
 
     await page.getByRole('tab', { name: 'SEO' }).click()
-    await page.locator('#field-meta__title').fill('Espresso brewing guide: grind, dose and time | Cargo Template')
+    await page.locator('#field-meta__title').fill('Espresso brewing guide: grind, dose and time | Shipment')
     await expect.poll(readScore).not.toBe(withKeyword)
 
     // The card reports how far the score moved since the page was opened.

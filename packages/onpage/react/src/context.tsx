@@ -1,7 +1,7 @@
 'use client'
 
 import { createContext, useContext, useSyncExternalStore, type ReactNode } from 'react'
-import type { EditorSession, SessionSnapshot } from '@cargo/onpage-core'
+import type { EditorSession, SessionSnapshot } from '@shipment/onpage-core'
 import { hub } from './hub.ts'
 import type { OnPageApi, OnPageContextValue, OnPageState } from './types.ts'
 

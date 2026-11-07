@@ -24,12 +24,12 @@ const entries = () => lines.map((l) => l.entry)
 
 describe('createWorkersLogger', () => {
   it('writes one JSON line per entry, ordered level, bindings, fields, msg', () => {
-    const logger = createWorkersLogger({ bindings: { app: 'cargo' } })
+    const logger = createWorkersLogger({ bindings: { app: 'shipment' } })
     logger.info({ msg: 'ignored', userID: 7 }, 'hello')
 
     expect(lines).toHaveLength(1)
     expect(Object.keys(lines[0].entry)).toEqual(['level', 'app', 'userID', 'msg'])
-    expect(lines[0].entry).toEqual({ level: 'info', app: 'cargo', userID: 7, msg: 'hello' })
+    expect(lines[0].entry).toEqual({ level: 'info', app: 'shipment', userID: 7, msg: 'hello' })
   })
 
   it('accepts the string form and the object form', () => {
@@ -119,7 +119,7 @@ describe('createWorkersLogger', () => {
 
   describe('child', () => {
     it('composes bindings and msgPrefix across two levels of children', () => {
-      const root = createWorkersLogger({ bindings: { app: 'cargo' } })
+      const root = createWorkersLogger({ bindings: { app: 'shipment' } })
       const mcp = root.child({ plugin: 'mcp' }, { msgPrefix: '[plugin-mcp] ' })
       const tool = mcp.child({ tool: 'find' }, { msgPrefix: '[find] ' })
 
@@ -128,11 +128,11 @@ describe('createWorkersLogger', () => {
       tool.info({ id: 2 }, 'tool')
 
       expect(entries()).toEqual([
-        { level: 'info', app: 'cargo', msg: 'root' },
-        { level: 'info', app: 'cargo', plugin: 'mcp', id: 1, msg: '[plugin-mcp] mcp' },
+        { level: 'info', app: 'shipment', msg: 'root' },
+        { level: 'info', app: 'shipment', plugin: 'mcp', id: 1, msg: '[plugin-mcp] mcp' },
         {
           level: 'info',
-          app: 'cargo',
+          app: 'shipment',
           plugin: 'mcp',
           tool: 'find',
           id: 2,

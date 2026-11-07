@@ -4,7 +4,7 @@
 
 export const PLUGIN_SLUG = 'payload-plugin-socials'
 /** The package name: admin component paths in the import map resolve against it. */
-export const PLUGIN_PACKAGE = '@cargo/payload-plugin-socials'
+export const PLUGIN_PACKAGE = '@shipment/payload-plugin-socials'
 
 // ---------------------------------------------------------------------------
 // Platforms
@@ -108,7 +108,7 @@ export const SOCIAL_PUBLISH_POLL_DEFAULT_SECONDS = 2
 export const MAX_REMOTE_ASSET_REDIRECTS = 3
 /** Sent as `User-Agent` on every remote media fetch so hosts can identify the plugin's fetches. */
 export const REMOTE_FETCH_USER_AGENT =
-  'cargo-payload-plugin-socials (+https://github.com/0xZ0uk/cargo-template)'
+  'shipment-payload-plugin-socials (+https://github.com/0xZ0uk/shipment)'
 export const DEFAULT_MAX_REQUESTS_PER_MINUTE = 60
 export const MAX_WEBHOOK_BODY_BYTES = 1024 * 1024
 

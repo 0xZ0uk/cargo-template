@@ -55,7 +55,7 @@ describe('buildJsonLd WebPage', () => {
         slug: 'about',
         title: 'About',
         updatedAt: '2026-02-01T00:00:00.000Z',
-        meta: { title: 'About | Cargo Template', description: 'Who we are', image: { url: '/media/a.png' } },
+        meta: { title: 'About | Shipment', description: 'Who we are', image: { url: '/media/a.png' } },
       },
       { collection: 'pages', collectionRoutes: { pages: '' }, siteUrl: 'https://s.test' },
     )
@@ -120,7 +120,7 @@ describe('buildJsonLd FAQPage without Q&A', () => {
 })
 
 describe('buildJsonLd names', () => {
-  const doc = { slug: 'coffee', title: 'Coffee brewing basics', meta: { title: 'Coffee brewing basics | Cargo Template' } }
+  const doc = { slug: 'coffee', title: 'Coffee brewing basics', meta: { title: 'Coffee brewing basics | Shipment' } }
 
   it("uses the document's title for the headline, not the meta title's suffix", () => {
     const { jsonLd } = buildJsonLd(doc, { collection: 'posts', siteUrl: 'https://s.test', type: 'Article' })
@@ -137,9 +137,9 @@ describe('buildJsonLd names', () => {
   })
 
   it('strips the configured site name from meta.title when there is no title', () => {
-    const noTitle = { slug: 'coffee', meta: { title: 'Coffee | Cargo Template' } }
-    expect(buildJsonLd(noTitle, { type: 'Article', siteName: 'Cargo Template' }).jsonLd.headline).toBe('Coffee')
-    expect(buildJsonLd(noTitle, { type: 'Article' }).jsonLd.headline).toBe('Coffee | Cargo Template')
+    const noTitle = { slug: 'coffee', meta: { title: 'Coffee | Shipment' } }
+    expect(buildJsonLd(noTitle, { type: 'Article', siteName: 'Shipment' }).jsonLd.headline).toBe('Coffee')
+    expect(buildJsonLd(noTitle, { type: 'Article' }).jsonLd.headline).toBe('Coffee | Shipment')
   })
 })
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Window } from 'happy-dom'
-import { rowPrefixes, stegaEncode } from '@cargo/onpage-core'
+import { rowPrefixes, stegaEncode } from '@shipment/onpage-core'
 import { annotations, composite, stega } from '../locators.ts'
 import { editable, editableOff, ATTR } from '../annotations.ts'
 

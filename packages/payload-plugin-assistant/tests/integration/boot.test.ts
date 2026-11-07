@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { sqliteAdapter } from "@payloadcms/db-sqlite";
-import { mcpPlugin } from "@cargo/payload-plugin-mcp";
+import { mcpPlugin } from "@shipment/payload-plugin-mcp";
 import { buildConfig, getPayload, handleEndpoints } from "payload";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -14,7 +14,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 vi.mock("@payloadcms/ui", () => ({ Banner: () => null }));
 vi.mock("@payloadcms/ui/rsc", () => ({ DefaultTemplate: () => null }));
 // The chat UI (client entry) is a leaf here: the tests are about the server-side gate around it.
-vi.mock("@cargo/payload-plugin-assistant/client", () => ({
+vi.mock("@shipment/payload-plugin-assistant/client", () => ({
   AssistantChat: () => null,
   AssistantNavLinkClient: function AssistantNavLinkClient() {
     return null;
@@ -164,7 +164,7 @@ describe("Payload 4 boot", () => {
     const view = (payload.config.admin.components.views as Record<string, any>).assistant;
     expect(view.path).toBe("/assistant");
     expect(view.Component).toEqual({
-      path: "@cargo/payload-plugin-assistant/admin/AssistantView#AssistantView",
+      path: "@shipment/payload-plugin-assistant/admin/AssistantView#AssistantView",
       serverProps: { configured: true, access: expect.any(Function) },
     });
   });
@@ -223,7 +223,7 @@ describe("the nav link", () => {
   it("is registered after the existing nav links, with the plugin's access", () => {
     const navLinks = payload.config.admin.components.afterNavLinks as unknown as Array<{ path: string; serverProps: any }>;
     expect(navLinks.at(-1)).toEqual({
-      path: "@cargo/payload-plugin-assistant/admin/AssistantNavLink#AssistantNavLink",
+      path: "@shipment/payload-plugin-assistant/admin/AssistantNavLink#AssistantNavLink",
       serverProps: { access: expect.any(Function) },
     });
   });
@@ -260,7 +260,7 @@ describe("without an API key", () => {
     });
     expect(unkeyed.endpoints.some((e) => e.path === "/assistant/chat" && e.method === "post")).toBe(true);
     const view = (unkeyed.admin.components.views as Record<string, any>).assistant;
-    expect(view.Component.path).toBe("@cargo/payload-plugin-assistant/admin/AssistantView#AssistantView");
+    expect(view.Component.path).toBe("@shipment/payload-plugin-assistant/admin/AssistantView#AssistantView");
     expect(view.Component.serverProps).toEqual({ configured: false, access: expect.any(Function) });
   });
 });

@@ -2,7 +2,7 @@ import type {
   SocialImage,
   SocialImageFormat,
   SocialSourceContext,
-} from '@cargo/payload-plugin-socials'
+} from '@shipment/payload-plugin-socials'
 
 import type { Media, Page } from '@/payload-types'
 

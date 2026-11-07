@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 import { sqliteAdapter } from "@payloadcms/db-sqlite";
 import { lexicalEditor } from "@payloadcms/richtext-lexical";
-import { mcpPlugin } from "@cargo/payload-plugin-mcp";
+import { mcpPlugin } from "@shipment/payload-plugin-mcp";
 import { createMCPClient, type MCPClient } from "@tanstack/ai-mcp";
 import { buildConfig, getPayload } from "payload";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -175,8 +175,8 @@ describe("plugin-mcp's tools", () => {
 
     await call("global", "findGlobal", { slug: "settings" });
     await call("global schema", "getGlobalSchema", { slug: "settings" });
-    await call("update global", "updateGlobal", { slug: "settings", data: { siteName: "Cargo" }, draft: true });
-    await payload.updateGlobal({ slug: "settings" as GlobalSlug, data: { siteName: "Cargo 2" } as never, overrideAccess: true });
+    await call("update global", "updateGlobal", { slug: "settings", data: { siteName: "Shipment" }, draft: true });
+    await payload.updateGlobal({ slug: "settings" as GlobalSlug, data: { siteName: "Shipment 2" } as never, overrideAccess: true });
     const globalVersions = await payload.findGlobalVersions({ slug: "settings" as GlobalSlug, sort: "createdAt", limit: 1, overrideAccess: true });
     const globalVersionId = String(globalVersions.docs[0]!.id);
     await call("global versions", "findGlobalVersions", { slug: "settings", where: { "version.siteName": { exists: true } }, limit: 2 });
@@ -186,7 +186,7 @@ describe("plugin-mcp's tools", () => {
 
     const offered = [...byName.values()].filter((tool) => !DROPPED.has(tool.name));
     const fixtures: ToolFixtures = {
-      recordedWith: `@cargo/payload-plugin-mcp ${(JSON.parse(readFileSync(fileURLToPath(new URL("../../../payload-plugin-mcp/package.json", import.meta.url)), "utf8")) as { version: string }).version}`,
+      recordedWith: `@shipment/payload-plugin-mcp ${(JSON.parse(readFileSync(fileURLToPath(new URL("../../../payload-plugin-mcp/package.json", import.meta.url)), "utf8")) as { version: string }).version}`,
       tools: Object.fromEntries(offered.map((tool) => [tool.name, { needsApproval: approvalOf(tool) }]).sort(([a], [b]) => String(a).localeCompare(String(b)))),
       calls,
     };

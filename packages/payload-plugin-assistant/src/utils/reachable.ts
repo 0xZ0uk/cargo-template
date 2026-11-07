@@ -5,7 +5,7 @@
  * raw config (the plugin, at build time) and the sanitized one (the endpoints).
  */
 
-// The fork (`@cargo/payload-plugin-mcp`) keeps upstream's slug.
+// The fork (`@shipment/payload-plugin-mcp`) keeps upstream's slug.
 export const MCP_PLUGIN_SLUG = "@payloadcms/plugin-mcp";
 
 interface ConfigLike {

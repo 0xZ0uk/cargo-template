@@ -12,7 +12,7 @@ function adminPath(root: string, sub: string): string {
 /**
  * Access gate for the admin view, the same question the chat endpoint asks. Pure (no
  * `next/navigation`), so the view keeps its own redirect call and this can be unit tested.
- * Mirrors `seoViewRedirectTarget` in `@cargo/payload-seo-analyzer`.
+ * Mirrors `seoViewRedirectTarget` in `@shipment/payload-seo-analyzer`.
  *
  * @returns the path to redirect to, or `null` when the caller may render the view.
  */

@@ -13,7 +13,7 @@ describe('wrangler.jsonc', () => {
 
   it('has no Cron Trigger on staging (#116): an empty list, so a deploy clears it', () => {
     const staging = read('staging')
-    expect(staging.name).toBe('cargo-template-staging')
+    expect(staging.name).toBe('shipment-staging')
     expect(staging.triggers.crons).toEqual([])
   })
 
@@ -22,7 +22,7 @@ describe('wrangler.jsonc', () => {
       (read(env).analytics_engine_datasets as Array<{ binding: string; dataset?: string }>).find(
         (d) => d.binding === 'ASSISTANT_AUDIT',
       )?.dataset
-    expect(dataset()).toBe('cargo_assistant_audit')
-    expect(dataset('staging')).toBe('cargo_assistant_audit_staging')
+    expect(dataset()).toBe('shipment_assistant_audit')
+    expect(dataset('staging')).toBe('shipment_assistant_audit_staging')
   })
 })

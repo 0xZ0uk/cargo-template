@@ -9,7 +9,7 @@ The editor edits one content locale: `<OnPage locale="es" />`, else the page's `
 
 ## Editor UI strings
 
-Every string the on-page editor shows is in `defaultMessages` (`@cargo/onpage-react`). Override any subset:
+Every string the on-page editor shows is in `defaultMessages` (`@shipment/onpage-react`). Override any subset:
 
 ```tsx
 <OnPage messages={{ 'dock.publish': 'Publicar', 'dock.saved': 'Borrador guardado {ago}' }} />
@@ -19,8 +19,8 @@ Spanish, French and German ship with the editor:
 
 ```tsx
 'use client'
-import { OnPageMount, type OnPageMountProps } from '@cargo/onpage-next/client'
-import { es } from '@cargo/onpage-react/locales/es' // or fr, de
+import { OnPageMount, type OnPageMountProps } from '@shipment/onpage-next/client'
+import { es } from '@shipment/onpage-react/locales/es' // or fr, de
 
 export const Mount = (p: OnPageMountProps) => <OnPageMount {...p} messages={es} uiLocale="es" />
 // <OnPage mount={Mount} />

@@ -24,7 +24,7 @@ export default defineConfig([
     clean: true,
     splitting: true,
   },
-  // The admin view (import map path `@cargo/payload-plugin-mcp/client#OAuthContinueView`).
+  // The admin view (import map path `@shipment/payload-plugin-mcp/client#OAuthContinueView`).
   // esbuild drops the module-level 'use client', so it is added back.
   {
     ...shared,

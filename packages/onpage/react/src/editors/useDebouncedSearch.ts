@@ -1,6 +1,6 @@
 'use client'
 
-import { errorText } from '@cargo/onpage-core'
+import { errorText } from '@shipment/onpage-core'
 import { useEffect, useState } from 'react'
 
 /** A search the hook runs: it should stop when `signal` aborts. */

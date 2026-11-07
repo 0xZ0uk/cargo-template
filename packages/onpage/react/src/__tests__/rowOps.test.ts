@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { resolveRow, type DocumentSchema, type EditorSession } from '@cargo/onpage-core'
+import { resolveRow, type DocumentSchema, type EditorSession } from '@shipment/onpage-core'
 import { insertRow, rowOps } from '../rowOps.ts'
 
 const schema: DocumentSchema = {

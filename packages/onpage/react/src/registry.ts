@@ -7,7 +7,7 @@
  * No match: the field isn't edited in place (it may still be in the row's
  * settings panel).
  */
-import type { FieldOf, SchemaField, SchemaFieldType, TargetKind } from '@cargo/onpage-core'
+import type { FieldOf, SchemaField, SchemaFieldType, TargetKind } from '@shipment/onpage-core'
 import type { EditorRegistry, FieldEditorDef, FieldEditorProps } from './types.ts'
 import type { ComponentType } from 'react'
 

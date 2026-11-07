@@ -12,7 +12,7 @@
  *    so editing a paragraph never loses an image or embed.
  */
 import React from 'react'
-import { newRowId } from '@cargo/onpage-core'
+import { newRowId } from '@shipment/onpage-core'
 import {
   DecoratorNode,
   ElementNode,

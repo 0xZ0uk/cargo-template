@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { DocumentSchema, DocumentState } from '@cargo/onpage-core'
+import type { DocumentSchema, DocumentState } from '@shipment/onpage-core'
 import { resolveEditTarget } from '../editor/editTarget.ts'
 import { defineEditor } from '../registry.ts'
 

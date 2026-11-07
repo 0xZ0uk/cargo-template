@@ -1,6 +1,6 @@
 import React from 'react'
 
-import { stegaClean } from '@cargo/onpage-core'
+import { stegaClean } from '@shipment/onpage-core'
 
 import type { LogosBlock as LogosBlockProps } from '@/payload-types'
 

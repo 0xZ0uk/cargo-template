@@ -1,16 +1,16 @@
-import type { AbBucketResult, AbMeasurementConfig, AbResults } from '@cargo/payload-plugin-ab'
+import type { AbBucketResult, AbMeasurementConfig, AbResults } from '@shipment/payload-plugin-ab'
 import {
   abRunMarker,
   bucketCookieName,
   parseCookieHeader,
   serializeAbCookie,
   type AbRewrite,
-} from '@cargo/payload-plugin-ab/middleware'
+} from '@shipment/payload-plugin-ab/middleware'
 
 /**
  * A/B measurement on Workers Analytics Engine.
  *
- * One data point per event, in the `cargo_ab` dataset (the `AB_ANALYTICS` binding in
+ * One data point per event, in the `shipment_ab` dataset (the `AB_ANALYTICS` binding in
  * wrangler.jsonc):
  *
  * | Column   | Value                                                    |
@@ -28,7 +28,7 @@ import {
  */
 
 /** Must match `analytics_engine_datasets[].dataset` in wrangler.jsonc. */
-export const AB_DATASET = 'cargo_ab'
+export const AB_DATASET = 'shipment_ab'
 /** Analytics Engine keeps data points for three months. */
 export const AB_RETENTION_DAYS = 90
 

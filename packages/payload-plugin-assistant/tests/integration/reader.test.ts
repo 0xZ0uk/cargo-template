@@ -130,9 +130,9 @@ describe("reads: access-checked, draft-aware, redacted", () => {
   });
 
   it("findGlobal drops the global's hidden fields; existsOnly reads nothing else", async () => {
-    await payload.updateGlobal({ slug: "settings" as GlobalSlug, data: { siteName: "Cargo", token: "hidden-token", owner: editor.id } as never, overrideAccess: true });
+    await payload.updateGlobal({ slug: "settings" as GlobalSlug, data: { siteName: "Shipment", token: "hidden-token", owner: editor.id } as never, overrideAccess: true });
     const settings = await reader.findGlobal("settings");
-    expect(settings).toMatchObject({ siteName: "Cargo" });
+    expect(settings).toMatchObject({ siteName: "Shipment" });
     expect(JSON.stringify(settings)).not.toContain("hidden-token");
     expect(await reader.findGlobal("settings", { existsOnly: true })).not.toHaveProperty("siteName");
   });

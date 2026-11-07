@@ -40,7 +40,7 @@ export const withOAuth = ({
         views: {
           ...config.admin?.components?.views,
           mcpOAuthContinue: {
-            Component: '@cargo/payload-plugin-mcp/client#OAuthContinueView',
+            Component: '@shipment/payload-plugin-mcp/client#OAuthContinueView',
             path: CONTINUE_VIEW_PATH,
           },
         },

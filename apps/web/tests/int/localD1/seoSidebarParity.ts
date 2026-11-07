@@ -1,5 +1,5 @@
 /**
- * The SEO sidebar scores what `/validate` scores (cargo-template #47, #130).
+ * The SEO sidebar scores what `/validate` scores (shipment #47, #130).
  *
  * In the edit form, uploads, `reference` links and reusable sections are plain IDs. The
  * sidebar posts the form's values to `/seo-plugin/sidebar-content`, which populates them on
@@ -12,7 +12,7 @@
  * files booting Payload each start a workerd on the same local D1 file, and running in
  * parallel they fail with `SQLITE_BUSY`.
  */
-import { analyzeSeo, buildSeoInputFromDoc, type SeoCheck, type SeoConfig, type SeoInput } from '@cargo/payload-seo-analyzer'
+import { analyzeSeo, buildSeoInputFromDoc, type SeoCheck, type SeoConfig, type SeoInput } from '@shipment/payload-seo-analyzer'
 import { createPayloadRequest, type Payload, type PayloadHandler } from 'payload'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
@@ -123,7 +123,7 @@ export const seoSidebarParity = (getPayload: () => Payload) =>
           slug: `parity-page-${stamp}`,
           _status: 'published',
           meta: {
-            title: 'Espresso at home: a short guide | Cargo',
+            title: 'Espresso at home: a short guide | Shipment',
             description: 'How to pull a good espresso shot at home with fresh beans and a steady grind.',
             image: media.id,
           },

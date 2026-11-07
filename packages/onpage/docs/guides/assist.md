@@ -40,8 +40,8 @@ export async function POST(req: Request) {
 ```tsx
 // app/(frontend)/onpage-mount.tsx
 'use client'
-import type { AssistPort } from '@cargo/onpage-core'
-import { OnPageMount, type OnPageMountProps } from '@cargo/onpage-next/client'
+import type { AssistPort } from '@shipment/onpage-core'
+import { OnPageMount, type OnPageMountProps } from '@shipment/onpage-next/client'
 
 const assist: AssistPort = {
   async rewrite({ text, instruction, field, locale, signal }) {

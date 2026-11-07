@@ -13,7 +13,7 @@ describe('buildPageJsonLd', () => {
     const nodes = parse(
       await buildPageJsonLd(
         {
-          meta: { description: 'About us', title: 'About | Cargo' },
+          meta: { description: 'About us', title: 'About | Shipment' },
           slug: 'about',
           title: 'About',
           updatedAt: '2026-01-02T00:00:00.000Z',
@@ -27,7 +27,7 @@ describe('buildPageJsonLd', () => {
       '@context': 'https://schema.org',
       dateModified: '2026-01-02T00:00:00.000Z',
       description: 'About us',
-      name: 'About | Cargo',
+      name: 'About | Shipment',
       url: 'https://example.com/about',
     })
     expect(nodes[1]?.itemListElement).toEqual([
@@ -43,7 +43,7 @@ describe('buildPageJsonLd', () => {
 
     expect(nodes.map((node) => node['@type'])).toEqual(['WebSite', 'Organization', 'WebPage'])
     expect(nodes[0]?.url).toBe('https://example.com/')
-    expect(nodes[1]).toMatchObject({ name: 'Cargo Template', url: 'https://example.com' })
+    expect(nodes[1]).toMatchObject({ name: 'Shipment', url: 'https://example.com' })
     expect(nodes[2]).toMatchObject({ url: 'https://example.com/' })
     // Empty values are dropped rather than emitted as "".
     expect(nodes[1]).not.toHaveProperty('description')

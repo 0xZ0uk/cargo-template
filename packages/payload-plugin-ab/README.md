@@ -1,8 +1,8 @@
-# @cargo/payload-plugin-ab
+# @shipment/payload-plugin-ab
 
 A/B testing for [Payload CMS](https://payloadcms.com) 4: create page variants in the admin, give each a share of traffic, and route visitors to them from your request handler. Runs on Node or Cloudflare Workers.
 
-Cargo's fork of [`@focus-reactive/payload-plugin-ab`](https://github.com/focusreactive/payload-plugins/tree/main/packages/payload-plugin-ab) 2.10.1 by FocusReactive (MIT), which targets Payload 3 + Next.js. Imported with its history from upstream `e40c7a0` (2026-10-06) via `git subtree`: diff `packages/payload-plugin-ab` against that import to see what changed, or to pull upstream fixes. This fork:
+Shipment's fork of [`@focus-reactive/payload-plugin-ab`](https://github.com/focusreactive/payload-plugins/tree/main/packages/payload-plugin-ab) 2.10.1 by FocusReactive (MIT), which targets Payload 3 + Next.js. Imported with its history from upstream `e40c7a0` (2026-10-06) via `git subtree`: diff `packages/payload-plugin-ab` against that import to see what changed, or to pull upstream fixes. This fork:
 
 - **Requires Payload 4** (`>=4.0.0-beta.6 <5`, from the workspace catalog) and has **no Next.js dependency**. The upstream Next.js middleware (`NextRequest` in, `NextResponse.rewrite` out) is now a framework-agnostic resolver: a Web `Request` (or its `Cookie` header) in, `{ bucket, pathname, variant, cookies, setCookieHeaders }` out. The host renders that path and sets the cookies. See [Routing](#routing).
 - **Reads the manifest through the Local API** when the resolver runs next to Payload (pass `{ payload }`). Upstream always fetched `GET /api/globals/_abManifest`, which on a Worker is a subrequest to itself.
@@ -15,7 +15,7 @@ Cargo's fork of [`@focus-reactive/payload-plugin-ab`](https://github.com/focusre
 - **Drops unpublished pages from the manifest.** Upstream recomputed only on publish, so unpublishing a variant left it taking traffic to a page that no longer served, and unpublishing the original left its variants running. Unpublishing either, in one locale or all, now updates those locales' entries.
 - **Publishes only the percentage** with a partial `db.updateOne`. Upstream wrote back the whole raw row from `db.findOne`, which re-saves localized fields in one locale.
 - **Admin panel on Payload 4 components and tokens**: `Button` / `Spinner` / `FieldLabel` / `ConfirmationModal` (instead of `window.confirm`) from `@payloadcms/ui`, styles in `VariantsField.css` on `--color-*` / `--field-color-*` / `--spacer-*` / `--radius-*` tokens (Payload 4 removed the v3 `--theme-elevation-*` tokens, which broke dark mode). API calls follow `routes.api`. "Clear all" deletes one variant at a time (parallel deletes raced on the manifest). The panel now receives the collection's slug and title fields (upstream never passed them).
-- Drops the **Vercel Edge Config adapter** (no Vercel on Workers) and upstream's release tooling. Named `@cargo/payload-plugin-ab`, built with tsup, private to the workspace.
+- Drops the **Vercel Edge Config adapter** (no Vercel on Workers) and upstream's release tooling. Named `@shipment/payload-plugin-ab`, built with tsup, private to the workspace.
 
 ## How it works
 
@@ -45,7 +45,7 @@ In this monorepo, add it to an app as a workspace dependency:
 
 ```jsonc
 // apps/web/package.json
-"dependencies": { "@cargo/payload-plugin-ab": "workspace:*" }
+"dependencies": { "@shipment/payload-plugin-ab": "workspace:*" }
 ```
 
 Then run `pnpm web generate:importmap` (the Variants panel is an admin component), and `pnpm web migrate:create` (the plugin adds fields and two collections).
@@ -56,7 +56,7 @@ Share one adapter between the Payload config and the resolver:
 
 ```ts
 // src/plugins/abTesting.ts
-import { payloadCollectionAdapter } from '@cargo/payload-plugin-ab/adapters/payload-collection'
+import { payloadCollectionAdapter } from '@shipment/payload-plugin-ab/adapters/payload-collection'
 
 // `startedAt` is the experiment run's start (see Measurement > Runs).
 export type AbVariant = { bucket: string; rewritePath: string; passPercentage: number; startedAt?: string }
@@ -66,7 +66,7 @@ export const abStorage = payloadCollectionAdapter<AbVariant>()
 
 ```ts
 // payload.config.ts
-import { abTestingPlugin } from '@cargo/payload-plugin-ab'
+import { abTestingPlugin } from '@shipment/payload-plugin-ab'
 import { abStorage } from './plugins/abTesting'
 
 export default buildConfig({
@@ -162,7 +162,7 @@ It returns `null` when the path runs no experiment (or the manifest can't be rea
 There's no URL rewrite to do: the page loader's server function resolves the bucket and loads the variant's document instead of the original. Skip it for drafts and previews.
 
 ```ts
-import { createResolveAbRewrite } from '@cargo/payload-plugin-ab/middleware'
+import { createResolveAbRewrite } from '@shipment/payload-plugin-ab/middleware'
 import { abStorage, type AbVariant } from '@/plugins/abTesting'
 
 const resolveAb = createResolveAbRewrite<AbVariant>({
@@ -245,7 +245,7 @@ The default variant data carries the run's `startedAt` on every entry (a custom 
 
 ## GA4
 
-Mount `<ExperimentTracker experimentId={manifestKey} />` (from `@cargo/payload-plugin-ab/analytics`, a client component) on variant-served pages. It sets three GA4 event-scoped parameters with `gtag('set', …)`: `fr_ab_experiment` (the manifest key), `fr_ab_variant` (the bucket) and `fr_ab_visitor_id`. Register them as custom dimensions in GA4. It does nothing when `gtag` never loads.
+Mount `<ExperimentTracker experimentId={manifestKey} />` (from `@shipment/payload-plugin-ab/analytics`, a client component) on variant-served pages. It sets three GA4 event-scoped parameters with `gtag('set', …)`: `fr_ab_experiment` (the manifest key), `fr_ab_variant` (the bucket) and `fr_ab_visitor_id`. Register them as custom dimensions in GA4. It does nothing when `gtag` never loads.
 
 **Consent is up to each site.** The plugin doesn't ask for consent and doesn't gate GA4 on it. With GA4 loaded, the tracker sends the experiment key, the visitor's bucket and an anonymous visitor id (`ab_visitor_id`) to Google. Load gtag, and mount `ExperimentTracker`, only once your consent flow allows it (or use Google Consent Mode), and list these parameters in your privacy policy. Analytics Engine measurement (see [Measurement](#measurement)) is first-party and stores no visitor id, IP or user agent, but it still sets cookies, so check it against your own consent rules too.
 
@@ -328,18 +328,18 @@ Reads are cache-first, and a key with no experiment is cached as `null`, so page
 
 | Import path | Exports |
 | --- | --- |
-| `@cargo/payload-plugin-ab` | `abTestingPlugin`, `resolveAbCookieNames`, `pruneEndedExperimentRuns`, `AB_EXPERIMENTS_SLUG`, `AB_DIMENSION_PARAMS`, `AB_RUN_RETENTION_DAYS`, `DEFAULT_CONVERSION_COOKIE_PREFIX`, `DEFAULT_PROMOTE_SKIP_FIELDS`, types (including `ManifestCache`, `AbMeasurementConfig`, `AbResults`, `AbResultsResponse`, `AbPastRun`, `AbPromoteResponse`, `AbPromoteFailure`) |
-| `@cargo/payload-plugin-ab/adapters/payload-collection` | `payloadCollectionAdapter`, `withManifestCache`, `createMemoryManifestCache`, types |
-| `@cargo/payload-plugin-ab/middleware` | `createResolveAbRewrite`, `parseCookieHeader`, `serializeAbCookie`, `bucketCookieName`, `resolveAbCookieNames`, types |
-| `@cargo/payload-plugin-ab/analytics` (also `/analytics/client`) | `ExperimentTracker`, `resolveAbCookieNames`, types |
-| `@cargo/payload-plugin-ab/admin/VariantsField` | the Variants panel (import-map path) |
+| `@shipment/payload-plugin-ab` | `abTestingPlugin`, `resolveAbCookieNames`, `pruneEndedExperimentRuns`, `AB_EXPERIMENTS_SLUG`, `AB_DIMENSION_PARAMS`, `AB_RUN_RETENTION_DAYS`, `DEFAULT_CONVERSION_COOKIE_PREFIX`, `DEFAULT_PROMOTE_SKIP_FIELDS`, types (including `ManifestCache`, `AbMeasurementConfig`, `AbResults`, `AbResultsResponse`, `AbPastRun`, `AbPromoteResponse`, `AbPromoteFailure`) |
+| `@shipment/payload-plugin-ab/adapters/payload-collection` | `payloadCollectionAdapter`, `withManifestCache`, `createMemoryManifestCache`, types |
+| `@shipment/payload-plugin-ab/middleware` | `createResolveAbRewrite`, `parseCookieHeader`, `serializeAbCookie`, `bucketCookieName`, `resolveAbCookieNames`, types |
+| `@shipment/payload-plugin-ab/analytics` (also `/analytics/client`) | `ExperimentTracker`, `resolveAbCookieNames`, types |
+| `@shipment/payload-plugin-ab/admin/VariantsField` | the Variants panel (import-map path) |
 
 ## Development
 
 ```bash
-pnpm --filter @cargo/payload-plugin-ab test       # unit + Payload 4 integration (in-memory SQLite)
-pnpm --filter @cargo/payload-plugin-ab typecheck
-pnpm --filter @cargo/payload-plugin-ab build
+pnpm --filter @shipment/payload-plugin-ab test       # unit + Payload 4 integration (in-memory SQLite)
+pnpm --filter @shipment/payload-plugin-ab typecheck
+pnpm --filter @shipment/payload-plugin-ab build
 ```
 
 `tests/integration/boot.test.ts` boots Payload 4 with drafts and two locales and drives the endpoint and REST calls through Payload's own handler: duplicate auth, variant drafts, per-locale manifest entries, staged and published percentages (with an unpublished variant edit that must stay unpublished), unpublishing a variant or the original, deletes, promotions (fields copied and skipped, every locale, the published version rather than later drafts, never-published variants refused, the original kept published with the promoted draft, the run ended and still listed, access), the measurement endpoints (conversion cookies, dedupe and validation; results auth and key lookup), and the manifest storage (concurrent writes to different keys, a create race on one key, REST access with and without a session or credentials). `tests/cache/` covers the read cache. `tests/payload4Tokens.test.ts` keeps v3 admin tokens out of the styles.

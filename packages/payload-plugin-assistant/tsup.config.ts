@@ -22,7 +22,7 @@ const shared: Partial<Options> = {
 
 /**
  * esbuild drops module-level "use client" and moves CSS imports into a sibling .css file: put
- * both back (same helper as `@cargo/payload-plugin-ab`).
+ * both back (same helper as `@shipment/payload-plugin-ab`).
  */
 function addClientBanner(file: string) {
   const css = file.replace(/\.js$/, ".css");
@@ -35,7 +35,7 @@ export default defineConfig([
   // chunk, so the AI runtime is not in the config's import graph.
   { ...shared, entry: { index: "src/index.ts" }, splitting: true, clean: false },
   // plugin-mcp items (rich text as Markdown, #67): their own entry, so the plugin never imports
-  // `@cargo/payload-plugin-mcp` (an optional peer, external like every peer).
+  // `@shipment/payload-plugin-mcp` (an optional peer, external like every peer).
   { ...shared, entry: { mcp: "src/mcp.ts" }, splitting: false, clean: false },
   // Admin server components (the view wraps itself in DefaultTemplate; the nav link asks
   // `access`). No "use client": they import the client entry by package path, which stays
@@ -49,7 +49,7 @@ export default defineConfig([
     },
     splitting: false,
     clean: false,
-    external: [...(shared.external ?? []), "@cargo/payload-plugin-assistant/client"],
+    external: [...(shared.external ?? []), "@shipment/payload-plugin-assistant/client"],
   },
   // Client: the chat UI. Browser-only code: `@tanstack/ai-react` (a dependency, so external),
   // `@payloadcms/ui`, `payload/shared`. Never the server runtime, the stores or the DOs.

@@ -45,7 +45,7 @@ export function seoFields(): Field[] {
       admin: {
         position: 'sidebar',
         components: {
-          Field: '@cargo/payload-seo-analyzer/client#SeoAnalyzerField',
+          Field: '@shipment/payload-seo-analyzer/client#SeoAnalyzerField',
         },
       },
     },

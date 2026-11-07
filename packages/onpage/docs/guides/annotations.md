@@ -9,8 +9,8 @@ Auto-mapping covers most text. Annotations add precision where markers can't rea
 `editable()` is server-safe and pure. With `enabled: false` every helper returns `{}`, so public HTML carries nothing.
 
 ```tsx
-import { editable } from '@cargo/onpage-react/annotations'
-import { getOnPageMode } from '@cargo/onpage-next'
+import { editable } from '@shipment/onpage-react/annotations'
+import { getOnPageMode } from '@shipment/onpage-next'
 
 const e = editable({ collection: 'pages', doc: page }, { enabled: (await getOnPageMode()) === 'edit' })
 

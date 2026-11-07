@@ -1,7 +1,7 @@
 /**
  * French editor UI strings.
  *
- *   import { fr } from '@cargo/onpage-react/locales/fr'
+ *   import { fr } from '@shipment/onpage-react/locales/fr'
  *   <OnPage messages={fr} uiLocale="fr" />
  */
 import type { MessageKey, Messages } from '../messages.ts'

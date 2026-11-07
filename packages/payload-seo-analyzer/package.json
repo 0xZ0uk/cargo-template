@@ -1,7 +1,7 @@
 {
-  "name": "@cargo/payload-seo-analyzer",
+  "name": "@shipment/payload-seo-analyzer",
   "version": "5.0.0-beta.0",
-  "description": "Payload CMS 4 SEO plugin for Cargo (fork of @consilioweb/payload-seo-analyzer): 50+ checks, dashboard, Lexical JSON support, readability",
+  "description": "Payload CMS 4 SEO plugin for Shipment (fork of @consilioweb/payload-seo-analyzer): 50+ checks, dashboard, Lexical JSON support, readability",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

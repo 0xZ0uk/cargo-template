@@ -6,7 +6,7 @@
  */
 import { useMemo, useRef, useTransition } from 'react'
 import { useRouter } from '@tanstack/react-router'
-import type { Renderer } from '@cargo/onpage-core'
+import type { Renderer } from '@shipment/onpage-core'
 
 const DEBOUNCE = 60
 const FALLBACK = 10_000

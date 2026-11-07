@@ -253,36 +253,6 @@ importers:
       '@base-ui/react':
         specifier: ^1.9.0
         version: 1.9.0(@date-fns/tz@1.2.0)(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
-      '@cargo/onpage-core':
-        specifier: workspace:*
-        version: link:../../packages/onpage/core
-      '@cargo/onpage-lexical':
-        specifier: workspace:*
-        version: link:../../packages/onpage/lexical
-      '@cargo/onpage-plugin':
-        specifier: workspace:*
-        version: link:../../packages/onpage/plugin
-      '@cargo/onpage-react':
-        specifier: workspace:*
-        version: link:../../packages/onpage/react
-      '@cargo/onpage-tanstack-start':
-        specifier: workspace:*
-        version: link:../../packages/onpage/tanstack-start
-      '@cargo/payload-plugin-ab':
-        specifier: workspace:*
-        version: link:../../packages/payload-plugin-ab
-      '@cargo/payload-plugin-assistant':
-        specifier: workspace:*
-        version: link:../../packages/payload-plugin-assistant
-      '@cargo/payload-plugin-mcp':
-        specifier: workspace:*
-        version: link:../../packages/payload-plugin-mcp
-      '@cargo/payload-plugin-socials':
-        specifier: workspace:*
-        version: link:../../packages/payload-plugin-socials
-      '@cargo/payload-seo-analyzer':
-        specifier: workspace:*
-        version: link:../../packages/payload-seo-analyzer
       '@lexical/list':
         specifier: 'catalog:'
         version: 0.53.0(typescript@6.0.3)
@@ -322,6 +292,36 @@ importers:
       '@payloadcms/ui':
         specifier: 'catalog:'
         version: 4.0.0-beta.6(@types/react@19.3.0)(monaco-editor@0.57.0)(payload@4.0.0-beta.6(patch_hash=a9abd1297b478daa72f3d031352b2d5dcaaba1e9a47f001defbfd3ea54267c48)(graphql@16.14.2)(supports-color@7.2.0)(typescript@6.0.3))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(supports-color@7.2.0)(typescript@6.0.3)
+      '@shipment/onpage-core':
+        specifier: workspace:*
+        version: link:../../packages/onpage/core
+      '@shipment/onpage-lexical':
+        specifier: workspace:*
+        version: link:../../packages/onpage/lexical
+      '@shipment/onpage-plugin':
+        specifier: workspace:*
+        version: link:../../packages/onpage/plugin
+      '@shipment/onpage-react':
+        specifier: workspace:*
+        version: link:../../packages/onpage/react
+      '@shipment/onpage-tanstack-start':
+        specifier: workspace:*
+        version: link:../../packages/onpage/tanstack-start
+      '@shipment/payload-plugin-ab':
+        specifier: workspace:*
+        version: link:../../packages/payload-plugin-ab
+      '@shipment/payload-plugin-assistant':
+        specifier: workspace:*
+        version: link:../../packages/payload-plugin-assistant
+      '@shipment/payload-plugin-mcp':
+        specifier: workspace:*
+        version: link:../../packages/payload-plugin-mcp
+      '@shipment/payload-plugin-socials':
+        specifier: workspace:*
+        version: link:../../packages/payload-plugin-socials
+      '@shipment/payload-seo-analyzer':
+        specifier: workspace:*
+        version: link:../../packages/payload-seo-analyzer
       '@tanstack/react-router':
         specifier: 'catalog:'
         version: 1.170.46(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -443,21 +443,6 @@ importers:
 
   packages/onpage:
     devDependencies:
-      '@cargo/onpage-core':
-        specifier: workspace:*
-        version: link:core
-      '@cargo/onpage-lexical':
-        specifier: workspace:*
-        version: link:lexical
-      '@cargo/onpage-plugin':
-        specifier: workspace:*
-        version: link:plugin
-      '@cargo/onpage-react':
-        specifier: workspace:*
-        version: link:react
-      '@cargo/onpage-tanstack-start':
-        specifier: workspace:*
-        version: link:tanstack-start
       '@eslint/js':
         specifier: ^10.0.1
         version: 10.0.1(eslint@10.14.0(jiti@2.7.0)(supports-color@7.2.0))
@@ -470,6 +455,21 @@ importers:
       '@payloadcms/ui':
         specifier: 'catalog:'
         version: 4.0.0-beta.6(@types/react@19.3.0)(monaco-editor@0.57.0)(payload@4.0.0-beta.6(patch_hash=a9abd1297b478daa72f3d031352b2d5dcaaba1e9a47f001defbfd3ea54267c48)(graphql@16.14.2)(supports-color@7.2.0)(typescript@6.0.3))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(supports-color@7.2.0)(typescript@6.0.3)
+      '@shipment/onpage-core':
+        specifier: workspace:*
+        version: link:core
+      '@shipment/onpage-lexical':
+        specifier: workspace:*
+        version: link:lexical
+      '@shipment/onpage-plugin':
+        specifier: workspace:*
+        version: link:plugin
+      '@shipment/onpage-react':
+        specifier: workspace:*
+        version: link:react
+      '@shipment/onpage-tanstack-start':
+        specifier: workspace:*
+        version: link:tanstack-start
       '@testing-library/dom':
         specifier: ^10.4.2
         version: 10.4.2
@@ -539,10 +539,10 @@ importers:
 
   packages/onpage/lexical:
     dependencies:
-      '@cargo/onpage-core':
+      '@shipment/onpage-core':
         specifier: workspace:*
         version: link:../core
-      '@cargo/onpage-react':
+      '@shipment/onpage-react':
         specifier: workspace:*
         version: link:../react
     devDependencies:
@@ -582,7 +582,7 @@ importers:
 
   packages/onpage/plugin:
     dependencies:
-      '@cargo/onpage-core':
+      '@shipment/onpage-core':
         specifier: workspace:*
         version: link:../core
     devDependencies:
@@ -610,7 +610,7 @@ importers:
 
   packages/onpage/react:
     dependencies:
-      '@cargo/onpage-core':
+      '@shipment/onpage-core':
         specifier: workspace:*
         version: link:../core
     devDependencies:
@@ -635,13 +635,13 @@ importers:
 
   packages/onpage/tanstack-start:
     dependencies:
-      '@cargo/onpage-core':
+      '@shipment/onpage-core':
         specifier: workspace:*
         version: link:../core
-      '@cargo/onpage-lexical':
+      '@shipment/onpage-lexical':
         specifier: workspace:*
         version: link:../lexical
-      '@cargo/onpage-react':
+      '@shipment/onpage-react':
         specifier: workspace:*
         version: link:../react
     devDependencies:
@@ -742,9 +742,6 @@ importers:
         specifier: 1.0.2
         version: 1.0.2(@tanstack/ai@1.2.0(zod@4.6.7))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(zod@4.6.7)
     devDependencies:
-      '@cargo/payload-plugin-mcp':
-        specifier: workspace:*
-        version: link:../payload-plugin-mcp
       '@cloudflare/vitest-plugin':
         specifier: 1.4.11
         version: 1.4.11(@cloudflare/workers-types@5.20261023.1)(@types/node@24.12.3)(vitest@4.1.12)
@@ -763,6 +760,9 @@ importers:
       '@payloadcms/ui':
         specifier: 'catalog:'
         version: 4.0.0-beta.6(@types/react@19.3.0)(monaco-editor@0.57.0)(payload@4.0.0-beta.6(patch_hash=a9abd1297b478daa72f3d031352b2d5dcaaba1e9a47f001defbfd3ea54267c48)(graphql@16.14.2)(supports-color@7.2.0)(typescript@6.0.3))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(supports-color@7.2.0)(typescript@6.0.3)
+      '@shipment/payload-plugin-mcp':
+        specifier: workspace:*
+        version: link:../payload-plugin-mcp
       '@testing-library/react':
         specifier: 16.3.3
         version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)

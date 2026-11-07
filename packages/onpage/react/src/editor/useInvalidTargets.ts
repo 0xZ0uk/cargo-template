@@ -2,7 +2,7 @@
  * Outlines the page elements of fields the server called invalid (a failed
  * save or publish), until they save or publish cleanly.
  */
-import type { RefKey, SessionSnapshot } from '@cargo/onpage-core'
+import type { RefKey, SessionSnapshot } from '@shipment/onpage-core'
 import { useEffect } from 'react'
 import { DOM_ATTR } from '../dom.ts'
 import type { TargetIndex } from '../types.ts'

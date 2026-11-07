@@ -8,7 +8,7 @@
  *  - a warning before leaving with unsaved changes
  */
 import { useEvent } from '../useEvent.ts'
-import { refKey, resolveRow, isReady } from '@cargo/onpage-core'
+import { refKey, resolveRow, isReady } from '@shipment/onpage-core'
 import { rowOps } from '../rowOps.ts'
 import { useEffect } from 'react'
 import { DOM_ATTR, isOurs, isTyping } from '../dom.ts'

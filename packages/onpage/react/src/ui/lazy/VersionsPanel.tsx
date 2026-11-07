@@ -11,7 +11,7 @@ import {
   rowPrefixes,
   type RefKey,
   type VersionSummary,
-} from '@cargo/onpage-core'
+} from '@shipment/onpage-core'
 import { useEffect, useId, useState } from 'react'
 import { useOnPage } from '../../context.tsx'
 import { DOM_ATTR } from '../../dom.ts'

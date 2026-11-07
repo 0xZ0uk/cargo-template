@@ -1,9 +1,9 @@
 # Custom data source
 
-Implement `DataSource` (from `@cargo/onpage-core`) to load and save through something other than Payload REST: GraphQL, server actions, a custom auth header.
+Implement `DataSource` (from `@shipment/onpage-core`) to load and save through something other than Payload REST: GraphQL, server actions, a custom auth header.
 
 ```ts
-import type { DataSource } from '@cargo/onpage-core'
+import type { DataSource } from '@shipment/onpage-core'
 
 export const graphqlSource = (endpoint: string): DataSource => ({
   loadSchema: (ref, { locale }) =>

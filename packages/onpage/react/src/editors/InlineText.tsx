@@ -11,7 +11,7 @@
  * cancels.
  */
 import { lazy, Suspense, useLayoutEffect, useRef, useState, type FocusEvent } from 'react'
-import type { ScalarField } from '@cargo/onpage-core'
+import type { ScalarField } from '@shipment/onpage-core'
 import { useOnPage } from '../context.tsx'
 import { copyTypography, HIDDEN, placeCaret, placeOver, typographyOf } from '../dom.ts'
 import { useTrackElement } from '../layout.ts'

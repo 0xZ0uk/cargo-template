@@ -4,7 +4,7 @@
  * mount can resolve the request's mode without ever seeing a credential.
  */
 import { createServerFn } from '@tanstack/react-start'
-import type { OnPageMode } from '@cargo/onpage-core'
+import type { OnPageMode } from '@shipment/onpage-core'
 
 export interface OnPageState {
   mode: OnPageMode | null

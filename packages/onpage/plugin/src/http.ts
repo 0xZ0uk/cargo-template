@@ -1,5 +1,5 @@
 /** Request helpers shared by the endpoints. */
-import { safePath, type DocRef } from '@cargo/onpage-core'
+import { safePath, type DocRef } from '@shipment/onpage-core'
 import type { PayloadRequest, SanitizedCollectionConfig, SanitizedGlobalConfig } from 'payload'
 import { formatAdminURL, stripTrailingSlash } from 'payload/shared'
 

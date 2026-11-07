@@ -1,5 +1,5 @@
-import { assistantConversation } from '@cargo/payload-plugin-assistant/do'
-import { runSeoJobs } from '@cargo/payload-seo-analyzer'
+import { assistantConversation } from '@shipment/payload-plugin-assistant/do'
+import { runSeoJobs } from '@shipment/payload-seo-analyzer'
 import {
   createServerEntry,
   createStartHandler,
@@ -11,7 +11,7 @@ import { assistantConversationDependencies } from './plugins/assistant'
 // The admin assistant's Durable Objects (one per conversation, one per user's conversation list):
 // a Worker must export every Durable Object class it binds (`durable_objects` in wrangler.jsonc).
 // Workerd-only; the `./do` entry never reaches the Payload config or the admin bundle.
-export { AssistantConversationIndex } from '@cargo/payload-plugin-assistant/do'
+export { AssistantConversationIndex } from '@shipment/payload-plugin-assistant/do'
 
 /**
  * The conversation object, with the app's turn dependencies (the audit log, #68): turns run here
@@ -47,7 +47,7 @@ async function runScheduledJobs(cron: string): Promise<void> {
 
   try {
     // Ended A/B runs whose events Analytics Engine no longer keeps (90 days).
-    const { pruneEndedExperimentRuns } = await import('@cargo/payload-plugin-ab')
+    const { pruneEndedExperimentRuns } = await import('@shipment/payload-plugin-ab')
     const pruned = await pruneEndedExperimentRuns(payload)
     if (pruned) payload.logger.info(`[cron ${cron}] ab: pruned ${pruned} ended runs`)
   } catch (error) {
@@ -59,7 +59,7 @@ async function runScheduledJobs(cron: string): Promise<void> {
     // Disabled (no SOCIALS_ENCRYPTION_KEY): its tasks are inert and nothing queues them, so there is nothing to run.
     if (!socialsOptions.disabled) {
       const { normalizePluginOptions, runQueuedSocialsJobs, sweepDueSocialPosts } =
-        await import('@cargo/payload-plugin-socials')
+        await import('@shipment/payload-plugin-socials')
       const { pruneSocialPosts } = await import('./plugins/socialsRetention')
       const options = normalizePluginOptions(socialsOptions)
       // Queue the posts that came due, then run the queue.

@@ -12,7 +12,7 @@ import {
   stegaEncode,
   type OnPageMode,
   type SessionAdapter,
-} from '@cargo/onpage-core'
+} from '@shipment/onpage-core'
 import {
   buildConfig,
   getPayload,

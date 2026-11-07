@@ -10,7 +10,7 @@ import { $getRoot, $isElementNode, createEditor } from 'lexical'
 import { RICH_TEXT_NODES } from '../nodeList.ts'
 import { fromEditorState, hasOpaque, plainText, toEditorState, EMPTY_STATE } from '../convert.ts'
 import { $createPayloadLinkNode, $isPayloadLinkNode } from '../nodes.tsx'
-import { normalizeRichText } from '@cargo/onpage-core'
+import { normalizeRichText } from '@shipment/onpage-core'
 import fixtures from './fixtures.json'
 
 const roundTrip = (state: unknown) => {

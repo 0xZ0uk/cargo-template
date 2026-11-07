@@ -31,7 +31,7 @@ import {
   type PreviewGrant,
   type SealSecret,
   type SessionAdapter,
-} from '@cargo/onpage-core'
+} from '@shipment/onpage-core'
 import {
   deleteCookie,
   getCookie,

@@ -79,7 +79,7 @@ describe('error boundary — the nine admin views', () => {
     // client export, which tsup keeps external.
     const bridge = read('views/ErrorBoundaryClient.tsx')
     expect(bridge).toContain("'use client'")
-    expect(bridge).toContain("@cargo/payload-seo-analyzer/client")
+    expect(bridge).toContain("@shipment/payload-seo-analyzer/client")
 
     for (const file of fs.readdirSync(path.join(SRC, 'views')).filter((f) => f.endsWith('View.tsx'))) {
       const source = read(path.join('views', file))

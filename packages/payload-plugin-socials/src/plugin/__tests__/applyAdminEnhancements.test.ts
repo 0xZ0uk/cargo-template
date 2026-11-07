@@ -35,7 +35,7 @@ describe('applyAdminEnhancements', () => {
     expect(link.clientProps?.href).toBe('/admin/socials')
 
     expect(views(config).socials).toEqual({
-      Component: '@cargo/payload-plugin-socials/rsc#SocialsAdminView',
+      Component: '@shipment/payload-plugin-socials/rsc#SocialsAdminView',
       path: '/socials',
     })
     expect(config.admin?.components?.beforeDashboard ?? []).toHaveLength(0)

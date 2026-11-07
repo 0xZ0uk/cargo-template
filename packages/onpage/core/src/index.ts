@@ -1,8 +1,8 @@
 /**
- * @cargo/onpage-core — framework-agnostic building blocks: document refs,
+ * @shipment/onpage-core — framework-agnostic building blocks: document refs,
  * schema, path and field operations, the stega codec, autosave, the editor
  * session, and the port interfaces adapters implement. The default Payload REST
- * adapters are in `@cargo/onpage-core/payload`.
+ * adapters are in `@shipment/onpage-core/payload`.
  *
  * The public API is listed explicitly: anything not exported here is internal
  * and may change in any release.

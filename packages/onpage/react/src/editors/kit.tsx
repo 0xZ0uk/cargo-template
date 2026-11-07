@@ -3,7 +3,7 @@
 /**
  * The parts every popover editor shares: the anchored dialog, the Apply/Clear
  * bar, and a draft that previews live and commits once. Exported from
- * `@cargo/onpage-react/editor-kit` for custom editors.
+ * `@shipment/onpage-react/editor-kit` for custom editors.
  */
 import { useState, type ReactNode } from 'react'
 import type { Translate } from '../messages.ts'

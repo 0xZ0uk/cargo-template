@@ -1,4 +1,4 @@
-import { defineCollectionTool, type MCPPluginConfig } from "@cargo/payload-plugin-mcp";
+import { defineCollectionTool, type MCPPluginConfig } from "@shipment/payload-plugin-mcp";
 import { parseDocumentID, type CollectionSlug, type PayloadRequest } from "payload";
 import {
   blocksBySlugOf,

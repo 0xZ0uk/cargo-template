@@ -1,6 +1,6 @@
 'use client'
 
-import { fieldAtPath, getAt, isReady, type ReadyDocumentState } from '@cargo/onpage-core'
+import { fieldAtPath, getAt, isReady, type ReadyDocumentState } from '@shipment/onpage-core'
 import { Suspense, useCallback } from 'react'
 import { useOnPage } from '../context.tsx'
 import { canEdit } from '../registry.ts'

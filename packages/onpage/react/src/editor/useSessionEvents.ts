@@ -2,7 +2,7 @@
  * Turns the session's state changes into `OnPageEvent`s for `onEvent`: a save
  * landed or failed, a conflict, a document that couldn't load.
  */
-import type { EditorSession, RefKey } from '@cargo/onpage-core'
+import type { EditorSession, RefKey } from '@shipment/onpage-core'
 import { useEffect } from 'react'
 import type { OnPageEvent } from '../types.ts'
 
