@@ -18,6 +18,10 @@ export type {
 export type { ConversationCaps } from "./conversations/caps";
 export type { MemoryConversationsOptions } from "./conversations/memory";
 export type {
+  AssistantConversationDependencies,
+  AssistantConversationDependenciesFactory,
+} from "./conversations/conversation";
+export type {
   ClaimResult,
   ConversationBackend,
   ConversationTranscript,

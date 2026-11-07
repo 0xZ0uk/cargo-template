@@ -51,49 +51,9 @@ async function events(response: Response, limit = Infinity) {
   return out;
 }
 
+// The lifecycle itself (ownership, rejoin, retention, fencing…) is tests/lifecycle.test.ts, the
+// suite both storages run. These are the memory backend's own options.
 describe("memoryConversations (Node fallback)", () => {
-  it("enforces ownership on read, resume, new turns, rename and delete", async () => {
-    const backend = memoryConversations({ turnRunner });
-    const start = input("users:1", "t1");
-    expect((await events(await backend.startTurn(start))).at(-1)?.type).toBe("RUN_FINISHED");
-    expect((await backend.transcript("users:1", "t1"))?.messages).toHaveLength(2);
-
-    expect(await backend.claim("users:2", "t1")).toEqual({ ok: false });
-    expect(await backend.transcript("users:2", "t1")).toBeNull();
-    const join = new Request("http://x/api/assistant/chat", { headers: { "Last-Event-ID": "-1", "X-Run-Id": start.runId } });
-    expect((await backend.join("users:2", "t1", join)).status).toBe(404);
-    expect((await backend.startTurn(input("users:2", "t1"))).status).toBe(404);
-    expect(await backend.rename("users:2", "t1", "x")).toBe(false);
-    expect(await backend.remove("users:2", "t1")).toBe(false);
-    expect((await backend.list("users:2")).entries).toEqual([]);
-    expect((await backend.list("users:1")).entries.map((e) => e.threadId)).toEqual(["t1"]);
-  });
-
-  it("rejoins a run after a disconnect from the last event id", async () => {
-    const backend = memoryConversations({ turnRunner });
-    const start = input("users:1", "t2");
-    const first = await events(await backend.startTurn(start), 2);
-    const rest = await events(
-      await backend.join("users:1", "t2", new Request("http://x", { headers: { "Last-Event-ID": first.at(-1)!.id!, "X-Run-Id": start.runId } }))
-    );
-    expect([...first, ...rest].map((e) => e.type)).toEqual([
-      "RUN_STARTED",
-      ...Array(5).fill("TEXT_MESSAGE_CONTENT"),
-      "RUN_FINISHED",
-    ]);
-  });
-
-  it("drops idle conversations after the retention", async () => {
-    let now = 1_000;
-    const backend = memoryConversations({ turnRunner, retentionMs: 100, now: () => now });
-    await backend.claim("users:1", "t3");
-    now += 50;
-    expect(await backend.transcript("users:1", "t3")).not.toBeNull();
-    now += 200;
-    expect(await backend.transcript("users:1", "t3")).toBeNull();
-    expect((await backend.list("users:1")).entries).toEqual([]);
-  });
-
   it("answers 501 until the turn (#63) exists", async () => {
     expect((await memoryConversations().startTurn(input("users:1", "t4"))).status).toBe(501);
   });

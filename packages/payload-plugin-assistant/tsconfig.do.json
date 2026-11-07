@@ -5,6 +5,6 @@
     "lib": ["ES2023"],
     "types": ["@cloudflare/workers-types", "@cloudflare/vitest-plugin/types"]
   },
-  "include": ["src/do/**/*.ts", "src/conversations/**/*.ts", "tests/workerd/**/*.ts"],
+  "include": ["src/do/**/*.ts", "src/conversations/**/*.ts", "tests/workerd/**/*.ts", "tests/lifecycle/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }
