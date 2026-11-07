@@ -63,7 +63,10 @@ import { queuePublicationReconciliation } from './publicationReconciliation.js'
  * scheduled job owns. The publish task takes queued rows, and failed rows
  * because Payload's retry of a safe-to-repeat failure re-runs the task on the
  * row the failed attempt left; a failed row with an `externalId` (a rejected or
- * unconfirmed platform post) is never taken back automatically.
+ * unconfirmed platform post) is never taken back automatically. Both claims
+ * clear the row's `externalId`/`externalUrl` as they take it (`startAttempt`),
+ * so an id on a failed row always comes from its latest attempt, never from an
+ * earlier publication of the same content.
  *
  * Reconciliation of Facebook scheduled posts and Business Profile moderation
  * (`scheduled`/`publishing` with an `externalId` → published or failed) is
@@ -169,6 +172,25 @@ const conditionalUpdate = async (
   } as never)
   return updatedCount(result) === 1
 }
+
+/**
+ * The write that moves a row into `publishing` for a new platform attempt
+ * (`reserve`'s takeover, `claimForPublish`). It drops the platform reference an
+ * earlier publication left (a deleted post, a rejected one the operator
+ * re-queued), so the only `externalId` on the row is one this attempt records
+ * (`recordResult`, `recordUnknown`). A retry-safe failure then leaves the row
+ * `failed` with no `externalId`, which Payload's retry claims again. It runs
+ * as part of the conditional update, after its `where` matched, so it never
+ * widens which rows may be taken: `unknown`, `publishing`, `published` and
+ * `scheduled` rows, and failed rows holding this attempt's id, stay fenced.
+ */
+const startAttempt = (post: Pick<LedgerPost, 'attempts'>): Record<string, unknown> => ({
+  attempts: (post.attempts ?? 0) + 1,
+  externalId: null,
+  externalUrl: null,
+  lastAttemptedAt: now(),
+  status: 'publishing',
+})
 
 const alreadyPublishedRef = (post: LedgerPost): PublishedRef | undefined =>
   post.status === 'published' && post.externalId
@@ -403,7 +425,7 @@ const reserve = async (args: {
     }
     const claimed = await conditionalUpdate(
       payload,
-      { attempts: (existing.attempts ?? 0) + 1, lastAttemptedAt: now(), status: 'publishing' },
+      startAttempt(existing),
       [{ id: { equals: existing.id } }, { status: { in: [...RESERVABLE_STATUSES] } }],
     )
     if (!claimed) {
@@ -583,7 +605,7 @@ export const recordQueuedJob = async (
 export const claimForPublish = async (payload: Payload, post: LedgerPost): Promise<boolean> =>
   conditionalUpdate(
     payload,
-    { attempts: (post.attempts ?? 0) + 1, lastAttemptedAt: now(), status: 'publishing' },
+    startAttempt(post),
     [
       { id: { equals: post.id } },
       {
@@ -607,9 +629,10 @@ export const claimForPublish = async (payload: Payload, post: LedgerPost): Promi
  *
  * - `unknown`: a write's response was lost (5xx, timeout, network error).
  * - `publishing`: an attempt is in flight, or died mid-request.
- * - any row with an `externalId`: the platform returned a post id (a
- *   scheduled Facebook post, a Business Profile post still processing or
- *   rejected, a failed reconciliation).
+ * - any row with an `externalId`: the platform returned a post id on the
+ *   row's latest attempt (a scheduled Facebook post, a Business Profile post
+ *   still processing or rejected, a failed reconciliation). A claim clears the
+ *   id an earlier publication left, so that id alone never refuses a retry.
  *
  * Returns the refusal message, or `undefined` when the retry may go ahead.
  */

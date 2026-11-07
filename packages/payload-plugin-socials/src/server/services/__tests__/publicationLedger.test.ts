@@ -441,6 +441,61 @@ describe('claimForPublish (publish task)', () => {
     }
   })
 
+  it('clears the platform id an earlier publication left, so a safe failure can be claimed again', async () => {
+    // Published, deleted on the platform, then scheduled again: the row is
+    // queued but still holds the deleted post's id.
+    const post = await createRow({
+      externalId: 'pin_deleted',
+      externalUrl: 'https://www.pinterest.com/pin/pin_deleted/',
+      status: 'queued',
+    })
+    expect(await claimForPublish(payload, post as never)).toBe(true)
+    expect(await row(post.id)).toMatchObject({ externalId: null, status: 'publishing' })
+
+    const attempt = await publishClaimed({
+      adapter: fakeAdapter(() =>
+        Promise.reject(
+          new PlatformApiError({
+            message: 'throttled',
+            platform: 'pinterest',
+            retryable: true,
+            safeToRepeat: true,
+            statusCode: 429,
+          }),
+        ),
+      ).adapter,
+      ctx: nextCtx(),
+      input,
+      options,
+      payload,
+      postId: post.id,
+    })
+    expect(attempt).toMatchObject({ retry: true, status: 'failed' })
+    const failed = await row(post.id)
+    expect(failed).toMatchObject({ externalId: null, status: 'failed' })
+    expect(decideRetry(failed as never, { basePath: '/api/socials' })).toEqual({ kind: 'allowed' })
+    // Payload's retry re-claims the row.
+    expect(await claimForPublish(payload, failed as never)).toBe(true)
+  })
+
+  it('keeps the id a failed attempt recorded, which fences the row', async () => {
+    const post = await createRow({ externalId: 'pin_old', status: 'queued' })
+    expect(await claimForPublish(payload, post as never)).toBe(true)
+    await publishClaimed({
+      adapter: fakeAdapter(() =>
+        Promise.resolve(published({ externalId: 'pin_rejected', state: 'rejected' })),
+      ).adapter,
+      ctx: nextCtx(),
+      input,
+      options,
+      payload,
+      postId: post.id,
+    })
+    const failed = await row(post.id)
+    expect(failed).toMatchObject({ externalId: 'pin_rejected', status: 'failed' })
+    expect(await claimForPublish(payload, failed as never)).toBe(false)
+  })
+
   it('refuses a second claim once the first has taken the row', async () => {
     // Sequential, not concurrent: Payload's conditional update reads and then
     // writes, so two claims interleaved between those steps can both match

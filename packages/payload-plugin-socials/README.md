@@ -336,7 +336,7 @@ One module, the publication ledger (`src/server/services/publicationLedger.ts`),
 | --- | --- | --- |
 | no row, `draft`, `failed`, `cancelled`, `deleted` | `publishing` | Immediate publish (endpoint, composer). A `queued` or in-flight row answers `409`; a `published` one returns its reference. |
 | no row, `draft`, `queued`, `failed`, `cancelled`, `deleted` | `queued` | Scheduled publish (`scheduledAt`, `scheduleSocialPostPublish`). A `publishing`, `unknown` or `scheduled` row answers `409`. |
-| `queued`; `failed` without an `externalId` | `publishing` | The publish task's claim (`failed` so Payload's retry of a safe-to-repeat failure can re-run). |
+| `queued`; `failed` without an `externalId` | `publishing` | The publish task's claim (`failed` so Payload's retry of a safe-to-repeat failure can re-run). Like the immediate publish's takeover, it clears the `externalId` an earlier publication left, so an id on the row always comes from its latest attempt. |
 | `publishing` | `published`, `scheduled` (Facebook native schedule), `publishing` with an `externalId` (Business Profile moderation), `failed`, `unknown` | The platform's answer or error. |
 | any but `published`, unless it may be live | `queued` | Manual retry. |
 | `unknown` | `published`, `failed` | `POST /posts/{postId}/resolve`. |
@@ -423,7 +423,7 @@ The clients never replay a `create` request themselves after a 5xx or a lost res
 | `socialPostSweep` (0) | The due-post query failed, or no due post could be queued | unchanged (`queued`) | Failed; the next sweep picks the posts up |
 | | Some due posts could not be queued | unchanged (`queued`) | Succeeded; `output.failed` counts them |
 
-Double posting is prevented by four fences: Payload retries a publish only when `isAutoRetrySafe` holds, so never after a write the platform may have applied; every publish attempt (first run or retry) must claim the row from `queued`, or from `failed` without an `externalId`, before calling the platform, so an `unknown`, `publishing`, `scheduled` or `published` row is never published by a job; an unknown outcome stays `unknown` until an operator resolves it; and the manual retry refuses a post that may already be live unless the operator confirms it is not (`confirmNotPublished: true`).
+Double posting is prevented by four fences: Payload retries a publish only when `isAutoRetrySafe` holds, so never after a write the platform may have applied; every publish attempt (first run or retry) must claim the row from `queued`, or from `failed` without an `externalId`, before calling the platform, so an `unknown`, `publishing`, `scheduled` or `published` row is never published by a job (the claim clears an `externalId` left by an earlier publication, so a rescheduled post's retry is not mistaken for a live one); an unknown outcome stays `unknown` until an operator resolves it; and the manual retry refuses a post that may already be live unless the operator confirms it is not (`confirmNotPublished: true`).
 
 The claim is a conditional update through Payload's Local API, which reads and then writes. A first publish of new content is atomic (the row's unique `idempotencyKey`), but two publish jobs for the same existing row that run at the same instant can both pass the claim. Avoid queueing duplicate publish jobs for one post (for example, overlapping sweeps drained concurrently).
 

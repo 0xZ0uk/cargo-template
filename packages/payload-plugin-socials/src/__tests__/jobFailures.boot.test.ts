@@ -432,4 +432,53 @@ describe('the retry task, through Payload’s job runner', () => {
     expect(publish).toHaveBeenCalledOnce()
     expect(await findPost(postId)).toMatchObject({ lastError: null, status: 'published' })
   })
+
+  it.each<[string, boolean]>([
+    ['rescheduled', false],
+    ['retried with confirmNotPublished', true],
+  ])(
+    'publishes once a failed post with a stale platform id, %s, after a throttled first try',
+    async (_label, viaRetry) => {
+      const publish = vi
+        .fn()
+        .mockRejectedValueOnce(
+          new PlatformApiError({
+            message: 'throttled',
+            platform: 'pinterest',
+            retryable: true,
+            safeToRepeat: true,
+            statusCode: 429,
+          }),
+        )
+        .mockResolvedValue({ externalId: 'pin_new', platform: 'pinterest' })
+      mockAdapterPublish(publish)
+      // A post published before and gone from the platform (or rejected), so
+      // its row still holds the earlier publication's id.
+      const postId = await createQueuedPost({
+        externalId: 'pin_old',
+        status: viaRetry ? 'failed' : 'queued',
+      })
+      const jobId = viaRetry
+        ? await queueSocialPostRetry({ confirmNotPublished: true, payload, postId })
+        : await queueSocialPostPublish({ payload, postId })
+
+      const now = Date.now()
+      setJobClock(new Date(now))
+      await drain()
+      expect(publish).toHaveBeenCalledTimes(1)
+      expect(await findPost(postId)).toMatchObject({ externalId: null, status: 'failed' })
+
+      setJobClock(new Date(now + 24 * 60 * 60_000))
+      await drain()
+
+      expect(publish).toHaveBeenCalledTimes(2)
+      expect(await publish.mock.results[1]?.value).toMatchObject({ externalId: 'pin_new' })
+      expect(await findPost(postId)).toMatchObject({ externalId: 'pin_new', status: 'published' })
+      if (!viaRetry) {
+        const job = await findJob(jobId)
+        expect(job.hasError).toBeFalsy()
+        expect(job.log?.map((entry) => entry.state)).toEqual(['failed', 'succeeded'])
+      }
+    },
+  )
 })
