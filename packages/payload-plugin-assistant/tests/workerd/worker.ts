@@ -2,11 +2,12 @@ import { createMCPClient } from "@tanstack/ai-mcp";
 import type { StreamChunk } from "@tanstack/ai";
 import { fakeText, type FakeResponseStep } from "@tanstack/ai/testing";
 import { createMcpHandler, fromJsonSchema, McpServer } from "@modelcontextprotocol/server";
-import { AssistantConversation, AssistantConversationIndex } from "../../src/do";
+import { assistantConversation, AssistantConversationIndex } from "../../src/do";
 import type { TurnContext, TurnRunner } from "../../src/conversations/types";
 import { createTurnRunner } from "../../src/server/turn";
+import { lifecycleTurn } from "../lifecycle/runner";
 import { withFakeCost } from "../../src/server/testModel";
-import type { AssistantAuditEvent, AssistantAuditSink } from "../../src/audit";
+import type { AssistantAuditEvent } from "../../src/audit";
 
 export { AssistantConversationIndex };
 
@@ -20,31 +21,7 @@ export interface Env {
   ASSISTANT_SELF: Fetcher;
 }
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const chunk = (value: Record<string, unknown>) => ({ timestamp: Date.now(), ...value }) as unknown as StreamChunk;
-
-/** A turn without a model: text deltas with a delay, then the transcript save `withPersistence` would do. */
-async function* slowTurn({ input, persistence }: TurnContext): AsyncIterable<StreamChunk> {
-  const { threadId, runId } = input;
-  const steps = Number(input.body.steps ?? 8);
-  const delayMs = Number(input.body.delayMs ?? 40);
-  await persistence.stores.runs.createOrResume({ runId, threadId, startedAt: Date.now() });
-  yield chunk({ type: "RUN_STARTED", threadId, runId });
-  let text = "";
-  for (let i = 0; i < steps; i++) {
-    await sleep(delayMs);
-    text += `part${i} `;
-    yield chunk({ type: "TEXT_MESSAGE_CONTENT", messageId: "m1", delta: `part${i} ` });
-  }
-  const history = await persistence.stores.messages.loadThread(threadId);
-  await persistence.stores.messages.saveThread(threadId, [
-    ...history,
-    { role: "user", content: String(input.body.message ?? "hi") },
-    { role: "assistant", content: text.trim() },
-  ]);
-  await persistence.stores.runs.update(runId, { status: "completed", finishedAt: Date.now() });
-  yield chunk({ type: "RUN_FINISHED", threadId, runId });
-}
 
 /** The transport prototype: a real MCP client over `mcpFetch` (the service binding to this Worker). */
 async function* mcpTurn({ input, mcpFetch }: TurnContext): AsyncIterable<StreamChunk> {
@@ -85,25 +62,25 @@ const chatTurn: TurnRunner = (context) => {
   })(context);
 };
 
-/** The conversation class with the model swapped: `mode: "chat"` is the real turn, the others are stand-ins. */
 /** Audit events the conversation objects reported (read back through `GET /test/audit`). */
 const audited: AssistantAuditEvent[] = [];
 
-export class TestConversation extends AssistantConversation<Env> {
-  /** The app's override (#68): here a spy instead of `analyticsEngineAuditSink(env.ASSISTANT_AUDIT)`. */
-  protected override auditSink(): AssistantAuditSink {
-    return (event) => {
-      audited.push(event);
-    };
-  }
-
-  protected override async turnRunner(): Promise<TurnRunner> {
-    return (context) => {
-      const { mode } = context.input.body;
-      return mode === "chat" ? chatTurn(context) : mode === "mcp" ? mcpTurn(context) : slowTurn(context);
-    };
-  }
-}
+/**
+ * The conversation class as the app builds it (`assistantConversation(factory)`), with a spy audit
+ * sink instead of `analyticsEngineAuditSink(env.ASSISTANT_AUDIT)` and the model swapped:
+ * `mode: "chat"` is the real turn, `"mcp"` the transport prototype, anything else the
+ * lifecycle suite's turn (`lifecycleTurn`, plain text deltas).
+ */
+export const TestConversation = assistantConversation<Env>(() => ({
+  audit: (event) => {
+    audited.push(event);
+  },
+  turnRunner: (context) => {
+    const { mode } = context.input.body;
+    return mode === "chat" ? chatTurn(context) : mode === "mcp" ? mcpTurn(context) : lifecycleTurn(context);
+  },
+}));
+export type TestConversation = InstanceType<typeof TestConversation>;
 
 /** The stand-in's user, with what redaction must hide (#68). */
 export const USER = { id: "u1", name: "Ann", email: "ann-secret@example.com", sessions: [{ id: "session-secret" }] };

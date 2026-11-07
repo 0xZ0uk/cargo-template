@@ -1,5 +1,5 @@
 import type { SessionIndexEntry } from "@tanstack/ai-persistence";
-import { dayBefore, USAGE_RETENTION_DAYS, type UsageAmount, type UsageSnapshot } from "../usage";
+import { dayBefore, entryUsage, USAGE_RETENTION_DAYS, type UsageAmount, type UsageSnapshot } from "../usage";
 import { first, fromJson, nextCounter, run, toJson, type SqlStorageLike } from "./sql";
 
 /**
@@ -18,16 +18,6 @@ export const USAGE_SCHEMA = [
     PRIMARY KEY (tenant_id, day)
   )`,
 ];
-
-/** The conversation's running total, from its index entry's metadata. */
-export function entryUsage(entry: Pick<SessionIndexEntry, "metadata"> | undefined): UsageAmount | null {
-  const metadata = entry?.metadata as { costUsd?: unknown; tokens?: unknown } | undefined;
-  if (!metadata || (metadata.costUsd === undefined && metadata.tokens === undefined)) return null;
-  return {
-    costUsd: typeof metadata.costUsd === "number" ? metadata.costUsd : 0,
-    tokens: typeof metadata.tokens === "number" ? metadata.tokens : 0,
-  };
-}
 
 /**
  * Add one model call's usage, atomically (one SQLite transaction in a single-writer object): the

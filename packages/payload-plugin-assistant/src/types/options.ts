@@ -152,8 +152,8 @@ export interface AssistantPluginOptions {
   /**
    * Where applied writes are reported (#68), one event per changed document, no content. Used where the turn
    * runs in this process (the in-memory backend); the conversation Durable Object takes its sink
-   * from `auditSink()`, which the app overrides (see the README, "Audit log"). Typically
-   * `analyticsEngineAuditSink(env.ASSISTANT_AUDIT)` in both places.
+   * from the factory the app passes to `assistantConversation()` (see the README, "Audit log").
+   * Typically `analyticsEngineAuditSink(env.ASSISTANT_AUDIT)` in both places.
    */
   audit?: AssistantAuditSink;
 }

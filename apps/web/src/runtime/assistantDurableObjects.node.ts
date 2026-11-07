@@ -12,3 +12,5 @@ const workerdOnly = (name: string) =>
 
 export const AssistantConversation = workerdOnly('AssistantConversation')
 export const AssistantConversationIndex = workerdOnly('AssistantConversationIndex')
+// `src/server.ts` builds its conversation class with the app's dependencies; same stand-in.
+export const assistantConversation = () => AssistantConversation

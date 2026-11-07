@@ -11,8 +11,10 @@ import {
   type SessionIndexStore,
 } from "@tanstack/ai-persistence";
 import type { RunStore } from "@tanstack/ai";
+import type { UsageAmount, UsageSnapshot } from "../usage";
+import { backendOver, type ConversationHandle } from "./backendOver";
 import type { ConversationCaps } from "./caps";
-import type { UsageSnapshot } from "../usage";
+import type { ConversationIndex } from "./storage";
 import {
   DO_HEADERS,
   DO_ROUTES,
@@ -117,6 +119,31 @@ export function durableSessionIndexStore(namespace: NamespaceLike<IndexStubLike>
   } as SessionIndexStore);
 }
 
+/** An index stub as the conversation object writes it: the list entry, activity and usage. */
+export interface IndexWriterStubLike extends IndexStubLike {
+  touch(tenantId: string, threadId: string, updatedAt: number): Promise<any>;
+  addUsage(tenantId: string, threadId: string | undefined, day: string, amount: UsageAmount): Promise<any>;
+}
+
+/** The owners' index objects as the conversation's lifecycle writes them, one object per owner. */
+export function durableConversationIndex(namespace: NamespaceLike<IndexWriterStubLike>): ConversationIndex {
+  const stub = (tenantId: string) => namespace.get(namespace.idFromName(tenantId));
+  return {
+    create: async (entry) => {
+      await stub(entry.tenantId ?? "").call("upsert", [entry]);
+    },
+    remove: async (key) => {
+      await stub(key.tenantId ?? "").call("delete", [key]);
+    },
+    touch: async (tenantId, threadId, updatedAt) => {
+      await stub(tenantId).touch(tenantId, threadId, updatedAt);
+    },
+    addUsage: async (tenantId, threadId, day, amount) => {
+      await stub(tenantId).addUsage(tenantId, threadId, day, amount);
+    },
+  };
+}
+
 export interface DurableObjectConversationsOptions {
   conversations: NamespaceLike<ConversationStubLike>;
   index: NamespaceLike<IndexStubLike>;
@@ -126,38 +153,43 @@ export interface DurableObjectConversationsOptions {
 }
 
 /**
- * The endpoint's backend on Workers. Each call checks ownership in the conversation object
- * (`claim` / `transcript` / `destroy` and the `fetch` routes all compare the stored owner with
- * the user key the endpoint derived from `req.user`).
+ * The endpoint's backend on Workers: `backendOver` with each conversation's Durable Object as the
+ * handle. The lifecycle (`Conversation`) runs inside the object, which checks ownership on every
+ * RPC method and `fetch` route against the user key the endpoint derived from `req.user`.
  */
 export function durableObjectConversations(options: DurableObjectConversationsOptions): ConversationBackend {
-  const { conversations, retentionMs, caps } = options;
-  const sessions = durableSessionIndexStore(options.index);
+  const { conversations } = options;
   const stub = (threadId: string) => conversations.get(conversations.idFromName(threadId));
-  const claim = (userKey: string, threadId: string, title?: string): Promise<ClaimResult> =>
-    stub(threadId).claim({ threadId, userKey, retentionMs, caps, ...(title ? { title } : {}) });
+  return backendOver({
+    open: (threadId) => conversationHandle(stub(threadId), threadId),
+    sessions: durableSessionIndexStore(options.index),
+    usage: (userKey, day, threadId) =>
+      options.index.get(options.index.idFromName(userKey)).usage(userKey, day, ...(threadId !== undefined ? [threadId] : [])) as Promise<UsageSnapshot>,
+    retentionMs: options.retentionMs,
+    caps: options.caps,
+  });
+}
 
+/** One conversation object as a `ConversationHandle`: RPC for plain data, `fetch` for the SSE and hydration responses. */
+function conversationHandle(stub: ConversationStubLike, threadId: string): ConversationHandle {
   return {
-    claim,
-    transcript: (userKey, threadId) => stub(threadId).transcript(userKey) as Promise<ConversationTranscript | null>,
-    async startTurn(input: TurnInput) {
-      const claimed = await claim(input.userKey, input.threadId, input.title);
-      if (!claimed.ok) return Response.json({ error: "Not found", code: "not_found" }, { status: 404 });
-      // The object answers with the run's SSE stream; returning it proxies the stream as is.
-      return stub(input.threadId).fetch(DO_ROUTES.turn, {
+    claim: (input) => stub.claim(input) as Promise<ClaimResult>,
+    transcript: (userKey) => stub.transcript(userKey) as Promise<ConversationTranscript | null>,
+    // The object answers with the run's SSE stream; returning it proxies the stream as is.
+    startTurn: (input: TurnInput) =>
+      stub.fetch(DO_ROUTES.turn, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           [DO_HEADERS.user]: input.userKey,
-          [DO_HEADERS.thread]: input.threadId,
+          [DO_HEADERS.thread]: threadId,
           [DO_HEADERS.runId]: input.runId,
           Cookie: input.auth.cookie,
           Origin: input.auth.origin,
         },
         body: JSON.stringify(input.body),
-      }) as Promise<Response>;
-    },
-    join(userKey, threadId, request) {
+      }) as Promise<Response>,
+    join(userKey, request) {
       const url = new URL(request.url);
       const target = new URL(DO_ROUTES.join);
       for (const key of ["offset", "runId"]) {
@@ -169,38 +201,19 @@ export function durableObjectConversations(options: DurableObjectConversationsOp
         const value = request.headers.get(name);
         if (value !== null) headers[name] = value;
       }
-      return stub(threadId).fetch(target.toString(), { method: "GET", headers, signal: request.signal }) as Promise<Response>;
+      return stub.fetch(target.toString(), { method: "GET", headers, signal: request.signal }) as Promise<Response>;
     },
-    stop: (userKey, threadId, runId) => stub(threadId).stop(userKey, runId) as Promise<boolean>,
-    hydrate(userKey, threadId, request) {
+    stop: (userKey, runId) => stub.stop(userKey, runId) as Promise<boolean>,
+    hydrate(userKey, request) {
       const target = new URL(DO_ROUTES.hydrate);
       for (const [key, value] of new URL(request.url).searchParams) {
         if (key === "limit" || key === "before") target.searchParams.set(key, value);
       }
-      return stub(threadId).fetch(target.toString(), {
+      return stub.fetch(target.toString(), {
         method: "GET",
         headers: { [DO_HEADERS.user]: userKey, [DO_HEADERS.thread]: threadId },
       }) as Promise<Response>;
     },
-    list: (userKey, listOptions = {}) =>
-      sessions.list({ ...listOptions, tenantId: userKey, memberId: userKey, parentThreadId: null }),
-    async rename(userKey, threadId, title) {
-      for (let attempt = 0; attempt < 3; attempt++) {
-        const current = await sessions.getVersioned({ tenantId: userKey, threadId });
-        if (!current || !current.entry.members.some((m) => m.userId === userKey && m.role === "owner")) return false;
-        const result = await sessions.upsertIf({
-          entry: { ...current.entry, title, updatedAt: Date.now() },
-          revision: current.revision,
-        });
-        if (result.ok) return true;
-      }
-      throw new Error("[payload-plugin-assistant] rename lost three write races in a row");
-    },
-    // The conversation object checks the owner, deletes its data and its index entry.
-    remove: (userKey, threadId) => stub(threadId).destroy(userKey) as Promise<boolean>,
-    // The user's own index object: their day, and the conversation's total from its entry there
-    // (another user's conversation has no entry in this index, so it reads `null`).
-    usage: (userKey, day, threadId) =>
-      options.index.get(options.index.idFromName(userKey)).usage(userKey, day, ...(threadId !== undefined ? [threadId] : [])) as Promise<UsageSnapshot>,
+    destroy: (userKey) => stub.destroy(userKey) as Promise<boolean>,
   };
 }
