@@ -1,4 +1,4 @@
-import { jsonValuesIn } from "./redaction";
+import { parseResult, type ToolCall } from "./toolCalls";
 
 /**
  * The audit log (#68): one event per document an applied write changed (a summary event past
@@ -103,75 +103,22 @@ export function analyticsEngineAuditSink(dataset: AnalyticsEngineDatasetLike | u
   };
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
-const idText = (value: unknown): string =>
-  typeof value === "string" || typeof value === "number" ? String(value) : "";
-
-/** A tool result as text: plugin-mcp's string, or its text content parts. */
-function resultText(result: unknown): string | undefined {
-  if (typeof result === "string") return result;
-  if (Array.isArray(result)) {
-    return result.map((part) => (isRecord(part) && typeof part.content === "string" ? part.content : isRecord(part) && typeof part.text === "string" ? part.text : "")).join("\n");
-  }
-  return undefined;
-}
-
-/**
- * The ids in one of plugin-mcp's result values, or `undefined` when it doesn't look like one: a
- * list of documents (`[{ id }, …]`, update and delete by `where`), a batch (`{ docs: [{ id } |
- * { doc: { id } }], errors }`, `createDocuments`; `errors` are documents that were not written),
- * `{ doc }`, or one document (`{ id }`).
- */
-function idsOf(value: unknown): string[] | undefined {
-  const idOfItem = (item: unknown) => (isRecord(item) ? idText(item.id) || (isRecord(item.doc) ? idText(item.doc.id) : "") : "");
-  if (Array.isArray(value)) {
-    const ids = value.map(idOfItem);
-    return ids.every(Boolean) ? ids : undefined;
-  }
-  if (!isRecord(value)) return undefined;
-  if (Array.isArray(value.docs)) return idsOf(value.docs);
-  if (isRecord(value.doc)) return idsOf(value.doc);
-  return idText(value.id) ? [idText(value.id)] : undefined;
-}
-
 /**
  * The documents a successful write changed, one id each (`""` when it can't be told, e.g. a
  * global, or a result without ids). Never a wrong id:
  *
+ * - Globals: `[""]` (one global, no document id).
  * - `duplicateDocument` / `restoreVersion`: the result's document (the copy, the restored
  *   document), not the `id` argument (the source, the version).
  * - Otherwise the call's `id` argument when it has one.
- * - Otherwise (create, update or delete by `where`) the ids plugin-mcp lists in its result:
- *   `Updated documents:` / `Deleted documents:` (an array), `Results:` (`{ docs, errors }`); the
- *   `Errors:` section and the schema after it are documents that were not changed, and ignored.
- *   No changed documents ("Updated: 0 documents") gives no ids.
- * - Globals: `[""]` (one global, no document id).
+ * - Otherwise (create, update or delete by `where`) the ids of the documents plugin-mcp lists in
+ *   its result ({@link parseResult}): documents that failed are not listed, and a write that
+ *   changed nothing ("Updated: 0 documents") gives no ids.
  */
-export function auditDocumentIds(toolName: string, input: unknown, result: unknown): string[] {
-  const args = isRecord(input) ? input : {};
-  if (/global/i.test(toolName)) return [""];
-  const fromResult = (): string[] | undefined => {
-    const text = resultText(result);
-    if (text !== undefined) {
-      // "Updated: 0 documents" / "Deleted: 0 documents" / "Created 0 of 2 documents": nothing changed.
-      if (/^(?:Updated|Deleted): 0 documents$/m.test(text) || /\bCreated 0 of \d+ documents\b/.test(text)) return [];
-      const main = text.split(/\n\s*(?:Errors|Use this schema for data):\s*\n/)[0] ?? "";
-      for (const value of jsonValuesIn(main)) {
-        const ids = idsOf(value);
-        if (ids) return ids;
-      }
-      return undefined;
-    }
-    return idsOf(result);
-  };
-  if (/duplicate|restore/i.test(toolName)) return (fromResult() ?? [""]).slice(0, 1);
-  if (idText(args.id)) return [idText(args.id)];
+export function auditDocumentIds(call: ToolCall, result: unknown): string[] {
+  if (call.target?.kind === "global") return [""];
+  const fromResult = () => parseResult(result).ids;
+  if (call.operation === "duplicate" || call.operation === "restore") return (fromResult() ?? [""]).slice(0, 1);
+  if (call.id) return [call.id];
   return fromResult() ?? [""];
-}
-
-/** The first document id of {@link auditDocumentIds} (`""` when none). */
-export function auditDocumentId(input: unknown, result: unknown, toolName = ""): string {
-  return auditDocumentIds(toolName, input, result)[0] ?? "";
 }

@@ -13,6 +13,7 @@ import { buildProposal } from "../../src/server/approvals";
 import { resolveMessageReferences } from "../../src/server/references";
 import { turnPolicyMiddleware } from "../../src/server/policy";
 import { DEFAULT_AUTH_REDACTIONS } from "../../src/redaction";
+import { describeCall } from "../../src/toolCalls";
 
 /**
  * The `UserReader` (#133) on a real Payload 4 (SQLite): every read is access-checked, draft-aware
@@ -170,20 +171,21 @@ describe("hidden-field queries", () => {
     await expect(reader.find("pages", { or: [{ title: { equals: "x" } }, { "meta.secret": { exists: true } }] })).rejects.toMatchObject({ field: "meta.secret" });
   });
 
+  const hidden = (args: Record<string, unknown>, tool = "findDocuments") => reader.hiddenField(describeCall(tool, args));
   it("hiddenField: where, sort, select and findDistinct's field; the versions tools' version. and parent. paths", () => {
-    expect(reader.hiddenField({ slug: "users", sort: "-email" })).toBe("email");
-    expect(reader.hiddenField({ slug: "users", select: { name: true, apiKey: true } })).toBe("apiKey");
-    expect(reader.hiddenField({ slug: "contacts", field: "phone" })).toBe("phone");
+    expect(hidden({ slug: "users", sort: "-email" })).toBe("email");
+    expect(hidden({ slug: "users", select: { name: true, apiKey: true } })).toBe("apiKey");
+    expect(hidden({ slug: "contacts", field: "phone" })).toBe("phone");
     for (const tool of ["findVersions", "countVersions", "findVersionByID", "findGlobalVersions"]) {
-      expect(reader.hiddenField({ slug: "pages", where: { "version.author.email": { equals: "x" } } }, tool), tool).toBe("version.author.email");
-      expect(reader.hiddenField({ slug: "pages", where: { "version.internalNote": { exists: true } } }, tool), tool).toBe("version.internalNote");
-      expect(reader.hiddenField({ slug: "users", sort: "-version.email" }, tool), tool).toBe("version.email");
-      expect(reader.hiddenField({ slug: "users", where: { "parent.email": { equals: "x" } } }, tool), tool).toBe("parent.email");
-      expect(reader.hiddenField({ slug: "pages", where: { "version.title": { equals: "x" } }, sort: "-version.updatedAt" }, tool), tool).toBeUndefined();
+      expect(hidden({ slug: "pages", where: { "version.author.email": { equals: "x" } } }, tool), tool).toBe("version.author.email");
+      expect(hidden({ slug: "pages", where: { "version.internalNote": { exists: true } } }, tool), tool).toBe("version.internalNote");
+      expect(hidden({ slug: "users", sort: "-version.email" }, tool), tool).toBe("version.email");
+      expect(hidden({ slug: "users", where: { "parent.email": { equals: "x" } } }, tool), tool).toBe("parent.email");
+      expect(hidden({ slug: "pages", where: { "version.title": { equals: "x" } }, sort: "-version.updatedAt" }, tool), tool).toBeUndefined();
     }
     // Elsewhere a field may be called `version`.
-    expect(reader.hiddenField({ slug: "users", where: { "version.email": { equals: "x" } } }, "findDocuments")).toBeUndefined();
-    expect(reader.hiddenField({ slug: "pages", where: { title: { equals: "x" } }, sort: "-updatedAt" })).toBeUndefined();
+    expect(hidden({ slug: "users", where: { "version.email": { equals: "x" } } }, "findDocuments")).toBeUndefined();
+    expect(hidden({ slug: "pages", where: { title: { equals: "x" } }, sort: "-updatedAt" })).toBeUndefined();
   });
 });
 

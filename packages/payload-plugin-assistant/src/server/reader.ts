@@ -3,6 +3,7 @@ import { parseDocumentID } from "payload";
 import { labelText, neutralTitle } from "../references";
 import { redactFor, redactedReference, type RedactionPolicy } from "../redaction";
 import { redactionPolicyOf, type ConfigLike } from "../redactionSchema";
+import { describeCall, type ToolCall } from "../toolCalls";
 import type { NormalizedAssistantOptions } from "../utils/normalizeOptions";
 import { reachableEntities } from "../utils/reachable";
 
@@ -66,8 +67,8 @@ export interface UserReader {
   titleField(slug: string): { field: string; hidden: boolean } | undefined;
   /** Collection slug → singular label, for the reachable collections whose title field is hidden (the client names them `User #12` too). */
   redactedTitles(): Record<string, string>;
-  /** The first hidden field a tool call's arguments query (`where`, `sort`, `select`, `field`), else `undefined`. */
-  hiddenField(args: unknown, toolName?: string): string | undefined;
+  /** The first hidden field a tool call queries (`where`, `sort`, `select`, `field`), else `undefined`. */
+  hiddenField(call: ToolCall): string | undefined;
 }
 
 const isRecord = (value: unknown): value is Doc => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -99,7 +100,7 @@ export function readerFor(req: PayloadRequest, options: Pick<NormalizedAssistant
     return { field, hidden };
   };
 
-  const hiddenField = (args: unknown, toolName?: string) => redactedReference(policy, args, toolName);
+  const hiddenField = (call: ToolCall) => redactedReference(policy, call);
 
   return {
     req,
@@ -132,7 +133,7 @@ export function readerFor(req: PayloadRequest, options: Pick<NormalizedAssistant
     async find(slug, where, o = {}) {
       const collection = collectionOf(slug);
       if (!collection || !isRecord(where)) return null;
-      const hidden = hiddenField({ slug, where });
+      const hidden = hiddenField(describeCall("findDocuments", { slug, where }));
       if (hidden) throw new HiddenFieldError(slug, hidden);
       try {
         const result = await req.payload.find({
