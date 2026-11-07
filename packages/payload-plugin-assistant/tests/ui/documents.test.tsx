@@ -297,7 +297,8 @@ describe("Ask the assistant (edit view)", () => {
     uiState.title = "editor@example.com";
     render(<AskAssistant kind="collection" slug="users" />);
     await openDrawer();
-    expect(panel.props!.context).toEqual({ kind: "collection", slug: "users", id: "3", title: "User #3" });
+    // The collection labels arrive with the config fetch, which can land after the drawer opens.
+    await waitFor(() => expect(panel.props!.context).toEqual({ kind: "collection", slug: "users", id: "3", title: "User #3" }));
     expect(screen.getByRole("dialog", { name: "Assistant" }).textContent).toContain("User #3");
     expect(screen.getByRole("dialog", { name: "Assistant" }).textContent).not.toContain("editor@example.com");
   });

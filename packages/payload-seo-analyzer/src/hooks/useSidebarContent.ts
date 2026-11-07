@@ -15,6 +15,11 @@ export interface SidebarContentState {
   content: SidebarContentInput
   /** True once the server's content matches the form as it stands. */
   resolved: boolean
+  /**
+   * True once the form differs from how it was when first read (the document as opened).
+   * Edits before the first answer arrives mean that answer is not for the opened document.
+   */
+  edited: boolean
 }
 
 /**
@@ -42,6 +47,11 @@ export function useSidebarContent(
   // The server populates relations per `?locale=` (localized alt texts, slugs), so the same
   // values read in another locale are another answer.
   const key = useMemo(() => (collection ? JSON.stringify([locale ?? '', doc]) : ''), [doc, collection, locale])
+
+  // The key of the form as opened: the first one read once the form state has arrived.
+  const openedKey = useRef<string | null>(null)
+  if (openedKey.current === null && formFields) openedKey.current = key
+  const edited = openedKey.current !== null && key !== openedKey.current
 
   const cache = useRef(new Map<string, SidebarContentInput>())
   const [server, setServer] = useState<{ key: string; locale: string; content: SidebarContentInput } | null>(null)
@@ -98,7 +108,8 @@ export function useSidebarContent(
     () => ({
       content: usable ? usable.content : local,
       resolved: !!usable && usable.key === key,
+      edited,
     }),
-    [usable, local, key],
+    [usable, local, key, edited],
   )
 }

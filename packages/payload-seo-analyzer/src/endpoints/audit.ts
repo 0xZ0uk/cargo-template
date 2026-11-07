@@ -10,62 +10,27 @@
 
 import type { Payload, PayloadHandler } from 'payload'
 import { getSeoDataStore, seoDatasetEnabled } from '../store/index.js'
-import { analyzeSeo } from '../index.js'
 import type { SeoConfig } from '../types.js'
-import { buildSeoInputFromDoc } from './validate.js'
-import {
-  calculateFlesch,
-  countWords,
-} from '../helpers.js'
 import { defaultSeoSharedCache, hashConfig, seoCache, type SeoSharedCache } from '../cache.js'
 import { auditMaxDocs } from '../helpers/auditLimits.js'
 import { docExclusion, isExcludedDoc } from '../helpers/excludeDocs.js'
 import { loadMergedConfig } from '../helpers/loadMergedConfig.js'
-import { extractDocContent } from '../helpers/extractDocContent.js'
-import type { ContentExtractorSource } from '../helpers/contentExtractor.js'
+import { analyzeLoadedDocument, type DocumentTarget } from '../helpers/analyzeDocument.js'
 import { isSeoAdminRequest, isSeoPanelUser } from '../helpers/isAdmin.js'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function analyzeDoc(doc: any, collection: string, seoConfig?: SeoConfig, extractors?: ContentExtractorSource) {
-  // Build SeoInput and run the real engine
-  let seoInput = buildSeoInputFromDoc(doc, collection, { extractors })
-  // Mark as global if collection starts with 'global:'
-  seoInput.isGlobal = collection.startsWith('global:')
-  if (seoInput.isGlobal) {
-    seoInput.slug = ''
-  }
-  // Dashboard audit skips the weight-0, non-scoring groups (geo/eeat/hreflang): they do
+function analyzeDoc(
+  payload: Payload,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  doc: any,
+  target: DocumentTarget,
+  mergedConfig: SeoConfig,
+) {
+  // The real engine, minus the weight-0, non-scoring groups (geo/eeat/hreflang): they do
   // recursive Lexical walks per block and only matter for single-doc analysis (sidebar).
-  // Disabling them here keeps SEO scores identical while cutting per-doc CPU/memory on the
-  // site-wide audit (low-memory hosts).
-  const analysis = analyzeSeo(seoInput, {
-    ...seoConfig,
-    disabledRules: [...(seoConfig?.disabledRules ?? []), 'geo', 'eeat', 'hreflang'],
-  })
-
-  // Extract enriched data for the dashboard using the shared helper
-  // (single extraction pass instead of duplicating logic from analyzeSeo's buildContext)
-  const extracted = extractDocContent(doc, undefined, { collection, extractors })
-  const fullText = extracted.text
-  const allLinks = extracted.links
-  const allHeadings = extracted.headings
-
-  const wordCount = countWords(fullText)
-  // Use the block-aware text so list items / paragraphs are counted as separate
-  // sentences (otherwise scannable, list-heavy content is wrongly scored unreadable).
-  // Same formula as the sidebar's readability rule (Flesch reading ease).
-  const readabilityScore =
-    wordCount > 30 ? calculateFlesch(extracted.readabilityText || fullText) : 0
-
-  const internalLinks = allLinks.filter(
-    (l) => l.url.startsWith('/') || l.url.startsWith('#') || !l.url.startsWith('http'),
-  )
-  const externalLinks = allLinks.filter((l) => l.url.startsWith('http'))
-
-  const h1FromPostHero = collection === 'posts' && doc.title ? 1 : 0
-  const h1InContent = allHeadings.filter((h) => h.tag === 'h1').length
-  const h1Count = h1InContent + h1FromPostHero
-  const headingCount = allHeadings.length + h1FromPostHero
+  // Same SEO score, less per-doc CPU and memory on the site-wide audit (low-memory hosts).
+  const { analysis } = analyzeLoadedDocument(payload, doc, target, { purpose: 'audit', config: mergedConfig })
+  const { stats } = analysis
+  const collection = 'global' in target ? `global:${target.global}` : target.collection
 
   const focusKeywordsArr: string[] = Array.isArray(doc.focusKeywords)
     ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -82,14 +47,15 @@ function analyzeDoc(doc: any, collection: string, seoConfig?: SeoConfig, extract
     focusKeyword: doc.focusKeyword || '',
     focusKeywords: focusKeywordsArr,
     hasOgImage: !!doc.meta?.image,
-    wordCount,
-    readingTime: Math.max(1, Math.round(wordCount / 200)),
-    readabilityScore,
-    internalLinkCount: internalLinks.length,
-    externalLinkCount: externalLinks.length,
-    headingCount,
-    hasH1: h1Count > 0,
-    h1Count,
+    // The analysis's own counts, so the dashboard shows what the checks measured.
+    wordCount: stats.wordCount,
+    readingTime: Math.max(1, Math.round(stats.wordCount / 200)),
+    readabilityScore: stats.readabilityScore,
+    internalLinkCount: stats.internalLinkCount,
+    externalLinkCount: stats.externalLinkCount,
+    headingCount: stats.headingCount,
+    hasH1: stats.h1Count > 0,
+    h1Count: stats.h1Count,
     score: analysis.score,
     aiReadiness: analysis.aiReadiness ? analysis.aiReadiness.score : null,
     level: analysis.level,
@@ -258,7 +224,7 @@ async function scanAuditDocs(
           }
           const t0 = Date.now()
           try {
-            progress.results.push(analyzeDoc(doc, collectionSlug, mergedConfig, payload))
+            progress.results.push(analyzeDoc(payload, doc, { collection: collectionSlug }, mergedConfig))
           } catch (e) {
             payload.logger.warn(
               `[seo] audit: skipped ${collectionSlug}/${(doc as { id?: unknown }).id}: ${e instanceof Error ? e.message : 'error'}`,
@@ -310,7 +276,7 @@ async function finalizeAudit(
       if (doc) {
         // Skip if in ignored slugs
         if (ignoredSlugs.includes(globalSlug)) continue
-        const result = analyzeDoc(doc, `global:${globalSlug}`, mergedConfig)
+        const result = analyzeDoc(payload, doc as Record<string, unknown>, { global: globalSlug }, mergedConfig)
         // Override some fields for globals
         allResults.push({
           ...result,
@@ -518,7 +484,8 @@ async function ensureAuditBuild(
 /** Hash of the config that shapes the audit; part of persisted keys. */
 function auditConfigHash(collections: string[], globals: string[], seoConfig: SeoConfig | undefined): string {
   // v2: readability uses the English Flesch formula.
-  return hashConfig({ v: 2, collections, globals, seoConfig: seoConfig ?? null })
+  // v3: word count, readability, headings and links come from the analysis's own walk.
+  return hashConfig({ v: 3, collections, globals, seoConfig: seoConfig ?? null })
 }
 
 /**

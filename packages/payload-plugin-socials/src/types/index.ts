@@ -55,7 +55,13 @@ export type SocialSource = {
 }
 
 export type SocialImageRole =
-  'after' | 'before' | 'detail' | 'install' | 'lifestyle' | 'main' | ({} & string)
+  | 'after'
+  | 'before'
+  | 'detail'
+  | 'install'
+  | 'lifestyle'
+  | 'main'
+  | ({} & string)
 
 /** Known image formats the plugin can detect and validate against. */
 export type SocialImageFormat = 'avif' | 'bmp' | 'gif' | 'jpeg' | 'png' | 'tiff' | 'webp'
@@ -230,7 +236,6 @@ export type PublishArgs<TInput = unknown> = {
   input: TInput
   options: NormalizedPluginOptions
   payload: Payload
-  postId: number | string
   req?: PayloadRequest
 }
 
@@ -242,6 +247,45 @@ export type PublishedRef = {
   /** Additional platform-specific data the plugin persists for later read. */
   meta?: Record<string, unknown>
   platform: PlatformId
+}
+
+/**
+ * Fields an adapter reports about what it sent, for the `social-posts` audit record. The
+ * publication ledger writes them with the outcome; the adapter never writes the row itself.
+ */
+export type PublicationRecord = {
+  altText?: string
+  /** The copy actually sent (caption, message, summary, description). */
+  body?: string
+  destination?: { label?: string; meta?: Record<string, unknown> }
+  imageUrl?: string
+  link?: string
+  /** Replaces the row's `meta`. */
+  meta?: Record<string, unknown>
+  /** Hash of the request sent, replacing the hash recorded at reservation. */
+  sourceHash?: string
+  title?: string
+}
+
+/**
+ * What `PlatformAdapter.publish` returns: the platform's reference to the post, where the post
+ * stands on the platform, and the audit fields to record.
+ */
+export type PublishResult = PublishedRef & {
+  record?: PublicationRecord
+  /** With `state: 'rejected'`: why the platform refused the post. */
+  rejectionReason?: string
+  /** With `state: 'scheduled'`: when the platform will publish it (ISO-8601). */
+  scheduledAt?: string
+  /**
+   * Default `published`.
+   * - `scheduled`: the platform holds the post until `scheduledAt` (Facebook native scheduling).
+   * - `pending`: the platform accepted the post and is still processing it (Business Profile
+   *   moderation).
+   * - `rejected`: the platform created the post and then refused it. Not live; the ledger
+   *   records it `failed` with its `externalId`.
+   */
+  state?: 'pending' | 'published' | 'rejected' | 'scheduled'
 }
 
 export type ConnectionState = {
@@ -324,11 +368,15 @@ export interface PlatformAdapter<TPublishInput = unknown> {
   preview(args: PreviewArgs): Promise<PreviewResult>
 
   /**
-   * Perform the actual publish. Should be idempotent — callers may retry on
-   * transient failures. Adapters surface idempotency by reusing the `postId`
-   * argument to dedupe via the `social-posts` collection.
+   * Call the platform and report what happened. The publication ledger
+   * (`server/services/publicationLedger.ts`) owns the `social-posts` row: it
+   * reserves or claims the post before calling this, and records the result or
+   * the thrown error after. Adapters never read or write the row.
+   *
+   * Throw a `PlatformApiError` classified with `classifyRequestFailure`: an
+   * `outcome: 'unknown'` failure is never retried automatically.
    */
-  publish(args: PublishArgs<TPublishInput>): Promise<PublishedRef>
+  publish(args: PublishArgs<TPublishInput>): Promise<PublishResult>
 
   /** Refresh the access token using the persisted refresh token. */
   refreshToken?(args: {

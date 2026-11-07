@@ -41,6 +41,7 @@ import payloadPluginSocials, {
   normalizePluginOptions,
   queueSocialConnectionRefresh,
   queueSocialPostPublish,
+  queueSocialPostRetry,
   runQueuedSocialsJobs,
 } from '../index.js'
 import { getPlatformAdapter } from '../server/platforms/registry.js'
@@ -102,22 +103,23 @@ type JobRow = {
   totalTried?: null | number
 }
 
-type PostRow = { lastError?: null | string; status: string }
+type PostRow = { externalId?: null | string; lastError?: null | string; status: string }
 
 let postCounter = 0
 
-const createQueuedPost = async (): Promise<number | string> => {
+const createQueuedPost = async (data: Record<string, unknown> = {}): Promise<number | string> => {
   postCounter++
   const doc = (await payload.create({
     collection: 'social-posts' as never,
     data: {
-      idempotencyKey: `key-${postCounter}`.padEnd(64, '0'),
+      idempotencyKey: `key-${postCounter}-`.padEnd(64, '0'),
       meta: { queuedInput: { boardId: 'board' } },
       platform: 'pinterest',
       sourceHash: 'hash',
       sourceId: `src-${postCounter}`,
       sourceKind: 'product',
       status: 'queued',
+      ...data,
     } as never,
     overrideAccess: true,
   })) as unknown as { id: number | string }
@@ -318,4 +320,165 @@ describe('socials jobs through Payload’s job runner', () => {
     expect(refreshToken).toHaveBeenCalledTimes(2)
     expect(saveCredentials).toHaveBeenCalledTimes(1)
   })
+})
+
+describe('the publish task’s guards, through Payload’s job runner', () => {
+  it.each<[string, Record<string, unknown>, Record<string, unknown>, string | undefined]>([
+    [
+      'a post another worker is publishing',
+      { status: 'publishing' },
+      { alreadyInProgress: true },
+      undefined,
+    ],
+    [
+      'a job for an older schedule',
+      { meta: { queuedInput: { boardId: 'board' }, scheduleToken: 'current' } },
+      { staleSchedule: true },
+      'stale',
+    ],
+    [
+      'a post not due yet',
+      { scheduledAt: new Date(Date.now() + 3_600_000).toISOString() },
+      { notDue: true },
+      undefined,
+    ],
+  ])('does nothing for %s', async (_label, data, output, scheduleToken) => {
+    const publish = vi.fn()
+    mockAdapterPublish(publish)
+    const postId = await createQueuedPost(data)
+    const status = (await findPost(postId)).status
+    const jobId = await queueSocialPostPublish({ payload, postId, scheduleToken })
+
+    await drain()
+
+    const job = (await findJob(jobId)) as JobRow & {
+      log?: Array<{ output?: Record<string, unknown> }> | null
+    }
+    expect(job.hasError).toBeFalsy()
+    expect(job.log?.[0]?.output).toMatchObject(output)
+    expect(publish).not.toHaveBeenCalled()
+    expect((await findPost(postId)).status).toBe(status)
+  })
+
+  it.each<[string, Record<string, unknown>, string]>([
+    ['a cancelled post', { status: 'cancelled' }, 'post is cancelled'],
+    ['a post without its queued input', { meta: {} }, '.meta.queuedInput missing'],
+  ])('fails %s without a retry or a platform call', async (_label, data, message) => {
+    const publish = vi.fn()
+    mockAdapterPublish(publish)
+    const postId = await createQueuedPost(data)
+    const jobId = await queueSocialPostPublish({ payload, postId })
+
+    await drain()
+
+    const job = await findJob(jobId)
+    expect(job.hasError).toBe(true)
+    expect(job.error?.cancelled).toBe(true)
+    expect(job.error?.message).toContain(message)
+    expect(publish).not.toHaveBeenCalled()
+  })
+})
+
+describe('the retry task, through Payload’s job runner', () => {
+  it('refuses a post whose outcome is unknown and leaves it as it was', async () => {
+    const publish = vi.fn()
+    mockAdapterPublish(publish)
+    const postId = await createQueuedPost({ status: 'unknown' })
+    const jobId = await queueSocialPostRetry({ payload, postId })
+
+    await drain()
+
+    const job = await findJob(jobId)
+    expect(job.hasError).toBe(true)
+    expect(job.error?.cancelled).toBe(true)
+    expect(job.error?.message).toContain('its publish outcome is unknown')
+    expect((await findPost(postId)).status).toBe('unknown')
+    expect(publish).not.toHaveBeenCalled()
+  })
+
+  it('refuses a failed post the platform returned an id for', async () => {
+    const publish = vi.fn()
+    mockAdapterPublish(publish)
+    const postId = await createQueuedPost({ externalId: 'pin_rejected', status: 'failed' })
+    const jobId = await queueSocialPostRetry({ payload, postId })
+
+    await drain()
+
+    expect((await findJob(jobId)).error?.message).toContain('pinterest returned a post id for it')
+    expect(publish).not.toHaveBeenCalled()
+  })
+
+  it('re-publishes, once, a post the operator confirmed is not on the platform', async () => {
+    const publish = vi.fn().mockResolvedValue({ externalId: 'pin_2', platform: 'pinterest' })
+    mockAdapterPublish(publish)
+    const postId = await createQueuedPost({ status: 'unknown' })
+    const jobId = await queueSocialPostRetry({ confirmNotPublished: true, payload, postId })
+
+    await drain()
+
+    expect((await findJob(jobId)).hasError).toBeFalsy()
+    expect(publish).toHaveBeenCalledOnce()
+    expect(await findPost(postId)).toMatchObject({ externalId: 'pin_2', status: 'published' })
+  })
+
+  it('re-publishes a failed post', async () => {
+    const publish = vi.fn().mockResolvedValue({ externalId: 'pin_3', platform: 'pinterest' })
+    mockAdapterPublish(publish)
+    const postId = await createQueuedPost({ lastError: 'invalid board', status: 'failed' })
+    await queueSocialPostRetry({ payload, postId })
+
+    await drain()
+
+    expect(publish).toHaveBeenCalledOnce()
+    expect(await findPost(postId)).toMatchObject({ lastError: null, status: 'published' })
+  })
+
+  it.each<[string, boolean]>([
+    ['rescheduled', false],
+    ['retried with confirmNotPublished', true],
+  ])(
+    'publishes once a failed post with a stale platform id, %s, after a throttled first try',
+    async (_label, viaRetry) => {
+      const publish = vi
+        .fn()
+        .mockRejectedValueOnce(
+          new PlatformApiError({
+            message: 'throttled',
+            platform: 'pinterest',
+            retryable: true,
+            safeToRepeat: true,
+            statusCode: 429,
+          }),
+        )
+        .mockResolvedValue({ externalId: 'pin_new', platform: 'pinterest' })
+      mockAdapterPublish(publish)
+      // A post published before and gone from the platform (or rejected), so
+      // its row still holds the earlier publication's id.
+      const postId = await createQueuedPost({
+        externalId: 'pin_old',
+        status: viaRetry ? 'failed' : 'queued',
+      })
+      const jobId = viaRetry
+        ? await queueSocialPostRetry({ confirmNotPublished: true, payload, postId })
+        : await queueSocialPostPublish({ payload, postId })
+
+      const now = Date.now()
+      setJobClock(new Date(now))
+      await drain()
+      expect(publish).toHaveBeenCalledTimes(1)
+      expect(await findPost(postId)).toMatchObject({ externalId: null, status: 'failed' })
+
+      setJobClock(new Date(now + 24 * 60 * 60_000))
+      await drain()
+
+      expect(publish).toHaveBeenCalledTimes(2)
+      expect(await publish.mock.results[1]?.value).toMatchObject({ externalId: 'pin_new' })
+      expect(await findPost(postId)).toMatchObject({ externalId: 'pin_new', status: 'published' })
+      if (!viaRetry) {
+        const job = await findJob(jobId)
+        expect(job.hasError).toBeFalsy()
+        expect(job.log?.map((entry) => entry.state)).toEqual(['failed', 'succeeded'])
+      }
+    },
+  )
 })

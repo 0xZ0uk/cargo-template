@@ -97,6 +97,24 @@ const GROUP_ORDER: RuleGroup[] = [
 /** Same cut-offs as the analyzer's levels, so the ring and the level pill agree. */
 const LEVEL_THRESHOLDS = { good: SCORE_GOOD, ok: SCORE_OK }
 
+/** The analysis before the form state arrives. */
+const EMPTY_ANALYSIS: SeoAnalysis = {
+  score: 0,
+  level: 'poor',
+  checks: [],
+  stats: {
+    wordCount: 0,
+    sentenceCount: 0,
+    readabilityScore: 0,
+    headingCount: 0,
+    h1Count: 0,
+    internalLinkCount: 0,
+    externalLinkCount: 0,
+    imageCount: 0,
+    imagesWithAlt: 0,
+  },
+}
+
 function getLevelTone(level: SeoAnalysis['level']): Tone {
   switch (level) {
     case 'excellent':
@@ -508,6 +526,8 @@ const SeoAnalyzerInner: React.FC = () => {
   const t = useDashboardT()
   const [formFields, dispatchFields] = useAllFormFields()
   const initialScoreRef = useRef<number | null>(null)
+  // The latest score of the document as opened, before the server has read it.
+  const openedScoreRef = useRef<number | null>(null)
   const [suggestionsOpen, setSuggestionsOpen] = useState(true)
   const [cannibalizationExpanded, setCannibalizationExpanded] = useState(false)
   const [linkingSectionOpen, setLinkingSectionOpen] = useState(false)
@@ -550,7 +570,11 @@ const SeoAnalyzerInner: React.FC = () => {
   // The page's content, populated and extracted on the server like /validate reads it
   // (uploads, reference links and reusable sections are IDs in the form).
   const locale = useLocale()?.code
-  const { content: contentInput, resolved: contentResolved } = useSidebarContent(
+  const {
+    content: contentInput,
+    resolved: contentResolved,
+    edited: contentEdited,
+  } = useSidebarContent(
     formFields,
     collectionSlug,
     seoApi('/sidebar-content'),
@@ -581,7 +605,7 @@ const SeoAnalyzerInner: React.FC = () => {
 
   // Extract values from form state and run analysis
   const { analysis, wordCount } = useMemo(() => {
-    if (!formFields) return { analysis: { score: 0, level: 'poor' as const, checks: [] }, wordCount: 0 }
+    if (!formFields) return { analysis: EMPTY_ANALYSIS, wordCount: 0 }
 
     const metaTitle = getFieldValue('meta.title') as string | undefined
     const metaDescription = getFieldValue('meta.description') as string | undefined
@@ -604,15 +628,7 @@ const SeoAnalyzerInner: React.FC = () => {
       thresholds ? { thresholds } : undefined,
     )
 
-    // Compute word count from the content check (reuse the check message or compute separately)
-    let wc = 0
-    const wcCheck = result.checks.find((c) => c.id === 'content-wordcount')
-    if (wcCheck) {
-      const match = wcCheck.message.match(/(\d+)\s*words/)
-      if (match) wc = parseInt(match[1], 10)
-    }
-
-    return { analysis: result, wordCount: wc }
+    return { analysis: result, wordCount: result.stats.wordCount }
   }, [formFields, contentInput, focusKeyword, focusKeywords, isCornerstone, updatedAt, contentLastReviewed, getFieldValue, thresholds])
 
   // The page host for the social preview. Read after mount: during SSR there is no
@@ -660,13 +676,24 @@ const SeoAnalyzerInner: React.FC = () => {
   // Reading time: ~200 words per minute, minimum 1 minute
   const readingTime = Math.max(1, Math.round(wordCount / 200))
 
-  // Feature 1: Capture initial score on first valid analysis, once the server has read the
+  // Feature 1: Capture the score of the document as opened, once the server has read the
   // content (the first, local reading counts no uploads, so the delta would start skewed).
+  // An edit before that answer must not move the baseline to the edited document: the last
+  // local reading of the opened document becomes the baseline instead. That reading counts
+  // uploads, `reference` links and reusable sections as nothing, so in this case (an edit
+  // within the first debounce and request) the delta can include their checks flipping once
+  // the server answers. Accepted: posting the opened form as well would cost a second request
+  // on every early edit for a rare, cosmetic skew.
   useEffect(() => {
-    if (initialScoreRef.current === null && analysis.checks.length > 0 && (contentResolved || !collectionSlug)) {
+    if (initialScoreRef.current !== null || analysis.checks.length === 0) return
+    if (contentEdited && openedScoreRef.current !== null) {
+      initialScoreRef.current = openedScoreRef.current
+    } else if (contentResolved || !collectionSlug) {
       initialScoreRef.current = analysis.score
+    } else if (!contentEdited) {
+      openedScoreRef.current = analysis.score
     }
-  }, [analysis.score, analysis.checks.length, contentResolved, collectionSlug])
+  }, [analysis.score, analysis.checks.length, contentResolved, contentEdited, collectionSlug])
 
   const scoreDelta = initialScoreRef.current !== null ? analysis.score - initialScoreRef.current : null
 

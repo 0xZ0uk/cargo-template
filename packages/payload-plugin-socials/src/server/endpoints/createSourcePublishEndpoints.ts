@@ -6,11 +6,7 @@ import { PLATFORM_IDS, SOCIAL_POSTS_SLUG } from '../../constants.js'
 import { scheduleSocialPostPublish } from '../../plugin/jobQueue.js'
 import { buildSocialDraft } from '../compose/socialDraft.js'
 import { getPlatformAdapter } from '../platforms/registry.js'
-import { queuePublicationReconciliation } from '../services/publicationReconciliation.js'
-import {
-  failPublicationReservation,
-  reservePublication,
-} from '../services/publicationReservation.js'
+import { publishNow } from '../services/publicationLedger.js'
 import { resolveSourceContext } from '../sources/registry.js'
 import { assertAccess } from '../utilities/access.js'
 import { NotFoundError, ValidationError } from '../utilities/errors.js'
@@ -228,45 +224,15 @@ export const createPublishEndpoint = (options: NormalizedPluginOptions): Endpoin
       }
 
       // ── Immediate path ─────────────────────────────────────────
-      const identity = buildPublicationIdentity({
+      const { publishedRef: ref } = await publishNow({
+        adapter,
         ctx,
         input: adapterInput,
-        platform,
-        sourceId: String(sourceId),
-        sourceKind,
-      })
-      const reservation = await reservePublication({
-        destinationId: identity.destinationId,
-        idempotencyKey: identity.idempotencyKey,
-        imageUrl: identity.primaryAssetUrl,
+        options,
         payload: req.payload,
         platform,
-        sourceHash: sha256Hex(JSON.stringify({ adapterInput, platform })),
-        sourceId: String(sourceId),
-        sourceKind,
-        title: ctx.baseTitle,
-      })
-      let ref = reservation.publishedRef
-      if (!ref) {
-        try {
-          ref = await adapter.publish({
-            ctx,
-            input: adapterInput as never,
-            options,
-            payload: req.payload,
-            postId: reservation.postId,
-            req,
-          })
-        } catch (error) {
-          await failPublicationReservation(req.payload, reservation, error)
-          throw error
-        }
-      }
-      await queuePublicationReconciliation({
-        payload: req.payload,
-        postId: reservation.postId,
-        publishedRef: ref,
         req,
+        sourceHash: sha256Hex(JSON.stringify({ adapterInput, platform })),
       })
       return jsonResponse({
         platform,

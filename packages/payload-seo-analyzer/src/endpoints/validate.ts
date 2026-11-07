@@ -8,108 +8,12 @@
  */
 
 import type { PayloadHandler } from 'payload'
-import { readAccessOpts } from '../helpers/readAccess.js'
 import { analyzeSeo } from '../index.js'
-import { loadMergedConfig } from '../helpers/loadMergedConfig.js'
 import { parseJsonBody } from '../helpers/parseBody.js'
-import type { SeoInput, SeoConfig } from '../types.js'
+import type { SeoAnalysis, SeoInput, SeoConfig } from '../types.js'
 import { isSeoPanelUser } from '../helpers/isAdmin.js'
-import type { ContentExtractorSource } from '../helpers/contentExtractor.js'
-import { contentInputFromDoc } from '../helpers/docContentInput.js'
-
-/**
- * Build a SeoInput object from a Payload document (page or post).
- * Exported for reuse in other endpoints or custom integrations.
- *
- * The content fields come from `contentInputFromDoc`, the mapping the sidebar shares, and
- * a collection's `extractContent` extractor (pass `extractors`: the map, or `req.payload`)
- * replaces the `layout` walk.
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function buildSeoInputFromDoc(
-  doc: any,
-  collection: string,
-  options?: { isGlobal?: boolean; extractors?: ContentExtractorSource },
-): SeoInput {
-  const meta = doc.meta || {}
-  const contentInput = contentInputFromDoc(doc, collection, { extractors: options?.extractors })
-
-  // Canonical & robots — best-effort read from common field locations. Many sites
-  // control indexation at the framework level (e.g. Next.js metadata), in which case
-  // these stay undefined and the technical checks correctly stay silent.
-  const canonicalUrl: string | undefined =
-    (typeof meta.canonicalUrl === 'string' && meta.canonicalUrl) ||
-    (typeof doc.canonicalUrl === 'string' && doc.canonicalUrl) ||
-    undefined
-
-  // E-E-A-T signals — best-effort author + dates from common Payload shapes.
-  let author: string | undefined
-  let authorUrl: string | undefined
-  const populatedAuthors = doc.populatedAuthors
-  if (Array.isArray(populatedAuthors) && populatedAuthors.length > 0) {
-    const a = populatedAuthors[0] || {}
-    author =
-      (typeof a.name === 'string' && a.name) ||
-      (typeof a.firstName === 'string' && a.firstName) ||
-      undefined
-    if (typeof a.url === 'string') authorUrl = a.url
-  } else if (Array.isArray(doc.authors) && doc.authors.length > 0) {
-    const a = doc.authors[0]
-    if (a && typeof a === 'object' && typeof a.name === 'string') author = a.name
-  } else if (typeof doc.author === 'string' && doc.author) {
-    author = doc.author
-  } else if (doc.author && typeof doc.author === 'object' && typeof doc.author.name === 'string') {
-    author = doc.author.name
-  }
-  if (!authorUrl && typeof doc.authorUrl === 'string') authorUrl = doc.authorUrl
-
-  const publishedAt: string | undefined =
-    (typeof doc.publishedAt === 'string' && doc.publishedAt) ||
-    (typeof doc.createdAt === 'string' && doc.createdAt) ||
-    undefined
-  const displayedDate: string | undefined =
-    (typeof doc.publishedAt === 'string' && doc.publishedAt) ||
-    (typeof doc.date === 'string' && doc.date) ||
-    undefined
-
-  // Locale alternates for hreflang — best-effort from common shapes (mono-locale → none).
-  let localeAlternates: Array<{ hreflang: string; href: string }> | undefined
-  const rawAlts = doc.localeAlternates || doc.alternates || doc.hreflang
-  if (Array.isArray(rawAlts)) {
-    const mapped = rawAlts
-      .filter((a: unknown): a is Record<string, unknown> => !!a && typeof a === 'object')
-      .map((a) => ({
-        hreflang: String(a.hreflang || a.locale || a.lang || ''),
-        href: String(a.href || a.url || ''),
-      }))
-      .filter((a) => a.hreflang && a.href)
-    if (mapped.length > 0) localeAlternates = mapped
-  }
-
-  return {
-    metaTitle: (meta.title as string) || '',
-    metaDescription: (meta.description as string) || '',
-    slug: (doc.slug as string) || '',
-    focusKeyword: (doc.focusKeyword as string) || '',
-    focusKeywords: Array.isArray(doc.focusKeywords)
-      ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (doc.focusKeywords as Array<{ keyword?: string }>)
-          .map((k) => k.keyword || '')
-          .filter(Boolean)
-      : undefined,
-    ...contentInput,
-    isCornerstone: !!doc.isCornerstone,
-    updatedAt: (doc.updatedAt as string) || undefined,
-    publishedAt,
-    contentLastReviewed: (doc.contentLastReviewed as string) || undefined,
-    displayedDate,
-    author,
-    authorUrl,
-    localeAlternates,
-    canonicalUrl,
-    isGlobal: options?.isGlobal ?? false,
-  }
-}
+import { loadMergedConfig } from '../helpers/loadMergedConfig.js'
+import { analyzeDocument, type DocumentRef } from '../helpers/analyzeDocument.js'
 
 export function createValidateHandler(
   _collections: string[],
@@ -148,13 +52,7 @@ export function createValidateHandler(
         }
 
         if (globalSlug) {
-          const doc = await req.payload.findGlobal({
-            slug: globalSlug,
-            depth: 1,
-            ...readAccessOpts(req),
-          })
-          const seoInput = buildSeoInputFromDoc(doc, `global:${globalSlug}`, { isGlobal: true })
-          const analysis = analyzeSeo(seoInput, mergedConfig)
+          const { analysis } = await analyzeDocument(req, { global: globalSlug }, { mergedConfig })
           return Response.json({
             global: globalSlug,
             score: analysis.score,
@@ -166,15 +64,7 @@ export function createValidateHandler(
           })
         }
 
-        const doc = await req.payload.findByID({
-          collection,
-          id,
-          depth: 1,
-          ...readAccessOpts(req),
-        })
-
-        const seoInput = buildSeoInputFromDoc(doc, collection, { extractors: req.payload })
-        const analysis = analyzeSeo(seoInput, mergedConfig)
+        const { input: seoInput, analysis } = await analyzeDocument(req, { collection, id }, { mergedConfig })
 
         return Response.json({
           id,
@@ -204,42 +94,40 @@ export function createValidateHandler(
       }
 
       let seoInput: SeoInput
+      let analysis: SeoAnalysis
 
       if (data) {
         seoInput = { ...data, ...(overrides || {}) }
-      } else if (globalSlug) {
-        // Allowlist guard (IDOR): only the plugin's configured globals can be read.
-        if (!_globals.includes(globalSlug)) {
-          return Response.json({ error: 'Global not allowed' }, { status: 403 })
-        }
-        const doc = await req.payload.findGlobal({
-          slug: globalSlug,
-          depth: 1,
-          ...readAccessOpts(req),
-        })
-        seoInput = buildSeoInputFromDoc(doc, `global:${globalSlug}`, { isGlobal: true })
-        if (overrides) seoInput = { ...seoInput, ...overrides }
-      } else if (id && collection) {
-        // Validate collection against allowed target collections
-        if (!_collections.includes(collection)) {
-          return Response.json({ error: 'Collection not allowed' }, { status: 403 })
-        }
-        const doc = await req.payload.findByID({
-          collection,
-          id,
-          depth: 1,
-          ...readAccessOpts(req),
-        })
-        seoInput = buildSeoInputFromDoc(doc, collection, { extractors: req.payload })
-        if (overrides) seoInput = { ...seoInput, ...overrides }
+        analysis = analyzeSeo(seoInput, mergedConfig)
       } else {
-        return Response.json(
-          { error: 'Provide either { id, collection } or { data }' },
-          { status: 400 },
-        )
+        let ref: DocumentRef
+        if (globalSlug) {
+          // Allowlist guard (IDOR): only the plugin's configured globals can be read.
+          if (!_globals.includes(globalSlug)) {
+            return Response.json({ error: 'Global not allowed' }, { status: 403 })
+          }
+          ref = { global: globalSlug }
+        } else if (id && collection) {
+          // Validate collection against allowed target collections
+          if (!_collections.includes(collection)) {
+            return Response.json({ error: 'Collection not allowed' }, { status: 403 })
+          }
+          ref = { collection, id }
+        } else {
+          return Response.json(
+            { error: 'Provide either { id, collection } or { data }' },
+            { status: 400 },
+          )
+        }
+        const result = await analyzeDocument(req, ref, { mergedConfig })
+        seoInput = result.input
+        analysis = result.analysis
+        // Overrides change the input, so the document is scored again with them.
+        if (overrides) {
+          seoInput = { ...seoInput, ...overrides }
+          analysis = analyzeSeo(seoInput, mergedConfig)
+        }
       }
-
-      const analysis = analyzeSeo(seoInput, mergedConfig)
 
       return Response.json({
         score: analysis.score,

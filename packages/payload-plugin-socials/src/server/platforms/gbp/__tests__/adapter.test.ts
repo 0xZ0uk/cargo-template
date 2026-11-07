@@ -145,13 +145,8 @@ describe('gbp adapter — isConnected', () => {
 
 describe('gbp adapter — publish + delete', () => {
   it('publishes a valid input', async () => {
-    vi.mocked(publishGbpLocalPost).mockResolvedValue({
-      alreadyExisted: false,
-      postId: 'r',
-      publishedRef: { externalId: 'lp_1', platform: 'gbp' },
-      state: 'LIVE',
-    })
-    const ref = await adapter.publish({ ctx: ctx(), input: STANDARD, options, payload, postId: '' })
+    vi.mocked(publishGbpLocalPost).mockResolvedValue({ externalId: 'lp_1', platform: 'gbp' })
+    const ref = await adapter.publish({ ctx: ctx(), input: STANDARD, options, payload })
     expect(ref.externalId).toBe('lp_1')
   })
 
@@ -162,7 +157,6 @@ describe('gbp adapter — publish + delete', () => {
         input: { ...STANDARD, locationResourceName: '' },
         options,
         payload,
-        postId: '',
       }),
     ).rejects.toBeInstanceOf(ValidationError)
     expect(publishGbpLocalPost).not.toHaveBeenCalled()
@@ -171,7 +165,7 @@ describe('gbp adapter — publish + delete', () => {
   it('records a connection error on upstream failure', async () => {
     vi.mocked(publishGbpLocalPost).mockRejectedValue(new Error('boom'))
     await expect(
-      adapter.publish({ ctx: ctx(), input: STANDARD, options, payload, postId: '' }),
+      adapter.publish({ ctx: ctx(), input: STANDARD, options, payload }),
     ).rejects.toThrow('boom')
     expect(recordConnectionError).toHaveBeenCalledWith(payload, 'gbp', expect.any(Error))
   })

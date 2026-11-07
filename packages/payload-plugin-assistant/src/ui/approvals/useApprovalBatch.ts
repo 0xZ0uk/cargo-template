@@ -7,7 +7,8 @@ import { answerInterrupt, pendingApprovalFrom } from "../ApprovalControl";
 import type { AssistantApiError } from "../api";
 import { fetchApprovals, staleInterruptIds } from "../api";
 import type { ToolResultLike } from "../tools";
-import { structuredResult, toolStatus } from "../tools";
+import { parseResult } from "../../toolCalls";
+import { toolStatus } from "../tools";
 
 /**
  * The approvals of the open conversation, answered as one batch.
@@ -89,14 +90,7 @@ export function outcomeOf(
   if (result.outcome === "cancelled") return { status: "failed", message: "Cancelled." };
   const status = toolStatus({ id: result.toolCallId, name: "", state: "complete" }, result);
   if (status === "error") {
-    const value = structuredResult(result.content);
-    const fromContent =
-      value && typeof value === "object" && typeof (value as { error?: unknown }).error === "string"
-        ? (value as { error: string }).error
-        : typeof value === "string"
-          ? value
-          : undefined;
-    return { status: "failed", message: result.error ?? fromContent ?? "The change could not be applied." };
+    return { status: "failed", message: result.error ?? parseResult(result.content).error ?? "The change could not be applied." };
   }
   return { status: "applied" };
 }
