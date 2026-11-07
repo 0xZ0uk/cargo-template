@@ -1,9 +1,9 @@
 import type { Payload, PayloadRequest } from 'payload'
 
-import type { PostStatus } from '../../../constants.js'
 import type {
   NormalizedPluginOptions,
   PublishedRef,
+  PublishResult,
   SocialSourceContext,
 } from '../../../types/index.js'
 
@@ -11,21 +11,18 @@ import {
   PINTEREST_ALT_TEXT_MAX,
   PINTEREST_DESCRIPTION_MAX,
   PINTEREST_TITLE_MAX,
-  SOCIAL_POSTS_SLUG,
 } from '../../../constants.js'
 import { resolvePlatformImageUrl } from '../../assets/resolvePlatformImage.js'
 import {
   resolveConfiguredHashtags,
   resolveConfiguredText,
 } from '../../copy/resolveConfiguredCopy.js'
-import { persistPublicationAudit } from '../../services/publicationPersistence.js'
 import {
   classifyRequestFailure,
   PlatformApiError,
   ValidationError,
 } from '../../utilities/errors.js'
 import { sha256Hex } from '../../utilities/hash.js'
-import { resolvePublicationIdempotencyKey } from '../../utilities/publicationIdentity.js'
 import { pinterestJson } from './api.js'
 import {
   buildDefaultPinterestAltText,
@@ -36,23 +33,13 @@ import {
 import { uploadPinterestVideoFromUrl } from './videoUpload.js'
 
 /**
- * Pinterest image and video publication path.
- *
- * Idempotency:
- *   key = sha256("manual:" + sourceKind + ":" + sourceId + ":" + boardId + ":" + primaryAsset)
- *
- * Same (kind, id, board, image) → identical key → "already published"
- * short-circuit. Different board OR different image → different key →
- * distinct pin record. A prior row with `status: 'cancelled'` is allowed
- * to be republished (status reset to `published`); the audit history
- * shows the most recent publish.
- *
- * Audit rows are never hard-deleted.
+ * Pinterest image and video publication path. Calls Pinterest and returns the
+ * Pin and the audit fields; the publication ledger owns the `social-posts` row
+ * and the idempotency key (`buildPublicationIdentity`).
  *
  * Image conversion (assets.autoConvert) happens ONLY when constructing the
- * outbound Pinterest API request body, AFTER the idempotency key and
- * primaryAssetUrl are locked to the ORIGINAL input URL. The converted URL
- * never touches the key, primaryAssetUrl, sourceHash, or the reservation row.
+ * outbound Pinterest API request body. The converted URL never touches the
+ * audit record or the sourceHash, which use the ORIGINAL input URL.
  */
 
 export type PinterestPublishInput = {
@@ -79,25 +66,6 @@ type PinResponse = {
   id?: string
   link?: string
 }
-
-type SocialPostRow = {
-  externalId?: null | string
-  externalUrl?: null | string
-  id: number | string
-  idempotencyKey: string
-  status: PostStatus
-}
-
-const buildIdempotencyKey = (
-  ctx: SocialSourceContext,
-  input: PinterestPublishInput,
-  imageUrl: string,
-): string =>
-  resolvePublicationIdempotencyKey({
-    defaultValue: `manual:${ctx.sourceKind}:${ctx.sourceId}:${input.boardId}:${imageUrl}`,
-    input: input as Record<string, unknown>,
-    platform: 'pinterest',
-  })
 
 const buildSourceHash = (snapshot: {
   altText: string
@@ -175,40 +143,6 @@ export const buildPinterestPreview = (
   }
 }
 
-/**
- * Pure derivation of the Pinterest idempotency identity — identical logic to
- * the publish path. Exported for parity testing against `buildPublicationIdentity`.
- */
-export const derivePinterestIdentity = (
-  ctx: SocialSourceContext,
-  input: PinterestPublishInput,
-): { idempotencyKey: string; primaryAssetUrl: string } => {
-  const defaultImage = ctx.images.find((img) => img.role === 'main') ?? ctx.images[0]
-  const mediaType = input.mediaType ?? 'IMAGE'
-  const imageUrl = input.imageUrl?.trim() || defaultImage?.url || ''
-  const videoUrl = input.videoUrl?.trim() || ctx.videos?.[0]?.url || ''
-  const primaryAssetUrl = mediaType === 'VIDEO' ? videoUrl || input.mediaId?.trim() || '' : imageUrl
-  return {
-    idempotencyKey: buildIdempotencyKey(ctx, input, primaryAssetUrl),
-    primaryAssetUrl,
-  }
-}
-
-const findExistingByIdempotencyKey = async (
-  payload: Payload,
-  key: string,
-): Promise<null | SocialPostRow> => {
-  const result = await payload.find({
-    collection: SOCIAL_POSTS_SLUG as never,
-    depth: 0,
-    limit: 1,
-    overrideAccess: true,
-    where: { idempotencyKey: { equals: key } },
-  })
-  const doc = result.docs[0] as SocialPostRow | undefined
-  return doc ?? null
-}
-
 const createPin = async (
   payload: Payload,
   options: NormalizedPluginOptions,
@@ -230,19 +164,13 @@ const createPin = async (
   })
 }
 
-export type PinterestPublishResult = {
-  alreadyExisted: boolean
-  postId: number | string
-  publishedRef: PublishedRef
-}
-
 export const publishPinterestPin = async (args: {
   ctx: SocialSourceContext
   input: PinterestPublishInput
   options: NormalizedPluginOptions
   payload: Payload
   req?: PayloadRequest
-}): Promise<PinterestPublishResult> => {
+}): Promise<PublishResult> => {
   const { ctx, input, options, payload } = args
 
   if (!input.boardId) {
@@ -259,8 +187,7 @@ export const publishPinterestPin = async (args: {
   const link = input.link?.trim() || preview.link
   const mediaType = input.mediaType ?? 'IMAGE'
 
-  // Derive primaryAssetUrl and idempotencyKey from the ORIGINAL input URL.
-  // These must never be touched by format conversion.
+  // The audit record and sourceHash use the ORIGINAL input URL, never a converted one.
   const imageUrl = input.imageUrl?.trim() || preview.defaultImageUrl
   const videoUrl = input.videoUrl?.trim() || ctx.videos?.[0]?.url || ''
   const coverImageUrl = input.coverImageUrl?.trim() || ctx.videos?.[0]?.coverImageUrl || imageUrl
@@ -281,25 +208,6 @@ export const publishPinterestPin = async (args: {
   if (!title) {
     throw new ValidationError('Pin title is required')
   }
-
-  // Lock the idempotency key to the ORIGINAL primaryAssetUrl before any conversion.
-  const idempotencyKey = buildIdempotencyKey(ctx, input, primaryAssetUrl)
-  const existing = await findExistingByIdempotencyKey(payload, idempotencyKey)
-
-  if (existing && existing.status === 'published' && existing.externalId) {
-    return {
-      alreadyExisted: true,
-      postId: existing.id,
-      publishedRef: {
-        externalId: existing.externalId,
-        externalUrl: existing.externalUrl ?? undefined,
-        platform: 'pinterest',
-      },
-    }
-  }
-  // A `cancelled` row indicates the pin was explicitly removed by staff —
-  // fall through and republish, overwriting the same row so the audit
-  // history shows the most recent publish.
 
   const sourceHash = buildSourceHash({
     altText,
@@ -322,8 +230,7 @@ export const publishPinterestPin = async (args: {
       : undefined
 
   // Resolve the outbound image URL for the API request body ONLY.
-  // The converted URL must never touch the key, primaryAssetUrl, sourceHash,
-  // or the reservation row above.
+  // The converted URL must never touch the sourceHash or the audit record.
   let outboundImageUrl = imageUrl
   if (mediaType === 'IMAGE' && imageUrl) {
     const imgMeta = ctx.images.find((img) => img.url === imageUrl)
@@ -365,41 +272,7 @@ export const publishPinterestPin = async (args: {
   const pinId = pin.id
   const pinUrl = `https://www.pinterest.com/pin/${pinId}/`
 
-  const baseFields = {
-    altText,
-    attempts: (existing as unknown as { attempts?: number })?.attempts
-      ? Number((existing as unknown as { attempts?: number }).attempts) + 1
-      : 1,
-    body: description,
-    destination: {
-      label: input.boardName ?? undefined,
-    },
-    destinationId: input.boardId,
-    externalId: pinId,
-    externalUrl: pinUrl,
-    idempotencyKey,
-    imageUrl: mediaType === 'VIDEO' ? coverImageUrl : imageUrl,
-    lastAttemptedAt: new Date().toISOString(),
-    lastError: null,
-    link,
-    meta: {
-      boardName: input.boardName,
-      mediaId,
-      mediaType,
-      videoUrl: mediaType === 'VIDEO' ? videoUrl : undefined,
-    },
-    platform: 'pinterest' as const,
-    platformPublicationStatus: 'published' as const,
-    publishedAt: new Date().toISOString(),
-    ...(options.authCollection ? { publishedBy: input.publishedByUserId } : {}),
-    sourceHash,
-    sourceId: ctx.sourceId,
-    sourceKind: ctx.sourceKind,
-    status: 'published' as const,
-    title,
-  }
-
-  const publishedRef: PublishedRef = {
+  return {
     externalId: pinId,
     externalUrl: pinUrl,
     meta: {
@@ -409,32 +282,21 @@ export const publishPinterestPin = async (args: {
       mediaType,
     },
     platform: 'pinterest',
-  }
-  const savedId = await persistPublicationAudit({
-    persist: async () => {
-      if (existing) {
-        const updated = (await payload.update({
-          id: existing.id as never,
-          collection: SOCIAL_POSTS_SLUG as never,
-          data: baseFields as never,
-          overrideAccess: true,
-        })) as unknown as { id: number | string }
-        return updated.id
-      }
-      const created = (await payload.create({
-        collection: SOCIAL_POSTS_SLUG as never,
-        data: baseFields as never,
-        overrideAccess: true,
-      })) as unknown as { id: number | string }
-      return created.id
+    record: {
+      altText,
+      body: description,
+      destination: { label: input.boardName ?? undefined },
+      imageUrl: mediaType === 'VIDEO' ? coverImageUrl : imageUrl,
+      link,
+      meta: {
+        boardName: input.boardName,
+        mediaId,
+        mediaType,
+        videoUrl: mediaType === 'VIDEO' ? videoUrl : undefined,
+      },
+      sourceHash,
+      title,
     },
-    publishedRef,
-  })
-
-  return {
-    alreadyExisted: false,
-    postId: savedId,
-    publishedRef,
   }
 }
 

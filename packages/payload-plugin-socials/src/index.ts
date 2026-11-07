@@ -212,7 +212,7 @@ export {
   listPostablesLocations,
 } from './server/platforms/gbp/locations.js'
 export type { GbpAccount, GbpLocation } from './server/platforms/gbp/locations.js'
-export { cancelQueuedSocialPost } from './server/services/postCancellation.js'
+export { cancelQueuedSocialPost } from './server/services/publicationLedger.js'
 // Reusable post-template interpolation. Hosts can drive copyOverrides from a
 // stored template: `pinterestTitle: (ctx) => renderTemplate(tpl, buildTemplateScope(ctx))`.
 export { buildTemplateScope, renderTemplate } from './server/templates/renderTemplate.js'
@@ -265,8 +265,10 @@ export type {
   PostStatus,
   PreviewArgs,
   PreviewResult,
+  PublicationRecord,
   PublishArgs,
   PublishedRef,
+  PublishResult,
   SocialCopyFieldKey,
   SocialCopyFieldTransforms,
   SocialCopyTransform,

@@ -1,9 +1,8 @@
 import type { Payload, PayloadRequest } from 'payload'
 
-import type { PostStatus } from '../../../constants.js'
 import type {
   NormalizedPluginOptions,
-  PublishedRef,
+  PublishResult,
   SocialSourceContext,
 } from '../../../types/index.js'
 
@@ -14,18 +13,15 @@ import {
   INSTAGRAM_CAROUSEL_MAX_CHILDREN,
   INSTAGRAM_CAROUSEL_MIN_CHILDREN,
   INSTAGRAM_CONTAINER_LIFETIME_HOURS,
-  SOCIAL_POSTS_SLUG,
 } from '../../../constants.js'
 import { resolvePlatformImageUrl } from '../../assets/resolvePlatformImage.js'
 import { resolveConfiguredText } from '../../copy/resolveConfiguredCopy.js'
-import { persistPublicationAudit } from '../../services/publicationPersistence.js'
 import {
   classifyRequestFailure,
   PlatformApiError,
   ValidationError,
 } from '../../utilities/errors.js'
 import { sha256Hex } from '../../utilities/hash.js'
-import { resolvePublicationIdempotencyKey } from '../../utilities/publicationIdentity.js'
 import { sleep } from '../../utilities/sleep.js'
 import { metaJson } from '../_meta/api.js'
 import { buildDefaultInstagramCaption, countHashtags, countMentions } from './copy.js'
@@ -54,13 +50,12 @@ import { buildDefaultInstagramCaption, countHashtags, countMentions } from './co
  *   - Stories (image or video)                                     ✓
  *   - Carousel (2–10 children, same aspect ratio, no Reels children) ✓
  *
- * Idempotency key:
- *   sha256("instagram:" + sourceKind + ":" + sourceId + ":" + igUserId + ":" + mediaType + ":" + primaryAssetUrl)
+ * Returns the media and the audit fields; the publication ledger owns the
+ * `social-posts` row and the idempotency key (`buildPublicationIdentity`).
  *
  * Image conversion (assets.autoConvert) happens ONLY when constructing the
- * outbound Instagram API container body, AFTER the idempotency key and
- * primaryAssetUrl are locked to the ORIGINAL input URL. The converted URL
- * never touches the key, primaryAssetUrl, sourceHash, or the reservation row.
+ * outbound Instagram API container body. The converted URL never touches the
+ * audit record or the sourceHash, which use the ORIGINAL input URL.
  */
 
 export const INSTAGRAM_MEDIA_TYPES = ['IMAGE', 'REELS', 'STORIES', 'CAROUSEL'] as const
@@ -112,27 +107,6 @@ type MediaPublishResponse = {
   id: string
   permalink?: string
 }
-
-type SocialPostRow = {
-  attempts?: number
-  externalId?: null | string
-  externalUrl?: null | string
-  id: number | string
-  status: PostStatus
-}
-
-const buildIdempotencyKey = (
-  ctx: SocialSourceContext,
-  input: InstagramPublishInput,
-  igUserId: string,
-  mediaType: InstagramMediaType,
-  primaryAssetUrl: string,
-): string =>
-  resolvePublicationIdempotencyKey({
-    defaultValue: `instagram:${ctx.sourceKind}:${ctx.sourceId}:${igUserId}:${mediaType}:${primaryAssetUrl}`,
-    input: input as unknown as Record<string, unknown>,
-    platform: 'instagram',
-  })
 
 const resolveCaption = (
   ctx: SocialSourceContext,
@@ -372,20 +346,6 @@ const buildCarouselChildren = async (
   return ids
 }
 
-const findExistingByIdempotencyKey = async (
-  payload: Payload,
-  key: string,
-): Promise<null | SocialPostRow> => {
-  const result = await payload.find({
-    collection: SOCIAL_POSTS_SLUG as never,
-    depth: 0,
-    limit: 1,
-    overrideAccess: true,
-    where: { idempotencyKey: { equals: key } },
-  })
-  return (result.docs[0] as SocialPostRow | undefined) ?? null
-}
-
 const publishContainer = async (
   payload: Payload,
   options: NormalizedPluginOptions,
@@ -413,35 +373,13 @@ const resolvePrimaryAssetUrl = (input: InstagramPublishInput): string => {
   return input.videoUrl ?? input.imageUrl ?? ''
 }
 
-/**
- * Pure derivation of the Instagram idempotency identity — identical logic to
- * the publish path. Exported for parity testing against `buildPublicationIdentity`.
- */
-export const deriveInstagramIdentity = (
-  ctx: SocialSourceContext,
-  input: InstagramPublishInput,
-): { idempotencyKey: string; primaryAssetUrl: string } => {
-  const mediaType = input.mediaType ?? 'IMAGE'
-  const primaryAssetUrl = resolvePrimaryAssetUrl(input)
-  return {
-    idempotencyKey: buildIdempotencyKey(ctx, input, input.igUserId, mediaType, primaryAssetUrl),
-    primaryAssetUrl,
-  }
-}
-
-export type InstagramPublishResult = {
-  alreadyExisted: boolean
-  postId: number | string
-  publishedRef: PublishedRef
-}
-
 export const publishInstagramMedia = async (args: {
   ctx: SocialSourceContext
   input: InstagramPublishInput
   options: NormalizedPluginOptions
   payload: Payload
   req?: PayloadRequest
-}): Promise<InstagramPublishResult> => {
+}): Promise<PublishResult> => {
   const { ctx, input, options, payload } = args
 
   if (!input.igUserId) {
@@ -449,8 +387,7 @@ export const publishInstagramMedia = async (args: {
   }
   const mediaType = input.mediaType ?? 'IMAGE'
 
-  // Derive primaryAssetUrl and idempotencyKey from the ORIGINAL input URL.
-  // These must never be touched by format conversion.
+  // The sourceHash uses the ORIGINAL input URL, never a converted one.
   const primaryAssetUrl = resolvePrimaryAssetUrl(input)
   if (!primaryAssetUrl && mediaType !== 'CAROUSEL') {
     throw new ValidationError('imageUrl or videoUrl is required')
@@ -459,20 +396,6 @@ export const publishInstagramMedia = async (args: {
   const caption = mediaType === 'STORIES' ? '' : resolveCaption(ctx, input, options)
   if (mediaType !== 'STORIES') {
     validateCaption(caption)
-  }
-
-  const idempotencyKey = buildIdempotencyKey(ctx, input, input.igUserId, mediaType, primaryAssetUrl)
-  const existing = await findExistingByIdempotencyKey(payload, idempotencyKey)
-  if (existing && existing.status === 'published' && existing.externalId) {
-    return {
-      alreadyExisted: true,
-      postId: existing.id,
-      publishedRef: {
-        externalId: existing.externalId,
-        externalUrl: existing.externalUrl ?? undefined,
-        platform: 'instagram',
-      },
-    }
   }
 
   // ---- Outbound URL resolution (conversion only touches the API request body) ----
@@ -579,64 +502,21 @@ export const publishInstagramMedia = async (args: {
     }),
   )
 
-  const baseFields = {
-    altText: input.altText,
-    attempts: ((existing as unknown as { attempts?: number })?.attempts ?? 0) + 1,
-    body: caption,
-    destination: {
-      meta: { containerId, locationId: input.locationId, mediaType },
-    },
-    destinationId: input.igUserId,
-    externalId: published.id,
-    externalUrl,
-    idempotencyKey,
-    imageUrl: input.imageUrl ?? input.carouselChildren?.[0]?.imageUrl,
-    lastAttemptedAt: new Date().toISOString(),
-    lastError: null,
-    link: ctx.link,
-    meta: { containerId, mediaType, raw: published },
-    platform: 'instagram' as const,
-    platformPublicationStatus: 'published' as const,
-    publishedAt: new Date().toISOString(),
-    ...(options.authCollection ? { publishedBy: input.publishedByUserId } : {}),
-    sourceHash,
-    sourceId: ctx.sourceId,
-    sourceKind: ctx.sourceKind,
-    status: 'published' as const,
-    title: ctx.baseTitle,
-  }
-
-  const publishedRef: PublishedRef = {
+  return {
     externalId: published.id,
     externalUrl,
     meta: { containerId, mediaType },
     platform: 'instagram',
-  }
-  const savedId = await persistPublicationAudit({
-    persist: async () => {
-      if (existing) {
-        const updated = (await payload.update({
-          id: existing.id as never,
-          collection: SOCIAL_POSTS_SLUG as never,
-          data: baseFields as never,
-          overrideAccess: true,
-        })) as unknown as { id: number | string }
-        return updated.id
-      }
-      const created = (await payload.create({
-        collection: SOCIAL_POSTS_SLUG as never,
-        data: baseFields as never,
-        overrideAccess: true,
-      })) as unknown as { id: number | string }
-      return created.id
+    record: {
+      altText: input.altText,
+      body: caption,
+      destination: { meta: { containerId, locationId: input.locationId, mediaType } },
+      imageUrl: input.imageUrl ?? input.carouselChildren?.[0]?.imageUrl,
+      link: ctx.link,
+      meta: { containerId, mediaType, raw: published },
+      sourceHash,
+      title: ctx.baseTitle,
     },
-    publishedRef,
-  })
-
-  return {
-    alreadyExisted: false,
-    postId: savedId,
-    publishedRef,
   }
 }
 

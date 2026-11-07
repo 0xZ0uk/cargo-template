@@ -1,23 +1,21 @@
 import type { Payload, PayloadRequest } from 'payload'
 
-import type { PostStatus } from '../../../constants.js'
 import type {
   NormalizedPluginOptions,
   PublishedRef,
+  PublishResult,
   SocialSourceContext,
 } from '../../../types/index.js'
 
 import { GBP_SUMMARY_MAX_CHARS, SOCIAL_POSTS_SLUG } from '../../../constants.js'
 import { resolvePlatformImageUrl } from '../../assets/resolvePlatformImage.js'
 import { resolveConfiguredText } from '../../copy/resolveConfiguredCopy.js'
-import { persistPublicationAudit } from '../../services/publicationPersistence.js'
 import {
   classifyRequestFailure,
   PlatformApiError,
   ValidationError,
 } from '../../utilities/errors.js'
 import { sha256Hex } from '../../utilities/hash.js'
-import { resolvePublicationIdempotencyKey } from '../../utilities/publicationIdentity.js'
 import { GBP_HOSTS, gbpJson, makeGbpRequest } from './api.js'
 import { buildDefaultGbpSummary } from './copy.js'
 
@@ -32,12 +30,12 @@ import { buildDefaultGbpSummary } from './copy.js'
  *              — DO NOT send `callToAction` (API rejects it)
  *   ALERT    : adds `alertType` (`COVID_19` is the only documented value)
  *
- * Idempotency key:
- *   sha256("gbp:" + sourceKind + ":" + sourceId + ":" + accountId + ":" + locationId + ":" + topicType + ":" + imageUrl)
+ * Returns the Local Post and the audit fields; the publication ledger owns the
+ * `social-posts` row and the idempotency key (`buildPublicationIdentity`).
  *
- * Post-creation moderation is asynchronous. The provider state is persisted
- * and reconciliation keeps PROCESSING/SCHEDULED rows pending until LIVE or
- * REJECTED is observed.
+ * Post-creation moderation is asynchronous. A post not yet LIVE returns
+ * `state: 'pending'` (reconciliation keeps it pending until LIVE or REJECTED
+ * is observed) and a REJECTED one `state: 'rejected'`.
  */
 
 export const TOPIC_TYPES = ['STANDARD', 'EVENT', 'OFFER', 'ALERT'] as const
@@ -111,14 +109,6 @@ type GbpLocalPostResponse = {
   topicType?: string
 }
 
-type SocialPostRow = {
-  attempts?: number
-  externalId?: null | string
-  externalUrl?: null | string
-  id: number | string
-  status: PostStatus
-}
-
 const validateLocationResource = (name: string): { accountId: string; locationId: string } => {
   const match = name.match(/^accounts\/([^/]+)\/locations\/([^/]+)$/)
   if (!match) {
@@ -129,58 +119,7 @@ const validateLocationResource = (name: string): { accountId: string; locationId
   return { accountId: match[1], locationId: match[2] }
 }
 
-const buildIdempotencyKey = (
-  ctx: SocialSourceContext,
-  input: GbpPublishInput,
-  accountId: string,
-  locationId: string,
-  topicType: GbpTopicType,
-  primaryAssetUrl: string,
-): string =>
-  resolvePublicationIdempotencyKey({
-    defaultValue: `gbp:${ctx.sourceKind}:${ctx.sourceId}:${accountId}:${locationId}:${topicType}:${primaryAssetUrl}`,
-    input: input as unknown as Record<string, unknown>,
-    platform: 'gbp',
-  })
-
-/**
- * Pure derivation of the GBP idempotency identity — identical logic to
- * the publish path. Exported for parity testing against `buildPublicationIdentity`.
- */
-export const deriveGbpIdentity = (
-  ctx: SocialSourceContext,
-  input: GbpPublishInput,
-): { idempotencyKey: string; primaryAssetUrl: string } => {
-  const { accountId, locationId } = validateLocationResource(input.locationResourceName)
-  const topicType: GbpTopicType = input.topicType ?? 'STANDARD'
-  return {
-    idempotencyKey: buildIdempotencyKey(
-      ctx,
-      input,
-      accountId,
-      locationId,
-      topicType,
-      input.imageUrl ?? '',
-    ),
-    primaryAssetUrl: input.imageUrl ?? '',
-  }
-}
-
 const buildSourceHash = (snapshot: GbpLocalPostBody): string => sha256Hex(JSON.stringify(snapshot))
-
-const findExistingByIdempotencyKey = async (
-  payload: Payload,
-  key: string,
-): Promise<null | SocialPostRow> => {
-  const result = await payload.find({
-    collection: SOCIAL_POSTS_SLUG as never,
-    depth: 0,
-    limit: 1,
-    overrideAccess: true,
-    where: { idempotencyKey: { equals: key } },
-  })
-  return (result.docs[0] as SocialPostRow | undefined) ?? null
-}
 
 const validateInput = (input: GbpPublishInput, summary: string, topicType: GbpTopicType): void => {
   if (!summary.trim()) {
@@ -239,20 +178,13 @@ const validateInput = (input: GbpPublishInput, summary: string, topicType: GbpTo
   }
 }
 
-export type GbpPublishResult = {
-  alreadyExisted: boolean
-  postId: number | string
-  publishedRef: PublishedRef
-  state: string
-}
-
 export const publishGbpLocalPost = async (args: {
   ctx: SocialSourceContext
   input: GbpPublishInput
   options: NormalizedPluginOptions
   payload: Payload
   req?: PayloadRequest
-}): Promise<GbpPublishResult> => {
+}): Promise<PublishResult> => {
   const { ctx, input, options, payload } = args
   if (!input.locationResourceName) {
     throw new ValidationError('locationResourceName is required')
@@ -265,37 +197,14 @@ export const publishGbpLocalPost = async (args: {
 
   validateInput(input, summary, topicType)
 
-  const idempotencyKey = buildIdempotencyKey(
-    ctx,
-    input,
-    accountId,
-    locationId,
-    topicType,
-    input.imageUrl ?? '',
-  )
-  const existing = await findExistingByIdempotencyKey(payload, idempotencyKey)
-  if (existing && existing.status === 'published' && existing.externalId) {
-    return {
-      alreadyExisted: true,
-      postId: existing.id,
-      publishedRef: {
-        externalId: existing.externalId,
-        externalUrl: existing.externalUrl ?? undefined,
-        platform: 'gbp',
-      },
-      state: 'LIVE',
-    }
-  }
-
   const body: GbpLocalPostBody = {
     languageCode: input.languageCode,
     summary,
     topicType,
   }
   if (input.imageUrl) {
-    // Resolve/convert the image URL HERE — after the idempotency key was
-    // derived from the ORIGINAL input.imageUrl (line above) — so autoConvert
-    // rewriting the URL cannot change the key. Mirrors the other adapters.
+    // Resolve/convert the image URL for the request body only; the audit
+    // record keeps the ORIGINAL input.imageUrl. Mirrors the other adapters.
     const imgMeta = ctx.images.find((img) => img.url === input.imageUrl)
     const resolved = await resolvePlatformImageUrl({
       declaredFormat: imgMeta?.format,
@@ -337,91 +246,29 @@ export const publishGbpLocalPost = async (args: {
     })
   }
 
-  const sourceHash = buildSourceHash(body)
   const state = response.state ?? 'PROCESSING'
-  const isLive = state === 'LIVE'
-  const isRejected = state === 'REJECTED'
-  const baseFields = {
-    attempts:
-      (existing as unknown as { attempts?: number })?.attempts !== undefined
-        ? Number((existing as unknown as { attempts?: number }).attempts) + 1
-        : 1,
-    body: summary,
-    destination: {
-      label: undefined as string | undefined,
-      meta: { accountId, locationId, topicType },
-    },
-    destinationId: input.locationResourceName,
-    externalId: response.name,
-    externalUrl: response.searchUrl,
-    idempotencyKey,
-    imageUrl: input.imageUrl,
-    lastAttemptedAt: new Date().toISOString(),
-    lastError: isRejected ? 'Google Business Profile rejected this Local Post.' : null,
-    link: input.callToAction?.url ?? input.offer?.redeemOnlineUrl ?? ctx.link,
-    meta: {
-      raw: response,
-      state,
-      topicType,
-    },
-    nextRetryAt: isLive || isRejected ? null : new Date(Date.now() + 60_000).toISOString(),
-    platform: 'gbp' as const,
-    platformPublicationStatus: isLive ? 'published' : isRejected ? 'failed' : 'publishing',
-    publishedAt: isLive ? new Date().toISOString() : undefined,
-    ...(options.authCollection ? { publishedBy: input.publishedByUserId } : {}),
-    sourceHash,
-    sourceId: ctx.sourceId,
-    sourceKind: ctx.sourceKind,
-    status: isLive
-      ? ('published' as const)
-      : isRejected
-        ? ('failed' as const)
-        : ('publishing' as const),
-    title: input.event?.title ?? ctx.baseTitle,
-  }
-
-  const publishedRef: PublishedRef = {
+  return {
     externalId: response.name,
     externalUrl: response.searchUrl,
     meta: { accountId, locationId, state, topicType },
     platform: 'gbp',
-  }
-  const savedId = await persistPublicationAudit({
-    persist: async () => {
-      if (existing) {
-        const updated = (await payload.update({
-          id: existing.id as never,
-          collection: SOCIAL_POSTS_SLUG as never,
-          data: baseFields as never,
-          overrideAccess: true,
-        })) as unknown as { id: number | string }
-        return updated.id
-      }
-      const created = (await payload.create({
-        collection: SOCIAL_POSTS_SLUG as never,
-        data: baseFields as never,
-        overrideAccess: true,
-      })) as unknown as { id: number | string }
-      return created.id
+    record: {
+      body: summary,
+      destination: { meta: { accountId, locationId, topicType } },
+      imageUrl: input.imageUrl,
+      link: input.callToAction?.url ?? input.offer?.redeemOnlineUrl ?? ctx.link,
+      meta: { raw: response, state, topicType },
+      sourceHash: buildSourceHash(body),
+      title: input.event?.title ?? ctx.baseTitle,
     },
-    publishedRef,
-  })
-
-  if (isRejected) {
-    throw new PlatformApiError({
-      message: 'Google Business Profile rejected the Local Post',
-      platform: 'gbp',
-      raw: response,
-      statusCode: 422,
-      upstreamCode: 'REJECTED',
-    })
-  }
-
-  return {
-    alreadyExisted: false,
-    postId: savedId,
-    publishedRef,
-    state,
+    ...(state === 'REJECTED'
+      ? {
+          rejectionReason: 'Google Business Profile rejected this Local Post.',
+          state: 'rejected' as const,
+        }
+      : state === 'LIVE'
+        ? {}
+        : { state: 'pending' as const }),
   }
 }
 

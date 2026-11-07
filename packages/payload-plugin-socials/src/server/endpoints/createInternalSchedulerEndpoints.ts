@@ -2,7 +2,7 @@ import type { Endpoint } from 'payload'
 
 import type { NormalizedPluginOptions } from '../../types/index.js'
 
-import { PLATFORM_IDS, SOCIAL_POSTS_SLUG } from '../../constants.js'
+import { PLATFORM_IDS } from '../../constants.js'
 import {
   queueSocialConnectionRefresh,
   queueSocialInsightsRefresh,
@@ -12,8 +12,8 @@ import {
   sweepDueSocialPosts,
 } from '../../plugin/jobQueue.js'
 import { assertSchedulerApiKey } from '../utilities/apiKeyAuth.js'
-import { getRetryRefusal } from '../services/retryGuard.js'
-import { ConflictError, NotFoundError, ValidationError } from '../utilities/errors.js'
+import { decideRetry, requirePost } from '../services/publicationLedger.js'
+import { ConflictError, ValidationError } from '../utilities/errors.js'
 import { errorResponse, getRouteParam, jsonResponse, parseRequestBody } from '../utilities/http.js'
 import { requireIdentifier, requireOneOf, requirePositiveInteger } from '../utilities/validation.js'
 
@@ -155,23 +155,13 @@ const createRetryPostEndpoint = (options: NormalizedPluginOptions): Endpoint => 
       const body = (await parseRequestBody(req).catch(() => ({}))) as Record<string, unknown>
       const confirmNotPublished = body.confirmNotPublished === true
       // Refuse up front a post that may already be live; the task checks again.
-      const post = (await req.payload
-        .findByID({
-          id: postId as never,
-          collection: SOCIAL_POSTS_SLUG as never,
-          depth: 0,
-          overrideAccess: true,
-        })
-        .catch(() => null)) as null | Parameters<typeof getRetryRefusal>[0]
-      if (!post) {
-        throw new NotFoundError(`social-posts/${postId} not found`)
+      const post = await requirePost(req.payload, postId)
+      const decision = decideRetry(post, { basePath: options.api.basePath, confirmNotPublished })
+      if (decision.kind === 'refused') {
+        throw new ConflictError(decision.reason)
       }
-      const refusal = getRetryRefusal(post, {
-        basePath: options.api.basePath,
-        confirmNotPublished,
-      })
-      if (refusal) {
-        throw new ConflictError(refusal)
+      if (decision.kind === 'alreadyPublished') {
+        throw new ConflictError(`social-posts/${postId} is already published`)
       }
       const jobId = await queueSocialPostRetry({
         confirmNotPublished,

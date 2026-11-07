@@ -8,10 +8,8 @@ import {
   classifyRequestFailure,
   isAutoRetrySafe,
   PlatformApiError,
-  PublicationPersistenceError,
   ValidationError,
 } from '../../../utilities/errors.js'
-import { buildPublicationIdentity } from '../../../utilities/publicationIdentity.js'
 
 vi.mock('../../_meta/api.js', () => ({
   makeMetaRequest: vi.fn(),
@@ -160,24 +158,6 @@ describe('publishInstagramMedia — validation', () => {
 })
 
 describe('publishInstagramMedia — two-phase flow', () => {
-  it('captures the media id and fences retries when audit persistence fails', async () => {
-    setupFlow()
-    payload.create.mockRejectedValue(new Error('database unavailable'))
-
-    const publication = publishInstagramMedia({
-      ctx: ctx(),
-      input: { igUserId: 'ig_1', imageUrl: 'https://cdn.example.com/main.jpg' },
-      options,
-      payload: asPayload(payload),
-    })
-
-    await expect(publication).rejects.toBeInstanceOf(PublicationPersistenceError)
-    await expect(publication).rejects.toMatchObject({
-      outcome: 'unknown',
-      publishedRef: { externalId: 'media_1', platform: 'instagram' },
-    })
-  })
-
   it('publishes a single image: create, poll FINISHED, publish', async () => {
     setupFlow()
     const result = await publishInstagramMedia({
@@ -186,11 +166,12 @@ describe('publishInstagramMedia — two-phase flow', () => {
       options,
       payload: asPayload(payload),
     })
-    expect(result.publishedRef.externalId).toBe('media_1')
-    expect(result.publishedRef.externalUrl).toBe('https://www.instagram.com/p/abc/')
+    expect(result.externalId).toBe('media_1')
+    expect(result.externalUrl).toBe('https://www.instagram.com/p/abc/')
     const [body] = createBodies()
     expect(body.image_url).toBe('https://cdn.example.com/main.jpg')
-    expect(payload.create.mock.calls[0][0].data.status).toBe('published')
+    expect(result.state).toBeUndefined()
+    expect(payload.create).not.toHaveBeenCalled()
   })
 
   it('defaults a Reel to share_to_feed=false and honours an explicit true', async () => {
@@ -256,22 +237,7 @@ describe('publishInstagramMedia — two-phase flow', () => {
   })
 })
 
-describe('publishInstagramMedia — idempotency + status errors', () => {
-  it('short-circuits when a published row already exists', async () => {
-    setupFlow()
-    payload.find.mockResolvedValue({
-      docs: [{ id: 'row_x', externalId: 'media_existing', status: 'published' }],
-    })
-    const result = await publishInstagramMedia({
-      ctx: ctx(),
-      input: { igUserId: 'ig1', imageUrl: 'https://x/y.jpg' },
-      options,
-      payload: asPayload(payload),
-    })
-    expect(result.alreadyExisted).toBe(true)
-    expect(mockedMetaJson).not.toHaveBeenCalled()
-  })
-
+describe('publishInstagramMedia — status errors', () => {
   it('throws a 410 when the container expires before publish', async () => {
     setupFlow({ status: 'EXPIRED' })
     await expect(
@@ -297,7 +263,7 @@ describe('publishInstagramMedia — idempotency + status errors', () => {
   })
 })
 
-describe('publishInstagramMedia — idempotency key uses ORIGINAL url when autoConvert fires', () => {
+describe('publishInstagramMedia — the record uses the ORIGINAL url when autoConvert fires', () => {
   const ORIGINAL_URL = 'https://cdn.example.com/image.avif'
   const CONVERTED_URL = 'https://cdn.example.com/renditions/socials-rendition-abcd1234.jpg'
 
@@ -318,7 +284,7 @@ describe('publishInstagramMedia — idempotency key uses ORIGINAL url when autoC
     setupFlow()
   })
 
-  it('idempotencyKey matches buildPublicationIdentity for the ORIGINAL url', async () => {
+  it('records the ORIGINAL url and sends the converted one', async () => {
     const input = {
       igUserId: 'ig1',
       imageUrl: ORIGINAL_URL,
@@ -326,24 +292,15 @@ describe('publishInstagramMedia — idempotency key uses ORIGINAL url when autoC
     }
     const testCtx = ctx({ images: [{ format: 'avif', role: 'main', url: ORIGINAL_URL }] })
 
-    await publishInstagramMedia({
+    const result = await publishInstagramMedia({
       ctx: testCtx,
       input,
       options: autoConvertOptions,
       payload: asPayload(payload),
     })
 
-    const saved = payload.create.mock.calls[0][0].data
-    const expected = buildPublicationIdentity({
-      ctx: testCtx,
-      input,
-      platform: 'instagram',
-      sourceId: testCtx.sourceId,
-      sourceKind: testCtx.sourceKind,
-    })
+    const saved = result.record ?? {}
 
-    // Keys must be derived from the ORIGINAL url, not the converted one.
-    expect(saved.idempotencyKey).toBe(expected.idempotencyKey)
     // The stored imageUrl must be the original.
     expect(saved.imageUrl).toBe(ORIGINAL_URL)
 
@@ -360,14 +317,14 @@ describe('publishInstagramMedia — idempotency key uses ORIGINAL url when autoC
     }
     const testCtx = ctx({ images: [{ format: 'avif', role: 'main', url: ORIGINAL_URL }] })
 
-    await publishInstagramMedia({
+    const result = await publishInstagramMedia({
       ctx: testCtx,
       input,
       options: autoConvertOptions,
       payload: asPayload(payload),
     })
 
-    const saved = payload.create.mock.calls[0][0].data
+    const saved = result.record ?? {}
     const { sha256Hex } = await import('../../../utilities/hash.js')
 
     const recomputedWithOriginal = sha256Hex(
@@ -393,7 +350,7 @@ describe('publishInstagramMedia — idempotency key uses ORIGINAL url when autoC
     expect(saved.sourceHash).not.toBe(recomputedWithConverted)
   })
 
-  it('STORIES: outbound body uses converted url, key uses original', async () => {
+  it('STORIES: outbound body uses converted url, record uses original', async () => {
     const input = {
       igUserId: 'ig1',
       imageUrl: ORIGINAL_URL,
@@ -401,24 +358,14 @@ describe('publishInstagramMedia — idempotency key uses ORIGINAL url when autoC
     }
     const testCtx = ctx({ images: [{ format: 'avif', role: 'main', url: ORIGINAL_URL }] })
 
-    await publishInstagramMedia({
+    const result = await publishInstagramMedia({
       ctx: testCtx,
       input,
       options: autoConvertOptions,
       payload: asPayload(payload),
     })
 
-    const expected = buildPublicationIdentity({
-      ctx: testCtx,
-      input,
-      platform: 'instagram',
-      sourceId: testCtx.sourceId,
-      sourceKind: testCtx.sourceKind,
-    })
-
-    const saved = payload.create.mock.calls[0][0].data
-    expect(saved.idempotencyKey).toBe(expected.idempotencyKey)
-
+    expect(result.record?.imageUrl).toBe(ORIGINAL_URL)
     const containerBody = createBodies()[0]
     expect(containerBody.image_url).toBe(CONVERTED_URL)
     expect(mockedResolve).toHaveBeenCalledWith(
@@ -473,23 +420,14 @@ describe('publishInstagramMedia — idempotency key uses ORIGINAL url when autoC
     }
     const testCtx = ctx({ images: [{ format: 'jpeg', role: 'main', url: JPEG_URL }] })
 
-    await publishInstagramMedia({
+    const result = await publishInstagramMedia({
       ctx: testCtx,
       input,
       options: passthroughOptions,
       payload: asPayload(payload),
     })
 
-    const saved = payload.create.mock.calls[0][0].data
-    const expected = buildPublicationIdentity({
-      ctx: testCtx,
-      input,
-      platform: 'instagram',
-      sourceId: testCtx.sourceId,
-      sourceKind: testCtx.sourceKind,
-    })
-    expect(saved.idempotencyKey).toBe(expected.idempotencyKey)
-
+    expect(result.record?.imageUrl).toBe(JPEG_URL)
     const containerBody = createBodies()[0]
     // No conversion: outbound body also uses the original url.
     expect(containerBody.image_url).toBe(JPEG_URL)

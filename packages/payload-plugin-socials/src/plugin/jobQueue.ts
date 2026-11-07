@@ -1,7 +1,5 @@
 import type { Payload, PayloadRequest } from 'payload'
 
-import { randomUUID } from 'node:crypto'
-
 import type { NormalizedPluginOptions, PlatformId, PostStatus } from '../types/index.js'
 
 import {
@@ -13,6 +11,7 @@ import {
   SOCIAL_POSTS_SLUG,
   SOCIALS_QUEUE_NAME,
 } from '../constants.js'
+import { recordQueuedJob, schedulePublication } from '../server/services/publicationLedger.js'
 import { logAsyncOperationFailure } from '../server/utilities/logger.js'
 
 /**
@@ -320,7 +319,9 @@ export const queueSocialPostSweep = async (
  *
  * The idempotency contract matches the immediate-publish path: a row keyed
  * by `idempotencyKey` is upserted, so re-scheduling the same `(platform,
- * source, destination, asset)` tuple does NOT create duplicate work.
+ * source, destination, asset)` tuple does NOT create duplicate work. The
+ * publication ledger refuses (409) to reschedule a row that may already be on
+ * the platform (`publishing`, `unknown`, `scheduled`).
  */
 export const scheduleSocialPostPublish = async (args: {
   body?: string
@@ -358,111 +359,50 @@ export const scheduleSocialPostPublish = async (args: {
       ? args.scheduledAt.toISOString()
       : new Date(args.scheduledAt).toISOString()
 
-  const existing = await args.payload.find({
-    collection: SOCIAL_POSTS_SLUG as never,
-    depth: 0,
-    limit: 1,
-    overrideAccess: true,
-    where: { idempotencyKey: { equals: args.idempotencyKey } },
-  })
-  const existingDoc = existing.docs[0] as unknown as
-    ({ externalId?: null | string } & SocialPostQueueRow) | undefined
-  if (existingDoc && existingDoc.status === 'published' && existingDoc.externalId) {
-    // Already published — surface as a no-op so callers can return early.
-    return {
-      alreadyPublished: true,
-      externalId: existingDoc.externalId,
-      postId: existingDoc.id,
-      scheduledAt: existingDoc.scheduledAt ?? scheduledIso,
-    }
-  }
-
-  const scheduleToken = randomUUID()
-
-  const baseFields = {
-    attempts: 0,
+  const row = await schedulePublication(args.payload, {
     body: args.body,
     destination: args.destination,
     destinationId: args.destinationId,
     idempotencyKey: args.idempotencyKey,
     imageUrl: args.imageUrl,
     link: args.link,
-    meta: { queuedInput: args.queuedInput, scheduleToken },
     platform: args.platform,
     ...(args.options.authCollection ? { publishedBy: args.publishedByUserId } : {}),
+    queuedInput: args.queuedInput,
     scheduledAt: scheduledIso,
     sourceHash: args.sourceHash,
     sourceId: args.sourceId,
     sourceKind: args.sourceKind,
-    status: 'queued' as const,
     title: args.title,
-  }
-
-  let postId: number | string
-  if (existingDoc) {
-    const updated = (await args.payload.update({
-      id: existingDoc.id as never,
-      collection: SOCIAL_POSTS_SLUG as never,
-      data: baseFields as never,
-      overrideAccess: true,
-    })) as unknown as { id: number | string }
-    postId = updated.id
-  } else {
-    try {
-      const created = (await args.payload.create({
-        collection: SOCIAL_POSTS_SLUG as never,
-        data: baseFields as never,
-        overrideAccess: true,
-      })) as unknown as { id: number | string }
-      postId = created.id
-    } catch (error) {
-      const raced = await args.payload.find({
-        collection: SOCIAL_POSTS_SLUG as never,
-        depth: 0,
-        limit: 1,
-        overrideAccess: true,
-        where: { idempotencyKey: { equals: args.idempotencyKey } },
-      })
-      const racedDoc = raced.docs[0] as unknown as SocialPostQueueRow | undefined
-      if (!racedDoc) {
-        throw error
-      }
-      const updated = (await args.payload.update({
-        id: racedDoc.id as never,
-        collection: SOCIAL_POSTS_SLUG as never,
-        data: baseFields as never,
-        overrideAccess: true,
-      })) as unknown as { id: number | string }
-      postId = updated.id
+  })
+  if (row.alreadyPublished) {
+    // Already published — surface as a no-op so callers can return early.
+    return {
+      alreadyPublished: true,
+      externalId: row.externalId,
+      postId: row.postId,
+      scheduledAt: row.scheduledAt,
     }
   }
+  const { postId } = row
 
   const jobId = await queueSocialPostPublish({
     payload: args.payload,
     postId,
     req: args.req,
     scheduledAt: scheduledIso,
-    scheduleToken,
+    scheduleToken: row.scheduleToken,
   })
 
   // Stamp the queued job id back onto the post for diagnostics.
   if (jobId !== undefined) {
-    try {
-      await args.payload.update({
-        id: postId as never,
-        collection: SOCIAL_POSTS_SLUG as never,
-        data: { queuedJobId: String(jobId) } as never,
-        overrideAccess: true,
-      })
-    } catch {
-      /* non-fatal */
-    }
+    await recordQueuedJob(args.payload, postId, jobId)
   }
 
-  if (existingDoc?.queuedJobId && String(existingDoc.queuedJobId) !== String(jobId)) {
+  if (row.previousJobId && String(row.previousJobId) !== String(jobId)) {
     try {
       await args.payload.jobs.cancelByID({
-        id: existingDoc.queuedJobId as never,
+        id: row.previousJobId as never,
         overrideAccess: true,
       })
     } catch (error) {

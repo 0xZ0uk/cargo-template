@@ -6,7 +6,7 @@ import type {
   PreviewArgs,
   PreviewResult,
   PublishArgs,
-  PublishedRef,
+  PublishResult,
   ValidationResult,
 } from '../../../types/index.js'
 
@@ -181,7 +181,7 @@ export const createFacebookAdapter = (
       return { issues, ok: !hasError }
     },
 
-    async publish(args: PublishArgs<FacebookPublishInput>): Promise<PublishedRef> {
+    async publish(args: PublishArgs<FacebookPublishInput>): Promise<PublishResult> {
       const validation = this.validate({
         ctx: args.ctx,
         input: args.input,
@@ -204,7 +204,7 @@ export const createFacebookAdapter = (
           payload: args.payload,
           req: args.req,
         })
-        return result.publishedRef
+        return result
       } catch (error) {
         await recordConnectionError(args.payload, 'facebook', error)
         throw error

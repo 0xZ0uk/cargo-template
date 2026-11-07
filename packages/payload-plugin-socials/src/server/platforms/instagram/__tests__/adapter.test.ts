@@ -143,23 +143,21 @@ describe('instagram adapter — isConnected', () => {
 describe('instagram adapter — publish', () => {
   it('publishes a valid input', async () => {
     vi.mocked(publishInstagramMedia).mockResolvedValue({
-      alreadyExisted: false,
-      postId: 'r',
-      publishedRef: { externalId: 'media_1', platform: 'instagram' },
+      externalId: 'media_1',
+      platform: 'instagram',
     })
     const ref = await adapter.publish({
       ctx: ctx(),
       input: { igUserId: 'ig1', imageUrl: 'https://cdn/x.jpg', mediaType: 'IMAGE' },
       options,
       payload,
-      postId: '',
     })
     expect(ref.externalId).toBe('media_1')
   })
 
   it('throws on invalid input without publishing', async () => {
     await expect(
-      adapter.publish({ ctx: ctx(), input: { igUserId: '' }, options, payload, postId: '' }),
+      adapter.publish({ ctx: ctx(), input: { igUserId: '' }, options, payload }),
     ).rejects.toBeInstanceOf(ValidationError)
     expect(publishInstagramMedia).not.toHaveBeenCalled()
   })
@@ -172,7 +170,6 @@ describe('instagram adapter — publish', () => {
         input: { igUserId: 'ig1', imageUrl: 'https://cdn/x.jpg' },
         options,
         payload,
-        postId: '',
       }),
     ).rejects.toThrow('boom')
     expect(recordConnectionError).toHaveBeenCalledWith(payload, 'instagram', expect.any(Error))
