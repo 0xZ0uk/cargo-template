@@ -9,6 +9,7 @@ import type { SocialDraftMedia } from '../types/index.js'
 import { PLATFORM_IDS, PLATFORM_LABELS } from '../constants.js'
 import { resolveSocialsEndpointBase } from './accessModel.js'
 import { fetchSocialPublish } from './fetchSocialPublish.js'
+import { type ComposerDestination, getPlatformDescriptor } from './platforms/index.js'
 import {
   buildStandaloneInitialState,
   compileStandalonePublishBody,
@@ -18,15 +19,8 @@ import {
   reorderSelectedMedia,
   resolveMediaLibraryOptions,
   type StandaloneComposerState,
-  supportsMultipleMedia,
 } from './socialComposerModel.js'
-import {
-  asRecord,
-  type ComposerDestination,
-  destinationPath,
-  inferMediaFormat,
-  platformFormats,
-} from './socialComposerViewModel.js'
+import { asRecord, inferMediaFormat } from './socialComposerViewModel.js'
 import { VideoTile } from './SocialMediaPreview.js'
 import { Card, Check, cx, Field, Fieldset } from './ui/index.js'
 import { useSocialsAccess } from './useSocialsAccess.js'
@@ -93,42 +87,15 @@ const StandaloneComposerAuthorized: React.FC = () => {
       controllers.push(controller)
       void (async () => {
         try {
-          const response = await fetch(`${endpointBase}${destinationPath[platform]}`, {
+          const descriptor = getPlatformDescriptor(platform)
+          const response = await fetch(`${endpointBase}${descriptor.destination.path}`, {
             signal: controller.signal,
           })
           const body = (await response.json()) as Record<string, unknown>
           if (!response.ok) {
             return
           }
-          const values =
-            platform === 'pinterest'
-              ? body.boards
-              : platform === 'facebook'
-                ? body.pages
-                : platform === 'instagram'
-                  ? body.accounts
-                  : body.locations
-          const rows = Array.isArray(values)
-            ? values
-                .map(asRecord)
-                .filter((row): row is Record<string, unknown> => row !== undefined)
-            : []
-          const next = rows.flatMap((row) => {
-            const idValue =
-              platform === 'instagram'
-                ? row.igUserId
-                : platform === 'gbp'
-                  ? row.resourceName
-                  : row.id
-            if (typeof idValue !== 'string') {
-              return []
-            }
-            const label =
-              [row.name, row.pageName, row.title, row.storeCode].find(
-                (value): value is string => typeof value === 'string',
-              ) ?? idValue
-            return [{ id: idValue, label }]
-          })
+          const next = descriptor.destination.parse(body)
           setDestinations((current) => ({ ...current, [platform]: next }))
         } catch {
           // Silently ignore on abort
@@ -234,7 +201,7 @@ const StandaloneComposerAuthorized: React.FC = () => {
 
   // Media order is the provider order for carousel and multi-photo targets.
   const mediaReorderable = state.channels.some((platform) =>
-    supportsMultipleMedia(platform, perChannelFormat[platform] ?? ''),
+    getPlatformDescriptor(platform).supportsMultipleMedia(perChannelFormat[platform] ?? ''),
   )
   const moveMedia = (from: number, to: number): void => {
     setState((current) => {
@@ -445,7 +412,7 @@ const StandaloneComposerAuthorized: React.FC = () => {
                 value={perChannelFormat[platform] ?? ''}
               >
                 <option value="">Default</option>
-                {platformFormats[platform].map((f) => (
+                {getPlatformDescriptor(platform).formats.map((f) => (
                   <option key={f.value} value={f.value}>
                     {f.label}
                   </option>
