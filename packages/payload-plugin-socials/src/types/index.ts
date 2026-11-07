@@ -288,6 +288,21 @@ export type PublishResult = PublishedRef & {
   state?: 'pending' | 'published' | 'rejected' | 'scheduled'
 }
 
+/**
+ * What `PlatformAdapter.reconcile` reports about a post the platform holds (natively scheduled,
+ * or still processing). The publication ledger records it on the `social-posts` row; the
+ * adapter never writes the row.
+ *
+ * - `published`: the post is live.
+ * - `failed`: the platform will not publish it (rejected, or overdue). Not live; the ledger
+ *   records it `failed` with its `externalId`, so nothing re-publishes it automatically.
+ * - `pending`: not settled yet. `checkAt` (ISO-8601) is when to ask again; default one minute.
+ */
+export type ReconcileVerdict =
+  | { checkAt?: string; externalUrl?: string; state: 'pending' }
+  | { externalUrl?: string; reason: string; state: 'failed' }
+  | { externalUrl?: string; state: 'published' }
+
 export type ConnectionState = {
   /** ISO timestamp when the underlying access token will expire. */
   accessTokenExpiresAt?: string
@@ -314,7 +329,10 @@ export interface PlatformAdapter<TPublishInput = unknown> {
     state: string
   }): Promise<string> | string
   readonly capabilities: PlatformCapabilities
-  /** Optional channel-side delete. */
+  /**
+   * Optional channel-side delete. Without it, `DELETE {basePath}/posts/:postId` answers 422 and
+   * only `?localOnly=true` (the operator removed the post in the platform's app) is accepted.
+   */
   delete?(args: {
     options: NormalizedPluginOptions
     payload: Payload
@@ -377,6 +395,21 @@ export interface PlatformAdapter<TPublishInput = unknown> {
    * `outcome: 'unknown'` failure is never retried automatically.
    */
   publish(args: PublishArgs<TPublishInput>): Promise<PublishResult>
+
+  /**
+   * Ask the platform where a post it holds stands: one the adapter's `publish` returned with
+   * `state: 'scheduled'` or `'pending'`. `publishedRef` is rebuilt from the row (`externalId`,
+   * `externalUrl`, the row's `meta` plus `destinationId`). Read-only on the platform: never
+   * publish from here. A thrown error fails the post without a retry.
+   *
+   * Without it, a scheduled or pending post stays as it is until an operator acts on it.
+   */
+  reconcile?(args: {
+    options: NormalizedPluginOptions
+    payload: Payload
+    publishedRef: PublishedRef
+    req?: PayloadRequest
+  }): Promise<ReconcileVerdict>
 
   /** Refresh the access token using the persisted refresh token. */
   refreshToken?(args: {

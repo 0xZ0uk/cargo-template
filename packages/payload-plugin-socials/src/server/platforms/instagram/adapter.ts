@@ -6,7 +6,6 @@ import type {
   PreviewArgs,
   PreviewResult,
   PublishArgs,
-  PublishedRef,
   PublishResult,
   ValidationResult,
 } from '../../../types/index.js'
@@ -41,16 +40,6 @@ const CAPABILITIES: PlatformCapabilities = {
   stories: true,
   video: true,
 }
-
-/**
- * The message surfaced when any caller attempts an Instagram API deletion.
- * Kept as a named constant so tests can assert on the exact text without
- * duplicating the string.
- */
-export const INSTAGRAM_DELETE_UNSUPPORTED_MESSAGE =
-  'Instagram does not support removing published posts through its API. ' +
-  'Delete the post in the Instagram app, then use mark-deleted to reconcile: ' +
-  'DELETE {basePath}/posts/:postId?localOnly=true'
 
 export const createInstagramAdapter = (
   options: NormalizedPluginOptions,
@@ -263,23 +252,10 @@ export const createInstagramAdapter = (
       }
     },
 
-    /**
-     * Instagram does not support deleting published posts via its API.
-     * Meta's Graph API always returns OAuthException code 10 for
-     * DELETE /{ig-media-id}, regardless of token or permissions.
-     *
-     * This method throws immediately without making any network request.
-     * To reconcile a post deleted in the Instagram app, use the localOnly
-     * reconcile path: DELETE {basePath}/posts/:postId?localOnly=true
-     */
-    delete(_args: {
-      options: NormalizedPluginOptions
-      payload: unknown
-      publishedRef: PublishedRef
-      req?: unknown
-    }): never {
-      throw new ValidationError(INSTAGRAM_DELETE_UNSUPPORTED_MESSAGE)
-    },
+    // No `delete`: Meta's Graph API always answers OAuthException code 10 for
+    // DELETE /{ig-media-id}. The delete endpoint answers 422 and points the
+    // operator to DELETE {basePath}/posts/:postId?localOnly=true after they
+    // remove the post in the Instagram app.
 
     async getInsights({ options: opts, payload, publishedRef }) {
       if (publishedRef.platform !== 'instagram' || !publishedRef.externalId) {

@@ -28,7 +28,7 @@ import {
   deleteGbpLocalPost,
   pollGbpLocalPostState,
   publishGbpLocalPost,
-  reconcileGbpLocalPostState,
+  reconcileGbpLocalPost,
 } from '../publish.js'
 
 const mockedGbpJson = vi.mocked(gbpJson)
@@ -357,51 +357,34 @@ describe('pollGbpLocalPostState', () => {
   })
 })
 
-describe('reconcileGbpLocalPostState', () => {
-  it('transitions a processing row to published when the provider reports LIVE', async () => {
-    mockedGbpJson.mockResolvedValue({ searchUrl: 'https://posts.gle/live', state: 'LIVE' })
-
-    const result = await reconcileGbpLocalPostState({
+describe('reconcileGbpLocalPost', () => {
+  const reconcile = () =>
+    reconcileGbpLocalPost({
       options,
       payload: asPayload(payload),
-      postId: 'row_1',
       postName: 'accounts/123/locations/456/localPosts/p1',
     })
 
-    expect(result).toEqual({ pending: false, state: 'LIVE' })
-    expect(payload.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          externalUrl: 'https://posts.gle/live',
-          nextRetryAt: null,
-          platformPublicationStatus: 'published',
-          publishedAt: expect.any(String),
-          status: 'published',
-        }),
-      }),
-    )
-  })
+  it.each([
+    [
+      { searchUrl: 'https://posts.gle/live', state: 'LIVE' },
+      { externalUrl: 'https://posts.gle/live', state: 'published' },
+    ],
+    [
+      { state: 'REJECTED' },
+      {
+        externalUrl: undefined,
+        reason: 'Google Business Profile rejected this Local Post.',
+        state: 'failed',
+      },
+    ],
+    [{ state: 'PROCESSING' }, { externalUrl: undefined, state: 'pending' }],
+    [{ state: 'SCHEDULED' }, { externalUrl: undefined, state: 'pending' }],
+  ])('maps %o to a verdict, without writing the row', async (post, verdict) => {
+    mockedGbpJson.mockResolvedValue(post)
 
-  it('keeps an unresolved provider state pending with another check scheduled', async () => {
-    mockedGbpJson.mockResolvedValue({ state: 'SCHEDULED' })
-
-    const result = await reconcileGbpLocalPostState({
-      options,
-      payload: asPayload(payload),
-      postId: 'row_1',
-      postName: 'accounts/123/locations/456/localPosts/p1',
-    })
-
-    expect(result).toEqual({ pending: true, state: 'SCHEDULED' })
-    expect(payload.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          nextRetryAt: expect.any(String),
-          platformPublicationStatus: 'publishing',
-          status: 'publishing',
-        }),
-      }),
-    )
+    await expect(reconcile()).resolves.toEqual(verdict)
+    expect(payload.update).not.toHaveBeenCalled()
   })
 })
 

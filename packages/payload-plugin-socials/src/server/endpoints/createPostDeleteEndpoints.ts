@@ -1,14 +1,14 @@
 import type { Endpoint } from 'payload'
 
-import type { NormalizedPluginOptions, PlatformId, PublishedRef } from '../../types/index.js'
+import type { NormalizedPluginOptions, PlatformId } from '../../types/index.js'
 
 import { PLATFORM_IDS } from '../../constants.js'
-import { INSTAGRAM_DELETE_UNSUPPORTED_MESSAGE } from '../platforms/instagram/adapter.js'
 import { getPlatformAdapter } from '../platforms/registry.js'
 import {
   assertDeletable,
   cancelQueuedSocialPost,
   markDeleted,
+  refFromPost,
   requirePost,
   resolveUnknownOutcome,
 } from '../services/publicationLedger.js'
@@ -33,10 +33,10 @@ import { errorResponse, getRouteParam, jsonResponse, parseRequestBody } from '..
  *
  *   Normal mode (default):
  *   1. Validates the row exists and is in `published` state with an externalId.
- *   2. For Instagram rows: returns HTTP 422 immediately with an actionable
- *      message — Meta's Graph API does not expose a delete endpoint for
- *      published IG Business media. The adapter is never called.
- *   3. For other platforms: calls the platform adapter's `delete` method.
+ *   2. For a platform whose adapter has no `delete` (Instagram: Meta's Graph
+ *      API does not delete published IG Business media): returns HTTP 422
+ *      with an actionable message, leaving the row as it is.
+ *   3. Otherwise: calls the platform adapter's `delete` method.
  *      a typed/status-coded upstream 404 is treated as success
  *      (deletion is idempotent).
  *   4. Updates the row to status `deleted` and records `meta.deletedAt` and
@@ -56,6 +56,15 @@ import { errorResponse, getRouteParam, jsonResponse, parseRequestBody } from '..
  * never calls a platform, so it cannot remove a live post. Body `{ minLeadSeconds? }` also
  * refuses when the post is due within that many seconds. Anything but a queued row is a 409.
  */
+/** The 422 for a platform whose adapter cannot delete a post (no `delete`). */
+export const deleteUnsupportedMessage = (
+  label: string,
+  options: Pick<NormalizedPluginOptions, 'api'>,
+): string =>
+  `${label} does not support removing published posts through its API. ` +
+  `Delete the post in the ${label} app, then use mark-deleted to reconcile: ` +
+  `DELETE ${options.api.basePath}/posts/:postId?localOnly=true`
+
 export const createPostDeleteEndpoints = (options: NormalizedPluginOptions): Endpoint[] => [
   {
     handler: async (req) => {
@@ -98,35 +107,28 @@ export const createPostDeleteEndpoints = (options: NormalizedPluginOptions): End
           throw new ValidationError(`Unknown platform "${String(platform)}"`)
         }
 
-        // Build the publishedRef from the row fields.
-        const publishedRef: PublishedRef = {
-          externalId: typeof row.externalId === 'string' ? row.externalId : '',
-          externalUrl: typeof row.externalUrl === 'string' ? row.externalUrl : undefined,
-          meta: row.meta ?? {},
-          platform,
-        }
-
         if (!localOnly) {
-          // Instagram: API deletion is not supported — return 422 without touching
-          // the adapter or the local row.
-          if (platform === 'instagram') {
-            return jsonResponse({ error: INSTAGRAM_DELETE_UNSUPPORTED_MESSAGE, ok: false }, 422)
-          }
-
-          // Other platforms: call the adapter's delete method.
           // A status-coded upstream 404 is treated as idempotent success.
           const adapter = getPlatformAdapter(platform, options)
-          if (typeof adapter.delete === 'function') {
-            try {
-              await adapter.delete({ options, payload: req.payload, publishedRef, req })
-            } catch (deleteError) {
-              // If the upstream says the post is already gone (HTTP 404),
-              // treat it as success. Any other upstream error is fatal — we must NOT
-              // mark the row deleted if the upstream deletion failed.
-              const isAlreadyGone = isUpstreamNotFoundError(deleteError)
-              if (!isAlreadyGone) {
-                throw deleteError
-              }
+          if (typeof adapter.delete !== 'function') {
+            return jsonResponse(
+              { error: deleteUnsupportedMessage(adapter.label, options), ok: false },
+              422,
+            )
+          }
+          try {
+            await adapter.delete({
+              options,
+              payload: req.payload,
+              publishedRef: refFromPost(row),
+              req,
+            })
+          } catch (deleteError) {
+            // If the upstream says the post is already gone (HTTP 404),
+            // treat it as success. Any other upstream error is fatal — we must NOT
+            // mark the row deleted if the upstream deletion failed.
+            if (!isUpstreamNotFoundError(deleteError)) {
+              throw deleteError
             }
           }
         }

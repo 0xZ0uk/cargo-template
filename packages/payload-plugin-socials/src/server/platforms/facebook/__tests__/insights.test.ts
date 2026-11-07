@@ -170,6 +170,20 @@ describe('getFacebookInsightsForRef', () => {
     expect(getPageAccessToken).toHaveBeenCalledWith(payload, options, '987')
   })
 
+  it('uses the row’s destinationId (the Page) when meta has no pageId', async () => {
+    vi.mocked(metaJson).mockResolvedValue({ data: [] })
+    await getFacebookInsightsForRef({
+      options,
+      payload,
+      publishedRef: {
+        externalId: 'video-only-id',
+        meta: { destinationId: 'page_42' },
+        platform: 'facebook',
+      },
+    })
+    expect(getPageAccessToken).toHaveBeenCalledWith(payload, options, 'page_42')
+  })
+
   it('rejects a non-compound id without a Page id', async () => {
     await expect(
       getFacebookInsightsForRef({

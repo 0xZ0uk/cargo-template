@@ -23,13 +23,14 @@ vi.mock('../insights.js', () => ({ getGbpInsightsForRef: vi.fn() }))
 vi.mock('../publish.js', async (importActual) => ({
   ...(await importActual<typeof PublishModule>()),
   deleteGbpLocalPost: vi.fn(),
+  reconcileGbpLocalPost: vi.fn(),
   publishGbpLocalPost: vi.fn(),
 }))
 
 import { getCredentials, recordConnectionError } from '../../../services/connectionService.js'
 import { createGbpAdapter } from '../adapter.js'
 import { getGbpInsightsForRef } from '../insights.js'
-import { deleteGbpLocalPost, publishGbpLocalPost } from '../publish.js'
+import { deleteGbpLocalPost, publishGbpLocalPost, reconcileGbpLocalPost } from '../publish.js'
 
 const buildOptions = (serviceAccount?: { clientEmail: string }): NormalizedPluginOptions =>
   ({
@@ -192,5 +193,21 @@ describe('gbp adapter — publish + delete', () => {
       publishedRef: ref,
       range,
     })
+  })
+})
+
+describe('gbp adapter — reconcile', () => {
+  it('checks the Local Post named by the row’s externalId', async () => {
+    vi.mocked(reconcileGbpLocalPost).mockResolvedValue({ state: 'pending' })
+    const postName = 'accounts/1/locations/2/localPosts/3'
+
+    await expect(
+      adapter.reconcile?.({
+        options,
+        payload,
+        publishedRef: { externalId: postName, platform: 'gbp' },
+      }),
+    ).resolves.toEqual({ state: 'pending' })
+    expect(reconcileGbpLocalPost).toHaveBeenCalledWith({ options, payload, postName })
   })
 })

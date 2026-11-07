@@ -24,6 +24,7 @@ import {
   type GbpPublishInput,
   type GbpTopicType,
   publishGbpLocalPost,
+  reconcileGbpLocalPost,
   TOPIC_TYPES,
 } from './publish.js'
 import { revokeGbpAuthorization } from './revoke.js'
@@ -227,6 +228,11 @@ export const createGbpAdapter = (
 
     async delete({ options: opts, payload, publishedRef }) {
       await deleteGbpLocalPost({ options: opts, payload, publishedRef })
+    },
+
+    /** A Local Post in moderation: is it live, rejected, or still processing? */
+    async reconcile({ options: opts, payload, publishedRef }) {
+      return reconcileGbpLocalPost({ options: opts, payload, postName: publishedRef.externalId })
     },
 
     async getInsights({ options: opts, payload, publishedRef, range }) {

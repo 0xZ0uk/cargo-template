@@ -362,55 +362,58 @@ describe('reconcileFacebookScheduledPost', () => {
     mockedMetaJson.mockResolvedValue({ id: 'p1', access_token: 'PAGE_TOKEN' })
   })
 
-  it('transitions a scheduled post to published when Facebook reports it live', async () => {
+  const reconcile = (scheduledPublishTime?: number) =>
+    reconcileFacebookScheduledPost({
+      externalId: 'p1_123',
+      options,
+      pageId: 'p1',
+      payload: asPayload(payload),
+      scheduledPublishTime,
+    })
+
+  it('reports published when Facebook says the post is live, without writing the row', async () => {
     mockedRequest.mockResolvedValue(
       jsonResponse({ is_published: true, permalink_url: 'https://facebook.example/post' }),
     )
 
-    const result = await reconcileFacebookScheduledPost({
-      externalId: 'p1_123',
-      options,
-      pageId: 'p1',
-      payload: asPayload(payload),
-      postId: 'row_1',
+    await expect(reconcile()).resolves.toEqual({
+      externalUrl: 'https://facebook.example/post',
+      state: 'published',
     })
-
-    expect(result).toEqual({ pending: false })
-    expect(payload.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          externalUrl: 'https://facebook.example/post',
-          nextRetryAt: null,
-          platformPublicationStatus: 'published',
-          publishedAt: expect.any(String),
-          status: 'published',
-        }),
-      }),
+    expect(payload.update).not.toHaveBeenCalled()
+    expect(mockedRequest.mock.calls[0]?.[4]).toEqual(
+      expect.objectContaining({ accessToken: 'PAGE_TOKEN' }),
     )
   })
 
-  it('keeps a not-yet-live scheduled post pending', async () => {
+  it('reports pending, to check again in five minutes, before Facebook publishes it', async () => {
+    mockedRequest.mockResolvedValue(jsonResponse({ is_published: false }))
+    const before = Date.now()
+
+    const verdict = await reconcile(Math.floor(Date.now() / 1000) + 600)
+
+    expect(verdict).toMatchObject({ state: 'pending' })
+    const checkAt = Date.parse((verdict as { checkAt: string }).checkAt)
+    expect(checkAt - before).toBeGreaterThanOrEqual(5 * 60_000)
+    expect(checkAt - Date.now()).toBeLessThanOrEqual(5 * 60_000)
+    expect(payload.update).not.toHaveBeenCalled()
+  })
+
+  it('reports failed when the post is still unpublished 24 hours after its time', async () => {
     mockedRequest.mockResolvedValue(jsonResponse({ is_published: false }))
 
-    const result = await reconcileFacebookScheduledPost({
-      externalId: 'p1_123',
-      options,
-      pageId: 'p1',
-      payload: asPayload(payload),
-      postId: 'row_1',
-      scheduledPublishTime: Math.floor(Date.now() / 1000) + 600,
+    await expect(reconcile(Math.floor(Date.now() / 1000) - 25 * 60 * 60)).resolves.toEqual({
+      externalUrl: undefined,
+      reason: 'Facebook did not publish the scheduled post within 24 hours.',
+      state: 'failed',
     })
+  })
 
-    expect(result).toEqual({ pending: true })
-    expect(payload.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          nextRetryAt: expect.any(String),
-          platformPublicationStatus: 'pending',
-          status: 'scheduled',
-        }),
-      }),
-    )
+  it('throws when the lookup fails', async () => {
+    mockedRequest.mockResolvedValue({ ok: false, status: 500 } as unknown as Response)
+
+    await expect(reconcile()).rejects.toBeInstanceOf(PlatformApiError)
+    expect(payload.update).not.toHaveBeenCalled()
   })
 })
 

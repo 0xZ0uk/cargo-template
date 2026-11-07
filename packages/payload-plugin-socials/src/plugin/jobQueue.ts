@@ -11,7 +11,11 @@ import {
   SOCIAL_POSTS_SLUG,
   SOCIALS_QUEUE_NAME,
 } from '../constants.js'
-import { recordQueuedJob, schedulePublication } from '../server/services/publicationLedger.js'
+import {
+  dueForWorkWhere,
+  recordQueuedJob,
+  schedulePublication,
+} from '../server/services/publicationLedger.js'
 import { logAsyncOperationFailure } from '../server/utilities/logger.js'
 
 /**
@@ -101,49 +105,31 @@ export type SweepResult = {
 }
 
 /**
- * The one "due" query, shared by `sweepDueSocialPosts` (cron, HTTP endpoint,
- * worker loop) and the `socialPostSweep` task (`scheduling.autoRun`): queued
- * posts whose `scheduledAt` has passed, plus Business Profile `publishing` and
- * Facebook `scheduled` posts whose follow-up check (`nextRetryAt`) is due.
+ * The due posts (`dueForWorkWhere`, the ledger's one due query), shared by
+ * `sweepDueSocialPosts` (cron, HTTP endpoint, worker loop) and the
+ * `socialPostSweep` task (`scheduling.autoRun`): queued posts whose
+ * `scheduledAt` has passed, and posts the platform holds whose next check
+ * (`nextRetryAt`) is due.
  */
 export const findDueSocialPosts = async (
   payload: Payload,
   args: { limit: number; now?: Date },
 ): Promise<Array<{ id: number | string }>> => {
-  const now = (args.now ?? new Date()).toISOString()
   const result = await payload.find({
     collection: SOCIAL_POSTS_SLUG as never,
     depth: 0,
     limit: args.limit,
     overrideAccess: true,
     sort: 'scheduledAt',
-    where: {
-      or: [
-        { and: [{ status: { equals: 'queued' } }, { scheduledAt: { less_than_equal: now } }] },
-        {
-          and: [
-            { platform: { equals: 'gbp' } },
-            { status: { equals: 'publishing' } },
-            { nextRetryAt: { less_than_equal: now } },
-          ],
-        },
-        {
-          and: [
-            { platform: { equals: 'facebook' } },
-            { status: { equals: 'scheduled' } },
-            { nextRetryAt: { less_than_equal: now } },
-          ],
-        },
-      ],
-    },
+    where: dueForWorkWhere(args.now) as never,
   })
   return result.docs as unknown as Array<{ id: number | string }>
 }
 
 /**
  * Queue a publish job for every due post (`findDueSocialPosts`). The publish
- * task decides what the job does: publish a queued post, or check a post the
- * platform still holds. A post whose job fails to queue is logged and counted
+ * task decides what the job does: publish a queued post, or reconcile a post
+ * the platform holds (never publish it). A post whose job fails to queue is logged and counted
  * in `failed`; it stays due, so the next sweep picks it up.
  */
 export const sweepDueSocialPosts = async (

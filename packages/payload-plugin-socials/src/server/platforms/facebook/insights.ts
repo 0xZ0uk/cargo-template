@@ -29,10 +29,17 @@ type FacebookInsightsResponse = {
   paging?: Record<string, unknown>
 }
 
-const resolvePageId = (publishedRef: PublishedRef): string => {
-  const metaPageId = publishedRef.meta?.pageId
-  if (typeof metaPageId === 'string' && metaPageId.trim()) {
-    return metaPageId.trim()
+/**
+ * The Page a post belongs to: the publish record's `meta.pageId`, else the
+ * row's `destinationId` (the Page id, added by `refFromPost`), else the Page
+ * part of a `{pageId}_{postId}` externalId.
+ */
+export const resolveFacebookPageId = (publishedRef: PublishedRef): string => {
+  for (const key of ['pageId', 'destinationId']) {
+    const value = publishedRef.meta?.[key]
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim()
+    }
   }
   const separator = publishedRef.externalId.indexOf('_')
   if (separator > 0) {
@@ -65,7 +72,7 @@ export const getFacebookInsightsForRef = async (args: {
   payload: Payload
   publishedRef: PublishedRef
 }): Promise<FacebookPostInsightsSnapshot> => {
-  const pageId = resolvePageId(args.publishedRef)
+  const pageId = resolveFacebookPageId(args.publishedRef)
   const pageAccessToken = await getPageAccessToken(args.payload, args.options, pageId)
   const { raw, unavailableMetrics } = await fetchMetaInsightsWithFallback<FacebookInsight>({
     fetch: (metrics) => {

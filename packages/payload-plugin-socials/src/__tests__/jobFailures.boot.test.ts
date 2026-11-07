@@ -482,3 +482,140 @@ describe('the retry task, through Payload’s job runner', () => {
     },
   )
 })
+
+describe('reconciling a post the platform holds, through Payload’s job runner', () => {
+  type JobWithOutput = JobRow & { log?: Array<{ output?: Record<string, unknown> }> | null }
+
+  /** A Facebook post scheduled natively, whose check is due. */
+  const createHeldPost = (data: Record<string, unknown> = {}) =>
+    createQueuedPost({
+      externalId: `page_post_${postCounter + 1}`,
+      meta: { pageId: 'page' },
+      nextRetryAt: new Date(Date.now() - 1_000).toISOString(),
+      platform: 'facebook',
+      status: 'scheduled',
+      ...data,
+    })
+
+  const mockAdapter = (adapter: Record<string, unknown>) => {
+    vi.mocked(resolveSourceContext).mockResolvedValue({} as never)
+    vi.mocked(getPlatformAdapter).mockReturnValue(adapter as never)
+  }
+
+  const publishJobsFor = async (postId: number | string) =>
+    (
+      await payload.find({
+        collection: 'payload-jobs',
+        depth: 0,
+        limit: 100,
+        overrideAccess: true,
+        sort: 'createdAt',
+        where: { taskSlug: { equals: 'socialPostPublish' } },
+      })
+    ).docs.filter(
+      (job) =>
+        String((job.input as { postId?: number | string } | undefined)?.postId) === String(postId),
+    ) as unknown as JobWithOutput[]
+
+  it('records the platform’s published verdict without publishing', async () => {
+    const publish = vi.fn()
+    const reconcile = vi
+      .fn()
+      .mockResolvedValue({ externalUrl: 'https://fb.test/p', state: 'published' })
+    mockAdapter({ publish, reconcile })
+    const postId = await createHeldPost()
+    const jobId = await queueSocialPostPublish({ payload, postId })
+
+    await drain()
+
+    const job = (await findJob(jobId)) as JobWithOutput
+    expect(job.hasError).toBeFalsy()
+    expect(job.log?.[0]?.output).toMatchObject({ pending: false, reconciled: 'published' })
+    expect(reconcile).toHaveBeenCalledOnce()
+    expect(publish).not.toHaveBeenCalled()
+    expect(await findPost(postId)).toMatchObject({ status: 'published' })
+  })
+
+  it('fails a post whose check throws, without a retry, and never publishes it', async () => {
+    const publish = vi.fn()
+    // Retryable and even safe to repeat: a reconcile failure is still never retried.
+    const reconcile = vi.fn().mockRejectedValue(
+      new PlatformApiError({
+        message: 'lookup 503',
+        platform: 'facebook',
+        retryable: true,
+        safeToRepeat: true,
+        statusCode: 503,
+      }),
+    )
+    mockAdapter({ publish, reconcile })
+    const postId = await createHeldPost()
+    const jobId = await queueSocialPostPublish({ payload, postId })
+
+    await drain()
+    setJobClock(new Date(Date.now() + 24 * 60 * 60_000))
+    await drain()
+
+    const job = await findJob(jobId)
+    expect(job.hasError).toBe(true)
+    expect(job.error).toMatchObject({ cancelled: true })
+    expect(job.error?.message).toContain('lookup 503')
+    expect(reconcile).toHaveBeenCalledOnce()
+    expect(publish).not.toHaveBeenCalled()
+    const post = await findPost(postId)
+    expect(post.status).toBe('failed')
+    expect(post.externalId).toMatch(/^page_post_/)
+
+    // A later publish job for the post (a sweep, a stale job) does not publish it either.
+    await queueSocialPostPublish({ payload, postId })
+    await drain()
+    expect(publish).not.toHaveBeenCalled()
+  })
+
+  it('queues the next check of a pending post and runs it when due', async () => {
+    const publish = vi.fn()
+    const checkAt = new Date(Date.now() + 5 * 60_000)
+    const reconcile = vi
+      .fn()
+      .mockResolvedValueOnce({ checkAt: checkAt.toISOString(), state: 'pending' })
+      .mockResolvedValue({ state: 'published' })
+    mockAdapter({ publish, reconcile })
+    const postId = await createHeldPost()
+    await queueSocialPostPublish({ payload, postId })
+
+    const now = Date.now()
+    setJobClock(new Date(now))
+    await drain()
+    expect(reconcile).toHaveBeenCalledTimes(1)
+    const jobs = await publishJobsFor(postId)
+    expect(jobs).toHaveLength(2)
+    expect(Date.parse(jobs[1]?.waitUntil ?? '')).toBe(checkAt.getTime())
+    expect((await findPost(postId)).status).toBe('scheduled')
+
+    vi.useFakeTimers({ now: checkAt.getTime() + 1_000, toFake: ['Date'] })
+    try {
+      setJobClock(new Date(checkAt.getTime() + 1_000))
+      await drain()
+    } finally {
+      vi.useRealTimers()
+    }
+    expect(reconcile).toHaveBeenCalledTimes(2)
+    expect(publish).not.toHaveBeenCalled()
+    expect((await findPost(postId)).status).toBe('published')
+  })
+
+  it('does nothing for a held post whose adapter cannot reconcile', async () => {
+    const publish = vi.fn()
+    mockAdapter({ publish })
+    const postId = await createHeldPost({ platform: 'pinterest', status: 'publishing' })
+    const jobId = await queueSocialPostPublish({ payload, postId })
+
+    await drain()
+
+    const job = (await findJob(jobId)) as JobWithOutput
+    expect(job.hasError).toBeFalsy()
+    expect(job.log?.[0]?.output).toMatchObject({ reconcileSkipped: 'unsupported' })
+    expect(publish).not.toHaveBeenCalled()
+    expect((await findPost(postId)).status).toBe('publishing')
+  })
+})

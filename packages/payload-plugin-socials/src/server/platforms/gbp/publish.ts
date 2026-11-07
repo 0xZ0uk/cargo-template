@@ -4,10 +4,11 @@ import type {
   NormalizedPluginOptions,
   PublishedRef,
   PublishResult,
+  ReconcileVerdict,
   SocialSourceContext,
 } from '../../../types/index.js'
 
-import { GBP_SUMMARY_MAX_CHARS, SOCIAL_POSTS_SLUG } from '../../../constants.js'
+import { GBP_SUMMARY_MAX_CHARS } from '../../../constants.js'
 import { resolvePlatformImageUrl } from '../../assets/resolvePlatformImage.js'
 import { resolveConfiguredText } from '../../copy/resolveConfiguredCopy.js'
 import {
@@ -344,35 +345,32 @@ export const pollGbpLocalPostState = async (args: {
   }
 }
 
-export const reconcileGbpLocalPostState = async (args: {
+/**
+ * Ask Business Profile where a Local Post in moderation stands (one read, no
+ * polling). Read-only: returns the verdict for the publication ledger to
+ * record. `LIVE` is published, `REJECTED` failed, anything else pending.
+ */
+export const reconcileGbpLocalPost = async (args: {
   options: NormalizedPluginOptions
   payload: Payload
-  postId: number | string
   postName: string
-}): Promise<{ pending: boolean; state: string }> => {
+}): Promise<ReconcileVerdict> => {
   const result = await pollGbpLocalPostState({
     maxWaitMs: 0,
     options: args.options,
     payload: args.payload,
     postName: args.postName,
   })
-  const state = result.state
-  const live = state === 'LIVE'
-  const rejected = state === 'REJECTED'
-  const pending = !live && !rejected
-  await args.payload.update({
-    id: args.postId as never,
-    collection: SOCIAL_POSTS_SLUG as never,
-    data: {
-      externalUrl: result.searchUrl,
-      lastAttemptedAt: new Date().toISOString(),
-      lastError: rejected ? 'Google Business Profile rejected this Local Post.' : null,
-      platformPublicationStatus: live ? 'published' : rejected ? 'failed' : 'publishing',
-      ...(live ? { publishedAt: new Date().toISOString() } : {}),
-      nextRetryAt: pending ? new Date(Date.now() + 60_000).toISOString() : null,
-      status: live ? 'published' : rejected ? 'failed' : 'publishing',
-    } as never,
-    overrideAccess: true,
-  })
-  return { pending, state }
+  const externalUrl = result.searchUrl
+  if (result.state === 'LIVE') {
+    return { externalUrl, state: 'published' }
+  }
+  if (result.state === 'REJECTED') {
+    return {
+      externalUrl,
+      reason: 'Google Business Profile rejected this Local Post.',
+      state: 'failed',
+    }
+  }
+  return { externalUrl, state: 'pending' }
 }

@@ -95,6 +95,23 @@ describe('socialInsightsRefresh handler', () => {
     expect((error as Error).message).toContain('2 failed, 0 refreshed')
   })
 
+  it('passes the row’s platform reference, with its destinationId, to getInsights', async () => {
+    const getInsights = vi.fn().mockResolvedValue({ impressions: 5 })
+    vi.mocked(getPlatformAdapter).mockReturnValue({ getInsights } as never)
+    const find = vi.fn().mockResolvedValue({
+      docs: [{ id: 1, destinationId: 'page_1', externalId: 'post_1', meta: { format: 'LINK' } }],
+    })
+    await insights({
+      input: { platform: 'facebook' },
+      req: mkReq({ find, update: vi.fn().mockResolvedValue({}) }),
+    })
+    expect(getInsights.mock.calls[0]?.[0].publishedRef).toEqual({
+      externalId: 'post_1',
+      meta: { destinationId: 'page_1', format: 'LINK' },
+      platform: 'facebook',
+    })
+  })
+
   it('skips a platform whose adapter has no getInsights', async () => {
     vi.mocked(getPlatformAdapter).mockReturnValue({} as never)
     const req = mkReq({ find: vi.fn() })

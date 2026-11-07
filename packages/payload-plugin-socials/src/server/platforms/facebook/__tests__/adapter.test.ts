@@ -19,17 +19,25 @@ vi.mock('../../_meta/oauth.js', () => ({
   buildAuthorizeUrl: vi.fn(() => 'https://www.facebook.com/dialog/oauth'),
   exchangeCodeForTokens: vi.fn(),
 }))
-vi.mock('../insights.js', () => ({ getFacebookInsightsForRef: vi.fn() }))
+vi.mock('../insights.js', async (importActual) => ({
+  ...(await importActual<typeof import('../insights.js')>()),
+  getFacebookInsightsForRef: vi.fn(),
+}))
 vi.mock('../publish.js', async (importActual) => ({
   ...(await importActual<typeof PublishModule>()),
   deleteFacebookPost: vi.fn(),
   publishFacebookPost: vi.fn(),
+  reconcileFacebookScheduledPost: vi.fn(),
 }))
 
 import { getCredentials, recordConnectionError } from '../../../services/connectionService.js'
 import { createFacebookAdapter } from '../adapter.js'
 import { getFacebookInsightsForRef } from '../insights.js'
-import { deleteFacebookPost, publishFacebookPost } from '../publish.js'
+import {
+  deleteFacebookPost,
+  publishFacebookPost,
+  reconcileFacebookScheduledPost,
+} from '../publish.js'
 
 const buildOptions = (systemUserAccessToken = ''): NormalizedPluginOptions =>
   ({
@@ -162,5 +170,43 @@ describe('facebook adapter — publish + delete', () => {
       payload,
       publishedRef: ref,
     })
+  })
+})
+
+describe('facebook adapter — reconcile', () => {
+  it('checks a scheduled post with its Page and scheduled time from the row', async () => {
+    vi.mocked(reconcileFacebookScheduledPost).mockResolvedValue({ state: 'published' })
+    const publishedRef: PublishedRef = {
+      externalId: 'page_1_post_9',
+      meta: { pageId: 'page_1', scheduledSeconds: 1_900_000_000 },
+      platform: 'facebook',
+    }
+
+    await expect(adapter.reconcile?.({ options, payload, publishedRef })).resolves.toEqual({
+      state: 'published',
+    })
+    expect(reconcileFacebookScheduledPost).toHaveBeenCalledWith({
+      externalId: 'page_1_post_9',
+      options,
+      pageId: 'page_1',
+      payload,
+      scheduledPublishTime: 1_900_000_000,
+    })
+  })
+
+  it('falls back to the row’s destinationId for the Page', async () => {
+    vi.mocked(reconcileFacebookScheduledPost).mockResolvedValue({ state: 'pending' })
+    await adapter.reconcile?.({
+      options,
+      payload,
+      publishedRef: {
+        externalId: 'post_9',
+        meta: { destinationId: 'page_2', scheduledPublishTime: 1_900_000_000 },
+        platform: 'facebook',
+      },
+    })
+    expect(reconcileFacebookScheduledPost).toHaveBeenCalledWith(
+      expect.objectContaining({ pageId: 'page_2', scheduledPublishTime: 1_900_000_000 }),
+    )
   })
 })

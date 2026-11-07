@@ -330,7 +330,7 @@ The manual retry (`POST /api/socials/internal/posts/{postId}/retry`, or queueing
 
 ### Post lifecycle
 
-One module, the publication ledger (`src/server/services/publicationLedger.ts`), writes a `social-posts` row's `status`. The publish endpoint, the composer, the tasks and the post endpoints call it; platform adapters only call the platform and return a `PublishResult` (the provider reference, where the post stands, and the audit fields), and never read or write the row.
+One module, the publication ledger (`src/server/services/publicationLedger.ts`), writes a `social-posts` row's `status`. The publish endpoint, the composer, the tasks and the post endpoints call it; platform adapters only call the platform and return what it said, a `PublishResult` from `publish` (the provider reference, where the post stands, and the audit fields) or a `ReconcileVerdict` from `reconcile`, and never read or write the row.
 
 | From | To | Trigger |
 | --- | --- | --- |
@@ -338,12 +338,24 @@ One module, the publication ledger (`src/server/services/publicationLedger.ts`),
 | no row, `draft`, `queued`, `failed`, `cancelled`, `deleted` | `queued` | Scheduled publish (`scheduledAt`, `scheduleSocialPostPublish`). A `publishing`, `unknown` or `scheduled` row answers `409`. |
 | `queued`; `failed` without an `externalId` | `publishing` | The publish task's claim (`failed` so Payload's retry of a safe-to-repeat failure can re-run). Like the immediate publish's takeover, it clears the `externalId` an earlier publication left, so an id on the row always comes from its latest attempt. |
 | `publishing` | `published`, `scheduled` (Facebook native schedule), `publishing` with an `externalId` (Business Profile moderation), `failed`, `unknown` | The platform's answer or error. |
+| `scheduled`, or `publishing` with an `externalId` | `published`, `failed` (keeps the `externalId`), or unchanged with a later `nextRetryAt` | Reconciliation: the publish task asks the adapter's `reconcile` and the ledger records the verdict. Never a publish. |
 | any but `published`, unless it may be live | `queued` | Manual retry. |
 | `unknown` | `published`, `failed` | `POST /posts/{postId}/resolve`. |
 | `queued` | `cancelled` | `DELETE /posts/{postId}`, `POST /posts/{postId}/cancel`. |
 | `published`, `publishing`, `unknown` | `deleted` | `DELETE /posts/{postId}` after the platform delete (or `?localOnly=true`). |
 
-Reconciliation of Facebook scheduled posts and Business Profile moderation (`scheduled` or `publishing` with an `externalId`, to `published` or `failed`) is still written by those platform modules.
+#### Reconciliation
+
+A post the platform holds (natively `scheduled`, or `publishing` with an `externalId` while the platform processes it) waits for reconciliation. The adapter decides how to check it; the ledger decides what the row says:
+
+- `PlatformAdapter.reconcile({ options, payload, publishedRef, req })` is optional. `publishedRef` is rebuilt from the row (`externalId`, `externalUrl`, the row's `meta` plus `destinationId`). It reads the platform and returns a `ReconcileVerdict`: `{ state: 'published' }`, `{ state: 'failed', reason }` or `{ state: 'pending', checkAt? }`, each with an optional `externalUrl`. Facebook checks whether the scheduled post went live (pending: again in five minutes; still unpublished 24 hours after its time: failed). Business Profile reads the Local Post's state (`LIVE`, `REJECTED`, anything else pending: again in a minute).
+- `nextRetryAt` is when to ask next. The ledger sets it after a `scheduled` result (a minute after the scheduled time) or a `pending` one (a minute from now), and after each pending verdict (`checkAt`). Only these rows carry it (a claim clears it), so "due" is one generic query, `dueForWorkWhere`: `queued` with `scheduledAt` passed, or `scheduled`/`publishing` with an `externalId` and `nextRetryAt` passed. `sweepDueSocialPosts`, the `/internal/jobs/sweep` endpoint and the `socialPostSweep` task all use it.
+- After recording a time, the ledger queues a publish job held until then. If that queue fails, the row is already due, so the next sweep queues the check.
+- The publish task reconciles a held post and returns or fails; it never reaches the publish path. A job that runs before the row's `nextRetryAt` (a duplicate) does nothing. A failed check leaves the post `failed` with its `externalId`, which no claim takes back and the manual retry refuses without `confirmNotPublished`.
+- The verdict is written only while the row still has the status and `externalId` it was checked with, so it never overwrites a post an operator deleted meanwhile.
+- An adapter without `reconcile` leaves held posts as they are (no `nextRetryAt`), for an operator to resolve.
+
+`delete` and `getInsights` are optional adapter capabilities too. Without `delete` (Instagram), `DELETE /posts/{postId}` answers `422` and points to `?localOnly=true`. Both receive the same row-built `publishedRef`.
 
 ## Scheduling
 
@@ -381,7 +393,7 @@ export default buildConfig({
 
 Scheduling uses a per-revision token, rechecks the due time in the task, and cancels superseded Payload jobs when possible. The token and status checks remain the correctness fence if cancellation races with a worker. Rescheduling refuses (`409`) a post that may already be on the platform (`publishing`, `unknown`, `scheduled`).
 
-Facebook's `scheduledPublishTime` is provider-native scheduling. The generic source-publish `scheduledAt` is plugin scheduling. Accepted GBP posts and native Facebook schedules remain pending until reconciliation confirms the provider state; sweep jobs provide the backstop.
+Facebook's `scheduledPublishTime` is provider-native scheduling. The generic source-publish `scheduledAt` is plugin scheduling. Accepted GBP posts and native Facebook schedules remain pending until reconciliation confirms the provider state (see "Reconciliation" above); every sweep mode, including the `socialPostSweep` task under `scheduling.autoRun`, provides the backstop.
 
 ### Job failures and retries
 
@@ -410,8 +422,10 @@ The clients never replay a `create` request themselves after a 5xx or a lost res
 | `socialPostPublish` (3, backoff) | `isAutoRetrySafe` (see above) | `failed`, `lastError` | Payload retries after the backoff; each retry re-claims the `failed` row |
 | | Any other publish error (validation, auth, non-retryable rejection, a `retryable` error without `safeToRepeat`, an error from outside the platform clients) | `failed`, `lastError` | Failed, no Payload retry |
 | | Outcome unknown (`PlatformApiError` with `outcome: 'unknown'`, `PublicationPersistenceError`) | `unknown`, provider id captured when known | Failed, no Payload retry |
-| | Source context cannot be resolved; `meta.queuedInput` missing; scheduled Facebook post without `meta.pageId` | `failed`, `lastError` | Failed, no Payload retry |
-| | Facebook / GBP reconciliation read failed | `failed`, `lastError` | Failed, no Payload retry (the post already has an `externalId`; a re-run would publish it again) |
+| | Source context cannot be resolved; `meta.queuedInput` missing | `failed`, `lastError` | Failed, no Payload retry |
+| | Reconciliation (the adapter's `reconcile`, or finding the adapter) failed | `failed`, `lastError`, `externalId` kept | Failed, no Payload retry (the platform may have the post; nothing may publish it again automatically) |
+| | Reconciliation verdict recorded (published, failed, pending) | per the verdict | Succeeded; `output.reconciled` |
+| | Held post not due yet (duplicate job); adapter has no `reconcile`; row changed meanwhile | unchanged | Succeeded (handled no-op); `output.reconcileSkipped` |
 | | Post not found; post `cancelled` | unchanged | Failed, no Payload retry |
 | | Already published; claimed by another worker; stale schedule token; not due yet | unchanged | Succeeded (handled no-op) |
 | `socialPostRetry` (1, backoff) | Post not found | none | Failed, no Payload retry |
@@ -420,8 +434,8 @@ The clients never replay a `create` request themselves after a 5xx or a lost res
 | `socialInsightsRefresh` (1, backoff) | Nothing refreshed and at least one post or platform failed | unchanged | Payload retries (read-only on the platform) |
 | | Some posts refreshed, some failed | refreshed rows updated | Succeeded; `output.summaries[].failed` and `output.failedPlatforms` count the failures |
 | `socialConnectionRefresh` (1, backoff) | A platform's token refresh failed | none | Payload retries (a platform refreshed in the first attempt is skipped once its token is outside the window) |
-| `socialPostSweep` (0) | The due-post query failed, or no due post could be queued | unchanged (`queued`) | Failed; the next sweep picks the posts up |
-| | Some due posts could not be queued | unchanged (`queued`) | Succeeded; `output.failed` counts them |
+| `socialPostSweep` (0) | The due-post query failed, or no due post could be queued | unchanged (still due) | Failed; the next sweep picks the posts up |
+| | Some due posts could not be queued | unchanged (still due) | Succeeded; `output.failed` counts them |
 
 Double posting is prevented by four fences: Payload retries a publish only when `isAutoRetrySafe` holds, so never after a write the platform may have applied; every publish attempt (first run or retry) must claim the row from `queued`, or from `failed` without an `externalId`, before calling the platform, so an `unknown`, `publishing`, `scheduled` or `published` row is never published by a job (the claim clears an `externalId` left by an earlier publication, so a rescheduled post's retry is not mistaken for a live one); an unknown outcome stays `unknown` until an operator resolves it; and the manual retry refuses a post that may already be live unless the operator confirms it is not (`confirmNotPublished: true`).
 
