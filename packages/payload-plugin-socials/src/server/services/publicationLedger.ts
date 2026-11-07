@@ -24,7 +24,7 @@ import {
   PublicationPersistenceError,
   ValidationError,
 } from '../utilities/errors.js'
-import { redactSecretString } from '../utilities/logger.js'
+import { logAsyncOperationFailure, redactSecretString } from '../utilities/logger.js'
 import { buildPublicationIdentity } from '../utilities/publicationIdentity.js'
 import { queueReconciliationCheck } from './publicationReconciliation.js'
 
@@ -427,7 +427,7 @@ export const publishClaimed = async (args: {
   }
   if (checkAt) {
     // The row is due at `checkAt` already, so a failed queue only delays the check to the next sweep.
-    await queueReconciliationCheck({ checkAt, payload, postId, req: args.req })
+    await queueCheck({ checkAt, payload, postId, req: args.req })
   }
   return { publishedRef, status: 'published' }
 }
@@ -535,12 +535,50 @@ const verdictData = (post: LedgerPost, verdict: ReconcileVerdict): Record<string
   }
 }
 
+const nextRetryAtIs = (value: null | string | undefined): Record<string, unknown> =>
+  value ? { nextRetryAt: { equals: value } } : { nextRetryAt: { exists: false } }
+
+/**
+ * Note the job queued to check a held post on its row (`queuedJobId`), so the
+ * sweep does not queue a second check of the same post while this one waits
+ * (`sweepDueSocialPosts`). Written only while the row still awaits that check
+ * (`nextRetryAt` is `checkAt`); never fails the caller.
+ */
+export const recordCheckJob = async (
+  payload: Payload,
+  args: { checkAt: null | string | undefined; jobId: number | string; postId: number | string },
+): Promise<void> => {
+  try {
+    await conditionalUpdate(payload, { queuedJobId: String(args.jobId) }, [
+      { id: { equals: args.postId } },
+      { status: { in: [...AWAITING_PLATFORM_STATUSES] } },
+      nextRetryAtIs(args.checkAt),
+    ])
+  } catch (error) {
+    logAsyncOperationFailure(payload, 'socials.publication.reconciliation.record-job', error)
+  }
+}
+
+/** Queue the next check of a held post (`queueReconciliationCheck`) and note its job on the row. */
+const queueCheck = async (args: {
+  checkAt: string
+  payload: Payload
+  postId: number | string
+  req?: PayloadRequest
+}): Promise<void> => {
+  const jobId = await queueReconciliationCheck(args)
+  if (jobId !== undefined) {
+    await recordCheckJob(args.payload, { checkAt: args.checkAt, jobId, postId: args.postId })
+  }
+}
+
 /**
  * Ask the platform where a post it holds stands (`adapter.reconcile`) and
  * record the verdict. Call only for a post that `awaitsReconciliation`. Never
  * publishes, and never throws for a platform failure: the attempt carries it.
- * The verdict is written with a guard on the row's status and `externalId`,
- * so it never overwrites a row an operator changed meanwhile.
+ * The verdict is written with a guard on the row's status, `externalId` and
+ * `nextRetryAt`, so it never overwrites a row an operator changed meanwhile,
+ * and of two jobs checking the post at once only the first records a verdict.
  */
 export const reconcilePublication = async (args: {
   adapter: PlatformAdapter
@@ -574,16 +612,20 @@ export const reconcilePublication = async (args: {
     return { error, status: 'error' }
   }
   const data = verdictData(post, verdict)
+  // `nextRetryAt` as this job read it: a verdict moves it, so when two jobs
+  // check the same post (a sweep across isolates, an overlapping drain), the
+  // later write no longer matches and only the first verdict queues a check.
   const recorded = await conditionalUpdate(payload, data, [
     { id: { equals: post.id } },
     { status: { equals: post.status } },
     { externalId: { equals: post.externalId } },
+    nextRetryAtIs(post.nextRetryAt),
   ])
   if (!recorded) {
     return { reason: 'changed', status: 'skipped' }
   }
   if (verdict.state === 'pending') {
-    await queueReconciliationCheck({
+    await queueCheck({
       checkAt: data.nextRetryAt as string,
       payload,
       postId: post.id,

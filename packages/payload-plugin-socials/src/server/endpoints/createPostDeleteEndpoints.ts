@@ -16,6 +16,15 @@ import { assertAccess } from '../utilities/access.js'
 import { ValidationError } from '../utilities/errors.js'
 import { errorResponse, getRouteParam, jsonResponse, parseRequestBody } from '../utilities/http.js'
 
+/** The 422 for a platform whose adapter cannot delete a post (no `delete`). */
+export const deleteUnsupportedMessage = (
+  label: string,
+  options: Pick<NormalizedPluginOptions, 'api'>,
+): string =>
+  `${label} does not support removing published posts through its API. ` +
+  `Delete the post in the ${label} app, then use mark-deleted to reconcile: ` +
+  `DELETE ${options.api.basePath}/posts/:postId?localOnly=true`
+
 /**
  * DELETE {basePath}/posts/:postId
  *
@@ -56,15 +65,6 @@ import { errorResponse, getRouteParam, jsonResponse, parseRequestBody } from '..
  * never calls a platform, so it cannot remove a live post. Body `{ minLeadSeconds? }` also
  * refuses when the post is due within that many seconds. Anything but a queued row is a 409.
  */
-/** The 422 for a platform whose adapter cannot delete a post (no `delete`). */
-export const deleteUnsupportedMessage = (
-  label: string,
-  options: Pick<NormalizedPluginOptions, 'api'>,
-): string =>
-  `${label} does not support removing published posts through its API. ` +
-  `Delete the post in the ${label} app, then use mark-deleted to reconcile: ` +
-  `DELETE ${options.api.basePath}/posts/:postId?localOnly=true`
-
 export const createPostDeleteEndpoints = (options: NormalizedPluginOptions): Endpoint[] => [
   {
     handler: async (req) => {
