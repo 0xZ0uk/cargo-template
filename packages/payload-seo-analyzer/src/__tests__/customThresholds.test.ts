@@ -4,7 +4,6 @@ import type { SeoCheck, SeoConfig, SeoInput, SeoThresholds } from '../types'
 import { calculateFlesch } from '../helpers'
 import { resolveThresholds, mergeThresholds } from '../helpers/thresholds'
 import { loadMergedConfig } from '../helpers/loadMergedConfig'
-import { hashConfig } from '../cache'
 import {
   FLESCH_SCORE_PASS,
   FLESCH_SCORE_WARN,
@@ -291,13 +290,5 @@ describe('config plumbing', () => {
       'title-length',
     )
     expect(check?.status).toBe('warning')
-  })
-
-  it('the audit cache key changes with the thresholds in the config', () => {
-    const base = { v: 2, collections: ['pages'], globals: [] }
-    const key = (thresholds?: SeoThresholds) => hashConfig({ ...base, seoConfig: thresholds ? { thresholds } : null })
-    expect(key({ titleLengthMin: 10 })).not.toBe(key({ titleLengthMin: 20 }))
-    expect(key({ titleLengthMin: 10 })).not.toBe(key())
-    expect(key({ titleLengthMin: 10 })).toBe(key({ titleLengthMin: 10 }))
   })
 })

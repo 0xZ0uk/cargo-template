@@ -14,8 +14,8 @@
 import type { PayloadHandler } from 'payload'
 import { buildDocPath } from '../helpers/docUrl.js'
 import type { SeoConfig } from '../types.js'
-import { defaultSeoSharedCache, hashConfig, safeLookup, safeSet, type SeoSharedCache } from '../cache.js'
-import { sha256Hex } from '../helpers/sha256.js'
+import { defaultSeoSharedCache, safeLookup, safeSet, type SeoSharedCache } from '../cache.js'
+import { keyFor } from '../cacheKey.js'
 import { buildSelect } from '../helpers/buildSelect.js'
 import { docExclusion } from '../helpers/excludeDocs.js'
 import { fetchAllDocs } from '../helpers/fetchAllDocs.js'
@@ -127,12 +127,14 @@ export function createLlmsTxtHandler(
 
     try {
       const siteUrl = resolveSiteUrl(seoConfig?.siteUrl, requestOrigin(req))
-      // The origin is request-derived when no site URL is configured: hash it (and the
-      // collections) to keep the key within the store's `[a-z0-9:/._-]`.
-      // Persisted entries outlive deploys: scope them by the config that shapes the body
-      // (`siteName`, `siteDescription`, `collectionRoutes`).
-      const configSuffix = cache.persistent ? `:${hashConfig({ v: 1, seoConfig: seoConfig ?? null })}` : ''
-      const cacheKey = `${LLMS_TXT_CACHE_BASE}:${await sha256Hex(JSON.stringify([targetCollections, siteUrl]))}${configSuffix}`
+      // The origin is request-derived when no site URL is configured, so it is an input of the
+      // key with the collections. Persisted entries outlive deploys: the key also carries the
+      // config that shapes the body (`siteName`, `siteDescription`, `collectionRoutes`).
+      const cacheKey = await keyFor(LLMS_TXT_CACHE_BASE, req, {
+        cache,
+        inputs: [targetCollections, siteUrl],
+        config: seoConfig ?? null,
+      })
       const lookup = await safeLookup<string>(cache, LLMS_TXT_CACHE_BASE, cacheKey, req)
       if (typeof lookup.data === 'string') return new Response(lookup.data, { headers: textHeaders })
 

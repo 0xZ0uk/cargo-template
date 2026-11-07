@@ -11,8 +11,8 @@ import { requestOrigin, resolveSiteUrl } from '../helpers/siteUrl.js'
 import { buildSelect } from '../helpers/buildSelect.js'
 import { docExclusion } from '../helpers/excludeDocs.js'
 import { fetchAllDocs } from '../helpers/fetchAllDocs.js'
-import { defaultSeoSharedCache, hashConfig, safeLookup, safeSet, type SeoSharedCache } from '../cache.js'
-import { sha256Hex } from '../helpers/sha256.js'
+import { defaultSeoSharedCache, safeLookup, safeSet, type SeoSharedCache } from '../cache.js'
+import { keyFor } from '../cacheKey.js'
 
 /**
  * Cache key base for the rendered XML. Scoped by the collections the handler was
@@ -102,11 +102,13 @@ export function createSitemapHandler(
       // origin is part of the cache key.
       const serverUrl = resolveSiteUrl(seoConfig?.siteUrl, requestOrigin(req))
       // The collections and the origin (request-derived: uppercase host, IPv6 literal, query
-      // string…) are hashed so the key stays within the store's `[a-z0-9:/._-]`.
-      // Persisted entries outlive deploys: scope them by the config that shapes the XML
-      // (`collectionRoutes` builds every `<loc>`).
-      const configSuffix = cache.persistent ? `:${hashConfig({ v: 1, seoConfig: seoConfig ?? null })}` : ''
-      const cacheKey = `${SITEMAP_XML_CACHE_BASE}:${await sha256Hex(JSON.stringify([targetCollections, serverUrl]))}${configSuffix}`
+      // string…) are inputs of the key. Persisted entries outlive deploys: the key also carries
+      // the config that shapes the XML (`collectionRoutes` builds every `<loc>`).
+      const cacheKey = await keyFor(SITEMAP_XML_CACHE_BASE, req, {
+        cache,
+        inputs: [targetCollections, serverUrl],
+        config: seoConfig ?? null,
+      })
       const lookup = await safeLookup<string>(cache, SITEMAP_XML_CACHE_BASE, cacheKey, req)
       if (typeof lookup.data === 'string') return xmlResponse(lookup.data)
 

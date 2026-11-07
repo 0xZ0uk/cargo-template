@@ -23,7 +23,7 @@ import type { PayloadHandler } from 'payload'
 import type { SeoConfig } from '../types.js'
 import { defaultSeoSharedCache, type SeoSharedCache } from '../cache.js'
 import { isSeoAdminRequest, isSeoPanelUser } from '../helpers/isAdmin.js'
-import { sha256Hex } from '../helpers/sha256.js'
+import { keyFor } from '../cacheKey.js'
 import { resolveSiteUrl as resolveSharedSiteUrl } from '../helpers/siteUrl.js'
 
 // Google's official Core Web Vitals thresholds (good / needs-improvement boundaries).
@@ -96,7 +96,7 @@ export function createCoreWebVitalsHandler(
       // to SEO admins — the same gate as /audit?nocache=1. A panel user without the role
       // silently gets the cached result instead of a 403.
       const noCache = reqUrl.searchParams.get('nocache') === '1' && isSeoAdminRequest(req)
-      const CACHE_KEY = `core-web-vitals:${strategy}:${await sha256Hex(target)}`
+      const CACHE_KEY = await keyFor('core-web-vitals', req, { cache, inputs: [strategy, target] })
       const lookup = await cache.lookup<Record<string, unknown>>('core-web-vitals', CACHE_KEY)
       const cachedCwv = noCache ? null : lookup.data
       if (cachedCwv) {

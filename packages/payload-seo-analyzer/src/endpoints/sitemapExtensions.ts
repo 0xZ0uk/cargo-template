@@ -22,8 +22,8 @@
 import type { Payload, PayloadHandler } from 'payload'
 import { buildDocPath } from '../helpers/docUrl.js'
 import { docExclusion, isExcludedDoc } from '../helpers/excludeDocs.js'
-import { defaultSeoSharedCache, hashConfig, safeLookup, safeSet, type SeoSharedCache } from '../cache.js'
-import { sha256Hex } from '../helpers/sha256.js'
+import { defaultSeoSharedCache, safeLookup, safeSet, type SeoSharedCache } from '../cache.js'
+import { keyFor } from '../cacheKey.js'
 import type { SeoConfig } from '../types.js'
 import { resolveSiteUrl as resolveSharedSiteUrl } from '../helpers/siteUrl.js'
 
@@ -59,21 +59,19 @@ function docPath(slug: string, collection?: string, seoConfig?: SeoConfig): stri
 }
 
 /**
- * Cache key of a rendered sitemap: the base plus a hash of what the document depends on (the
- * collections and the site URL, so a changed `SITE_URL` never serves an old document). Hashed
- * to stay within the store's `[a-z0-9:/._-]`.
+ * Cache key of a rendered sitemap: the collections and the site URL are its inputs (so a changed
+ * `SITE_URL` never serves an old document). A persisted entry is also scoped by the config that
+ * shapes the XML (`siteName` is the news publication, `collectionRoutes` builds every `<loc>`).
  */
-async function sitemapCacheKey(
+function sitemapCacheKey(
   cache: SeoSharedCache,
-  base: string,
+  base: typeof SITEMAP_NEWS_CACHE_BASE | typeof SITEMAP_IMAGES_CACHE_BASE | typeof SITEMAP_VIDEO_CACHE_BASE,
+  req: Parameters<typeof keyFor>[1],
   targetCollections: string[],
   siteUrl: string,
   seoConfig: SeoConfig | undefined,
 ): Promise<string> {
-  // Persisted entries outlive deploys: scope them by the config that shapes the XML
-  // (`siteName` is the news publication, `collectionRoutes` builds every `<loc>`).
-  const configSuffix = cache.persistent ? `:${hashConfig({ v: 1, seoConfig: seoConfig ?? null })}` : ''
-  return `${base}:${await sha256Hex(JSON.stringify([targetCollections, siteUrl]))}${configSuffix}`
+  return keyFor(base, req, { cache, inputs: [targetCollections, siteUrl], config: seoConfig ?? null })
 }
 
 function xmlResponse(xml: string, status = 200): Response {
@@ -180,7 +178,7 @@ export function createNewsSitemapHandler(
     try {
       const siteUrl = resolveSiteUrl(seoConfig)
       // Serve the rendered XML while it is still warm — see the file header.
-      const cacheKey = await sitemapCacheKey(cache, SITEMAP_NEWS_CACHE_BASE, targetCollections, siteUrl, seoConfig)
+      const cacheKey = await sitemapCacheKey(cache, SITEMAP_NEWS_CACHE_BASE, req, targetCollections, siteUrl, seoConfig)
       const lookup = await safeLookup<string>(cache, SITEMAP_NEWS_CACHE_BASE, cacheKey, req)
       if (typeof lookup.data === 'string') return xmlResponse(lookup.data)
 
@@ -237,7 +235,7 @@ export function createImageSitemapHandler(
     try {
       const siteUrl = resolveSiteUrl(seoConfig)
       // Serve the rendered XML while it is still warm — see the file header.
-      const cacheKey = await sitemapCacheKey(cache, SITEMAP_IMAGES_CACHE_BASE, targetCollections, siteUrl, seoConfig)
+      const cacheKey = await sitemapCacheKey(cache, SITEMAP_IMAGES_CACHE_BASE, req, targetCollections, siteUrl, seoConfig)
       const lookup = await safeLookup<string>(cache, SITEMAP_IMAGES_CACHE_BASE, cacheKey, req)
       if (typeof lookup.data === 'string') return xmlResponse(lookup.data)
 
@@ -277,7 +275,7 @@ export function createVideoSitemapHandler(
     try {
       const siteUrl = resolveSiteUrl(seoConfig)
       // Serve the rendered XML while it is still warm — see the file header.
-      const cacheKey = await sitemapCacheKey(cache, SITEMAP_VIDEO_CACHE_BASE, targetCollections, siteUrl, seoConfig)
+      const cacheKey = await sitemapCacheKey(cache, SITEMAP_VIDEO_CACHE_BASE, req, targetCollections, siteUrl, seoConfig)
       const lookup = await safeLookup<string>(cache, SITEMAP_VIDEO_CACHE_BASE, cacheKey, req)
       if (typeof lookup.data === 'string') return xmlResponse(lookup.data)
 

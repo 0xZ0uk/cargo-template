@@ -9,13 +9,13 @@
  */
 
 import type { PayloadHandler } from 'payload'
-import { defaultSeoSharedCache, hashConfig, type SeoSharedCache } from '../cache.js'
+import { defaultSeoSharedCache, type SeoSharedCache } from '../cache.js'
+import { keyFor } from '../cacheKey.js'
 import { extractAllInternalLinks, normalizeToSlug, resolveToDocSlug } from '../helpers/linkExtractor.js'
 import { docExclusion } from '../helpers/excludeDocs.js'
 import { fetchAllDocs } from '../helpers/fetchAllDocs.js'
 import type { SeoConfig } from '../types.js'
 import { isSeoAdminRequest, isSeoPanelUser } from '../helpers/isAdmin.js'
-import { safeCacheLocale } from '../helpers/safeCacheLocale.js'
 
 // ---------------------------------------------------------------------------
 // Slug suggestion for broken links (C1)
@@ -56,17 +56,13 @@ export function createSitemapAuditHandler(
   seoConfig?: Pick<SeoConfig, 'excludeDocs' | 'excludeDocsFields'>,
 ): PayloadHandler {
   const exclude = docExclusion(seoConfig)
-  // Persisted entries outlive deploys: scope them by the config that shapes the result.
-  // The exclusion is hashed only when set, so existing keys stay valid without one.
-  const configSuffix = cache.persistent
-    ? `:${hashConfig({
-        v: 1,
-        collections,
-        redirectsCollection,
-        knownRoutes,
-        ...(exclude && { excludeDocs: exclude.test, excludeDocsFields: exclude.fields ?? null }),
-      })}`
-    : ''
+  // Persisted entries outlive deploys: the key carries the config that shapes the result.
+  const keyConfig = {
+    collections,
+    redirectsCollection,
+    knownRoutes,
+    ...(exclude && { excludeDocs: exclude.test, excludeDocsFields: exclude.fields ?? null }),
+  }
   return async (req) => {
     try {
       if (!isSeoPanelUser(req)) {
@@ -79,9 +75,7 @@ export function createSitemapAuditHandler(
       // user without the role silently gets the cached result instead of a 403.
       const noCache = url.searchParams.get('nocache') === '1' && isSeoAdminRequest(req)
 
-      // Locale-scoped: content differs per locale, so cache must not collide across locales.
-      const reqLocale = safeCacheLocale(req)
-      const CACHE_KEY = (reqLocale ? `sitemap-audit:${reqLocale}` : 'sitemap-audit') + configSuffix
+      const CACHE_KEY = await keyFor('sitemap-audit', req, { cache, config: keyConfig })
       // Read the generation before computing (even on nocache) so a save that lands while
       // this request runs leaves the stored result stale rather than hiding the save.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
